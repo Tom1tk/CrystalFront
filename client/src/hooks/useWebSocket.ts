@@ -66,6 +66,11 @@ export function useWebSocket(): UseWebSocketReturn {
       setError("Connection error.");
     };
 
+    ws.onclose = (event) => {
+      console.log("[useWebSocket] ws.onclose - code:", event.code, "reason:", event.reason, "wasClean:", event.wasClean);
+      setConnected(false);
+    };
+
     ws.onmessage = (event) => {
       try {
         const msg: WSMessage = JSON.parse(event.data);
@@ -111,6 +116,8 @@ export function useWebSocket(): UseWebSocketReturn {
   const sendMessage = useCallback((msg: Record<string, unknown>) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(msg));
+    } else {
+      console.warn("[useWebSocket] sendMessage failed - readyState:", wsRef.current?.readyState, "wsRef exists:", !!wsRef.current);
     }
   }, []);
 
@@ -154,8 +161,8 @@ export function useWebSocket(): UseWebSocketReturn {
       targetEntityId?: string;
       buildingType?: BuildingType;
     }) => {
-      console.log("[useWebSocket] sendGameCommand:", JSON.stringify(command));
-      sendMessage({ type: "game_command", payload: command });
+      console.log("[useWebSocket] sendGameCommand:", JSON.stringify(command), "wsReadyState:", wsRef.current?.readyState);
+      sendMessage({ type: "game_command", payload: { ...command, tick: Date.now() } });
     },
     [sendMessage]
   );

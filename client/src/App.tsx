@@ -156,7 +156,6 @@ export default function App() {
 
   const player = getCurrentPlayer();
   const lobby = getCurrentLobby();
-  console.log("[App] render check: screen=", screen, "playerId=", ws.playerId, "player=", !!player, "lobby=", !!lobby);
 
   return (
     <div style={styles.container}>
