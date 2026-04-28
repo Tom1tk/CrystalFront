@@ -134,6 +134,8 @@ export interface MatchState {
   economy: [PlayerEconomy | null, PlayerEconomy | null];
   resourceNodes: ResourceNode[];
   config: MatchConfig;
+  mapWidth: number;
+  mapHeight: number;
 }
 
 export interface PlayerSlot {

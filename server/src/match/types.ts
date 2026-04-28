@@ -54,6 +54,8 @@ export interface MatchState {
   economy: [PlayerEconomy | null, PlayerEconomy | null];
   resourceNodes: ResourceNode[];
   config: MatchConfig;
+  mapWidth: number;
+  mapHeight: number;
 }
 
 export interface MatchEntity {
@@ -238,7 +240,7 @@ export interface MatchConfig {
 
 export const DEFAULT_CONFIG: MatchConfig = {
   tickIntervalMs: 100,
-  mapWidth: 3000,
+  mapWidth: 6000,
   mapHeight: 600,
   crystalHealth: 1000,
   crystalRadius: 30,
