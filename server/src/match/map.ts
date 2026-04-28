@@ -50,56 +50,57 @@ export function createMap(config: MatchConfig): MapLayout {
   const midY = mapHeight / 2;
   const midX = mapWidth / 2;
 
-  // Spawn positions
-  const blueSpawn: SpawnPosition = { x: 80, y: midY };
-  const redSpawn: SpawnPosition = { x: mapWidth - 80, y: midY };
+  // Spawn positions (near crystals)
+  const blueSpawn: SpawnPosition = { x: 160, y: midY };
+  const redSpawn: SpawnPosition = { x: mapWidth - 160, y: midY };
 
-  // Crystal positions
-  const blueCrystal: SpawnPosition = { x: 120, y: midY };
-  const redCrystal: SpawnPosition = { x: mapWidth - 120, y: midY };
+  // Crystal positions (far ends of each side)
+  const blueCrystal: SpawnPosition = { x: 100, y: midY };
+  const redCrystal: SpawnPosition = { x: mapWidth - 100, y: midY };
 
-  // Worker spawn positions
+  // Worker spawn positions near each crystal
   const blueWorkers: SpawnPosition[] = [
-    { x: 60, y: midY - 50 },
-    { x: 60, y: midY + 50 },
-    { x: 100, y: midY },
+    { x: 160, y: midY - 50 },
+    { x: 160, y: midY + 50 },
+    { x: 200, y: midY },
   ];
 
   const redWorkers: SpawnPosition[] = [
-    { x: mapWidth - 60, y: midY - 50 },
-    { x: mapWidth - 60, y: midY + 50 },
-    { x: mapWidth - 100, y: midY },
+    { x: mapWidth - 160, y: midY - 50 },
+    { x: mapWidth - 160, y: midY + 50 },
+    { x: mapWidth - 200, y: midY },
   ];
 
   // Safe resource nodes near each base
   const blueSafeNodes: ResourceNodeLayout[] = [
-    { x: 60, y: midY - 120, radius: 18, capacity: 300, type: "safe" },
-    { x: 60, y: midY + 120, radius: 18, capacity: 300, type: "safe" },
+    { x: 250, y: midY - 120, radius: 18, capacity: 300, type: "safe" },
+    { x: 250, y: midY + 120, radius: 18, capacity: 300, type: "safe" },
   ];
 
   const redSafeNodes: ResourceNodeLayout[] = [
-    { x: mapWidth - 60, y: midY - 120, radius: 18, capacity: 300, type: "safe" },
-    { x: mapWidth - 60, y: midY + 120, radius: 18, capacity: 300, type: "safe" },
+    { x: mapWidth - 250, y: midY - 120, radius: 18, capacity: 300, type: "safe" },
+    { x: mapWidth - 250, y: midY + 120, radius: 18, capacity: 300, type: "safe" },
   ];
 
-  // Contested resource nodes near middle
+  // Contested resource nodes spread across the middle
   const contestedNodes: ResourceNodeLayout[] = [
-    { x: midX - 60, y: midY - 80, radius: 22, capacity: 500, type: "contested" },
-    { x: midX + 60, y: midY + 80, radius: 22, capacity: 500, type: "contested" },
+    { x: midX - 400, y: midY - 80, radius: 22, capacity: 500, type: "contested" },
+    { x: midX, y: midY, radius: 22, capacity: 500, type: "contested" },
+    { x: midX + 400, y: midY + 80, radius: 22, capacity: 500, type: "contested" },
   ];
 
-  // Build zones (per-player areas near base)
+  // Build zones (per-player areas near base, 20% of map width each)
   const blueBuildZone: BuildZone = {
     playerId: "blue",
     x1: 0,
     y1: 0,
-    x2: mapWidth * 0.3,
+    x2: mapWidth * 0.2,
     y2: mapHeight,
   };
 
   const redBuildZone: BuildZone = {
     playerId: "red",
-    x1: mapWidth * 0.7,
+    x1: mapWidth * 0.8,
     y1: 0,
     x2: mapWidth,
     y2: mapHeight,

@@ -76,6 +76,13 @@ export interface PlayerSlot {
   score: number;
 }
 
+export interface CameraState {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface MatchState {
   id: string;
   lobbyCode: string;
@@ -88,4 +95,11 @@ export interface MatchState {
   startedAt: number;
   endedAt: number | null;
   economy: [PlayerEconomyDisplay | null, PlayerEconomyDisplay | null];
+  resourceNodes: ResourceNodeDisplay[];
+  config?: {
+    mapWidth: number;
+    mapHeight: number;
+    viewportWidth: number;
+    viewportHeight: number;
+  };
 }

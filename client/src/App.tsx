@@ -180,6 +180,7 @@ export default function App() {
           resourceNodes={ws.resourceNodes}
           onDebugWin={handleDebugWin}
           onGameCommand={handleGameCommand}
+          error={ws.error}
         />
       )}
       {screen === "matchEnd" && lobby && player && matchWinnerId && (
