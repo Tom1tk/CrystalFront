@@ -18,6 +18,8 @@ interface GameShellProps {
   error: string | null;
 }
 
+const CANVAS_WIDTH = 960;
+const CANVAS_HEIGHT = 540;
 const MINIMAP_WIDTH = 150;
 const MINIMAP_HEIGHT = 40;
 const EDGE_SCROLL_THRESHOLD = 50;
@@ -68,16 +70,13 @@ function drawMinimap(
   const xScale = mmW / mapWidth;
   const yScale = mmH / mapHeight;
 
-  // Background
   ctx.fillStyle = "rgba(0, 0, 20, 0.85)";
   ctx.fillRect(minimapX, minimapY, mmW, mmH);
 
-  // Border
   ctx.strokeStyle = "rgba(100, 100, 200, 0.4)";
   ctx.lineWidth = 1;
   ctx.strokeRect(minimapX, minimapY, mmW, mmH);
 
-  // Resource nodes as small dots
   for (const node of resourceNodes) {
     const nx = minimapX + node.x * xScale;
     const ny = minimapY + (node.y / mapHeight) * mmH;
@@ -86,7 +85,6 @@ function drawMinimap(
     ctx.fillRect(nx - 1, ny - 1, 2, 2);
   }
 
-  // Buildings and crystals
   for (const entity of entities) {
     if (entity.type === "resource_node" || entity.type === "placeholder") continue;
     const ex = minimapX + entity.x * xScale;
@@ -98,7 +96,6 @@ function drawMinimap(
     ctx.fillRect(ex - 1, ey - 1, 2, 2);
   }
 
-  // Viewport rectangle
   const vpX = minimapX + cameraX * xScale;
   const vpW = Math.max(2, cameraWidth * xScale);
   ctx.strokeStyle = "rgba(255, 255, 255, 0.7)";
@@ -116,14 +113,21 @@ export default function GameShell({
   error,
 }: GameShellProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
   const [buildMode, setBuildMode] = useState(false);
   const [selectedBuildingType, setSelectedBuildingType] = useState<BuildingType | null>(null);
   const [showUnitQueue, setShowUnitQueue] = useState(false);
 
-  // Camera state
-  const [camera, setCamera] = useState({ x: 0, y: 0, width: 0, height: 0 });
+  // Camera state - viewport is always 600x600 world units
+  const [camera, setCamera] = useState({ x: 0, y: 0, width: CANVAS_WIDTH, height: CANVAS_HEIGHT });
+
+  // Scale factor from container pixels to canvas pixels (for mouse coord conversion)
+  const [scaleX, setScaleX] = useState(1);
+  const [scaleY, setScaleY] = useState(1);
+  const [offsetX, setOffsetX] = useState(0);
+  const [offsetY, setOffsetY] = useState(0);
 
   // Refs for mutable values that should NOT trigger effect restarts
   const edgeScrollDirRef = useRef(0);
@@ -138,12 +142,12 @@ export default function GameShell({
   const myEntities = matchState?.entities.filter(isMyEntity) ?? [];
   const myCrystal = myEntities.find((e) => e.type === "crystal");
 
-  // Screen-to-world conversion
+  // Screen-to-world conversion (uses canvas coordinates, not screen coordinates)
   const screenToWorld = useCallback(
-    (screenX: number, screenY: number, camX: number, camY: number) => {
+    (canvasX: number, canvasY: number, camX: number, camY: number) => {
       return {
-        x: screenX + camX,
-        y: screenY + camY,
+        x: canvasX + camX,
+        y: canvasY + camY,
       };
     },
     []
@@ -160,23 +164,68 @@ export default function GameShell({
     []
   );
 
+  // Convert screen event coordinates to canvas coordinates
+  const screenToCanvas = useCallback(
+    (screenX: number, screenY: number) => {
+      return {
+        x: (screenX - offsetX) / scaleX,
+        y: (screenY - offsetY) / scaleY,
+      };
+    },
+    [scaleX, scaleY, offsetX, offsetY]
+  );
+
   // Camera initialization based on player color
   useEffect(() => {
     if (matchState) {
       const myIdx = matchState.players.findIndex((p) => p?.playerId === player.id);
-      const mapWidth = matchState.config?.mapWidth || 3000;
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight - 180; // leave room for bottom bars
 
       if (myIdx === 0) {
         // Blue player: start near left side
-        setCamera({ x: 0, y: 0, width: viewportWidth, height: viewportHeight });
+        setCamera({ x: 0, y: 0, width: CANVAS_WIDTH, height: CANVAS_HEIGHT });
       } else {
         // Red player: start near right side
-        setCamera({ x: mapWidth - viewportWidth, y: 0, width: viewportWidth, height: viewportHeight });
+        const mapWidth = matchState.config?.mapWidth || 3000;
+        setCamera({ x: mapWidth - CANVAS_WIDTH, y: 0, width: CANVAS_WIDTH, height: CANVAS_HEIGHT });
       }
     }
   }, [matchState, player.id]);
+
+  // Resize container and compute scale factors
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleResize = () => {
+      const cw = container.clientWidth;
+      const ch = container.clientHeight;
+
+      // Scale canvas to fill container while maintaining 16:9 aspect ratio
+      const scale = Math.min(cw / CANVAS_WIDTH, ch / CANVAS_HEIGHT);
+      const displayW = Math.floor(CANVAS_WIDTH * scale);
+      const displayH = Math.floor(CANVAS_HEIGHT * scale);
+
+      // Canvas internal resolution stays fixed at CANVAS_WIDTH x CANVAS_HEIGHT
+      // CSS will render it at displayW x displayH
+      const canvas = canvasRef.current;
+      if (canvas) {
+        canvas.style.width = `${displayW}px`;
+        canvas.style.height = `${displayH}px`;
+      }
+
+      // Compute scale factors for mouse coordinate conversion
+      setScaleX(displayW / CANVAS_WIDTH);
+      setScaleY(displayH / CANVAS_HEIGHT);
+      setOffsetX((cw - displayW) / 2);
+      setOffsetY((ch - displayH) / 2);
+    };
+
+    handleResize();
+
+    const observer = new ResizeObserver(handleResize);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
 
   // Edge scrolling loop - uses ref for direction to avoid restarts
   useEffect(() => {
@@ -208,21 +257,25 @@ export default function GameShell({
       if (!canvas || !matchState) return false;
 
       const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+      const screenX = e.clientX - rect.left;
+      const screenY = e.clientY - rect.top;
+
+      // Convert to canvas coordinates
+      const cx = screenX / scaleX;
+      const cy = screenY / scaleY;
 
       const minimapX = canvasWidth - MINIMAP_WIDTH - 10;
       const minimapY = canvasHeight - MINIMAP_HEIGHT - 10;
 
       if (
-        x >= minimapX &&
-        x <= minimapX + MINIMAP_WIDTH &&
-        y >= minimapY &&
-        y <= minimapY + MINIMAP_HEIGHT
+        cx >= minimapX &&
+        cx <= minimapX + MINIMAP_WIDTH &&
+        cy >= minimapY &&
+        cy <= minimapY + MINIMAP_HEIGHT
       ) {
-        const ratio = (x - minimapX) / MINIMAP_WIDTH;
+        const ratio = (cx - minimapX) / MINIMAP_WIDTH;
         const mapWidth = matchState.config?.mapWidth || 3000;
-        const viewportWidth = camera.width;
+        const viewportWidth = CANVAS_WIDTH;
         const worldX = ratio * mapWidth;
         setCamera((prev) => ({
           ...prev,
@@ -232,7 +285,7 @@ export default function GameShell({
       }
       return false;
     },
-    [matchState, camera.width]
+    [matchState, scaleX, scaleY]
   );
 
   const handleClick = useCallback(
@@ -241,13 +294,17 @@ export default function GameShell({
       if (!canvas) return;
 
       const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+      const screenX = e.clientX - rect.left;
+      const screenY = e.clientY - rect.top;
+
+      // Convert screen coordinates to canvas coordinates
+      const canvasX = (screenX - offsetX) / scaleX;
+      const canvasY = (screenY - offsetY) / scaleY;
 
       // Check minimap first
-      if (handleMinimapClick(e, canvas.width, canvas.height)) return;
+      if (handleMinimapClick(e, CANVAS_WIDTH, CANVAS_HEIGHT)) return;
 
-      const world = screenToWorld(x, y, camera.x, camera.y);
+      const world = screenToWorld(canvasX, canvasY, camera.x, camera.y);
 
       // Build mode: place building
       if (buildMode && selectedBuildingType && myCrystal) {
@@ -359,29 +416,34 @@ export default function GameShell({
         }
       }
     },
-    [myEntities, selectedEntityId, resourceNodes, onGameCommand, buildMode, selectedBuildingType, myCrystal, matchState, screenToWorld, handleMinimapClick, camera.x, camera.y]
+    [myEntities, selectedEntityId, resourceNodes, onGameCommand, buildMode, selectedBuildingType, myCrystal, matchState, screenToWorld, handleMinimapClick, camera.x, camera.y, scaleX, scaleY, offsetX, offsetY]
   );
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
+
       const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+      const screenX = e.clientX - rect.left;
+      const screenY = e.clientY - rect.top;
+
+      // Convert screen coordinates to canvas coordinates
+      const canvasX = (screenX - offsetX) / scaleX;
+      const canvasY = (screenY - offsetY) / scaleY;
 
       // Determine edge scroll direction using ref (no effect restart)
-      if (x < EDGE_SCROLL_THRESHOLD) {
+      if (canvasX < EDGE_SCROLL_THRESHOLD) {
         edgeScrollDirRef.current = -1;
-      } else if (x > canvas.width - EDGE_SCROLL_THRESHOLD) {
+      } else if (canvasX > CANVAS_WIDTH - EDGE_SCROLL_THRESHOLD) {
         edgeScrollDirRef.current = 1;
       } else {
         edgeScrollDirRef.current = 0;
       }
 
-      setHoverPos(screenToWorld(x, y, camera.x, camera.y));
+      setHoverPos(screenToWorld(canvasX, canvasY, camera.x, camera.y));
     },
-    [screenToWorld, camera.x, camera.y]
+    [screenToWorld, camera.x, camera.y, scaleX, scaleY, offsetX, offsetY]
   );
 
   const handleMouseLeave = useCallback(() => {
@@ -414,8 +476,9 @@ export default function GameShell({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const width = canvas.width;
-    const height = canvas.height;
+    // Canvas internal resolution is always CANVAS_WIDTH x CANVAS_HEIGHT (16:9)
+    const width = CANVAS_WIDTH;
+    const height = CANVAS_HEIGHT;
 
     ctx.fillStyle = "#0a0a1a";
     ctx.fillRect(0, 0, width, height);
@@ -707,14 +770,14 @@ export default function GameShell({
 
     // Draw minimap
     if (matchState) {
-      const minimapX = width - MINIMAP_WIDTH - 10;
-      const minimapY = height - MINIMAP_HEIGHT - 10;
+      const minimapX = CANVAS_WIDTH - MINIMAP_WIDTH - 10;
+      const minimapY = CANVAS_HEIGHT - MINIMAP_HEIGHT - 10;
       drawMinimap(
         ctx,
         matchState.config?.mapWidth || 3000,
         matchState.config?.mapHeight || 600,
         camera.x,
-        camera.width,
+        CANVAS_WIDTH,
         resourceNodes,
         entities,
         player.color,
@@ -747,31 +810,6 @@ export default function GameShell({
     }
   }, [matchState, player.id, selectedEntityId, hoverPos, myEntities, resourceNodes, buildMode, selectedBuildingType, myCrystal, camera]);
 
-  // Canvas resize - fill available screen space
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const resize = () => {
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight - 180; // leave room for bottom bars
-      canvas.width = viewportWidth;
-      canvas.height = viewportHeight;
-      setCamera((prev) => ({
-        ...prev,
-        width: viewportWidth,
-        height: viewportHeight,
-      }));
-    };
-
-    resize();
-    window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
-  }, []);
-
-  const minimapX = 0; // Will be computed in draw based on canvas width
-  const minimapY = 0;
-
   const opponent = lobby.players.find((p) => p?.id !== player.id);
   const opponentColor = opponent?.color === "blue" ? "#4488ff" : "#ff4444";
   const myColor = player.color === "blue" ? "#4488ff" : "#ff4444";
@@ -803,58 +841,62 @@ export default function GameShell({
 
   return (
     <div style={styles.container}>
-      <canvas
-        ref={canvasRef}
-        onClick={handleClick}
-        onMouseMove={handleMouseMove}
-        onMouseLeave={handleMouseLeave}
-        style={styles.canvas}
-      />
-      {error && (
-        <div style={styles.errorBanner}>
-          <span style={styles.errorText}>{error}</span>
-          <button
-            style={styles.errorCloseButton}
-            onClick={() => {
-              onGameCommand({ type: "deselect" });
-            }}
-          >
-            ✕
-          </button>
-        </div>
-      )}
-      <div style={styles.overlay}>
-        <div style={styles.scoreboard}>
-          <div style={{ ...styles.scorePlayer, color: myColor }}>
-            <span style={{ fontSize: "18px", fontWeight: 700 }}>{player.username}</span>
-            <span style={{ ...styles.scoreNum, color: "#8888ff" }}>{player.score}</span>
+      <div ref={containerRef} style={styles.gameContainer}>
+        <canvas
+          ref={canvasRef}
+          onClick={handleClick}
+          onMouseMove={handleMouseMove}
+          onMouseLeave={handleMouseLeave}
+          width={CANVAS_WIDTH}
+          height={CANVAS_HEIGHT}
+          style={styles.canvas}
+        />
+        {error && (
+          <div style={styles.errorBanner}>
+            <span style={styles.errorText}>{error}</span>
+            <button
+              style={styles.errorCloseButton}
+              onClick={() => {
+                onGameCommand({ type: "deselect" });
+              }}
+            >
+              ✕
+            </button>
           </div>
-          <div style={styles.vs}>VS</div>
-          <div style={{ ...styles.scorePlayer, color: opponentColor }}>
-            <span style={{ ...styles.scoreNum, color: "#8888ff" }}>{opponent?.score ?? 0}</span>
-            <span style={{ fontSize: "18px", fontWeight: 700 }}>{opponent?.username ?? "..."}</span>
+        )}
+        <div style={styles.overlay}>
+          <div style={styles.scoreboard}>
+            <div style={{ ...styles.scorePlayer, color: myColor }}>
+              <span style={{ fontSize: "18px", fontWeight: 700 }}>{player.username}</span>
+              <span style={{ ...styles.scoreNum, color: "#8888ff" }}>{player.score}</span>
+            </div>
+            <div style={styles.vs}>VS</div>
+            <div style={{ ...styles.scorePlayer, color: opponentColor }}>
+              <span style={{ ...styles.scoreNum, color: "#8888ff" }}>{opponent?.score ?? 0}</span>
+              <span style={{ fontSize: "18px", fontWeight: 700 }}>{opponent?.username ?? "..."}</span>
+            </div>
           </div>
-        </div>
 
-        <div style={styles.infoBar}>
-          <div style={styles.economyDisplay}>
-            <span style={styles.resourceIcon}>⛏</span>
-            <span style={styles.resourceValue}>{myEconomy?.resources ?? 0}</span>
-            <span style={styles.supplyIcon}>📦</span>
-            <span style={styles.supplyValue}>
-              {myEconomy?.supply ?? 0}/{myEconomy?.maxSupply ?? 0}
+          <div style={styles.infoBar}>
+            <div style={styles.economyDisplay}>
+              <span style={styles.resourceIcon}>⛏</span>
+              <span style={styles.resourceValue}>{myEconomy?.resources ?? 0}</span>
+              <span style={styles.supplyIcon}>📦</span>
+              <span style={styles.supplyValue}>
+                {myEconomy?.supply ?? 0}/{myEconomy?.maxSupply ?? 0}
+              </span>
+            </div>
+            <span style={styles.infoText}>
+              {myEntities.length > 0 && selectedEntityId
+                ? selectedEntity?.type === "crystal"
+                  ? "Crystal selected"
+                  : selectedEntity?.type === "building"
+                    ? `${selectedEntity.buildingType || "Building"} selected`
+                    : "Click unit to select, click ground to move, click node to gather"
+                : "Click your units to select them"}
             </span>
+            <span style={styles.infoText}>Tick: {matchState?.tick ?? 0}</span>
           </div>
-          <span style={styles.infoText}>
-            {myEntities.length > 0 && selectedEntityId
-              ? selectedEntity?.type === "crystal"
-                ? "Crystal selected"
-                : selectedEntity?.type === "building"
-                  ? `${selectedEntity.buildingType || "Building"} selected`
-                  : "Click unit to select, click ground to move, click node to gather"
-              : "Click your units to select them"}
-          </span>
-          <span style={styles.infoText}>Tick: {matchState?.tick ?? 0}</span>
         </div>
       </div>
 
@@ -1044,9 +1086,18 @@ const styles = {
     overflow: "hidden",
     alignItems: "stretch",
   },
-  canvas: {
+  gameContainer: {
     flex: 1,
-    width: "100%",
+    position: "relative" as const,
+    overflow: "hidden",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 0,
+    minHeight: 0,
+  },
+  canvas: {
+    imageRendering: "auto" as const,
     display: "block",
     cursor: "crosshair",
   },
