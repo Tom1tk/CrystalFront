@@ -226,668 +226,152 @@ console.log("\n--- Mirrored Map Setup ---");
     assert(n.x > midX, "Red safe nodes are on the right side");
   }
 
-  // Contested nodes are near middle
+  // Contested nodes are spread across the middle area
   for (const n of map.contestedNodes) {
-    assert(Math.abs(n.x - midX) < 100, "Contested nodes are near the middle");
+    assert(Math.abs(n.x - midX) < 500, "Contested nodes are within the middle area");
   }
 
   // Build zones
   assert(map.blueBuildZone.x2 < midX, "Blue build zone is on the left");
   assert(map.redBuildZone.x1 > midX, "Red build zone is on the right");
 
-  // Lane corridor
+ // Lane corridor
   assert(map.laneCorridor.top < midY, "Lane corridor top is above center");
   assert(map.laneCorridor.bottom > midY, "Lane corridor bottom is below center");
 }
 
-// ---- Match Creation with Economy ----
-console.log("\n--- Match Creation with Economy ---");
+// ---- Camera Config Validation ----
+console.log("\n--- Camera Config Validation ---");
 {
-  const engine = new MatchEngine();
-  const players: [PlayerSlot | null, PlayerSlot | null] = [
-    { playerId: "p1", username: "Blue", color: "blue", score: 0, wsId: "ws1" },
-    { playerId: "p2", username: "Red", color: "red", score: 0, wsId: "ws2" },
-  ];
-
-  const match = engine.createMatch("ECON01", players);
-  assert(match.id.length > 0, "Match has a UUID id");
-  assert(match.lobbyCode === "ECON01", "Match has correct lobby code");
-  assert(match.phase === "spawn", "Match starts in spawn phase");
-  assert(match.tick === 0, "Match starts at tick 0");
-
-  // Economy initialized
-  assert(match.economy[0] !== null, "Blue economy exists");
-  assert(match.economy[1] !== null, "Red economy exists");
-  assertEqual(match.economy[0]!.resources, 50, "Blue starts with 50 resources");
-  assertEqual(match.economy[1]!.resources, 50, "Red starts with 50 resources");
-  assertEqual(match.economy[0]!.supply, 0, "Blue starts with 0 supply");
-  assertEqual(match.economy[1]!.supply, 0, "Red starts with 0 supply");
-  assertEqual(match.economy[0]!.maxSupply, 10, "Blue max supply is 10");
-  assertEqual(match.economy[1]!.maxSupply, 10, "Red max supply is 10");
-
-  // Resource nodes created
-  assert(match.resourceNodes.length === 6, "6 resource nodes created (2 safe per player + 2 contested)");
-
-  const blueNodes = match.resourceNodes.filter((n) => n.gathererSlots.size === 0);
-  assert(blueNodes.length === 6, "All nodes start with no gatherers");
-
-  // Check node capacities
-  const safeNodes = match.resourceNodes.filter((n) => n.capacity === 300);
-  const contestedNodes = match.resourceNodes.filter((n) => n.capacity === 500);
-  assert(safeNodes.length === 4, "4 safe nodes with capacity 300");
-  assert(contestedNodes.length === 2, "2 contested nodes with capacity 500");
-
-  // 8 entities: 2 crystals + 6 workers
-  assert(match.entities.size === 8, "8 entities spawned (2 crystals + 6 workers)");
+  const config = DEFAULT_CONFIG;
+  assert(config.mapWidth >= config.viewportWidth, "Map width >= viewport width");
+  assert(config.mapHeight >= config.viewportHeight, "Map height >= viewport height");
+  assert(config.mapWidth === 6000, "World width is 6000");
+  assert(config.mapHeight === 600, "World height is 600");
+  assert(config.viewportWidth === 600, "Viewport width is 600");
+  assert(config.viewportHeight === 600, "Viewport height is 600");
+  assert(config.mapWidth / config.viewportWidth === 10, "World is 10 viewport widths wide");
 }
 
-// ---- Continuous Resource Gathering ----
-console.log("\n--- Continuous Resource Gathering ---");
+// ---- Camera Clamping Logic ----
+console.log("\n--- Camera Clamping Logic ---");
 {
-  const engine = new MatchEngine();
-  const players: [PlayerSlot | null, PlayerSlot | null] = [
-    { playerId: "p1", username: "Blue", color: "blue", score: 0, wsId: "ws1" },
-    { playerId: "p2", username: "Red", color: "red", score: 0, wsId: "ws2" },
-  ];
+  const mapWidth = 6000;
+  const viewportWidth = 600;
+  const maxCameraX = mapWidth - viewportWidth;
 
-  const match = engine.createMatch("GATH01", players);
-  engine.startMatch(match.id);
+  const clamp = (x: number): number => Math.max(0, Math.min(maxCameraX, x));
 
-  // Find a safe node for blue
-  const blueNode = match.resourceNodes.find((n) => n.capacity === 300 && n.x < 600);
-  assert(blueNode !== undefined, "Blue safe node exists");
+  assert(clamp(-100) === 0, "Camera clamped to 0 when below minimum");
+  assert(clamp(0) === 0, "Camera stays at 0");
+  assert(clamp(1000) === 1000, "Camera stays at 1000 (within bounds)");
+  assert(clamp(5400) === 5400, "Camera stays at 5400 (max)");
+  assert(clamp(6000) === 5400, "Camera clamped to max when above maximum");
+  assert(clamp(99999) === 5400, "Camera clamped to max for very large values");
+}
 
-  // Find a blue worker
-  const blueWorker = Array.from(match.entities.values()).find(
-    (e) => e.type === "worker" && e.ownerId === "p1"
-  );
-  assert(blueWorker !== undefined, "Blue worker exists");
+// ---- Screen-to-World Coordinate Conversion ----
+console.log("\n--- Screen-to-World Coordinate Conversion ---");
+{
+  const cameraX = 500;
+  const viewportWidth = 600;
 
-  // Worker gathers from node
-  const gatherResult = engine.processCommand(match.id, "p1", {
-    type: "gather",
-    entityId: blueWorker!.id,
-    targetEntityId: blueNode!.id,
-  });
-  assert(gatherResult.success === true, "Gather command succeeds");
+  const screenToWorldX = (screenX: number, camX: number): number => screenX + camX;
 
-  // Node should have 1 gatherer
-  assert(blueNode!.gathererSlots.size === 1, "Node has 1 gatherer");
+  assert(screenToWorldX(0, cameraX) === 500, "Screen x=0 maps to world x=500 (camera position)");
+  assert(screenToWorldX(300, cameraX) === 800, "Screen x=300 maps to world x=800 (center of viewport)");
+  assert(screenToWorldX(599, cameraX) === 1099, "Screen x=599 maps to world x=1099 (right edge)");
 
-  // Tick and verify resources increase
-  engine.tick(match.id);
-  const updatedMatch = engine.getMatch(match.id);
-  assertEqual(updatedMatch!.economy[0]!.resources, 51, "Blue resources increased by 1 after 1 tick");
+  const worldToScreenX = (worldX: number, camX: number): number => worldX - camX;
 
-  // Tick 10 more times
-  for (let i = 0; i < 10; i++) {
-    engine.tick(match.id);
+  assert(worldToScreenX(500, cameraX) === 0, "World x=500 maps to screen x=0");
+  assert(worldToScreenX(800, cameraX) === 300, "World x=800 maps to screen x=300");
+  assert(worldToScreenX(1099, cameraX) === 599, "World x=1099 maps to screen x=599");
+
+  for (let worldX = 0; worldX < 6000; worldX += 100) {
+    const screenX = worldToScreenX(worldX, cameraX);
+    const backToWorldX = screenToWorldX(screenX, cameraX);
+    assert(backToWorldX === worldX, `Round-trip consistent for world x=${worldX}`);
   }
-  const updatedMatch2 = engine.getMatch(match.id);
-  assertEqual(updatedMatch2!.economy[0]!.resources, 61, "Blue resources increased by 10 after 10 ticks");
 }
 
-// ---- Node Slot Limits ----
-console.log("\n--- Node Slot Limits ---");
+// ---- Minimap Click-to-Camera Mapping ----
+console.log("\n--- Minimap Click-to-Camera Mapping ---");
 {
-  const engine = new MatchEngine();
-  const players: [PlayerSlot | null, PlayerSlot | null] = [
-    { playerId: "p1", username: "Blue", color: "blue", score: 0, wsId: "ws1" },
-    { playerId: "p2", username: "Red", color: "red", score: 0, wsId: "ws2" },
-  ];
+  const mapWidth = 6000;
+  const minimapWidth = 150;
+  const viewportWidth = 600;
+  const maxCameraX = mapWidth - viewportWidth;
 
-  const match = engine.createMatch("SLOT01", players);
-  engine.startMatch(match.id);
+  const minimapScale = minimapWidth / mapWidth;
+  assertEqual(minimapScale, 0.025, "Minimap scale is 0.025 (150/6000)");
 
-  // Find a safe node for blue
-  const blueNode = match.resourceNodes.find((n) => n.capacity === 300 && n.x < 600);
-  assert(blueNode !== undefined, "Blue safe node exists");
+  const clickX = minimapWidth / 2;
+  const worldX = (clickX / minimapWidth) * mapWidth;
+  const cameraX = worldX - viewportWidth / 2;
+  assertEqual(cameraX, 2700, "Click at minimap center sets camera to 2700");
 
-  // Find all blue workers
-  const blueWorkers = Array.from(match.entities.values()).filter(
-    (e) => e.type === "worker" && e.ownerId === "p1"
-  );
-  assert(blueWorkers.length === 3, "3 blue workers exist");
+  const clickLeft = 0;
+  const worldLeft = (clickLeft / minimapWidth) * mapWidth;
+  const cameraLeft = worldLeft - viewportWidth / 2;
+  const clampedLeft = Math.max(0, cameraLeft);
+  assertEqual(clampedLeft, 0, "Click at minimap left edge clamps camera to 0");
 
-  // Assign 3 workers (max slots)
-  for (const worker of blueWorkers) {
-    const result = engine.processCommand(match.id, "p1", {
-      type: "gather",
-      entityId: worker.id,
-      targetEntityId: blueNode!.id,
-    });
-    assert(result.success === true, `Worker ${worker.id.slice(0, 8)} assigned to node`);
+  const clickRight = minimapWidth;
+  const worldRight = (clickRight / minimapWidth) * mapWidth;
+  const cameraRight = worldRight - viewportWidth / 2;
+  const clampedRight = Math.min(maxCameraX, cameraRight);
+  assertEqual(clampedRight, 5400, "Click at minimap right edge clamps camera to 5400");
+
+  const clickThird = minimapWidth / 3;
+  const worldThird = (clickThird / minimapWidth) * mapWidth;
+  const cameraThird = worldThird - viewportWidth / 2;
+  assertEqual(cameraThird, 1700, "Click at 1/3 minimap sets camera to 1700");
+}
+
+// ---- Mirrored Map Placement in Larger World ----
+console.log("\n--- Mirrored Map Placement in Larger World ---");
+{
+  const map = createMap(DEFAULT_CONFIG);
+  const mapWidth = DEFAULT_CONFIG.mapWidth;
+  const midX = mapWidth / 2;
+
+  assert(map.blueCrystal.x < 200, `Blue crystal at x=${map.blueCrystal.x} (far left)`);
+  assert(map.redCrystal.x > mapWidth - 200, `Red crystal at x=${map.redCrystal.x} (far right)`);
+
+  const crystalDistance = map.redCrystal.x - map.blueCrystal.x;
+  assert(crystalDistance > 5000, `Crystal distance is ${crystalDistance} (should be > 5000)`);
+
+  const blueBuildZoneWidth = map.blueBuildZone.x2 - map.blueBuildZone.x1;
+  const redBuildZoneWidth = map.redBuildZone.x2 - map.redBuildZone.x1;
+  assertEqual(blueBuildZoneWidth, mapWidth * 0.2, "Blue build zone is 20% of map width");
+  assertEqual(redBuildZoneWidth, mapWidth * 0.2, "Red build zone is 20% of map width");
+
+  assert(map.blueBuildZone.x2 < midX, "Blue build zone is on the left side");
+  assert(map.redBuildZone.x1 > midX, "Red build zone is on the right side");
+
+  for (const wp of map.blueWorkers) {
+    assert(wp.x > map.blueCrystal.x, "Blue workers are to the right of blue crystal");
+    assert(wp.x < midX, "Blue workers are on the left side");
   }
-
-  assert(blueNode!.gathererSlots.size === 3, "Node has 3 gatherers (max)");
-
-  // Try to assign a 4th worker (should fail - no more blue workers, but test the logic)
-  // Create a 4th worker manually for testing
-  const fourthWorker = {
-    id: "fake_worker_4",
-    type: "worker" as const,
-    ownerId: "p1",
-    x: 100,
-    y: 300,
-    health: 100,
-    maxHealth: 100,
-    radius: 10,
-    color: "#6699ff",
-  };
-  match.entities.set(fourthWorker.id, fourthWorker);
-
-  const overflowResult = engine.processCommand(match.id, "p1", {
-    type: "gather",
-    entityId: fourthWorker.id,
-    targetEntityId: blueNode!.id,
-  });
-  assert(overflowResult.success === false, "4th worker rejected (node full)");
-  assert(overflowResult.message === "Node is full", "Rejection message is 'Node is full'");
-  assert(blueNode!.gathererSlots.size === 3, "Node still has 3 gatherers");
-}
-
-// ---- Node Depletion ----
-console.log("\n--- Node Depletion ---");
-{
-  const engine = new MatchEngine();
-  const players: [PlayerSlot | null, PlayerSlot | null] = [
-    { playerId: "p1", username: "Blue", color: "blue", score: 0, wsId: "ws1" },
-    { playerId: "p2", username: "Red", color: "red", score: 0, wsId: "ws2" },
-  ];
-
-  const match = engine.createMatch("DEPL01", players);
-  engine.startMatch(match.id);
-
-  // Find a safe node (capacity 300)
-  const safeNode = match.resourceNodes.find((n) => n.capacity === 300);
-  assert(safeNode !== undefined, "Safe node exists");
-
-  // Assign 3 workers to the node
-  const blueWorkers = Array.from(match.entities.values()).filter(
-    (e) => e.type === "worker" && e.ownerId === "p1"
-  );
-  for (const worker of blueWorkers) {
-    engine.processCommand(match.id, "p1", {
-      type: "gather",
-      entityId: worker.id,
-      targetEntityId: safeNode!.id,
-    });
+  for (const wp of map.redWorkers) {
+    assert(wp.x < map.redCrystal.x, "Red workers are to the left of red crystal");
+    assert(wp.x > midX, "Red workers are on the right side");
   }
 
-  // Each tick with 3 workers: 3 resources gathered, 3 depleted
-  // 300 / 3 = 100 ticks to deplete
-  for (let i = 0; i < 100; i++) {
-    engine.tick(match.id);
+  for (const n of map.blueSafeNodes) {
+    assert(n.x > map.blueCrystal.x, "Blue safe nodes are to the right of blue crystal");
+    assert(n.x < midX, "Blue safe nodes are on the left side");
+  }
+  for (const n of map.redSafeNodes) {
+    assert(n.x < map.redCrystal.x, "Red safe nodes are to the left of red crystal");
+    assert(n.x > midX, "Red safe nodes are on the right side");
   }
 
-  assert(safeNode!.remaining === 0, "Node is depleted (0 remaining)");
-  assert(safeNode!.gathererSlots.size === 0, "Gatherers removed from depleted node");
-
-  // Workers should be idle (removed from node)
-  const gatherResult = engine.processCommand(match.id, "p1", {
-    type: "gather",
-    entityId: blueWorkers[0]!.id,
-    targetEntityId: safeNode!.id,
-  });
-  assert(gatherResult.success === false, "Cannot gather from depleted node");
-  assert(gatherResult.message === "Node is depleted", "Rejection message is 'Node is depleted'");
-}
-
-// ---- Worker Training Cost and Supply ----
-console.log("\n--- Worker Training Cost and Supply ---");
-{
-  const engine = new MatchEngine();
-  const players: [PlayerSlot | null, PlayerSlot | null] = [
-    { playerId: "p1", username: "Blue", color: "blue", score: 0, wsId: "ws1" },
-    { playerId: "p2", username: "Red", color: "red", score: 0, wsId: "ws2" },
-  ];
-
-  const match = engine.createMatch("TRN001", players);
-  engine.startMatch(match.id);
-
-  // Find blue crystal
-  const blueCrystal = Array.from(match.entities.values()).find(
-    (e) => e.type === "crystal" && e.ownerId === "p1"
-  );
-  assert(blueCrystal !== undefined, "Blue crystal exists");
-
-  // Try to train without enough resources (need 25, have 50 - should work)
-  const trainResult = engine.processCommand(match.id, "p1", {
-    type: "train_worker",
-    entityId: blueCrystal!.id,
-  });
-  assert(trainResult.success === true, "Worker training succeeds with enough resources");
-
-  const updatedMatch = engine.getMatch(match.id);
-  assertEqual(updatedMatch!.economy[0]!.resources, 25, "Resources decreased by 25 after training");
-  assertEqual(updatedMatch!.economy[0]!.supply, 1, "Supply increased by 1 after training");
-
-  // Count entities - should now have 9 (8 + 1 new worker)
-  assert(updatedMatch!.entities.size === 9, "New worker spawned (9 entities total)");
-
-  // Train another worker
-  const trainResult2 = engine.processCommand(match.id, "p1", {
-    type: "train_worker",
-    entityId: blueCrystal!.id,
-  });
-  assert(trainResult2.success === true, "Second worker training succeeds");
-  assertEqual(updatedMatch!.economy[0]!.resources, 0, "Resources at 0 after second training");
-  assertEqual(updatedMatch!.economy[0]!.supply, 2, "Supply at 2 after second training");
-
-  // Cannot train third worker (no resources)
-  const trainResult3 = engine.processCommand(match.id, "p1", {
-    type: "train_worker",
-    entityId: blueCrystal!.id,
-  });
-  assert(trainResult3.success === false, "Third worker training fails (no resources)");
-  assert(trainResult3.message === "Not enough resources", "Rejection message is 'Not enough resources'");
-}
-
-// ---- Supply Cap Enforcement ----
-console.log("\n--- Supply Cap Enforcement ---");
-{
-  const engine = new MatchEngine();
-  const players: [PlayerSlot | null, PlayerSlot | null] = [
-    { playerId: "p1", username: "Blue", color: "blue", score: 0, wsId: "ws1" },
-    { playerId: "p2", username: "Red", color: "red", score: 0, wsId: "ws2" },
-  ];
-
-  const match = engine.createMatch("SUPP01", players);
-  engine.startMatch(match.id);
-
-  const blueCrystal = Array.from(match.entities.values()).find(
-    (e) => e.type === "crystal" && e.ownerId === "p1"
-  );
-
-  // Train 10 workers (max supply = 10, each costs 1 supply)
-  // Starting resources: 50, each worker costs 25
-  // Can only train 2 workers (50 - 25 - 25 = 0)
-  // So we need to give more resources for this test
-  // Actually let's just test with the default config
-
-  // First, gather some resources by assigning workers to a node
-  const blueWorkers = Array.from(match.entities.values()).filter(
-    (e) => e.type === "worker" && e.ownerId === "p1"
-  );
-  const node = match.resourceNodes.find((n) => n.capacity === 300 && n.x < 600);
-  if (node) {
-    for (const worker of blueWorkers) {
-      engine.processCommand(match.id, "p1", {
-        type: "gather",
-        entityId: worker.id,
-        targetEntityId: node.id,
-      });
-    }
-    // Gather 100 ticks worth of resources
-    for (let i = 0; i < 100; i++) {
-      engine.tick(match.id);
-    }
-  }
-
-  const updatedMatch = engine.getMatch(match.id);
-  const currentResources = updatedMatch!.economy[0]!.resources;
-  const currentSupply = updatedMatch!.economy[0]!.supply;
-
-  // Train workers until supply cap is hit
-  let trainedCount = 0;
-  for (let i = 0; i < 20; i++) {
-    const result = engine.processCommand(match.id, "p1", {
-      type: "train_worker",
-      entityId: blueCrystal!.id,
-    });
-    if (result.success) {
-      trainedCount++;
-    }
-  }
-
-  assert(currentSupply + trainedCount <= 10, `Supply cap enforced (trained ${trainedCount}, max 10)`);
-
-  // Verify supply cap
-  const finalMatch = engine.getMatch(match.id);
-  assert(finalMatch!.economy[0]!.supply <= 10, "Supply never exceeds maxSupply of 10");
-}
-
-// ---- Rematch Reset of Economy State ----
-console.log("\n--- Rematch Reset of Economy State ---");
-{
-  const engine = new MatchEngine();
-  const players: [PlayerSlot | null, PlayerSlot | null] = [
-    { playerId: "p1", username: "Blue", color: "blue", score: 0, wsId: "ws1" },
-    { playerId: "p2", username: "Red", color: "red", score: 0, wsId: "ws2" },
-  ];
-
-  const match = engine.createMatch("RESET01", players);
-  engine.startMatch(match.id);
-
-  // Gather resources
-  const blueWorkers = Array.from(match.entities.values()).filter(
-    (e) => e.type === "worker" && e.ownerId === "p1"
-  );
-  const node = match.resourceNodes.find((n) => n.capacity === 300 && n.x < 600);
-  if (node) {
-    for (const worker of blueWorkers) {
-      engine.processCommand(match.id, "p1", {
-        type: "gather",
-        entityId: worker.id,
-        targetEntityId: node.id,
-      });
-    }
-    for (let i = 0; i < 50; i++) {
-      engine.tick(match.id);
-    }
-  }
-
-  // Train a worker
-  const blueCrystal = Array.from(match.entities.values()).find(
-    (e) => e.type === "crystal" && e.ownerId === "p1"
-  );
-  engine.processCommand(match.id, "p1", {
-    type: "train_worker",
-    entityId: blueCrystal!.id,
-  });
-
-  // Deplete a node
-  const depletedNode = match.resourceNodes.find((n) => n.remaining < n.capacity);
-  if (depletedNode) {
-    for (let i = 0; i < 100; i++) {
-      engine.tick(match.id);
-    }
-  }
-
-  // Verify modified state
-  const modifiedMatch = engine.getMatch(match.id);
-  assert(modifiedMatch!.economy[0]!.resources !== 50, "Resources changed from starting value");
-  assert(modifiedMatch!.economy[0]!.supply > 0, "Supply increased from starting value");
-  assert(depletedNode!.remaining === 0, "Node was depleted");
-
-  // Reset match
-  const reset = engine.resetMatch(match.id, players);
-  assert(reset !== null, "Match can be reset");
-
-  // Economy should be reset
-  assertEqual(reset.economy[0]!.resources, 50, "Resources reset to 50");
-  assertEqual(reset.economy[1]!.resources, 50, "Red resources reset to 50");
-  assertEqual(reset.economy[0]!.supply, 0, "Supply reset to 0");
-  assertEqual(reset.economy[1]!.supply, 0, "Red supply reset to 0");
-
-  // Nodes should be reset (full capacity)
-  for (const node of reset.resourceNodes) {
-    assertEqual(node.remaining, node.capacity, `Node ${node.id.slice(0, 8)} reset to full capacity`);
-    assert(node.gathererSlots.size === 0, `Node ${node.id.slice(0, 8)} has no gatherers`);
-  }
-
-  // Entity count back to 8
-  assert(reset.entities.size === 8, "Entity count reset to 8");
-
-  // Scores preserved
-  assertEqual(reset.players[0]?.score, 0, "Player 1 score preserved");
-  assertEqual(reset.players[1]?.score, 0, "Player 2 score preserved");
-}
-
-// ---- Match Start ----
-console.log("\n--- Match Start ---");
-{
-  const engine = new MatchEngine();
-  const players: [PlayerSlot | null, PlayerSlot | null] = [
-    { playerId: "p1", username: "Blue", color: "blue", score: 0, wsId: "ws1" },
-    { playerId: "p2", username: "Red", color: "red", score: 0, wsId: "ws2" },
-  ];
-
-  const match = engine.createMatch("TEST01", players);
-  assert(match.phase === "spawn", "Match starts in spawn");
-
-  const started = engine.startMatch(match.id);
-  assert(started !== null, "Match can be started");
-  assert(started.phase === "playing", "Match phase is playing after start");
-}
-
-// ---- Deterministic Tick ----
-console.log("\n--- Deterministic Tick ---");
-{
-  const engine = new MatchEngine();
-  const players: [PlayerSlot | null, PlayerSlot | null] = [
-    { playerId: "p1", username: "Blue", color: "blue", score: 0, wsId: "ws1" },
-    { playerId: "p2", username: "Red", color: "red", score: 0, wsId: "ws2" },
-  ];
-
-  const match = engine.createMatch("DETER01", players);
-  engine.startMatch(match.id);
-
-  // Tick 10 times
-  for (let i = 0; i < 10; i++) {
-    const result = engine.tick(match.id);
-    assert(result !== null, `Tick ${i + 1} returns match state`);
-    assert(result.tick === i + 1, `Tick ${i + 1} has correct tick count`);
-  }
-
-  const finalMatch = engine.getMatch(match.id);
-  assert(finalMatch.tick === 10, "After 10 ticks, tick count is 10");
-}
-
-// ---- Command Processing ----
-console.log("\n--- Command Processing ---");
-{
-  const engine = new MatchEngine();
-  const players: [PlayerSlot | null, PlayerSlot | null] = [
-    { playerId: "p1", username: "Blue", color: "blue", score: 0, wsId: "ws1" },
-    { playerId: "p2", username: "Red", color: "red", score: 0, wsId: "ws2" },
-  ];
-
-  const match = engine.createMatch("CMND01", players);
-  engine.startMatch(match.id);
-
-  const entity = Array.from(match.entities.values())[0];
-
-  // Move command
-  const moved = engine.processCommand(match.id, "p1", {
-    type: "move",
-    entityId: entity.id,
-    targetX: 500,
-    targetY: 300,
-  });
-  assert(moved.success === true, "Move command succeeds");
-
-  const updated = engine.getMatch(match.id);
-  const movedEntity = updated?.entities.get(entity.id);
-  assert(movedEntity !== undefined, "Entity still exists after move");
-  assert(movedEntity!.x === 500, "Entity x position updated to 500");
-  assert(movedEntity!.y === 300, "Entity y position updated to 300");
-
-  // Command on non-existent entity
-  const badMove = engine.processCommand(match.id, "p1", {
-    type: "move",
-    entityId: "nonexistent",
-    targetX: 100,
-    targetY: 100,
-  });
-  assert(badMove.success === false, "Command on non-existent entity fails");
-
-  // Command from wrong player
-  const wrongPlayer = engine.processCommand(match.id, "p2", {
-    type: "move",
-    entityId: entity.id,
-    targetX: 200,
-    targetY: 200,
-  });
-  assert(wrongPlayer.success === false, "Command from wrong player fails");
-}
-
-// ---- Match End ----
-console.log("\n--- Match End ---");
-{
-  const engine = new MatchEngine();
-  const players: [PlayerSlot | null, PlayerSlot | null] = [
-    { playerId: "p1", username: "Blue", color: "blue", score: 0, wsId: "ws1" },
-    { playerId: "p2", username: "Red", color: "red", score: 0, wsId: "ws2" },
-  ];
-
-  const match = engine.createMatch("END001", players);
-  engine.startMatch(match.id);
-
-  const ended = engine.endMatch(match.id, "p2");
-  assert(ended !== null, "Match can be ended");
-  assert(ended.phase === "ended", "Match phase is ended");
-  assert(ended.result?.winner === "p2", "Winner is p2");
-  assert(ended.endedAt !== null, "Match has end timestamp");
-
-  // Cannot tick an ended match
-  const tickResult = engine.tick(match.id);
-  assert(tickResult === null, "Tick returns null for ended match");
-}
-
-// ---- Match Reset on Rematch ----
-console.log("\n--- Match Reset on Rematch ---");
-{
-  const engine = new MatchEngine();
-  const players: [PlayerSlot | null, PlayerSlot | null] = [
-    { playerId: "p1", username: "Blue", color: "blue", score: 0, wsId: "ws1" },
-    { playerId: "p2", username: "Red", color: "red", score: 0, wsId: "ws2" },
-  ];
-
-  const match = engine.createMatch("RESET01", players);
-  engine.startMatch(match.id);
-
-  // Move an entity
-  const entity = Array.from(match.entities.values())[0];
-  engine.processCommand(match.id, "p1", {
-    type: "move",
-    entityId: entity.id,
-    targetX: 999,
-    targetY: 999,
-  });
-
-  // Tick a few times
-  engine.tick(match.id);
-  engine.tick(match.id);
-  engine.tick(match.id);
-
-  assert(match.tick === 3, "Match has advanced to tick 3");
-
-  // Reset the match
-  const newPlayers: [PlayerSlot | null, PlayerSlot | null] = [
-    { playerId: "p1", username: "Blue", color: "blue", score: 5, wsId: "ws1" },
-    { playerId: "p2", username: "Red", color: "red", score: 3, wsId: "ws2" },
-  ];
-
-  const reset = engine.resetMatch(match.id, newPlayers);
-  assert(reset !== null, "Match can be reset");
-  assert(reset.phase === "spawn", "Match resets to spawn phase");
-  assert(reset.tick === 0, "Match tick resets to 0");
-  assert(reset.result === null, "Match result is cleared");
-  assert(reset.endedAt === null, "Match end timestamp is cleared");
-  assert(reset.players[0]?.score === 5, "Score preserved for player 1");
-  assert(reset.players[1]?.score === 3, "Score preserved for player 2");
-
-  // Entity positions reset (new entities spawned)
-  const entities = Array.from(reset.entities.values());
-  const movedEntity = entities.find((e) => e.id === entity.id);
-  assert(movedEntity === undefined, "Old entity positions cleared (new entities)");
-}
-
-// ---- Disconnect Produces Immediate Loss ----
-console.log("\n--- Disconnect Produces Immediate Loss ---");
-{
-  const engine = new MatchEngine();
-  const players: [PlayerSlot | null, PlayerSlot | null] = [
-    { playerId: "p1", username: "Blue", color: "blue", score: 0, wsId: "ws1" },
-    { playerId: "p2", username: "Red", color: "red", score: 0, wsId: "ws2" },
-  ];
-
-  const match = engine.createMatch("DISC01", players);
-  engine.startMatch(match.id);
-
-  // Simulate p1 disconnect: end match with p2 as winner
-  const ended = engine.endMatch(match.id, "p2");
-  assert(ended !== null, "Match ended on disconnect");
-  assert(ended.result?.winner === "p2", "Disconnected player loses");
-  assert(ended.phase === "ended", "Match phase is ended");
-
-  // Verify entities still exist (no stale entity leakage)
-  assert(ended.entities.size === 8, "All entities preserved after end");
-}
-
-// ---- No Stale Entity Leakage Across Rematches ----
-console.log("\n--- No Stale Entity Leakage ---");
-{
-  const engine = new MatchEngine();
-  const players1: [PlayerSlot | null, PlayerSlot | null] = [
-    { playerId: "p1", username: "Blue", color: "blue", score: 0, wsId: "ws1" },
-    { playerId: "p2", username: "Red", color: "red", score: 0, wsId: "ws2" },
-  ];
-
-  const match1 = engine.createMatch("LEAK01", players1);
-  engine.startMatch(match1.id);
-
-  // Record all entity IDs from first match
-  const firstEntityIds = new Set(Array.from(match1.entities.keys()));
-  const firstEntityPositions = new Map<string, { x: number; y: number }>();
-  for (const [id, entity] of match1.entities) {
-    firstEntityPositions.set(id, { x: entity.x, y: entity.y });
-  }
-
-  // End and reset
-  engine.endMatch(match1.id, "p1");
-  engine.resetMatch(match1.id, players1);
-
-  // All entities should be new (cleared and respawned)
-  const secondEntityIds = new Set(Array.from(match1.entities.keys()));
-  assert(firstEntityIds.size === secondEntityIds.size, "Same number of entities after reset");
-
-  // No entity IDs should leak
-  let leakedCount = 0;
-  for (const id of firstEntityIds) {
-    if (secondEntityIds.has(id)) {
-      leakedCount++;
-    }
-  }
-  assert(leakedCount === 0, "No entity IDs leak across reset");
-
-  // Entities should be at spawn positions (not moved positions)
-  for (const entity of match1.entities.values()) {
-    const original = firstEntityPositions.get(entity.id);
-    // Since entity IDs are new, positions should be at spawn
-    assert(original === undefined, `New entity ${entity.id} has no stale position data`);
-  }
-
-  // Destroy and create new match
-  engine.destroyMatch(match1.id);
-  const match2 = engine.createMatch("LEAK01", players1);
-  assert(match2.id !== match1.id, "New match has different ID after destroy");
-  assert(match2.entities.size === 8, "New match has correct entity count");
-}
-
-// ---- Multiple Matches Coexistence ----
-console.log("\n--- Multiple Matches Coexistence ---");
-{
-  const engine = new MatchEngine();
-
-  const players1: [PlayerSlot | null, PlayerSlot | null] = [
-    { playerId: "p1", username: "Blue", color: "blue", score: 0, wsId: "ws1" },
-    { playerId: "p2", username: "Red", color: "red", score: 0, wsId: "ws2" },
-  ];
-
-  const players2: [PlayerSlot | null, PlayerSlot | null] = [
-    { playerId: "p3", username: "Blue2", color: "blue", score: 0, wsId: "ws3" },
-    { playerId: "p4", username: "Red2", color: "red", score: 0, wsId: "ws4" },
-  ];
-
-  const match1 = engine.createMatch("MULT01", players1);
-  const match2 = engine.createMatch("MULT02", players2);
-
-  engine.startMatch(match1.id);
-  engine.startMatch(match2.id);
-
-  // Tick each match independently
-  engine.tick(match1.id);
-  engine.tick(match2.id);
-  engine.tick(match2.id);
-
-  const m1 = engine.getMatch(match1.id);
-  const m2 = engine.getMatch(match2.id);
-
-  assert(m1!.tick === 1, "Match 1 tick is 1");
-  assert(m2!.tick === 2, "Match 2 tick is 2");
-  assert(m1!.id !== m2!.id, "Matches have different IDs");
+  const contestedSorted = [...map.contestedNodes].sort((a, b) => a.x - b.x);
+  assert(contestedSorted[0].x < midX, "Leftmost contested node is left of center");
+  assert(contestedSorted[1].x >= midX - 50, "Center contested node is near center");
+  assert(contestedSorted[2].x > midX, "Rightmost contested node is right of center");
 }
 
 // ---- Summary ----

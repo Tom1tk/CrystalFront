@@ -22,7 +22,8 @@ export function validatePlacement(
   resourceNodes: ResourceNode[],
   playerColor: "blue" | "red",
   crystals: MatchEntity[],
-  playerId: string
+  playerId: string,
+  mapHeight: number
 ): PlacementResult {
   const halfW = buildingDef.width / 2;
   const halfH = buildingDef.height / 2;
@@ -36,7 +37,7 @@ export function validatePlacement(
     bx1 < buildZone.x1 ||
     bx2 > buildZone.x2 ||
     by1 < 0 ||
-    by2 > 600
+    by2 > buildZone.y2
   ) {
     return { valid: false, reason: "Outside build zone" };
   }

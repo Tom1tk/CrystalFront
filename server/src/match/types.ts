@@ -54,6 +54,8 @@ export interface MatchState {
   economy: [PlayerEconomy | null, PlayerEconomy | null];
   resourceNodes: ResourceNode[];
   config: MatchConfig;
+  mapWidth: number;
+  mapHeight: number;
 }
 
 export interface MatchEntity {
@@ -72,6 +74,7 @@ export interface MatchEntity {
   productionQueue: ProductionQueueItem[];
   repairTargetId?: EntityId;
   repairProgress: number;
+  gatheringNodeId?: string;
 }
 
 export interface CommandEntry {
@@ -231,11 +234,13 @@ export interface MatchConfig {
   workerTrainCost: number;
   workerSupplyCost: number;
   gatherRatePerTick: number;
+  viewportWidth: number;
+  viewportHeight: number;
 }
 
 export const DEFAULT_CONFIG: MatchConfig = {
   tickIntervalMs: 100,
-  mapWidth: 1200,
+  mapWidth: 6000,
   mapHeight: 600,
   crystalHealth: 1000,
   crystalRadius: 30,
@@ -248,4 +253,6 @@ export const DEFAULT_CONFIG: MatchConfig = {
   workerTrainCost: 25,
   workerSupplyCost: 1,
   gatherRatePerTick: 1,
+  viewportWidth: 600,
+  viewportHeight: 600,
 };

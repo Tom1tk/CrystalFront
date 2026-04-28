@@ -162,3 +162,12 @@ export const REPAIR_RATE_PER_TICK = 2;
 
 export const BUILDING_PLACEMENT_MIN_SPACING = 50;
 export const CRYSTAL_NO_BUILD_RADIUS = 80;
+
+// ---- World / Camera Constants ----
+
+export const WORLD_WIDTH = 3000;
+export const WORLD_HEIGHT = 600;
+export const VIEWPORT_WIDTH = 600;
+export const VIEWPORT_HEIGHT = 600;
+export const EDGE_SCROLL_THRESHOLD = 50;
+export const EDGE_SCROLL_SPEED = 3;

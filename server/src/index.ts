@@ -180,25 +180,33 @@ function broadcastGameState(code: string) {
     repairTargetId: e.repairTargetId,
   }));
 
-  const msg: ServerToClientMsg = {
-    type: SERVER_EVT.GAME_STATE,
-    payload: {
-      match: {
-        id: match.id,
-        lobbyCode: match.lobbyCode,
-        phase: match.phase,
-        tick: match.tick,
-        tickIntervalMs: match.tickIntervalMs,
-        players: match.players,
-        entities: allEntities as any,
-        result: match.result,
-        startedAt: match.startedAt,
-        endedAt: match.endedAt,
-        economy: serializeEconomy(match.economy),
-        resourceNodes: serializeResourceNodes(match.resourceNodes),
-      },
-    },
-  };
+     const msg: ServerToClientMsg = {
+        type: SERVER_EVT.GAME_STATE,
+        payload: {
+          match: {
+            id: match.id,
+            lobbyCode: match.lobbyCode,
+            phase: match.phase,
+            tick: match.tick,
+            tickIntervalMs: match.tickIntervalMs,
+            players: match.players,
+            entities: allEntities as any,
+            result: match.result,
+            startedAt: match.startedAt,
+            endedAt: match.endedAt,
+            economy: serializeEconomy(match.economy),
+            resourceNodes: serializeResourceNodes(match.resourceNodes),
+            config: {
+              mapWidth: match.config.mapWidth,
+              mapHeight: match.config.mapHeight,
+              viewportWidth: match.config.viewportWidth,
+              viewportHeight: match.config.viewportHeight,
+            },
+            mapWidth: match.config.mapWidth,
+            mapHeight: match.config.mapHeight,
+          },
+        },
+      };
   for (const session of playerLobbyMap.values()) {
     if (session.code === code && session.matchId === matchId) {
       sendWS(session.ws, msg);
@@ -306,6 +314,14 @@ wss.on("connection", (ws) => {
                   endedAt: match.endedAt,
                   economy: serializeEconomy(match.economy),
                   resourceNodes: serializeResourceNodes(match.resourceNodes),
+                  config: {
+                    mapWidth: match.config.mapWidth,
+                    mapHeight: match.config.mapHeight,
+                    viewportWidth: match.config.viewportWidth,
+                    viewportHeight: match.config.viewportHeight,
+                  },
+                  mapWidth: match.config.mapWidth,
+                  mapHeight: match.config.mapHeight,
                 },
               },
             };
@@ -356,9 +372,11 @@ wss.on("connection", (ws) => {
 
         // If both ready (check lobby status), start match
         if (result.lobby.status === "ready") {
+          const p0 = result.lobby.players[0]!;
+          const p1 = result.lobby.players[1]!;
           const players: [PlayerSlot | null, PlayerSlot | null] = [
-            toPlayerSlot(result.lobby.players[0]!, session.playerId),
-            toPlayerSlot(result.lobby.players[1]!, session.playerId),
+            toPlayerSlot(p0, playerLobbyMap.get(p0.id)?.playerId ?? p0.id),
+            toPlayerSlot(p1, playerLobbyMap.get(p1.id)?.playerId ?? p1.id),
           ];
 
           const match = matchEngine.createMatch(session.code, players);
@@ -413,6 +431,14 @@ wss.on("connection", (ws) => {
                 endedAt: match.endedAt,
                 economy: serializeEconomy(match.economy),
                 resourceNodes: serializeResourceNodes(match.resourceNodes),
+                config: {
+                  mapWidth: match.config.mapWidth,
+                  mapHeight: match.config.mapHeight,
+                  viewportWidth: match.config.viewportWidth,
+                  viewportHeight: match.config.viewportHeight,
+                },
+                mapWidth: match.config.mapWidth,
+                mapHeight: match.config.mapHeight,
               },
             },
           };
@@ -485,6 +511,14 @@ wss.on("connection", (ws) => {
               endedAt: match.endedAt,
               economy: serializeEconomy(match.economy),
               resourceNodes: serializeResourceNodes(match.resourceNodes),
+              config: {
+                mapWidth: match.config.mapWidth,
+                mapHeight: match.config.mapHeight,
+                viewportWidth: match.config.viewportWidth,
+                viewportHeight: match.config.viewportHeight,
+              },
+              mapWidth: match.config.mapWidth,
+              mapHeight: match.config.mapHeight,
             },
           },
         };
