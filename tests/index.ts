@@ -246,17 +246,17 @@ console.log("\n--- Camera Config Validation ---");
   const config = DEFAULT_CONFIG;
   assert(config.mapWidth >= config.viewportWidth, "Map width >= viewport width");
   assert(config.mapHeight >= config.viewportHeight, "Map height >= viewport height");
-  assert(config.mapWidth === 3000, "World width is 3000");
+  assert(config.mapWidth === 6000, "World width is 6000");
   assert(config.mapHeight === 600, "World height is 600");
   assert(config.viewportWidth === 600, "Viewport width is 600");
   assert(config.viewportHeight === 600, "Viewport height is 600");
-  assert(config.mapWidth / config.viewportWidth === 5, "World is 5 viewport widths wide");
+  assert(config.mapWidth / config.viewportWidth === 10, "World is 10 viewport widths wide");
 }
 
 // ---- Camera Clamping Logic ----
 console.log("\n--- Camera Clamping Logic ---");
 {
-  const mapWidth = 3000;
+  const mapWidth = 6000;
   const viewportWidth = 600;
   const maxCameraX = mapWidth - viewportWidth;
 
@@ -265,9 +265,9 @@ console.log("\n--- Camera Clamping Logic ---");
   assert(clamp(-100) === 0, "Camera clamped to 0 when below minimum");
   assert(clamp(0) === 0, "Camera stays at 0");
   assert(clamp(1000) === 1000, "Camera stays at 1000 (within bounds)");
-  assert(clamp(2400) === 2400, "Camera stays at 2400 (max)");
-  assert(clamp(3000) === 2400, "Camera clamped to max when above maximum");
-  assert(clamp(99999) === 2400, "Camera clamped to max for very large values");
+  assert(clamp(5400) === 5400, "Camera stays at 5400 (max)");
+  assert(clamp(6000) === 5400, "Camera clamped to max when above maximum");
+  assert(clamp(99999) === 5400, "Camera clamped to max for very large values");
 }
 
 // ---- Screen-to-World Coordinate Conversion ----
@@ -288,7 +288,7 @@ console.log("\n--- Screen-to-World Coordinate Conversion ---");
   assert(worldToScreenX(800, cameraX) === 300, "World x=800 maps to screen x=300");
   assert(worldToScreenX(1099, cameraX) === 599, "World x=1099 maps to screen x=599");
 
-  for (let worldX = 0; worldX < 3000; worldX += 100) {
+  for (let worldX = 0; worldX < 6000; worldX += 100) {
     const screenX = worldToScreenX(worldX, cameraX);
     const backToWorldX = screenToWorldX(screenX, cameraX);
     assert(backToWorldX === worldX, `Round-trip consistent for world x=${worldX}`);
@@ -298,18 +298,18 @@ console.log("\n--- Screen-to-World Coordinate Conversion ---");
 // ---- Minimap Click-to-Camera Mapping ----
 console.log("\n--- Minimap Click-to-Camera Mapping ---");
 {
-  const mapWidth = 3000;
+  const mapWidth = 6000;
   const minimapWidth = 150;
   const viewportWidth = 600;
   const maxCameraX = mapWidth - viewportWidth;
 
   const minimapScale = minimapWidth / mapWidth;
-  assertEqual(minimapScale, 0.05, "Minimap scale is 0.05 (150/3000)");
+  assertEqual(minimapScale, 0.025, "Minimap scale is 0.025 (150/6000)");
 
   const clickX = minimapWidth / 2;
   const worldX = (clickX / minimapWidth) * mapWidth;
   const cameraX = worldX - viewportWidth / 2;
-  assertEqual(cameraX, 1200, "Click at minimap center sets camera to 1200");
+  assertEqual(cameraX, 2700, "Click at minimap center sets camera to 2700");
 
   const clickLeft = 0;
   const worldLeft = (clickLeft / minimapWidth) * mapWidth;
@@ -321,12 +321,12 @@ console.log("\n--- Minimap Click-to-Camera Mapping ---");
   const worldRight = (clickRight / minimapWidth) * mapWidth;
   const cameraRight = worldRight - viewportWidth / 2;
   const clampedRight = Math.min(maxCameraX, cameraRight);
-  assertEqual(clampedRight, 2400, "Click at minimap right edge clamps camera to 2400");
+  assertEqual(clampedRight, 5400, "Click at minimap right edge clamps camera to 5400");
 
   const clickThird = minimapWidth / 3;
   const worldThird = (clickThird / minimapWidth) * mapWidth;
   const cameraThird = worldThird - viewportWidth / 2;
-  assertEqual(cameraThird, 700, "Click at 1/3 minimap sets camera to 700");
+  assertEqual(cameraThird, 1700, "Click at 1/3 minimap sets camera to 1700");
 }
 
 // ---- Mirrored Map Placement in Larger World ----
@@ -340,7 +340,7 @@ console.log("\n--- Mirrored Map Placement in Larger World ---");
   assert(map.redCrystal.x > mapWidth - 200, `Red crystal at x=${map.redCrystal.x} (far right)`);
 
   const crystalDistance = map.redCrystal.x - map.blueCrystal.x;
-  assert(crystalDistance > 2500, `Crystal distance is ${crystalDistance} (should be > 2500)`);
+  assert(crystalDistance > 5000, `Crystal distance is ${crystalDistance} (should be > 5000)`);
 
   const blueBuildZoneWidth = map.blueBuildZone.x2 - map.blueBuildZone.x1;
   const redBuildZoneWidth = map.redBuildZone.x2 - map.redBuildZone.x1;

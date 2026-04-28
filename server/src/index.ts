@@ -202,6 +202,8 @@ function broadcastGameState(code: string) {
               viewportWidth: match.config.viewportWidth,
               viewportHeight: match.config.viewportHeight,
             },
+            mapWidth: match.config.mapWidth,
+            mapHeight: match.config.mapHeight,
           },
         },
       };
@@ -318,6 +320,8 @@ wss.on("connection", (ws) => {
                     viewportWidth: match.config.viewportWidth,
                     viewportHeight: match.config.viewportHeight,
                   },
+                  mapWidth: match.config.mapWidth,
+                  mapHeight: match.config.mapHeight,
                 },
               },
             };
@@ -433,6 +437,8 @@ wss.on("connection", (ws) => {
                   viewportWidth: match.config.viewportWidth,
                   viewportHeight: match.config.viewportHeight,
                 },
+                mapWidth: match.config.mapWidth,
+                mapHeight: match.config.mapHeight,
               },
             },
           };
@@ -511,6 +517,8 @@ wss.on("connection", (ws) => {
                 viewportWidth: match.config.viewportWidth,
                 viewportHeight: match.config.viewportHeight,
               },
+              mapWidth: match.config.mapWidth,
+              mapHeight: match.config.mapHeight,
             },
           },
         };

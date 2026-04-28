@@ -102,4 +102,6 @@ export interface MatchState {
     viewportWidth: number;
     viewportHeight: number;
   };
+  mapWidth: number;
+  mapHeight: number;
 }

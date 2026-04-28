@@ -119,18 +119,12 @@ export default function GameShell({
   const [buildMode, setBuildMode] = useState(false);
   const [selectedBuildingType, setSelectedBuildingType] = useState<BuildingType | null>(null);
   const [showUnitQueue, setShowUnitQueue] = useState(false);
+  const [renderTick, setRenderTick] = useState(0);
 
-  // Camera state - viewport is always 600x600 world units
-  const [camera, setCamera] = useState({ x: 0, y: 0, width: CANVAS_WIDTH, height: CANVAS_HEIGHT });
-
-  // Scale factor from container pixels to canvas pixels (for mouse coord conversion)
-  const [scaleX, setScaleX] = useState(1);
-  const [scaleY, setScaleY] = useState(1);
-  const [offsetX, setOffsetX] = useState(0);
-  const [offsetY, setOffsetY] = useState(0);
-
-  // Refs for mutable values that should NOT trigger effect restarts
-  const edgeScrollDirRef = useRef(0);
+  const dprRef = useRef(window.devicePixelRatio || 1);
+  const cameraXRef = useRef(0);
+  const cameraYRef = useRef(0);
+  const mousePosRef = useRef<{ x: number; y: number } | null>(null);
   const matchStateRef = useRef<MatchState | null>(null);
   matchStateRef.current = matchState;
 
@@ -142,82 +136,48 @@ export default function GameShell({
   const myEntities = matchState?.entities.filter(isMyEntity) ?? [];
   const myCrystal = myEntities.find((e) => e.type === "crystal");
 
-  // Screen-to-world conversion (uses canvas coordinates, not screen coordinates)
-  const screenToWorld = useCallback(
-    (canvasX: number, canvasY: number, camX: number, camY: number) => {
-      return {
-        x: canvasX + camX,
-        y: canvasY + camY,
-      };
-    },
-    []
-  );
-
-  // World-to-screen conversion
-  const worldToScreen = useCallback(
-    (worldX: number, worldY: number, camX: number, camY: number) => {
-      return {
-        x: worldX - camX,
-        y: worldY - camY,
-      };
-    },
-    []
-  );
-
-  // Convert screen event coordinates to canvas coordinates
-  const screenToCanvas = useCallback(
-    (screenX: number, screenY: number) => {
-      return {
-        x: (screenX - offsetX) / scaleX,
-        y: (screenY - offsetY) / scaleY,
-      };
-    },
-    [scaleX, scaleY, offsetX, offsetY]
-  );
-
-  // Camera initialization based on player color
+  // Initialize camera position when match starts
   useEffect(() => {
-    if (matchState) {
-      const myIdx = matchState.players.findIndex((p) => p?.playerId === player.id);
+    if (!matchState) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
 
-      if (myIdx === 0) {
-        // Blue player: start near left side
-        setCamera({ x: 0, y: 0, width: CANVAS_WIDTH, height: CANVAS_HEIGHT });
-      } else {
-        // Red player: start near right side
-        const mapWidth = matchState.config?.mapWidth || 3000;
-        setCamera({ x: mapWidth - CANVAS_WIDTH, y: 0, width: CANVAS_WIDTH, height: CANVAS_HEIGHT });
-      }
+    const viewW = canvas.clientWidth;
+    const mapWidth = matchState.mapWidth ?? matchState.config?.mapWidth ?? 6000;
+
+    const myIdx = matchState.players.findIndex((p) => p?.playerId === player.id);
+    const myCrystal = matchState.entities.find((e) => e.type === "crystal" && e.ownerId === player.id);
+
+    if (myCrystal) {
+      const newCameraX = Math.max(0, Math.min(myCrystal.x - viewW / 2, mapWidth - viewW));
+      cameraXRef.current = newCameraX;
+    } else if (myIdx === 0) {
+      cameraXRef.current = 0;
+    } else {
+      cameraXRef.current = Math.max(0, mapWidth - viewW);
     }
+
+    cameraYRef.current = 0;
   }, [matchState, player.id]);
 
-  // Resize container and compute scale factors
+  // Resize handler with DPR support
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
     const handleResize = () => {
-      const cw = container.clientWidth;
-      const ch = container.clientHeight;
-
-      // Scale canvas to fill container while maintaining 16:9 aspect ratio
-      const scale = Math.min(cw / CANVAS_WIDTH, ch / CANVAS_HEIGHT);
-      const displayW = Math.floor(CANVAS_WIDTH * scale);
-      const displayH = Math.floor(CANVAS_HEIGHT * scale);
-
-      // Canvas internal resolution stays fixed at CANVAS_WIDTH x CANVAS_HEIGHT
-      // CSS will render it at displayW x displayH
+      const dpr = window.devicePixelRatio || 1;
+      dprRef.current = dpr;
+      const parent = container;
+      const cssW = parent.clientWidth;
+      const cssH = parent.clientHeight;
       const canvas = canvasRef.current;
       if (canvas) {
-        canvas.style.width = `${displayW}px`;
-        canvas.style.height = `${displayH}px`;
+        canvas.width = cssW * dpr;
+        canvas.height = cssH * dpr;
+        canvas.style.width = cssW + "px";
+        canvas.style.height = cssH + "px";
       }
-
-      // Compute scale factors for mouse coordinate conversion
-      setScaleX(displayW / CANVAS_WIDTH);
-      setScaleY(displayH / CANVAS_HEIGHT);
-      setOffsetX((cw - displayW) / 2);
-      setOffsetY((ch - displayH) / 2);
     };
 
     handleResize();
@@ -227,32 +187,44 @@ export default function GameShell({
     return () => observer.disconnect();
   }, []);
 
-  // Edge scrolling loop - uses ref for direction to avoid restarts
+  // Edge scrolling loop
   useEffect(() => {
-    if (edgeScrollDirRef.current === 0) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
 
-    let animFrame: number;
-    const scroll = () => {
-      if (edgeScrollDirRef.current === 0) return;
-
-      setCamera((prev) => {
-        const currentMatch = matchStateRef.current;
-        const mapWidth = currentMatch?.config?.mapWidth || 3000;
-        const viewportWidth = prev.width;
-        const maxCameraX = mapWidth - viewportWidth;
-        const newCameraX = Math.max(0, Math.min(maxCameraX, prev.x + edgeScrollDirRef.current * EDGE_SCROLL_SPEED));
-        if (newCameraX === prev.x) return prev;
-        return { ...prev, x: newCameraX };
-      });
-      animFrame = requestAnimationFrame(scroll);
+    const onMouseMove = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      mousePosRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
     };
-    animFrame = requestAnimationFrame(scroll);
-    return () => cancelAnimationFrame(animFrame);
-  }, []); // Empty deps - never restarts
 
-  // Handle minimap click - uses refs instead of state deps
+    const loop = () => {
+      const pos = mousePosRef.current;
+      if (pos) {
+        const viewW = canvas.clientWidth;
+        const viewH = canvas.clientHeight;
+        let dx = 0;
+        if (pos.x < EDGE_SCROLL_THRESHOLD) dx = -EDGE_SCROLL_SPEED;
+        else if (pos.x > viewW - EDGE_SCROLL_THRESHOLD) dx = EDGE_SCROLL_SPEED;
+        if (dx !== 0) {
+          const mapWidth = matchStateRef.current?.mapWidth ?? 6000;
+          cameraXRef.current = Math.max(0, Math.min(mapWidth - viewW, cameraXRef.current + dx));
+          setRenderTick((t) => t + 1);
+        }
+      }
+      requestAnimationFrame(loop);
+    };
+
+    canvas.addEventListener("mousemove", onMouseMove);
+    const animFrame = requestAnimationFrame(loop);
+
+    return () => {
+      canvas.removeEventListener("mousemove", onMouseMove);
+      cancelAnimationFrame(animFrame);
+    };
+  }, []);
+
   const handleMinimapClick = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>, canvasWidth: number, canvasHeight: number): boolean => {
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
       const canvas = canvasRef.current;
       if (!canvas || !matchState) return false;
 
@@ -260,32 +232,25 @@ export default function GameShell({
       const screenX = e.clientX - rect.left;
       const screenY = e.clientY - rect.top;
 
-      // Convert to canvas coordinates
-      const cx = screenX / scaleX;
-      const cy = screenY / scaleY;
-
-      const minimapX = canvasWidth - MINIMAP_WIDTH - 10;
-      const minimapY = canvasHeight - MINIMAP_HEIGHT - 10;
+      const minimapX = canvas.clientWidth - MINIMAP_WIDTH - 10;
+      const minimapY = canvas.clientHeight - MINIMAP_HEIGHT - 10;
 
       if (
-        cx >= minimapX &&
-        cx <= minimapX + MINIMAP_WIDTH &&
-        cy >= minimapY &&
-        cy <= minimapY + MINIMAP_HEIGHT
+        screenX >= minimapX &&
+        screenX <= minimapX + MINIMAP_WIDTH &&
+        screenY >= minimapY &&
+        screenY <= minimapY + MINIMAP_HEIGHT
       ) {
-        const ratio = (cx - minimapX) / MINIMAP_WIDTH;
-        const mapWidth = matchState.config?.mapWidth || 3000;
-        const viewportWidth = CANVAS_WIDTH;
-        const worldX = ratio * mapWidth;
-        setCamera((prev) => ({
-          ...prev,
-          x: Math.max(0, Math.min(mapWidth - viewportWidth, worldX - viewportWidth / 2)),
-        }));
+        const fraction = (screenX - minimapX) / MINIMAP_WIDTH;
+        const mapWidth = matchState.mapWidth ?? matchState.config?.mapWidth ?? 6000;
+        const viewW = canvas.clientWidth;
+        cameraXRef.current = Math.max(0, Math.min(fraction * mapWidth - viewW / 2, mapWidth - viewW));
+        setRenderTick((t) => t + 1);
         return true;
       }
       return false;
     },
-    [matchState, scaleX, scaleY]
+    [matchState]
   );
 
   const handleClick = useCallback(
@@ -297,47 +262,40 @@ export default function GameShell({
       const screenX = e.clientX - rect.left;
       const screenY = e.clientY - rect.top;
 
-      // Convert screen coordinates to canvas coordinates
-      const canvasX = (screenX - offsetX) / scaleX;
-      const canvasY = (screenY - offsetY) / scaleY;
+      if (handleMinimapClick(e)) return;
 
-      // Check minimap first
-      if (handleMinimapClick(e, CANVAS_WIDTH, CANVAS_HEIGHT)) return;
+      const worldX = screenX + cameraXRef.current;
+      const worldY = screenY;
 
-      const world = screenToWorld(canvasX, canvasY, camera.x, camera.y);
-
-      // Build mode: place building
       if (buildMode && selectedBuildingType && myCrystal) {
         onGameCommand({
           type: "build",
           entityId: myCrystal.id,
           buildingType: selectedBuildingType,
-          targetX: world.x,
-          targetY: world.y,
+          targetX: worldX,
+          targetY: worldY,
         });
         setBuildMode(false);
         setSelectedBuildingType(null);
         return;
       }
 
-      // Check if clicking on a resource node
       let clickedNode: ResourceNodeDisplay | null = null;
       for (const node of resourceNodes) {
-        const dx = world.x - node.x;
-        const dy = world.y - node.y;
+        const dx = worldX - node.x;
+        const dy = worldY - node.y;
         if (Math.sqrt(dx * dx + dy * dy) <= node.radius) {
           clickedNode = node;
           break;
         }
       }
 
-      // Check if clicking on any entity (mine or enemy)
       let clickedEntityId: string | null = null;
       let clickedEntity: typeof myEntities[0] | undefined;
       for (const entity of matchState?.entities ?? []) {
-        const dx = world.x - entity.x;
-        const dy = world.y - entity.y;
-        const hitRadius = entity.type === "building" ? 22 : entity.radius;
+        const dx = worldX - entity.x;
+        const dy = worldY - entity.y;
+        const hitRadius = entity.type === "building" || entity.type === "crystal" ? 22 : entity.radius;
         if (Math.sqrt(dx * dx + dy * dy) <= hitRadius) {
           clickedEntityId = entity.id;
           clickedEntity = entity;
@@ -346,10 +304,7 @@ export default function GameShell({
       }
 
       if (clickedEntity) {
-        if (clickedEntity.type === "building") {
-          setSelectedEntityId(clickedEntity.id);
-          onGameCommand({ type: "select", entityId: clickedEntity.id });
-        } else if (clickedEntity.type === "crystal") {
+        if (clickedEntity.type === "building" || clickedEntity.type === "crystal") {
           setSelectedEntityId(clickedEntity.id);
           onGameCommand({ type: "select", entityId: clickedEntity.id });
         } else if (clickedEntity.type === "worker") {
@@ -385,8 +340,8 @@ export default function GameShell({
               (ent) => ent.type === "building" && ent.health < ent.maxHealth && ent.repairTargetId === undefined
             );
             if (damagedBuilding) {
-              const dx = world.x - damagedBuilding.x;
-              const dy = world.y - damagedBuilding.y;
+              const dx = worldX - damagedBuilding.x;
+              const dy = worldY - damagedBuilding.y;
               if (Math.sqrt(dx * dx + dy * dy) <= 22) {
                 onGameCommand({
                   type: "repair",
@@ -400,23 +355,23 @@ export default function GameShell({
             onGameCommand({
               type: "move",
               entityId: selectedEntityId,
-              targetX: world.x,
-              targetY: world.y,
+              targetX: worldX,
+              targetY: worldY,
             });
             setSelectedEntityId(null);
           } else {
             onGameCommand({
               type: "move",
               entityId: selectedEntityId,
-              targetX: world.x,
-              targetY: world.y,
+              targetX: worldX,
+              targetY: worldY,
             });
             setSelectedEntityId(null);
           }
         }
       }
     },
-    [myEntities, selectedEntityId, resourceNodes, onGameCommand, buildMode, selectedBuildingType, myCrystal, matchState, screenToWorld, handleMinimapClick, camera.x, camera.y, scaleX, scaleY, offsetX, offsetY]
+    [myEntities, selectedEntityId, resourceNodes, onGameCommand, buildMode, selectedBuildingType, myCrystal, matchState, handleMinimapClick]
   );
 
   const handleMouseMove = useCallback(
@@ -428,26 +383,24 @@ export default function GameShell({
       const screenX = e.clientX - rect.left;
       const screenY = e.clientY - rect.top;
 
-      // Convert screen coordinates to canvas coordinates
-      const canvasX = (screenX - offsetX) / scaleX;
-      const canvasY = (screenY - offsetY) / scaleY;
-
-      // Determine edge scroll direction using ref (no effect restart)
-      if (canvasX < EDGE_SCROLL_THRESHOLD) {
-        edgeScrollDirRef.current = -1;
-      } else if (canvasX > CANVAS_WIDTH - EDGE_SCROLL_THRESHOLD) {
-        edgeScrollDirRef.current = 1;
+      if (screenX < EDGE_SCROLL_THRESHOLD) {
+        mousePosRef.current = { x: screenX, y: screenY };
+      } else if (screenX > canvas.clientWidth - EDGE_SCROLL_THRESHOLD) {
+        mousePosRef.current = { x: screenX, y: screenY };
       } else {
-        edgeScrollDirRef.current = 0;
+        mousePosRef.current = null;
       }
 
-      setHoverPos(screenToWorld(canvasX, canvasY, camera.x, camera.y));
+      setHoverPos({
+        x: screenX + cameraXRef.current,
+        y: screenY,
+      });
     },
-    [screenToWorld, camera.x, camera.y, scaleX, scaleY, offsetX, offsetY]
+    []
   );
 
   const handleMouseLeave = useCallback(() => {
-    edgeScrollDirRef.current = 0;
+    mousePosRef.current = null;
   }, []);
 
   const handleTrainWorker = useCallback(() => {
@@ -469,94 +422,98 @@ export default function GameShell({
     setShowUnitQueue(false);
   }, []);
 
-  // Draw the game with camera transform
+  // Render effect with DPR and camera transform
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // Canvas internal resolution is always CANVAS_WIDTH x CANVAS_HEIGHT (16:9)
-    const width = CANVAS_WIDTH;
-    const height = CANVAS_HEIGHT;
+    const dpr = dprRef.current;
+    const cssW = canvas.clientWidth;
+    const cssH = canvas.clientHeight;
+
+    ctx.save();
+    ctx.scale(dpr, dpr);
 
     ctx.fillStyle = "#0a0a1a";
-    ctx.fillRect(0, 0, width, height);
+    ctx.fillRect(0, 0, cssW, cssH);
 
-    const camX = camera.x;
-    const camY = camera.y;
-    const mapWidth = matchState?.config?.mapWidth || 3000;
-    const mapHeight = matchState?.config?.mapHeight || 600;
+    const cameraX = cameraXRef.current;
+    const cameraY = cameraYRef.current;
+    const mapWidth = matchState?.mapWidth ?? matchState?.config?.mapWidth ?? 6000;
+    const mapHeight = matchState?.mapHeight ?? matchState?.config?.mapHeight ?? 600;
 
     const laneTop = mapHeight * 0.2;
     const laneBottom = mapHeight * 0.8;
     const combatZoneTop = mapHeight * 0.3;
     const combatZoneBottom = mapHeight * 0.7;
 
+    ctx.save();
+    ctx.translate(-cameraX, -cameraY);
+
     // Lane background
-    const laneScreenLeft = 0 - camX;
-    const laneScreenRight = width - camX;
     ctx.fillStyle = "#111122";
-    ctx.fillRect(laneScreenLeft, laneTop - camY, laneScreenRight - laneScreenLeft, laneBottom - laneTop);
+    ctx.fillRect(0 - cameraX, laneTop, cssW, laneBottom - laneTop);
 
     // Combat zone
     const combatLeft = mapWidth * 0.25;
     const combatRight = mapWidth * 0.75;
-    if (combatRight > camX && combatLeft < camX + width) {
-      const screenCombatLeft = Math.max(0, combatLeft - camX);
-      const screenCombatRight = Math.min(width, combatRight - camX);
+    if (combatRight > cameraX && combatLeft < cameraX + cssW) {
+      const screenCombatLeft = Math.max(0, combatLeft - cameraX);
+      const screenCombatRight = Math.min(cssW, combatRight - cameraX);
       ctx.fillStyle = "#151530";
-      ctx.fillRect(screenCombatLeft, combatZoneTop - camY, screenCombatRight - screenCombatLeft, combatZoneBottom - combatZoneTop);
+      ctx.fillRect(screenCombatLeft, combatZoneTop, screenCombatRight - screenCombatLeft, combatZoneBottom - combatZoneTop);
     }
 
     // Blue build zone
     const blueBuildZoneRight = mapWidth * 0.2;
-    if (blueBuildZoneRight > camX) {
-      const screenX = 0 - camX;
-      const screenW = Math.min(blueBuildZoneRight - camX, width);
+    if (blueBuildZoneRight > cameraX) {
+      const screenX = 0 - cameraX;
+      const screenW = Math.min(blueBuildZoneRight - cameraX, cssW);
       ctx.fillStyle = "rgba(68, 136, 255, 0.05)";
-      ctx.fillRect(screenX, 0, screenW, height);
+      ctx.fillRect(screenX, 0, screenW, cssH);
     }
 
     // Red build zone
     const redBuildZoneLeft = mapWidth * 0.8;
-    if (redBuildZoneLeft < camX + width) {
-      const screenX = redBuildZoneLeft - camX;
-      const screenW = Math.min(mapWidth - redBuildZoneLeft, width - Math.max(0, screenX));
+    if (redBuildZoneLeft < cameraX + cssW) {
+      const screenX = redBuildZoneLeft - cameraX;
+      const screenW = Math.min(mapWidth - redBuildZoneLeft, cssW - Math.max(0, screenX));
       ctx.fillStyle = "rgba(255, 68, 68, 0.05)";
-      ctx.fillRect(screenX, 0, screenW, height);
+      ctx.fillRect(screenX, 0, screenW, cssH);
     }
 
     // Lane lines
     ctx.strokeStyle = "#222244";
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(0 - camX, laneTop - camY);
-    ctx.lineTo(width - camX, laneTop - camY);
+    ctx.moveTo(0, laneTop);
+    ctx.lineTo(cssW, laneTop);
     ctx.stroke();
     ctx.beginPath();
-    ctx.moveTo(0 - camX, laneBottom - camY);
-    ctx.lineTo(width - camX, laneBottom - camY);
+    ctx.moveTo(0, laneBottom);
+    ctx.lineTo(cssW, laneBottom);
     ctx.stroke();
 
     // Center dashed line
     const midX = mapWidth / 2;
-    if (midX > camX && midX < camX + width) {
+    if (midX > cameraX && midX < cameraX + cssW) {
       ctx.strokeStyle = "#1a1a3a";
       ctx.lineWidth = 1;
       ctx.setLineDash([8, 8]);
       ctx.beginPath();
-      ctx.moveTo(midX - camX, laneTop - camY);
-      ctx.lineTo(midX - camX, laneBottom - camY);
+      ctx.moveTo(midX, laneTop);
+      ctx.lineTo(midX, laneBottom);
       ctx.stroke();
       ctx.setLineDash([]);
     }
 
     // Draw resource nodes
     for (const node of resourceNodes) {
-      const sx = node.x - camX;
-      const sy = node.y - camY;
-      if (sx < -node.radius || sx > width + node.radius || sy < -node.radius || sy > height + node.radius) continue;
+      const sx = node.x - cameraX;
+      const sy = node.y - cameraY;
+      if (sx < -node.radius || sx > cssW + node.radius || sy < -node.radius || sy > cssH + node.radius) continue;
 
       ctx.beginPath();
       ctx.arc(sx, sy, node.radius + 6, 0, Math.PI * 2);
@@ -582,14 +539,14 @@ export default function GameShell({
     // Draw entities
     const entities = matchState?.entities ?? [];
     for (const entity of entities) {
-      const sx = entity.x - camX;
-      const sy = entity.y - camY;
-      const hitRadius = entity.type === "building" ? 22 : entity.radius;
-      if (sx < -hitRadius * 2 || sx > width + hitRadius * 2 || sy < -hitRadius * 2 || sy > height + hitRadius * 2) continue;
+      const sx = entity.x - cameraX;
+      const sy = entity.y - cameraY;
+      const hitRadius = entity.type === "building" || entity.type === "crystal" ? 22 : entity.radius;
+      if (sx < -hitRadius * 2 || sx > cssW + hitRadius * 2 || sy < -hitRadius * 2 || sy > cssH + hitRadius * 2) continue;
 
       const isMyTeam = entity.ownerId === player.id;
       const isSelected = entity.id === selectedEntityId;
-      const isBuilding = entity.type === "building";
+      const isBuilding = entity.type === "building" || entity.type === "crystal";
 
       if (isBuilding) {
         const w = entity.radius * 2;
@@ -632,7 +589,7 @@ export default function GameShell({
         ctx.font = "bold 9px monospace";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        const label = entity.buildingType ? BUILDING_LABELS[entity.buildingType] : "??";
+        const label = entity.type === "crystal" ? "HQ" : (entity.buildingType ? BUILDING_LABELS[entity.buildingType] : "??");
         ctx.fillText(label, sx, sy - 4);
 
         if (entity.constructionProgress < 100) {
@@ -730,10 +687,10 @@ export default function GameShell({
     if (hoverPos && selectedEntityId) {
       const entity = entities.find((e) => e.id === selectedEntityId);
       if (entity) {
-        const sx1 = entity.x - camX;
-        const sy1 = entity.y - camY;
-        const sx2 = hoverPos.x - camX;
-        const sy2 = hoverPos.y - camY;
+        const sx1 = entity.x - cameraX;
+        const sy1 = entity.y - cameraY;
+        const sx2 = hoverPos.x - cameraX;
+        const sy2 = hoverPos.y - cameraY;
         ctx.beginPath();
         ctx.moveTo(sx1, sy1);
         ctx.lineTo(sx2, sy2);
@@ -753,8 +710,8 @@ export default function GameShell({
 
     // Build mode preview
     if (buildMode && selectedBuildingType && hoverPos && myCrystal) {
-      const sx = hoverPos.x - camX;
-      const sy = hoverPos.y - camY;
+      const sx = hoverPos.x - cameraX;
+      const sy = hoverPos.y - cameraY;
       ctx.beginPath();
       ctx.arc(sx, sy, 22, 0, Math.PI * 2);
       ctx.strokeStyle = "rgba(255,255,255,0.5)";
@@ -768,16 +725,18 @@ export default function GameShell({
       ctx.fillRect(sx - 22, sy - 22, 44, 44);
     }
 
-    // Draw minimap
+    ctx.restore();
+
+    // Screen-space: minimap
     if (matchState) {
-      const minimapX = CANVAS_WIDTH - MINIMAP_WIDTH - 10;
-      const minimapY = CANVAS_HEIGHT - MINIMAP_HEIGHT - 10;
+      const minimapX = cssW - MINIMAP_WIDTH - 10;
+      const minimapY = cssH - MINIMAP_HEIGHT - 10;
       drawMinimap(
         ctx,
-        matchState.config?.mapWidth || 3000,
-        matchState.config?.mapHeight || 600,
-        camera.x,
-        CANVAS_WIDTH,
+        matchState.mapWidth ?? matchState.config?.mapWidth ?? 6000,
+        matchState.mapHeight ?? matchState.config?.mapHeight ?? 600,
+        cameraXRef.current,
+        cssW,
         resourceNodes,
         entities,
         player.color,
@@ -786,10 +745,10 @@ export default function GameShell({
       );
     }
 
-    // Phase overlay
+    // Screen-space: phase overlay
     if (matchState) {
       ctx.fillStyle = "rgba(0,0,0,0.6)";
-      ctx.fillRect(0, 0, width, 32);
+      ctx.fillRect(0, 0, cssW, 32);
 
       ctx.fillStyle = "#8888ff";
       ctx.font = "bold 14px monospace";
@@ -801,14 +760,16 @@ export default function GameShell({
           : matchState.phase === "playing"
             ? "IN GAME"
             : "ENDED";
-      ctx.fillText(`[${phaseLabel}] Tick: ${matchState.tick}`, width / 2, 16);
+      ctx.fillText(`[${phaseLabel}] Tick: ${matchState.tick}`, cssW / 2, 16);
 
       ctx.fillStyle = "#666";
       ctx.font = "11px monospace";
       ctx.textAlign = "right";
-      ctx.fillText(`Match: ${matchState.id.slice(0, 8)}`, width - 10, 16);
+      ctx.fillText(`Match: ${matchState.id.slice(0, 8)}`, cssW - 10, 16);
     }
-  }, [matchState, player.id, selectedEntityId, hoverPos, myEntities, resourceNodes, buildMode, selectedBuildingType, myCrystal, camera]);
+
+    ctx.restore();
+  }, [matchState, player.id, selectedEntityId, hoverPos, myEntities, resourceNodes, buildMode, selectedBuildingType, myCrystal, renderTick]);
 
   const opponent = lobby.players.find((p) => p?.id !== player.id);
   const opponentColor = opponent?.color === "blue" ? "#4488ff" : "#ff4444";
@@ -847,8 +808,6 @@ export default function GameShell({
           onClick={handleClick}
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
-          width={CANVAS_WIDTH}
-          height={CANVAS_HEIGHT}
           style={styles.canvas}
         />
         {error && (

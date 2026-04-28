@@ -181,6 +181,8 @@ export class MatchEngine {
       economy,
       resourceNodes,
       config,
+      mapWidth: config.mapWidth,
+      mapHeight: config.mapHeight,
     };
 
     this.matches.set(id, match);
