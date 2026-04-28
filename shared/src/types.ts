@@ -113,6 +113,13 @@ export interface ProductionQueueItem {
   remainingTicks: number;
 }
 
+export interface MatchConfig {
+  mapWidth: number;
+  mapHeight: number;
+  viewportWidth: number;
+  viewportHeight: number;
+}
+
 export interface MatchState {
   id: MatchId;
   lobbyCode: LobbyCode;
@@ -126,6 +133,7 @@ export interface MatchState {
   endedAt: number | null;
   economy: [PlayerEconomy | null, PlayerEconomy | null];
   resourceNodes: ResourceNode[];
+  config: MatchConfig;
 }
 
 export interface PlayerSlot {
@@ -157,4 +165,13 @@ export interface ClientCommand {
 export interface GameSnapshot {
   match: MatchState;
   commands: ClientCommand[];
+}
+
+// ---- Camera ----
+
+export interface CameraState {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }

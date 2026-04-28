@@ -260,6 +260,11 @@ export class MatchEngine {
       );
       if (!entity) return { success: false };
 
+      // Crystals and buildings are static - cannot move
+      if (entity.type === "crystal" || entity.type === "building") {
+        return { success: false, message: `${entity.type === "crystal" ? "Crystal" : "Building"} cannot move` };
+      }
+
       if (
         command.type === "move" &&
         command.targetX !== undefined &&
@@ -267,6 +272,15 @@ export class MatchEngine {
       ) {
         entity.x = command.targetX;
         entity.y = command.targetY;
+      }
+
+      // Clean up gathering assignment when moving
+      if (entity.type === "worker" && entity.gatheringNodeId) {
+        const prevNode = match.resourceNodes.find((n) => n.id === entity.gatheringNodeId);
+        if (prevNode) {
+          prevNode.gathererSlots.delete(entity.id);
+        }
+        entity.gatheringNodeId = undefined;
       }
 
       return { success: true };
@@ -278,6 +292,14 @@ export class MatchEngine {
       );
       if (!worker) return { success: false, message: "Worker not found" };
 
+      // Remove from previous node if gathering elsewhere
+      if (worker.gatheringNodeId) {
+        const prevNode = match.resourceNodes.find((n) => n.id === worker.gatheringNodeId);
+        if (prevNode) {
+          prevNode.gathererSlots.delete(worker.id);
+        }
+      }
+
       const targetNode = match.resourceNodes.find(
         (n) => n.id === command.targetEntityId
       );
@@ -286,6 +308,7 @@ export class MatchEngine {
       if (targetNode.gathererSlots.size >= targetNode.maxGathererSlots)
         return { success: false, message: "Node is full" };
 
+      worker.gatheringNodeId = targetNode.id;
       targetNode.gathererSlots.add(worker.id);
       return { success: true };
     }
@@ -422,7 +445,8 @@ export class MatchEngine {
         match.resourceNodes,
         playerColor,
         playerCrystals,
-        playerId
+        playerId,
+        config.mapHeight
       );
       console.log("[MatchEngine] BUILD cmd - placement valid:", placement.valid, "reason:", placement.reason);
       console.log("[MatchEngine] BUILD cmd - buildZone:", JSON.stringify(buildZone), "playerColor:", playerColor);
@@ -475,6 +499,15 @@ export class MatchEngine {
       const worker = match.entities.get(workerId);
       if (!worker || worker.type !== "worker" || worker.ownerId !== playerId) {
         return { success: false, message: "Worker not found" };
+      }
+
+      // Clean up gathering assignment when repairing
+      if (worker.gatheringNodeId) {
+        const prevNode = match.resourceNodes.find((n) => n.id === worker.gatheringNodeId);
+        if (prevNode) {
+          prevNode.gathererSlots.delete(worker.id);
+        }
+        worker.gatheringNodeId = undefined;
       }
 
       const building = match.entities.get(buildingId);
