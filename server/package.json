@@ -1,0 +1,20 @@
+{
+  "name": "@crystalfront/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "express": "^5.0.0",
+    "ws": "^8.18.0",
+    "@crystalfront/shared": "file:../shared"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/express": "^5.0.0",
+    "@types/ws": "^8.5.0"
+  }
+}

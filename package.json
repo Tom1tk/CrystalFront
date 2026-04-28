@@ -1,0 +1,30 @@
+{
+  "name": "crystalfront-rts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A multiplayer browser RTS prototype",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "tsx watch server/src/index.ts",
+    "dev:client": "npm -w client run dev",
+    "build": "npm run build:client && npm run build:server",
+    "build:client": "npm -w client run build",
+    "build:server": "tsc -p server/tsconfig.json",
+    "start": "node server/dist/index.js",
+    "test": "tsx tests/index.ts",
+    "test:server": "tsx tests/index.ts"
+  },
+  "workspaces": [
+    "client",
+    "server",
+    "shared"
+  ],
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "tsx": "^4.19.0",
+    "concurrently": "^9.1.0",
+    "@types/node": "^22.10.0",
+    "@types/express": "^5.0.0",
+    "@types/ws": "^8.5.0"
+  }
+}
