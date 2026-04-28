@@ -124,6 +124,7 @@ export default function GameShell({
   const dprRef = useRef(window.devicePixelRatio || 1);
   const cameraXRef = useRef(0);
   const cameraYRef = useRef(0);
+  const cameraInitializedRef = useRef(false);
   const mousePosRef = useRef<{ x: number; y: number } | null>(null);
   const matchStateRef = useRef<MatchState | null>(null);
   matchStateRef.current = matchState;
@@ -136,9 +137,17 @@ export default function GameShell({
   const myEntities = matchState?.entities.filter(isMyEntity) ?? [];
   const myCrystal = myEntities.find((e) => e.type === "crystal");
 
-  // Initialize camera position when match starts
+  // Reset camera guard when leaving a match so the next match re-initialises
   useEffect(() => {
-    if (!matchState) return;
+    if (!matchState) {
+      cameraInitializedRef.current = false;
+    }
+  }, [matchState]);
+
+  // Initialise camera only once per match
+  useEffect(() => {
+    if (!matchState || cameraInitializedRef.current) return;
+    cameraInitializedRef.current = true;
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -149,8 +158,7 @@ export default function GameShell({
     const myCrystal = matchState.entities.find((e) => e.type === "crystal" && e.ownerId === player.id);
 
     if (myCrystal) {
-      const newCameraX = Math.max(0, Math.min(myCrystal.x - viewW / 2, mapWidth - viewW));
-      cameraXRef.current = newCameraX;
+      cameraXRef.current = Math.max(0, Math.min(myCrystal.x - viewW / 2, mapWidth - viewW));
     } else if (myIdx === 0) {
       cameraXRef.current = 0;
     } else {
@@ -197,11 +205,12 @@ export default function GameShell({
       mousePosRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
     };
 
+    let running = true;
     const loop = () => {
+      if (!running) return;
       const pos = mousePosRef.current;
       if (pos) {
         const viewW = canvas.clientWidth;
-        const viewH = canvas.clientHeight;
         let dx = 0;
         if (pos.x < EDGE_SCROLL_THRESHOLD) dx = -EDGE_SCROLL_SPEED;
         else if (pos.x > viewW - EDGE_SCROLL_THRESHOLD) dx = EDGE_SCROLL_SPEED;
@@ -215,11 +224,11 @@ export default function GameShell({
     };
 
     canvas.addEventListener("mousemove", onMouseMove);
-    const animFrame = requestAnimationFrame(loop);
+    requestAnimationFrame(loop);
 
     return () => {
+      running = false;
       canvas.removeEventListener("mousemove", onMouseMove);
-      cancelAnimationFrame(animFrame);
     };
   }, []);
 
@@ -383,13 +392,7 @@ export default function GameShell({
       const screenX = e.clientX - rect.left;
       const screenY = e.clientY - rect.top;
 
-      if (screenX < EDGE_SCROLL_THRESHOLD) {
-        mousePosRef.current = { x: screenX, y: screenY };
-      } else if (screenX > canvas.clientWidth - EDGE_SCROLL_THRESHOLD) {
-        mousePosRef.current = { x: screenX, y: screenY };
-      } else {
-        mousePosRef.current = null;
-      }
+      mousePosRef.current = { x: screenX, y: screenY };
 
       setHoverPos({
         x: screenX + cameraXRef.current,
@@ -452,76 +455,58 @@ export default function GameShell({
     ctx.save();
     ctx.translate(-cameraX, -cameraY);
 
-    // Lane background
+    // Lane background — world coords, full map width
     ctx.fillStyle = "#111122";
-    ctx.fillRect(0 - cameraX, laneTop, cssW, laneBottom - laneTop);
+    ctx.fillRect(0, laneTop, mapWidth, laneBottom - laneTop);
 
-    // Combat zone
+    // Combat zone — world coords
     const combatLeft = mapWidth * 0.25;
     const combatRight = mapWidth * 0.75;
-    if (combatRight > cameraX && combatLeft < cameraX + cssW) {
-      const screenCombatLeft = Math.max(0, combatLeft - cameraX);
-      const screenCombatRight = Math.min(cssW, combatRight - cameraX);
-      ctx.fillStyle = "#151530";
-      ctx.fillRect(screenCombatLeft, combatZoneTop, screenCombatRight - screenCombatLeft, combatZoneBottom - combatZoneTop);
-    }
+    ctx.fillStyle = "#151530";
+    ctx.fillRect(combatLeft, combatZoneTop, combatRight - combatLeft, combatZoneBottom - combatZoneTop);
 
-    // Blue build zone
-    const blueBuildZoneRight = mapWidth * 0.2;
-    if (blueBuildZoneRight > cameraX) {
-      const screenX = 0 - cameraX;
-      const screenW = Math.min(blueBuildZoneRight - cameraX, cssW);
-      ctx.fillStyle = "rgba(68, 136, 255, 0.05)";
-      ctx.fillRect(screenX, 0, screenW, cssH);
-    }
+    // Blue build zone — world coords
+    ctx.fillStyle = "rgba(68, 136, 255, 0.05)";
+    ctx.fillRect(0, 0, mapWidth * 0.2, mapHeight);
 
-    // Red build zone
-    const redBuildZoneLeft = mapWidth * 0.8;
-    if (redBuildZoneLeft < cameraX + cssW) {
-      const screenX = redBuildZoneLeft - cameraX;
-      const screenW = Math.min(mapWidth - redBuildZoneLeft, cssW - Math.max(0, screenX));
-      ctx.fillStyle = "rgba(255, 68, 68, 0.05)";
-      ctx.fillRect(screenX, 0, screenW, cssH);
-    }
+    // Red build zone — world coords
+    ctx.fillStyle = "rgba(255, 68, 68, 0.05)";
+    ctx.fillRect(mapWidth * 0.8, 0, mapWidth * 0.2, mapHeight);
 
-    // Lane lines
+    // Lane lines — world coords
     ctx.strokeStyle = "#222244";
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(0, laneTop);
-    ctx.lineTo(cssW, laneTop);
+    ctx.lineTo(mapWidth, laneTop);
     ctx.stroke();
     ctx.beginPath();
     ctx.moveTo(0, laneBottom);
-    ctx.lineTo(cssW, laneBottom);
+    ctx.lineTo(mapWidth, laneBottom);
     ctx.stroke();
 
-    // Center dashed line
+    // Center dashed line — world coords
     const midX = mapWidth / 2;
-    if (midX > cameraX && midX < cameraX + cssW) {
-      ctx.strokeStyle = "#1a1a3a";
-      ctx.lineWidth = 1;
-      ctx.setLineDash([8, 8]);
-      ctx.beginPath();
-      ctx.moveTo(midX, laneTop);
-      ctx.lineTo(midX, laneBottom);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
+    ctx.strokeStyle = "#1a1a3a";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([8, 8]);
+    ctx.beginPath();
+    ctx.moveTo(midX, laneTop);
+    ctx.lineTo(midX, laneBottom);
+    ctx.stroke();
+    ctx.setLineDash([]);
 
-    // Draw resource nodes
+    // Draw resource nodes — world coords
     for (const node of resourceNodes) {
-      const sx = node.x - cameraX;
-      const sy = node.y - cameraY;
-      if (sx < -node.radius || sx > cssW + node.radius || sy < -node.radius || sy > cssH + node.radius) continue;
+      if (node.x < cameraX - node.radius * 2 || node.x > cameraX + cssW + node.radius * 2) continue;
 
       ctx.beginPath();
-      ctx.arc(sx, sy, node.radius + 6, 0, Math.PI * 2);
+      ctx.arc(node.x, node.y, node.radius + 6, 0, Math.PI * 2);
       ctx.fillStyle = "rgba(204, 170, 68, 0.15)";
       ctx.fill();
 
       ctx.beginPath();
-      ctx.arc(sx, sy, node.radius, 0, Math.PI * 2);
+      ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
       const depletion = node.remaining / node.capacity;
       ctx.fillStyle = `rgba(204, 170, 68, ${0.3 + depletion * 0.7})`;
       ctx.fill();
@@ -533,16 +518,14 @@ export default function GameShell({
       ctx.font = "bold 10px monospace";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(`${Math.floor(node.remaining)}`, sx, sy);
+      ctx.fillText(`${Math.floor(node.remaining)}`, node.x, node.y);
     }
 
-    // Draw entities
+    // Draw entities — world coords
     const entities = matchState?.entities ?? [];
     for (const entity of entities) {
-      const sx = entity.x - cameraX;
-      const sy = entity.y - cameraY;
       const hitRadius = entity.type === "building" || entity.type === "crystal" ? 22 : entity.radius;
-      if (sx < -hitRadius * 2 || sx > cssW + hitRadius * 2 || sy < -hitRadius * 2 || sy > cssH + hitRadius * 2) continue;
+      if (entity.x < cameraX - hitRadius * 2 || entity.x > cameraX + cssW + hitRadius * 2) continue;
 
       const isMyTeam = entity.ownerId === player.id;
       const isSelected = entity.id === selectedEntityId;
@@ -551,8 +534,8 @@ export default function GameShell({
       if (isBuilding) {
         const w = entity.radius * 2;
         const h = entity.radius * 2;
-        const bx = sx - w / 2;
-        const by = sy - h / 2;
+        const bx = entity.x - w / 2;
+        const by = entity.y - h / 2;
 
         ctx.fillStyle = "rgba(0,0,0,0.4)";
         ctx.fillRect(bx + 2, by + 2, w, h);
@@ -590,7 +573,7 @@ export default function GameShell({
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         const label = entity.type === "crystal" ? "HQ" : (entity.buildingType ? BUILDING_LABELS[entity.buildingType] : "??");
-        ctx.fillText(label, sx, sy - 4);
+        ctx.fillText(label, entity.x, entity.y - 4);
 
         if (entity.constructionProgress < 100) {
           const barWidth = w;
@@ -627,29 +610,29 @@ export default function GameShell({
           ctx.fillStyle = "#aaa";
           ctx.font = "8px monospace";
           ctx.textAlign = "center";
-          ctx.fillText(`${firstItem.unitType}: ${Math.ceil(firstItem.remainingTicks / 10)}s`, sx, queueBarY + 12);
+          ctx.fillText(`${firstItem.unitType}: ${Math.ceil(firstItem.remainingTicks / 10)}s`, entity.x, queueBarY + 12);
         }
       } else {
         ctx.beginPath();
-        ctx.arc(sx + 2, sy + 2, entity.radius, 0, Math.PI * 2);
+        ctx.arc(entity.x + 2, entity.y + 2, entity.radius, 0, Math.PI * 2);
         ctx.fillStyle = "rgba(0,0,0,0.4)";
         ctx.fill();
 
         ctx.beginPath();
-        ctx.arc(sx, sy, entity.radius, 0, Math.PI * 2);
+        ctx.arc(entity.x, entity.y, entity.radius, 0, Math.PI * 2);
         ctx.fillStyle = entity.color;
         ctx.fill();
 
         if (isSelected) {
           ctx.beginPath();
-          ctx.arc(sx, sy, entity.radius + 4, 0, Math.PI * 2);
+          ctx.arc(entity.x, entity.y, entity.radius + 4, 0, Math.PI * 2);
           ctx.strokeStyle = "#ffff44";
           ctx.lineWidth = 2;
           ctx.stroke();
         }
 
         ctx.beginPath();
-        ctx.arc(sx, sy, entity.radius, 0, Math.PI * 2);
+        ctx.arc(entity.x, entity.y, entity.radius, 0, Math.PI * 2);
         ctx.strokeStyle = isMyTeam ? "rgba(100,150,255,0.6)" : "rgba(255,100,100,0.6)";
         ctx.lineWidth = 2;
         ctx.stroke();
@@ -657,8 +640,8 @@ export default function GameShell({
         if (entity.health < entity.maxHealth) {
           const barWidth = entity.radius * 2;
           const barHeight = 4;
-          const barX = sx - entity.radius;
-          const barY = sy - entity.radius - 8;
+          const barX = entity.x - entity.radius;
+          const barY = entity.y - entity.radius - 8;
           const healthPct = entity.health / entity.maxHealth;
           ctx.fillStyle = "#333";
           ctx.fillRect(barX, barY, barWidth, barHeight);
@@ -679,21 +662,17 @@ export default function GameShell({
               : entity.type === "resource_node"
                 ? "R"
                 : "?";
-        ctx.fillText(label, sx, sy);
+        ctx.fillText(label, entity.x, entity.y);
       }
     }
 
-    // Hover line
+    // Hover line — world coords
     if (hoverPos && selectedEntityId) {
       const entity = entities.find((e) => e.id === selectedEntityId);
       if (entity) {
-        const sx1 = entity.x - cameraX;
-        const sy1 = entity.y - cameraY;
-        const sx2 = hoverPos.x - cameraX;
-        const sy2 = hoverPos.y - cameraY;
         ctx.beginPath();
-        ctx.moveTo(sx1, sy1);
-        ctx.lineTo(sx2, sy2);
+        ctx.moveTo(entity.x, entity.y);
+        ctx.lineTo(hoverPos.x, hoverPos.y);
         ctx.strokeStyle = "rgba(255,255,100,0.3)";
         ctx.lineWidth = 1;
         ctx.setLineDash([4, 4]);
@@ -701,19 +680,17 @@ export default function GameShell({
         ctx.setLineDash([]);
 
         ctx.beginPath();
-        ctx.arc(sx2, sy2, 6, 0, Math.PI * 2);
+        ctx.arc(hoverPos.x, hoverPos.y, 6, 0, Math.PI * 2);
         ctx.strokeStyle = "rgba(255,255,100,0.5)";
         ctx.lineWidth = 1;
         ctx.stroke();
       }
     }
 
-    // Build mode preview
+    // Build mode preview — world coords
     if (buildMode && selectedBuildingType && hoverPos && myCrystal) {
-      const sx = hoverPos.x - cameraX;
-      const sy = hoverPos.y - cameraY;
       ctx.beginPath();
-      ctx.arc(sx, sy, 22, 0, Math.PI * 2);
+      ctx.arc(hoverPos.x, hoverPos.y, 22, 0, Math.PI * 2);
       ctx.strokeStyle = "rgba(255,255,255,0.5)";
       ctx.lineWidth = 2;
       ctx.setLineDash([4, 4]);
@@ -722,7 +699,7 @@ export default function GameShell({
 
       const color = BUILDING_COLORS[selectedBuildingType];
       ctx.fillStyle = `${color}44`;
-      ctx.fillRect(sx - 22, sy - 22, 44, 44);
+      ctx.fillRect(hoverPos.x - 22, hoverPos.y - 22, 44, 44);
     }
 
     ctx.restore();
