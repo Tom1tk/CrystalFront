@@ -44,12 +44,14 @@ Project summary:
 - Fog of war is required and must be server-authoritative
 - Explored terrain and known resource node positions can remain remembered
 - Hidden enemy units and buildings must not be targetable
+
 Crystal requirements:
 - The Crystal is a static building, not a unit
 - It is positioned at the far end of each player's side of the map
 - It acts as the player's HQ, worker production structure, and win-condition structure
 - The Crystal cannot move and must never be handled as a mobile entity
 - Destroying the enemy Crystal immediately wins the match
+
 Movement requirements:
 - Units must move gradually over time using server-authoritative movement simulation
 - Unit positions must update incrementally based on movement speed, not snap instantly to destinations
@@ -122,13 +124,18 @@ Stage 5 scope:
   - Movement must use per-unit move speed and tick-based position updates
   - Buildings, including the Crystal, are static and never enter movement logic
   - Use simple lane-suitable movement/pathing with soft collision and light separation
+  - IMPORTANT: The existing move command handler in server/src/match/matchEngine.ts processCommand() currently sets entity.x and entity.y to the target coordinates instantly. Remove this instant snap entirely. Instead, store a moveTarget field on the entity and resolve movement incrementally in tick() by advancing the entity toward moveTarget at its speed units per tick. Clear moveTarget when the entity arrives within 1 unit of the destination.
 - Implement targeting:
   - right-click enemy unit/building to attack
   - right-click friendly damaged building with Worker to repair
   - right-click friendly damaged unit with Medic to attach and heal
+  - IMPORTANT: The current client uses onClick (left-click) for both selection and commands. Migrate to the standard RTS pattern: left-click (onMouseDown with e.button === 0) handles selection only; right-click (onMouseDown with e.button === 2) issues contextual commands. Add an onContextMenu handler to the canvas that calls e.preventDefault() to suppress the browser right-click menu. Existing command-panel buttons for train and build remain left-click UI buttons and are unaffected.
 - Implement idle auto-attack:
   - combat units and Turrets auto-acquire enemies that enter range
-  - they do not chase beyond sensible leash/order logic unless directly commanded
+  - use the entity's existing range stat as the auto-attack detection radius; no separate aggro or vision radius is needed
+  - a unit auto-acquires the nearest enemy within range and begins attacking; if no enemies are in range it remains idle
+  - a unit may move to close into attack range of a detected enemy, but must not pursue beyond attack range + 50 units from its last commanded position; if the enemy escapes this leash, the unit stops and idles
+  - Workers do not auto-attack under any circumstance
 - Implement unit combat stats:
   - health
   - damage
@@ -140,8 +147,8 @@ Stage 5 scope:
   - Skirmisher beats Gunner
   - Gunner beats Bruiser
   - Bruiser beats Skirmisher
-  - Medic low damage or no damage, dedicated healer
-  - Turret uses ranged damage profile similar to Gunner
+  - Medic has very low damage (retain the existing stat of 3 damage); it is a support unit, not a fighter
+  - Turret applies the same counter multipliers as Gunner: effective against Bruiser, countered by Skirmisher
 - Implement Medic behaviour:
   - manual heal targeting only
   - when assigned to a friendly target, Medic follows that target and stays within heal range
@@ -149,19 +156,36 @@ Stage 5 scope:
   - if the target is full health, Medic should continue following but only heal when needed
 - Implement Worker basic attack:
   - very weak, mostly irrelevant
+  - Workers do not auto-attack; set autoAttackEnabled to false for Workers
+  - Workers can only attack on explicit manual right-click command on an enemy
+  - Workers must not interrupt gathering or construction to auto-attack nearby enemies
 - Implement building and unit death handling
 - Implement Crystal destruction as the match win condition
-- Add simple health bars and selected-entity info in the client
+- Verify existing health bars render correctly for all entity types at correct world-space positions after the Stage 4.5 camera changes; add any entity types that are missing from the health bar rendering
 - Add basic combat feedback sufficient for readability
+
+Data model changes required:
+- Add the following fields to MatchEntity in server/src/match/types.ts; update the shared Entity type in shared/src/types.ts to match:
+  - moveTarget?: { x: number; y: number } — destination the entity is currently moving toward
+  - attackTargetId?: EntityId — the entity currently being attacked (manual command or auto-acquired)
+  - attackCooldown: number — ticks remaining until the next attack is allowed (initialise to 0)
+  - healTargetId?: EntityId — Medic only; the friendly unit this Medic is following and healing
+  - autoAttackEnabled: boolean — true for Skirmisher, Gunner, Bruiser, Medic, and Turret; false for Worker, Crystal, and all non-Turret buildings
+- Add attackCooldown: number (ticks between attacks) to UnitDefinition and to all entries in UNIT_DEFS. Suggested values: worker 20, skirmisher 10, gunner 15, bruiser 8, medic 25
+- Add damage?: number, range?: number, and attackCooldown?: number to BuildingDefinition. Set the Turret entry in BUILDING_DEFS to: damage 18, range 150, attackCooldown 12
+- Extend CommandType in shared/src/types.ts and CommandEntry.type in server/src/match/types.ts to include "attack" and "heal". Ensure the game_command handler in server/src/index.ts forwards these types to processCommand()
 
 Implementation requirements:
 - Combat must be server-authoritative
 - Counter multipliers should be data-driven constants
 - Keep targeting and attack logic deterministic where practical
 - Use clear ownership and allegiance rules
-- Ensure support and repair logic do not conflict
+- Medic healing of units uses the "heal" command type; Worker repair of buildings uses the existing "repair" command type. These must not be conflated. Repair targets buildings only and costs resources. Heal targets units only and is free.
 - Avoid over-engineered pathfinding for v1, but movement should be stable and readable
 - Tune initial numbers for fast web matches, not long macro games
+- Soft collision: after movement each tick, for every pair of mobile entities whose centre distance is less than the sum of their radii, push each entity directly away from the other by (radiusSum - distance) * 0.5 units. Apply to mobile units only, not buildings or Crystals. Run the separation pass at most twice per tick.
+- Tick phase order inside tick(): (1) movement — advance all entities with a moveTarget toward their destination at their speed stat; (2) combat — resolve auto-attack acquisition and all attacks, including Turret attacks; (3) gathering; (4) construction and production; (5) repair and Medic healing; (6) death removal. Process all damage before any entity deletions within a single tick.
+- Death handling: when an entity reaches 0 health during the combat phase, add its id to a local toRemove Set rather than deleting it immediately. After all combat, movement, and healing are resolved for the tick, delete each entry in toRemove from match.entities. When a unit dies, decrement the owning player's economy.supply by the unit's supplyCost. When a Supply Depot dies, decrement economy.maxSupply by the depot's supplyProvided and clamp economy.supply to the new max if it exceeds it.
 
 Acceptance criteria:
 - Units can move and attack via commands
@@ -197,4 +221,3 @@ Testing requirements:
 Important:
 - Do not implement fog of war yet
 - Stop after Stage 5
-

@@ -35,6 +35,14 @@ export interface ProductionQueueItem {
   remainingTicks: number;
 }
 
+export interface AttackEvent {
+  attackerId: string;
+  targetId: string;
+  damage: number;
+  tick: number;
+  isHeal: boolean;
+}
+
 export interface MatchEntity {
   id: string;
   type: "crystal" | "worker" | "placeholder" | "resource_node" | "building" | "skirmisher" | "gunner" | "bruiser" | "medic";
@@ -51,6 +59,11 @@ export interface MatchEntity {
   productionQueue: ProductionQueueItem[];
   repairTargetId?: string;
   repairProgress: number;
+  moveTarget?: { x: number; y: number };
+  attackTargetId?: string;
+  attackCooldown?: number;
+  healTargetId?: string;
+  autoAttackEnabled?: boolean;
 }
 
 export interface ResourceNodeDisplay {
@@ -89,8 +102,10 @@ export interface MatchState {
   phase: "spawn" | "playing" | "ended";
   tick: number;
   tickIntervalMs: number;
+  stateTimestamp?: number;
   players: [PlayerSlot | null, PlayerSlot | null];
   entities: MatchEntity[];
+  attackLog: AttackEvent[];
   result: { winner: string } | null;
   startedAt: number;
   endedAt: number | null;

@@ -178,35 +178,41 @@ function broadcastGameState(code: string) {
       remainingTicks: q.remainingTicks,
     })),
     repairTargetId: e.repairTargetId,
+    moveTarget: e.moveTarget,
+    attackTargetId: e.attackTargetId,
+    attackCooldown: e.attackCooldown,
+    healTargetId: e.healTargetId,
+    autoAttackEnabled: e.autoAttackEnabled,
   }));
 
-     const msg: ServerToClientMsg = {
-        type: SERVER_EVT.GAME_STATE,
-        payload: {
-          match: {
-            id: match.id,
-            lobbyCode: match.lobbyCode,
-            phase: match.phase,
-            tick: match.tick,
-            tickIntervalMs: match.tickIntervalMs,
-            players: match.players,
-            entities: allEntities as any,
-            result: match.result,
-            startedAt: match.startedAt,
-            endedAt: match.endedAt,
-            economy: serializeEconomy(match.economy),
-            resourceNodes: serializeResourceNodes(match.resourceNodes),
-            config: {
-              mapWidth: match.config.mapWidth,
-              mapHeight: match.config.mapHeight,
-              viewportWidth: match.config.viewportWidth,
-              viewportHeight: match.config.viewportHeight,
-            },
-            mapWidth: match.config.mapWidth,
-            mapHeight: match.config.mapHeight,
-          },
-        },
-      };
+   const msg: ServerToClientMsg = {
+         type: SERVER_EVT.GAME_STATE,
+         payload: {
+           match: {
+             id: match.id,
+             lobbyCode: match.lobbyCode,
+             phase: match.phase,
+             tick: match.tick,
+             tickIntervalMs: match.tickIntervalMs,
+             players: match.players,
+             entities: allEntities as any,
+             attackLog: match.attackLog,
+             result: match.result,
+             startedAt: match.startedAt,
+             endedAt: match.endedAt,
+             economy: serializeEconomy(match.economy),
+             resourceNodes: serializeResourceNodes(match.resourceNodes),
+             config: {
+               mapWidth: match.config.mapWidth,
+               mapHeight: match.config.mapHeight,
+               viewportWidth: match.config.viewportWidth,
+               viewportHeight: match.config.viewportHeight,
+             },
+             mapWidth: match.config.mapWidth,
+             mapHeight: match.config.mapHeight,
+           },
+         },
+       };
   for (const session of playerLobbyMap.values()) {
     if (session.code === code && session.matchId === matchId) {
       sendWS(session.ws, msg);
@@ -297,6 +303,11 @@ wss.on("connection", (ws) => {
                 remainingTicks: q.remainingTicks,
               })),
               repairTargetId: e.repairTargetId,
+              moveTarget: e.moveTarget,
+              attackTargetId: e.attackTargetId,
+              attackCooldown: e.attackCooldown,
+              healTargetId: e.healTargetId,
+              autoAttackEnabled: e.autoAttackEnabled,
             }));
             const matchStartMsg: ServerToClientMsg = {
               type: SERVER_EVT.MATCH_START,
@@ -308,9 +319,10 @@ wss.on("connection", (ws) => {
                   tick: match.tick,
                   tickIntervalMs: match.tickIntervalMs,
                   players: match.players,
-                  entities: allEntities as any,
-                  result: match.result,
-                  startedAt: match.startedAt,
+                entities: allEntities as any,
+                   attackLog: match.attackLog,
+                   result: match.result,
+                   startedAt: match.startedAt,
                   endedAt: match.endedAt,
                   economy: serializeEconomy(match.economy),
                   resourceNodes: serializeResourceNodes(match.resourceNodes),
@@ -414,6 +426,11 @@ wss.on("connection", (ws) => {
               remainingTicks: q.remainingTicks,
             })),
             repairTargetId: e.repairTargetId,
+            moveTarget: e.moveTarget,
+            attackTargetId: e.attackTargetId,
+            attackCooldown: e.attackCooldown,
+            healTargetId: e.healTargetId,
+            autoAttackEnabled: e.autoAttackEnabled,
           }));
           const matchStartMsg: ServerToClientMsg = {
             type: SERVER_EVT.MATCH_START,
@@ -425,9 +442,10 @@ wss.on("connection", (ws) => {
                 tick: match.tick,
                 tickIntervalMs: match.tickIntervalMs,
                 players: match.players,
-                entities: allEntities as any,
-                result: match.result,
-                startedAt: match.startedAt,
+               entities: allEntities as any,
+                   attackLog: match.attackLog,
+                   result: match.result,
+                   startedAt: match.startedAt,
                 endedAt: match.endedAt,
                 economy: serializeEconomy(match.economy),
                 resourceNodes: serializeResourceNodes(match.resourceNodes),
@@ -494,6 +512,11 @@ wss.on("connection", (ws) => {
             remainingTicks: q.remainingTicks,
           })),
           repairTargetId: e.repairTargetId,
+          moveTarget: e.moveTarget,
+          attackTargetId: e.attackTargetId,
+          attackCooldown: e.attackCooldown,
+          healTargetId: e.healTargetId,
+          autoAttackEnabled: e.autoAttackEnabled,
         }));
         const matchStartMsg: ServerToClientMsg = {
           type: SERVER_EVT.MATCH_START,
@@ -505,9 +528,10 @@ wss.on("connection", (ws) => {
               tick: match.tick,
               tickIntervalMs: match.tickIntervalMs,
               players: match.players,
-              entities: allEntities as any,
-              result: match.result,
-              startedAt: match.startedAt,
+               entities: allEntities as any,
+                   attackLog: match.attackLog,
+                   result: match.result,
+                   startedAt: match.startedAt,
               endedAt: match.endedAt,
               economy: serializeEconomy(match.economy),
               resourceNodes: serializeResourceNodes(match.resourceNodes),
@@ -559,7 +583,7 @@ wss.on("connection", (ws) => {
           buildingType?: string;
         };
         const result = matchEngine.processCommand(matchId, playerId, {
-          type: cmd.type as "move" | "select" | "deselect" | "gather" | "train_worker" | "train_unit" | "build" | "repair",
+          type: cmd.type as "move" | "deselect" | "gather" | "train_worker" | "train_unit" | "build" | "repair" | "attack" | "heal",
           entityId: cmd.entityId,
           targetX: cmd.targetX,
           targetY: cmd.targetY,

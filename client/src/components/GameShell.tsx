@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Lobby, Player, MatchState, ResourceNodeDisplay, BuildingType } from "../types";
+import type { Lobby, Player, MatchState, ResourceNodeDisplay, BuildingType, MatchEntity } from "../types";
 
 interface GameShellProps {
   lobby: Lobby;
@@ -16,6 +16,7 @@ interface GameShellProps {
     buildingType?: BuildingType;
   }) => void;
   error: string | null;
+  onClearError: () => void;
 }
 
 const CANVAS_WIDTH = 960;
@@ -103,6 +104,120 @@ function drawMinimap(
   ctx.strokeRect(vpX, minimapY, vpW, mmH);
 }
 
+const UNIT_RANGES: Record<string, number> = {
+  skirmisher: 20,
+  gunner: 120,
+  bruiser: 20,
+  medic: 80,
+  worker: 15,
+};
+
+const UNIT_COOLDOWNS: Record<string, number> = {
+  skirmisher: 10,
+  gunner: 15,
+  bruiser: 8,
+  medic: 25,
+  worker: 20,
+  building: 12,
+};
+
+function getAttackCooldownTicks(type: string): number {
+  return UNIT_COOLDOWNS[type] ?? 20;
+}
+
+function drawAttackLines(
+  ctx: CanvasRenderingContext2D,
+  entities: MatchEntity[],
+  matchState: MatchState
+) {
+  const tickIntervalMs = matchState.tickIntervalMs ?? 100;
+  const currentTick = matchState.tick;
+  const now = matchState.stateTimestamp ?? Date.now();
+
+  // Blue queued attack lines (out of range, chasing target)
+  for (const entity of entities) {
+    if (!entity.attackTargetId) continue;
+    if (entity.type === "crystal") continue;
+    const target = entities.find((e) => e.id === entity.attackTargetId);
+    if (!target) continue;
+    const range = entity.type === "building"
+      ? (entity.buildingType === "turret" ? 150 : 0)
+      : (UNIT_RANGES[entity.type as keyof typeof UNIT_RANGES] ?? 20);
+    const dx = target.x - entity.x;
+    const dy = target.y - entity.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist <= range) continue;
+
+    const mx = (entity.x + target.x) / 2;
+    const my = (entity.y + target.y) / 2;
+    const angle = Math.atan2(dy, dx);
+
+    ctx.beginPath();
+    ctx.moveTo(entity.x, entity.y);
+    ctx.lineTo(target.x, target.y);
+    ctx.strokeStyle = "rgba(100,150,255,0.45)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.save();
+    ctx.translate(mx, my);
+    ctx.rotate(angle);
+    ctx.beginPath();
+    ctx.moveTo(5, 0);
+    ctx.lineTo(-4, -4);
+    ctx.lineTo(-4, 4);
+    ctx.closePath();
+    ctx.fillStyle = "rgba(100,150,255,0.5)";
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Red/Green landed attack/heal lines from attackLog
+  const attackLog = matchState.attackLog ?? [];
+  for (const evt of attackLog) {
+    const attacker = entities.find((e) => e.id === evt.attackerId);
+    const target = entities.find((e) => e.id === evt.targetId);
+    if (!attacker || !target) continue;
+
+    const cooldownTicks = getAttackCooldownTicks(attacker.type);
+    const displayMs = (cooldownTicks * tickIntervalMs) / 2;
+    const elapsed = (now - (matchState.stateTimestamp ?? now)) + (currentTick - evt.tick) * tickIntervalMs;
+    if (elapsed > displayMs) continue;
+
+    const alpha = Math.max(0, 1 - elapsed / displayMs);
+    const mx = (attacker.x + target.x) / 2;
+    const my = (attacker.y + target.y) / 2;
+    const dx = target.x - attacker.x;
+    const dy = target.y - attacker.y;
+    const angle = Math.atan2(dy, dx);
+
+    const color = evt.isHeal
+      ? `rgba(80,255,80,${(0.7 * alpha).toFixed(2)})`
+      : `rgba(255,70,70,${(0.7 * alpha).toFixed(2)})`;
+
+    ctx.beginPath();
+    ctx.moveTo(attacker.x, attacker.y);
+    ctx.lineTo(target.x, target.y);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.save();
+    ctx.translate(mx, my);
+    ctx.rotate(angle);
+    ctx.beginPath();
+    ctx.moveTo(6, 0);
+    ctx.lineTo(-5, -5);
+    ctx.lineTo(-5, 5);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
 export default function GameShell({
   lobby,
   player,
@@ -111,15 +226,18 @@ export default function GameShell({
   onDebugWin,
   onGameCommand,
   error,
+  onClearError,
 }: GameShellProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
+  const [selectedEntityIds, setSelectedEntityIds] = useState<Set<string>>(new Set());
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
   const [buildMode, setBuildMode] = useState(false);
   const [selectedBuildingType, setSelectedBuildingType] = useState<BuildingType | null>(null);
   const [showUnitQueue, setShowUnitQueue] = useState(false);
-  const [renderTick, setRenderTick] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
 
   const dprRef = useRef(window.devicePixelRatio || 1);
   const cameraXRef = useRef(0);
@@ -128,6 +246,36 @@ export default function GameShell({
   const mousePosRef = useRef<{ x: number; y: number } | null>(null);
   const matchStateRef = useRef<MatchState | null>(null);
   matchStateRef.current = matchState;
+
+  // Interpolation state
+  const prevEntitiesRef = useRef<Map<string, { x: number; y: number }>>(new Map());
+  const prevTimestampRef = useRef<number>(0);
+  const resourceNodesRef = useRef<ResourceNodeDisplay[]>(resourceNodes);
+  const selectedEntityIdRef = useRef<string | null>(selectedEntityId);
+  const selectedEntityIdsRef = useRef<Set<string>>(selectedEntityIds);
+  const hoverPosRef = useRef<{ x: number; y: number } | null>(hoverPos);
+  const buildModeRef = useRef(buildMode);
+  const selectedBuildingTypeRef = useRef<BuildingType | null>(selectedBuildingType);
+  const isDraggingRef = useRef(isDragging);
+  const dragStartRef = useRef<{ x: number; y: number } | null>(dragStart);
+  const playerRef = useRef(player);
+
+  // Death particle system
+  const prevEntityIdsRef = useRef<Set<string>>(new Set());
+  const particlesRef = useRef<Array<{
+    x: number; y: number; vx: number; vy: number;
+    life: number; maxLife: number; color: string; size: number
+  }>>([]);
+
+  resourceNodesRef.current = resourceNodes;
+  selectedEntityIdRef.current = selectedEntityId;
+  selectedEntityIdsRef.current = selectedEntityIds;
+  hoverPosRef.current = hoverPos;
+  buildModeRef.current = buildMode;
+  selectedBuildingTypeRef.current = selectedBuildingType;
+  isDraggingRef.current = isDragging;
+  dragStartRef.current = dragStart;
+  playerRef.current = player;
 
   const isMyEntity = useCallback(
     (entity: { ownerId: string }) => entity.ownerId === player.id,
@@ -205,29 +353,8 @@ export default function GameShell({
       mousePosRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
     };
 
-    let running = true;
-    const loop = () => {
-      if (!running) return;
-      const pos = mousePosRef.current;
-      if (pos) {
-        const viewW = canvas.clientWidth;
-        let dx = 0;
-        if (pos.x < EDGE_SCROLL_THRESHOLD) dx = -EDGE_SCROLL_SPEED;
-        else if (pos.x > viewW - EDGE_SCROLL_THRESHOLD) dx = EDGE_SCROLL_SPEED;
-        if (dx !== 0) {
-          const mapWidth = matchStateRef.current?.mapWidth ?? 6000;
-          cameraXRef.current = Math.max(0, Math.min(mapWidth - viewW, cameraXRef.current + dx));
-          setRenderTick((t) => t + 1);
-        }
-      }
-      requestAnimationFrame(loop);
-    };
-
     canvas.addEventListener("mousemove", onMouseMove);
-    requestAnimationFrame(loop);
-
     return () => {
-      running = false;
       canvas.removeEventListener("mousemove", onMouseMove);
     };
   }, []);
@@ -254,7 +381,6 @@ export default function GameShell({
         const mapWidth = matchState.mapWidth ?? matchState.config?.mapWidth ?? 6000;
         const viewW = canvas.clientWidth;
         cameraXRef.current = Math.max(0, Math.min(fraction * mapWidth - viewW / 2, mapWidth - viewW));
-        setRenderTick((t) => t + 1);
         return true;
       }
       return false;
@@ -262,8 +388,9 @@ export default function GameShell({
     [matchState]
   );
 
-  const handleClick = useCallback(
+  const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
+      e.preventDefault();
       const canvas = canvasRef.current;
       if (!canvas) return;
 
@@ -276,111 +403,124 @@ export default function GameShell({
       const worldX = screenX + cameraXRef.current;
       const worldY = screenY;
 
-      if (buildMode && selectedBuildingType && myCrystal) {
-        onGameCommand({
-          type: "build",
-          entityId: myCrystal.id,
-          buildingType: selectedBuildingType,
-          targetX: worldX,
-          targetY: worldY,
-        });
-        setBuildMode(false);
-        setSelectedBuildingType(null);
+      // Left click: selection + build placement
+      if (e.button === 0) {
+        if (buildMode && selectedBuildingType && myCrystal) {
+          onGameCommand({
+            type: "build",
+            entityId: myCrystal.id,
+            buildingType: selectedBuildingType,
+            targetX: worldX,
+            targetY: worldY,
+          });
+          setBuildMode(false);
+          setSelectedBuildingType(null);
+          return;
+        }
+
+        // Start drag origin for box-select
+        console.log("[box-select] mousedown at", { screenX, screenY });
+        setIsDragging(true);
+        setDragStart({ x: screenX, y: screenY });
         return;
       }
 
-      let clickedNode: ResourceNodeDisplay | null = null;
-      for (const node of resourceNodes) {
-        const dx = worldX - node.x;
-        const dy = worldY - node.y;
-        if (Math.sqrt(dx * dx + dy * dy) <= node.radius) {
-          clickedNode = node;
-          break;
-        }
-      }
+      // Right click: commands
+      if (e.button === 2) {
+        const allSelectedIds = selectedEntityIds.size > 0 ? selectedEntityIds : (selectedEntityId ? new Set([selectedEntityId]) : new Set());
+        if (allSelectedIds.size === 0) return;
 
-      let clickedEntityId: string | null = null;
-      let clickedEntity: typeof myEntities[0] | undefined;
-      for (const entity of matchState?.entities ?? []) {
-        const dx = worldX - entity.x;
-        const dy = worldY - entity.y;
-        const hitRadius = entity.type === "building" || entity.type === "crystal" ? 22 : entity.radius;
-        if (Math.sqrt(dx * dx + dy * dy) <= hitRadius) {
-          clickedEntityId = entity.id;
-          clickedEntity = entity;
-          break;
+        // Hit detection for target entity
+        let clickedEntity: MatchEntity | undefined;
+        for (const entity of matchState?.entities ?? []) {
+          const dx = worldX - entity.x;
+          const dy = worldY - entity.y;
+          const hitRadius = entity.type === "building" || entity.type === "crystal" ? 22 : entity.radius;
+          if (Math.sqrt(dx * dx + dy * dy) <= hitRadius) {
+            clickedEntity = entity;
+            break;
+          }
         }
-      }
 
-      if (clickedEntity) {
-        if (clickedEntity.type === "building" || clickedEntity.type === "crystal") {
-          setSelectedEntityId(clickedEntity.id);
-          onGameCommand({ type: "select", entityId: clickedEntity.id });
-        } else if (clickedEntity.type === "worker") {
-          if (clickedNode) {
+        let clickedNode: ResourceNodeDisplay | null = null;
+        for (const node of resourceNodes) {
+          const dx = worldX - node.x;
+          const dy = worldY - node.y;
+          if (Math.sqrt(dx * dx + dy * dy) <= node.radius) {
+            clickedNode = node;
+            break;
+          }
+        }
+
+        // Issue command to each selected unit
+        for (const sid of allSelectedIds as Iterable<string>) {
+          const selEntity = myEntities.find((ent) => ent.id === sid);
+          if (!selEntity) continue;
+
+          // Skip buildings/crystals - they can't move/attack
+          if (selEntity.type === "crystal" || selEntity.type === "building") continue;
+
+          // Attack enemy unit/building
+          if (clickedEntity && clickedEntity.ownerId !== player.id) {
+            onGameCommand({
+              type: "attack",
+              entityId: sid,
+              targetEntityId: clickedEntity.id,
+            });
+            continue;
+          }
+
+          // Medic heal friendly unit
+          if (selEntity.type === "medic" && clickedEntity && clickedEntity.ownerId === player.id &&
+              clickedEntity.type !== "crystal" && clickedEntity.type !== "building") {
+            onGameCommand({
+              type: "heal",
+              entityId: sid,
+              targetEntityId: clickedEntity.id,
+            });
+            continue;
+          }
+
+          // Worker repair friendly building
+          if (selEntity.type === "worker" && clickedEntity &&
+              clickedEntity.type === "building" && clickedEntity.ownerId === player.id &&
+              clickedEntity.health < clickedEntity.maxHealth) {
+            onGameCommand({
+              type: "repair",
+              entityId: sid,
+              targetEntityId: clickedEntity.id,
+            });
+            continue;
+          }
+
+          // Worker gather from resource node
+          if (selEntity.type === "worker" && clickedNode) {
             onGameCommand({
               type: "gather",
-              entityId: clickedEntity.id,
+              entityId: sid,
               targetEntityId: clickedNode.id,
             });
-          } else {
-            setSelectedEntityId(clickedEntity.id);
-            onGameCommand({ type: "select", entityId: clickedEntity.id });
+            continue;
           }
-        } else {
-          setSelectedEntityId(clickedEntity.id);
-          onGameCommand({ type: "select", entityId: clickedEntity.id });
-        }
-      } else if (clickedNode && selectedEntityId) {
-        const selectedEntity = myEntities.find((e) => e.id === selectedEntityId);
-        if (selectedEntity?.type === "worker") {
+
+          // Move to ground position
           onGameCommand({
-            type: "gather",
-            entityId: selectedEntityId,
-            targetEntityId: clickedNode.id,
+            type: "move",
+            entityId: sid,
+            targetX: worldX,
+            targetY: worldY,
           });
-          setSelectedEntityId(null);
-        }
-      } else {
-        if (selectedEntityId) {
-          const selectedEntity = myEntities.find((e) => e.id === selectedEntityId);
-          if (selectedEntity?.type === "worker") {
-            const damagedBuilding = (matchState?.entities ?? []).find(
-              (ent) => ent.type === "building" && ent.health < ent.maxHealth && ent.repairTargetId === undefined
-            );
-            if (damagedBuilding) {
-              const dx = worldX - damagedBuilding.x;
-              const dy = worldY - damagedBuilding.y;
-              if (Math.sqrt(dx * dx + dy * dy) <= 22) {
-                onGameCommand({
-                  type: "repair",
-                  entityId: selectedEntityId,
-                  targetEntityId: damagedBuilding.id,
-                });
-                setSelectedEntityId(null);
-                return;
-              }
-            }
-            onGameCommand({
-              type: "move",
-              entityId: selectedEntityId,
-              targetX: worldX,
-              targetY: worldY,
-            });
-            setSelectedEntityId(null);
-          } else {
-            onGameCommand({
-              type: "move",
-              entityId: selectedEntityId,
-              targetX: worldX,
-              targetY: worldY,
-            });
-            setSelectedEntityId(null);
-          }
         }
       }
     },
-    [myEntities, selectedEntityId, resourceNodes, onGameCommand, buildMode, selectedBuildingType, myCrystal, matchState, handleMinimapClick]
+    [myEntities, selectedEntityId, selectedEntityIds, resourceNodes, onGameCommand, buildMode, selectedBuildingType, myCrystal, matchState, handleMinimapClick, player.id]
+  );
+
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      e.preventDefault();
+    },
+    []
   );
 
   const handleMouseMove = useCallback(
@@ -406,6 +546,80 @@ export default function GameShell({
     mousePosRef.current = null;
   }, []);
 
+  const handleMouseUp = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      if (e.button === 0 && isDragging && dragStart) {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        const rect = canvas.getBoundingClientRect();
+        const screenX = e.clientX - rect.left;
+        const screenY = e.clientY - rect.top;
+
+        const dx = screenX - dragStart.x;
+        const dy = screenY - dragStart.y;
+
+        // Box-select if dragged more than 10px
+        console.log("[box-select] mouseup at", { screenX, screenY, dx, dy, dragStart });
+        if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+          console.log("[box-select] drag distance > 10, doing box-select");
+          const x1 = Math.min(dragStart.x, screenX);
+          const y1 = Math.min(dragStart.y, screenY);
+          const x2 = Math.max(dragStart.x, screenX);
+          const y2 = Math.max(dragStart.y, screenY);
+
+          const worldX1 = x1 + cameraXRef.current;
+          const worldY1 = y1;
+          const worldX2 = x2 + cameraXRef.current;
+          const worldY2 = y2;
+
+          console.log("[box-select] world bounds", { worldX1, worldY1, worldX2, worldY2 });
+
+          const boxSelected = new Set<string>();
+          for (const entity of matchState?.entities ?? []) {
+            if (entity.ownerId !== player.id) continue;
+            if (entity.type === "crystal" || entity.type === "building") continue;
+            if (entity.x >= worldX1 && entity.x <= worldX2 && entity.y >= worldY1 && entity.y <= worldY2) {
+              boxSelected.add(entity.id);
+              console.log("[box-select] included entity", entity.id, entity.type, "at", entity.x, entity.y);
+            }
+          }
+
+          console.log("[box-select] selected count:", boxSelected.size);
+          setSelectedEntityIds(boxSelected);
+          setSelectedEntityId(null);
+        }
+        // Single-click: hit detection
+        else {
+          const worldX = screenX + cameraXRef.current;
+          const worldY = screenY;
+
+          let clickedEntity: MatchEntity | undefined;
+          for (const entity of matchState?.entities ?? []) {
+            const entityDx = worldX - entity.x;
+            const entityDy = worldY - entity.y;
+            const hitRadius = entity.type === "building" || entity.type === "crystal" ? 22 : entity.radius;
+            if (Math.sqrt(entityDx * entityDx + entityDy * entityDy) <= hitRadius) {
+              clickedEntity = entity;
+              break;
+            }
+          }
+
+          if (clickedEntity) {
+            setSelectedEntityId(clickedEntity.id);
+            setSelectedEntityIds(new Set([clickedEntity.id]));
+          } else {
+            setSelectedEntityId(null);
+            setSelectedEntityIds(new Set());
+          }
+        }
+      }
+      setIsDragging(false);
+      setDragStart(null);
+    },
+    [isDragging, dragStart, matchState, player.id]
+  );
+
   const handleTrainWorker = useCallback(() => {
     if (myCrystal) {
       onGameCommand({ type: "train_worker", entityId: myCrystal.id });
@@ -425,16 +639,135 @@ export default function GameShell({
     setShowUnitQueue(false);
   }, []);
 
-  // Render effect with DPR and camera transform
+  // 60fps render loop with interpolation
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    let animId: number;
+    let running = true;
+
+    const render = () => {
+      if (!running) return;
+
+      const ms = matchStateRef.current;
+      if (!ms) {
+        animId = requestAnimationFrame(render);
+        return;
+      }
+
+      const now = Date.now();
+
+      // Edge scrolling
+      const edgeCanvas = canvasRef.current;
+      if (edgeCanvas) {
+        const pos = mousePosRef.current;
+        if (pos) {
+          const viewW = edgeCanvas.clientWidth;
+          let dx = 0;
+          if (pos.x < EDGE_SCROLL_THRESHOLD) dx = -EDGE_SCROLL_SPEED;
+          else if (pos.x > viewW - EDGE_SCROLL_THRESHOLD) dx = EDGE_SCROLL_SPEED;
+          if (dx !== 0) {
+            const mapWidth = ms.mapWidth ?? 6000;
+            cameraXRef.current = Math.max(0, Math.min(mapWidth - viewW, cameraXRef.current + dx));
+          }
+        }
+      }
+
+      const entities = ms.entities;
+
+      // Detect dead entities and spawn particles
+      const currentIds = new Set(entities.map((e: MatchEntity) => e.id));
+      const prevIds = prevEntityIdsRef.current;
+      for (const prevId of prevIds) {
+        if (!currentIds.has(prevId)) {
+          const prevPos = prevEntitiesRef.current.get(prevId);
+          const deadEntity = ms.entities.find((e: MatchEntity) => e.id === prevId);
+          const isCrystal = deadEntity?.type === "crystal";
+          const px = prevPos?.x ?? (deadEntity?.x ?? 0);
+          const py = prevPos?.y ?? (deadEntity?.y ?? 0);
+          const color = isCrystal ? "#4488ff" : "#ff6633";
+          for (let i = 0; i < 10; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 1 + Math.random() * 2;
+            particlesRef.current.push({
+              x: px, y: py,
+              vx: Math.cos(angle) * speed,
+              vy: Math.sin(angle) * speed,
+              life: 30, maxLife: 30,
+              color, size: 2 + Math.random()
+            });
+          }
+        }
+      }
+      prevEntityIdsRef.current = currentIds;
+
+      // Store previous positions on first frame or when entities change
+      if (!prevTimestampRef.current || entities.length !== prevEntitiesRef.current.size ||
+          !entities.every((e: MatchEntity) => prevEntitiesRef.current.has(e.id))) {
+        entities.forEach((e: MatchEntity) => {
+          prevEntitiesRef.current.set(e.id, { x: e.x, y: e.y });
+        });
+        prevTimestampRef.current = now;
+      }
+
+      const nowTs = ms.stateTimestamp ?? now;
+      const t = Math.min(1, (now - nowTs + 50) / 100);
+
+      // Interpolate entity positions
+      const interpolatedEntities = entities.map((e: MatchEntity) => {
+        const prev = prevEntitiesRef.current.get(e.id);
+        if (prev) {
+          return {
+            ...e,
+            x: prev.x + (e.x - prev.x) * t,
+            y: prev.y + (e.y - prev.y) * t,
+          } as MatchEntity;
+        }
+        return e;
+      });
+
+      prevTimestampRef.current = nowTs;
+      interpolatedEntities.forEach((e) => {
+        prevEntitiesRef.current.set(e.id, { x: e.x, y: e.y });
+      });
+
+      drawGameScene(
+        canvas, ctx, interpolatedEntities, resourceNodesRef.current,
+        selectedEntityIdRef.current, hoverPosRef.current, buildModeRef.current,
+        selectedBuildingTypeRef.current, ms, playerRef.current
+      );
+
+      animId = requestAnimationFrame(render);
+    };
+
+    animId = requestAnimationFrame(render);
+    return () => {
+      running = false;
+      cancelAnimationFrame(animId);
+    };
+  }, []);
+
+  // Draw function
+  function drawGameScene(
+    canvas: HTMLCanvasElement,
+    ctx: CanvasRenderingContext2D,
+    entities: MatchEntity[],
+    resourceNodes: ResourceNodeDisplay[],
+    selectedEntityId: string | null,
+    hoverPos: { x: number; y: number } | null,
+    buildMode: boolean,
+    selectedBuildingType: BuildingType | null,
+    matchState: MatchState,
+    player: Player,
+ 
+  ) {
     const dpr = dprRef.current;
     const cssW = canvas.clientWidth;
     const cssH = canvas.clientHeight;
+    const myCrystal = entities.find((e) => e.type === "crystal" && e.ownerId === player.id);
 
     ctx.save();
     ctx.scale(dpr, dpr);
@@ -444,8 +777,13 @@ export default function GameShell({
 
     const cameraX = cameraXRef.current;
     const cameraY = cameraYRef.current;
-    const mapWidth = matchState?.mapWidth ?? matchState?.config?.mapWidth ?? 6000;
-    const mapHeight = matchState?.mapHeight ?? matchState?.config?.mapHeight ?? 600;
+    const mapWidth = matchState.mapWidth ?? matchState.config?.mapWidth ?? 6000;
+    const mapHeight = matchState.mapHeight ?? matchState.config?.mapHeight ?? 600;
+
+    const getTeamColor = (ownerId: string) => {
+      const pIdx = matchState.players.findIndex((p) => p?.playerId === ownerId);
+      return pIdx === 0 ? "#4488ff" : "#ff4444";
+    };
 
     const laneTop = mapHeight * 0.2;
     const laneBottom = mapHeight * 0.8;
@@ -455,25 +793,23 @@ export default function GameShell({
     ctx.save();
     ctx.translate(-cameraX, -cameraY);
 
-    // Lane background — world coords, full map width
+    // Lane background
     ctx.fillStyle = "#111122";
     ctx.fillRect(0, laneTop, mapWidth, laneBottom - laneTop);
 
-    // Combat zone — world coords
+    // Combat zone
     const combatLeft = mapWidth * 0.25;
     const combatRight = mapWidth * 0.75;
     ctx.fillStyle = "#151530";
     ctx.fillRect(combatLeft, combatZoneTop, combatRight - combatLeft, combatZoneBottom - combatZoneTop);
 
-    // Blue build zone — world coords
+    // Build zones
     ctx.fillStyle = "rgba(68, 136, 255, 0.05)";
     ctx.fillRect(0, 0, mapWidth * 0.2, mapHeight);
-
-    // Red build zone — world coords
     ctx.fillStyle = "rgba(255, 68, 68, 0.05)";
     ctx.fillRect(mapWidth * 0.8, 0, mapWidth * 0.2, mapHeight);
 
-    // Lane lines — world coords
+    // Lane lines
     ctx.strokeStyle = "#222244";
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -485,7 +821,7 @@ export default function GameShell({
     ctx.lineTo(mapWidth, laneBottom);
     ctx.stroke();
 
-    // Center dashed line — world coords
+    // Center dashed line
     const midX = mapWidth / 2;
     ctx.strokeStyle = "#1a1a3a";
     ctx.lineWidth = 1;
@@ -496,15 +832,13 @@ export default function GameShell({
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Draw resource nodes — world coords
+    // Resource nodes
     for (const node of resourceNodes) {
       if (node.x < cameraX - node.radius * 2 || node.x > cameraX + cssW + node.radius * 2) continue;
-
       ctx.beginPath();
       ctx.arc(node.x, node.y, node.radius + 6, 0, Math.PI * 2);
       ctx.fillStyle = "rgba(204, 170, 68, 0.15)";
       ctx.fill();
-
       ctx.beginPath();
       ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
       const depletion = node.remaining / node.capacity;
@@ -513,7 +847,6 @@ export default function GameShell({
       ctx.strokeStyle = "#ccaa44";
       ctx.lineWidth = 2;
       ctx.stroke();
-
       ctx.fillStyle = "#ffffff";
       ctx.font = "bold 10px monospace";
       ctx.textAlign = "center";
@@ -521,17 +854,15 @@ export default function GameShell({
       ctx.fillText(`${Math.floor(node.remaining)}`, node.x, node.y);
     }
 
-    // Draw entities — world coords
-    const entities = matchState?.entities ?? [];
+    // Entities
     for (const entity of entities) {
       const hitRadius = entity.type === "building" || entity.type === "crystal" ? 22 : entity.radius;
       if (entity.x < cameraX - hitRadius * 2 || entity.x > cameraX + cssW + hitRadius * 2) continue;
+      const localIsMyTeam = entity.ownerId === player.id;
+      const localIsSelected = entity.id === selectedEntityId;
+      const localIsBuilding = entity.type === "building" || entity.type === "crystal";
 
-      const isMyTeam = entity.ownerId === player.id;
-      const isSelected = entity.id === selectedEntityId;
-      const isBuilding = entity.type === "building" || entity.type === "crystal";
-
-      if (isBuilding) {
+      if (localIsBuilding) {
         const w = entity.radius * 2;
         const h = entity.radius * 2;
         const bx = entity.x - w / 2;
@@ -539,9 +870,21 @@ export default function GameShell({
 
         ctx.fillStyle = "rgba(0,0,0,0.4)";
         ctx.fillRect(bx + 2, by + 2, w, h);
-
         const color = entity.buildingType ? BUILDING_COLORS[entity.buildingType] : entity.color;
-        ctx.fillStyle = color;
+
+        // Dark background for building body
+        ctx.fillStyle = "rgba(20,20,20,0.6)";
+        ctx.fillRect(bx, by, w, h);
+
+        // Health fill from bottom to top
+        const bHealthPct = entity.health / entity.maxHealth;
+        const bFillH = h * bHealthPct;
+        const bFillColor = getTeamColor(entity.ownerId);
+        ctx.fillStyle = bFillColor;
+        ctx.fillRect(bx, by + h - bFillH, w, bFillH);
+
+        // Overlay team color at 40% opacity
+        ctx.fillStyle = color.replace(")", ",0.4)").replace("rgb", "rgba");
         ctx.fillRect(bx, by, w, h);
 
         if (entity.constructionProgress < 100) {
@@ -558,13 +901,13 @@ export default function GameShell({
           ctx.fillRect(bx, by, w * repairPct, h);
         }
 
-        if (isSelected) {
+        if (localIsSelected) {
           ctx.strokeStyle = "#ffff44";
           ctx.lineWidth = 2;
           ctx.strokeRect(bx - 3, by - 3, w + 6, h + 6);
         }
 
-        ctx.strokeStyle = isMyTeam ? "rgba(100,150,255,0.6)" : "rgba(255,100,100,0.6)";
+        ctx.strokeStyle = localIsMyTeam ? "rgba(100,150,255,0.6)" : "rgba(255,100,100,0.6)";
         ctx.lineWidth = 2;
         ctx.strokeRect(bx, by, w, h);
 
@@ -592,8 +935,7 @@ export default function GameShell({
           const healthPct = entity.health / entity.maxHealth;
           ctx.fillStyle = "#333";
           ctx.fillRect(bx, barY, barWidth, barHeight);
-          ctx.fillStyle =
-            healthPct > 0.5 ? "#44cc44" : healthPct > 0.25 ? "#cccc44" : "#cc4444";
+          ctx.fillStyle = getTeamColor(entity.ownerId);
           ctx.fillRect(bx, barY, barWidth * healthPct, barHeight);
         }
 
@@ -618,12 +960,28 @@ export default function GameShell({
         ctx.fillStyle = "rgba(0,0,0,0.4)";
         ctx.fill();
 
+        // Dark background fill (empty/void area)
         ctx.beginPath();
         ctx.arc(entity.x, entity.y, entity.radius, 0, Math.PI * 2);
-        ctx.fillStyle = entity.color;
+        ctx.fillStyle = "rgba(20,20,20,0.6)";
         ctx.fill();
 
-        if (isSelected) {
+        // Health fill from bottom to top
+        const healthPct = entity.health / entity.maxHealth;
+        const fillR = entity.radius;
+        const fillBottom = entity.y + fillR;
+        const fillHeight = fillR * 2 * healthPct;
+        const fillTop = fillBottom - fillHeight;
+        const fillColor = getTeamColor(entity.ownerId);
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(entity.x, entity.y, entity.radius, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.fillStyle = fillColor;
+        ctx.fillRect(entity.x - fillR, fillTop, fillR * 2, fillHeight);
+        ctx.restore();
+
+        if (localIsSelected || selectedEntityIdsRef.current.has(entity.id)) {
           ctx.beginPath();
           ctx.arc(entity.x, entity.y, entity.radius + 4, 0, Math.PI * 2);
           ctx.strokeStyle = "#ffff44";
@@ -633,9 +991,15 @@ export default function GameShell({
 
         ctx.beginPath();
         ctx.arc(entity.x, entity.y, entity.radius, 0, Math.PI * 2);
-        ctx.strokeStyle = isMyTeam ? "rgba(100,150,255,0.6)" : "rgba(255,100,100,0.6)";
+        ctx.strokeStyle = localIsMyTeam ? "rgba(100,150,255,0.6)" : "rgba(255,100,100,0.6)";
         ctx.lineWidth = 2;
         ctx.stroke();
+
+        // Team color indicator on top of health fill
+        ctx.beginPath();
+        ctx.arc(entity.x, entity.y - entity.radius * 0.35, 2, 0, Math.PI * 2);
+        ctx.fillStyle = entity.color;
+        ctx.fill();
 
         if (entity.health < entity.maxHealth) {
           const barWidth = entity.radius * 2;
@@ -645,8 +1009,7 @@ export default function GameShell({
           const healthPct = entity.health / entity.maxHealth;
           ctx.fillStyle = "#333";
           ctx.fillRect(barX, barY, barWidth, barHeight);
-          ctx.fillStyle =
-            healthPct > 0.5 ? "#44cc44" : healthPct > 0.25 ? "#cccc44" : "#cc4444";
+          ctx.fillStyle = getTeamColor(entity.ownerId);
           ctx.fillRect(barX, barY, barWidth * healthPct, barHeight);
         }
 
@@ -654,22 +1017,38 @@ export default function GameShell({
         ctx.font = "bold 10px monospace";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        const label =
-          entity.type === "crystal"
-            ? "C"
-            : entity.type === "worker"
-              ? "W"
-              : entity.type === "resource_node"
-                ? "R"
-                : "?";
+        const label = entity.type === "crystal" ? "C" : entity.type === "worker" ? "W" : entity.type === "resource_node" ? "R" : entity.type === "skirmisher" ? "S" : entity.type === "gunner" ? "G" : entity.type === "bruiser" ? "B" : entity.type === "medic" ? "M" : "?";
         ctx.fillText(label, entity.x, entity.y);
       }
     }
 
-    // Hover line — world coords
+    // Attack visualization lines
+    drawAttackLines(ctx, entities, matchState);
+
+    // Death particles
+    const particles = particlesRef.current;
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vx *= 0.96;
+      p.vy *= 0.96;
+      p.life--;
+      if (p.life <= 0) {
+        particles.splice(i, 1);
+        continue;
+      }
+      const alpha = p.life / p.maxLife;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fillStyle = p.color + Math.round(alpha * 255).toString(16).padStart(2, "0");
+      ctx.fill();
+    }
+
+    // Hover line (only for movable units)
     if (hoverPos && selectedEntityId) {
       const entity = entities.find((e) => e.id === selectedEntityId);
-      if (entity) {
+      if (entity && entity.type !== "crystal" && entity.type !== "building") {
         ctx.beginPath();
         ctx.moveTo(entity.x, entity.y);
         ctx.lineTo(hoverPos.x, hoverPos.y);
@@ -678,7 +1057,6 @@ export default function GameShell({
         ctx.setLineDash([4, 4]);
         ctx.stroke();
         ctx.setLineDash([]);
-
         ctx.beginPath();
         ctx.arc(hoverPos.x, hoverPos.y, 6, 0, Math.PI * 2);
         ctx.strokeStyle = "rgba(255,255,100,0.5)";
@@ -687,8 +1065,32 @@ export default function GameShell({
       }
     }
 
-    // Build mode preview — world coords
-    if (buildMode && selectedBuildingType && hoverPos && myCrystal) {
+    // Box-select rectangle (convert screen coords to world coords)
+    if (isDraggingRef.current && dragStartRef.current) {
+      const pos = mousePosRef.current;
+      if (pos) {
+        const sx1 = Math.min(dragStartRef.current.x, pos.x);
+        const sy1 = Math.min(dragStartRef.current.y, pos.y);
+        const sx2 = Math.max(dragStartRef.current.x, pos.x);
+        const sy2 = Math.max(dragStartRef.current.y, pos.y);
+        const w = sx2 - sx1;
+        const h = sy2 - sy1;
+        if (w > 10 || h > 10) {
+          const wx1 = sx1 + cameraX;
+          const wy1 = sy1 + cameraY;
+          ctx.strokeStyle = "rgba(100,150,255,0.6)";
+          ctx.lineWidth = 1;
+          ctx.setLineDash([4, 4]);
+          ctx.strokeRect(wx1, wy1, w, h);
+          ctx.setLineDash([]);
+          ctx.fillStyle = "rgba(100,150,255,0.1)";
+          ctx.fillRect(wx1, wy1, w, h);
+        }
+      }
+    }
+
+    // Build mode preview
+    if (buildMode && selectedBuildingType && hoverPos) {
       ctx.beginPath();
       ctx.arc(hoverPos.x, hoverPos.y, 22, 0, Math.PI * 2);
       ctx.strokeStyle = "rgba(255,255,255,0.5)";
@@ -696,7 +1098,6 @@ export default function GameShell({
       ctx.setLineDash([4, 4]);
       ctx.stroke();
       ctx.setLineDash([]);
-
       const color = BUILDING_COLORS[selectedBuildingType];
       ctx.fillStyle = `${color}44`;
       ctx.fillRect(hoverPos.x - 22, hoverPos.y - 22, 44, 44);
@@ -704,7 +1105,7 @@ export default function GameShell({
 
     ctx.restore();
 
-    // Screen-space: minimap
+    // Minimap
     if (matchState) {
       const minimapX = cssW - MINIMAP_WIDTH - 10;
       const minimapY = cssH - MINIMAP_HEIGHT - 10;
@@ -722,23 +1123,16 @@ export default function GameShell({
       );
     }
 
-    // Screen-space: phase overlay
+    // Phase overlay
     if (matchState) {
       ctx.fillStyle = "rgba(0,0,0,0.6)";
       ctx.fillRect(0, 0, cssW, 32);
-
       ctx.fillStyle = "#8888ff";
       ctx.font = "bold 14px monospace";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      const phaseLabel =
-        matchState.phase === "spawn"
-          ? "SPAWNING"
-          : matchState.phase === "playing"
-            ? "IN GAME"
-            : "ENDED";
+      const phaseLabel = matchState.phase === "spawn" ? "SPAWNING" : matchState.phase === "playing" ? "IN GAME" : "ENDED";
       ctx.fillText(`[${phaseLabel}] Tick: ${matchState.tick}`, cssW / 2, 16);
-
       ctx.fillStyle = "#666";
       ctx.font = "11px monospace";
       ctx.textAlign = "right";
@@ -746,7 +1140,9 @@ export default function GameShell({
     }
 
     ctx.restore();
-  }, [matchState, player.id, selectedEntityId, hoverPos, myEntities, resourceNodes, buildMode, selectedBuildingType, myCrystal, renderTick]);
+  }
+
+
 
   const opponent = lobby.players.find((p) => p?.id !== player.id);
   const opponentColor = opponent?.color === "blue" ? "#4488ff" : "#ff4444";
@@ -769,8 +1165,9 @@ export default function GameShell({
 
   const canTrain = myCrystal && myEconomy && myEconomy.resources >= 25 && myEconomy.supply < myEconomy.maxSupply;
   const isCrystalSelected = selectedEntityId !== null && myCrystal?.id === selectedEntityId;
-  const selectedEntity = myEntities.find((e) => e.id === selectedEntityId);
+  const selectedEntity = selectedEntityId ? (matchState?.entities.find((e) => e.id === selectedEntityId) ?? myEntities.find((e) => e.id === selectedEntityId)) : undefined;
   const isBuildingSelected = selectedEntity?.type === "building";
+  const isMultiSelect = selectedEntityIds.size > 0;
 
   const canBuildSupplyDepot = myEconomy && myEconomy.resources >= 50;
   const canBuildBarracks = myEconomy && myEconomy.resources >= 75;
@@ -782,7 +1179,9 @@ export default function GameShell({
       <div ref={containerRef} style={styles.gameContainer}>
         <canvas
           ref={canvasRef}
-          onClick={handleClick}
+          onMouseDown={handleMouseDown}
+          onMouseUp={handleMouseUp}
+          onContextMenu={handleContextMenu}
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
           style={styles.canvas}
@@ -793,7 +1192,7 @@ export default function GameShell({
             <button
               style={styles.errorCloseButton}
               onClick={() => {
-                onGameCommand({ type: "deselect" });
+                onClearError();
               }}
             >
               ✕
@@ -823,13 +1222,17 @@ export default function GameShell({
               </span>
             </div>
             <span style={styles.infoText}>
-              {myEntities.length > 0 && selectedEntityId
-                ? selectedEntity?.type === "crystal"
-                  ? "Crystal selected"
-                  : selectedEntity?.type === "building"
-                    ? `${selectedEntity.buildingType || "Building"} selected`
-                    : "Click unit to select, click ground to move, click node to gather"
-                : "Click your units to select them"}
+              {isMultiSelect
+                ? `Selected ${selectedEntityIds.size} units`
+                : selectedEntityId
+                  ? selectedEntity?.type === "crystal"
+                    ? "Crystal selected"
+                    : selectedEntity?.type === "building"
+                      ? `${selectedEntity.buildingType || "Building"} selected`
+                      : selectedEntity?.ownerId === player.id
+                        ? "Click ground to move, click node to gather, click enemy to attack"
+                        : `Enemy ${selectedEntity?.type} selected`
+                  : "Click units to select, drag to box-select"}
             </span>
             <span style={styles.infoText}>Tick: {matchState?.tick ?? 0}</span>
           </div>
