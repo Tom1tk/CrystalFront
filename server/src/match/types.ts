@@ -40,14 +40,24 @@ export interface ProductionQueueItem {
   remainingTicks: number;
 }
 
+export interface AttackEvent {
+  attackerId: EntityId;
+  targetId: EntityId;
+  damage: number;
+  tick: number;
+  isHeal: boolean;
+}
+
 export interface MatchState {
   id: MatchId;
   lobbyCode: string;
   phase: MatchPhase;
   tick: number;
   tickIntervalMs: number;
+  stateTimestamp?: number;
   players: [PlayerSlot | null, PlayerSlot | null];
   entities: Map<EntityId, MatchEntity>;
+  attackLog: AttackEvent[];
   result: { winner: PlayerId } | null;
   startedAt: number;
   endedAt: number | null;
@@ -75,6 +85,12 @@ export interface MatchEntity {
   repairTargetId?: EntityId;
   repairProgress: number;
   gatheringNodeId?: string;
+  moveTarget?: { x: number; y: number };
+  attackTargetId?: EntityId;
+  attackCooldown: number;
+  healTargetId?: EntityId;
+  autoAttackEnabled: boolean;
+  commandedTicks?: number;
 }
 
 export interface CommandEntry {
@@ -87,7 +103,9 @@ export interface CommandEntry {
     | "gather"
     | "train_worker"
     | "build"
-    | "repair";
+    | "repair"
+    | "attack"
+    | "heal";
   entityId?: string;
   targetX?: number;
   targetY?: number;
@@ -104,6 +122,9 @@ export interface BuildingDefinition {
   color: string;
   supplyProvided?: number;
   produces?: UnitType[];
+  damage?: number;
+  range?: number;
+  attackCooldown?: number;
 }
 
 export interface UnitDefinition {
@@ -116,6 +137,7 @@ export interface UnitDefinition {
   range: number;
   speed: number;
   color: string;
+  attackCooldown: number;
 }
 
 export const BUILDING_DEFS: Record<BuildingType, BuildingDefinition> = {
@@ -153,6 +175,9 @@ export const BUILDING_DEFS: Record<BuildingType, BuildingDefinition> = {
     width: 30,
     height: 30,
     color: "#aa8844",
+    damage: 18,
+    range: 150,
+    attackCooldown: 12,
   },
 };
 
@@ -167,6 +192,7 @@ export const UNIT_DEFS: Record<UnitType, UnitDefinition> = {
     range: 15,
     speed: 2,
     color: "#aabbcc",
+    attackCooldown: 20,
   },
   skirmisher: {
     cost: 50,
@@ -178,6 +204,7 @@ export const UNIT_DEFS: Record<UnitType, UnitDefinition> = {
     range: 20,
     speed: 2.5,
     color: "#44dd88",
+    attackCooldown: 10,
   },
   gunner: {
     cost: 75,
@@ -189,6 +216,7 @@ export const UNIT_DEFS: Record<UnitType, UnitDefinition> = {
     range: 120,
     speed: 1.5,
     color: "#ddaa44",
+    attackCooldown: 15,
   },
   bruiser: {
     cost: 100,
@@ -200,6 +228,7 @@ export const UNIT_DEFS: Record<UnitType, UnitDefinition> = {
     range: 20,
     speed: 1.8,
     color: "#8866cc",
+    attackCooldown: 8,
   },
   medic: {
     cost: 60,
@@ -211,6 +240,7 @@ export const UNIT_DEFS: Record<UnitType, UnitDefinition> = {
     range: 80,
     speed: 2,
     color: "#44ccdd",
+    attackCooldown: 25,
   },
 };
 
@@ -218,6 +248,17 @@ export const REPAIR_COST_PER_HP = 0.5;
 export const REPAIR_RATE_PER_TICK = 2;
 export const BUILDING_MIN_SPACING = 50;
 export const CRYSTAL_NO_BUILD_RADIUS = 80;
+
+// Counter triangle multipliers: attacker -> defender -> multiplier
+export const COUNTER_MULTIPLIERS: Record<string, Record<string, number>> = {
+  skirmisher: { gunner: 2.0, bruiser: 0.5, worker: 1.0, medic: 1.0 },
+  gunner: { bruiser: 2.0, skirmisher: 0.5, worker: 1.0, medic: 1.0 },
+  bruiser: { skirmisher: 2.0, gunner: 0.5, worker: 1.0, medic: 1.0 },
+  medic: { worker: 1.0, skirmisher: 1.0, gunner: 1.0, bruiser: 1.0 },
+  worker: { worker: 1.0, skirmisher: 1.0, gunner: 1.0, bruiser: 1.0, medic: 1.0 },
+};
+
+export const HEAL_RATE_PER_TICK = 5;
 
 export interface MatchConfig {
   tickIntervalMs: number;

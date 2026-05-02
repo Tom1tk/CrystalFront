@@ -34,6 +34,7 @@ interface UseWebSocketReturn {
   connected: boolean;
   clearMatchEnd: () => void;
   clearMatchState: () => void;
+  clearError: () => void;
 }
 
 export function useWebSocket(): UseWebSocketReturn {
@@ -88,7 +89,9 @@ export function useWebSocket(): UseWebSocketReturn {
           setMatchEnd({ winner: msg.payload.winner as string });
         }
         if (msg.type === "match_start" && msg.payload?.match) {
-          setMatchState(msg.payload.match as MatchState);
+          const ms = msg.payload.match as MatchState;
+          ms.attackLog = ms.attackLog ?? [];
+          setMatchState(ms);
           setResourceNodes(
             ((msg.payload as unknown as Record<string, unknown>).match as Record<string, unknown>)?.resourceNodes
               ? (((msg.payload as unknown as Record<string, unknown>).match as Record<string, unknown>).resourceNodes as ResourceNodeDisplay[])
@@ -96,7 +99,9 @@ export function useWebSocket(): UseWebSocketReturn {
           );
         }
         if (msg.type === "game_state" && msg.payload?.match) {
-          setMatchState(msg.payload.match as MatchState);
+          const ms = msg.payload.match as MatchState;
+          ms.attackLog = ms.attackLog ?? [];
+          setMatchState(ms);
           setResourceNodes(
             ((msg.payload as unknown as Record<string, unknown>).match as Record<string, unknown>)?.resourceNodes
               ? (((msg.payload as unknown as Record<string, unknown>).match as Record<string, unknown>).resourceNodes as ResourceNodeDisplay[])
@@ -176,6 +181,10 @@ export function useWebSocket(): UseWebSocketReturn {
     setResourceNodes([]);
   }, []);
 
+  const clearError = useCallback(() => {
+    setError(null);
+  }, []);
+
   return {
     playerId,
     lobbyState,
@@ -192,5 +201,6 @@ export function useWebSocket(): UseWebSocketReturn {
     connected,
     clearMatchEnd,
     clearMatchState,
+    clearError,
   };
 }

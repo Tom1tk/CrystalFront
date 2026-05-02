@@ -181,6 +181,7 @@ export default function App() {
           onDebugWin={handleDebugWin}
           onGameCommand={handleGameCommand}
           error={ws.error}
+          onClearError={ws.clearError}
         />
       )}
       {screen === "matchEnd" && lobby && player && matchWinnerId && (

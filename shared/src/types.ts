@@ -61,6 +61,11 @@ export interface Entity {
   productionQueue?: ProductionQueueItem[];
   repairTargetId?: string;
   repairProgress?: number;
+  moveTarget?: { x: number; y: number };
+  attackTargetId?: string;
+  attackCooldown: number;
+  healTargetId?: string;
+  autoAttackEnabled: boolean;
 }
 
 export type MatchPhase = "spawn" | "playing" | "ended";
@@ -113,6 +118,14 @@ export interface ProductionQueueItem {
   remainingTicks: number;
 }
 
+export interface AttackEvent {
+  attackerId: EntityId;
+  targetId: EntityId;
+  damage: number;
+  tick: number;
+  isHeal: boolean;
+}
+
 export interface MatchConfig {
   mapWidth: number;
   mapHeight: number;
@@ -128,6 +141,7 @@ export interface MatchState {
   tickIntervalMs: number;
   players: [PlayerSlot | null, PlayerSlot | null];
   entities: Entity[];
+  attackLog: AttackEvent[];
   result: { winner: PlayerId } | null;
   startedAt: number;
   endedAt: number | null;
@@ -153,7 +167,9 @@ export type CommandType =
   | "train_worker"
   | "train_unit"
   | "build"
-  | "repair";
+  | "repair"
+  | "attack"
+  | "heal";
 
 export interface ClientCommand {
   tick: number;

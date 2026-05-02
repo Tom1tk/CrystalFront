@@ -374,7 +374,500 @@ console.log("\n--- Mirrored Map Placement in Larger World ---");
   assert(contestedSorted[2].x > midX, "Rightmost contested node is right of center");
 }
 
-// ---- Summary ----
+// ---- Combat: Move Command (Incremental Movement) ----
+console.log("\n--- Combat: Move Command (Incremental Movement) ---");
+{
+  const mgr = new LobbyManager();
+  const host = mgr.createLobby("HostUser");
+  mgr.joinLobby(host.code, "JoinUser");
+  const lobby = mgr.getLobby(host.code)!;
+  const p1 = lobby.players[0]!;
+  const p2 = lobby.players[1]!;
+
+  const engine = new MatchEngine();
+  const players: [PlayerSlot | null, PlayerSlot | null] = [
+    { playerId: p1.id, username: p1.username, color: p1.color, score: p1.score, wsId: "ws1" },
+    { playerId: p2.id, username: p2.username, color: p2.color, score: p2.score, wsId: "ws2" },
+  ];
+  const match = engine.createMatch(host.code, players);
+  engine.startMatch(match.id);
+
+  // Get a blue worker
+  const blueWorkers = Array.from(match.entities.values()).filter(
+    (e) => e.type === "worker" && e.ownerId === p1.id
+  );
+  const worker = blueWorkers[0];
+  const startX = worker.x;
+  const startY = worker.y;
+
+  // Issue move command
+  const moveResult = engine.processCommand(match.id, p1.id, {
+    type: "move",
+    entityId: worker.id,
+    targetX: startX + 100,
+    targetY: startY,
+  });
+  assert(moveResult.success, "Move command succeeds");
+
+  // Verify entity has moveTarget set (not snapped)
+  assert(worker.moveTarget !== undefined, "Entity has moveTarget set after move command");
+  assert(worker.x === startX, "Entity position hasn't changed instantly (no snap)");
+
+  // Tick once - entity should move toward target
+  engine.tick(match.id);
+  const movedWorker = match.entities.get(worker.id)!;
+  assert(movedWorker.x > startX, "Entity moved toward target after tick");
+  assert(movedWorker.x < startX + 100, "Entity hasn't reached target yet (gradual movement)");
+
+  // Tick multiple times until arrival
+  let arrived = false;
+  for (let i = 0; i < 60; i++) {
+    engine.tick(match.id);
+    const w = match.entities.get(worker.id);
+    if (!w) break;
+    const dx = Math.abs(w.x - (startX + 100));
+    if (dx <= 1) {
+      assert(w.moveTarget === undefined, "MoveTarget cleared on arrival");
+      arrived = true;
+      break;
+    }
+  }
+  assert(arrived, "Worker arrived at destination");
+
+  engine.stopMatch(match.id);
+}
+
+// ---- Combat: Attack Command ----
+console.log("\n--- Combat: Attack Command ---");
+{
+  const mgr = new LobbyManager();
+  const host = mgr.createLobby("HostUser");
+  mgr.joinLobby(host.code, "JoinUser");
+  const lobby = mgr.getLobby(host.code)!;
+  const p1 = lobby.players[0]!;
+  const p2 = lobby.players[1]!;
+
+  const engine = new MatchEngine();
+  const players: [PlayerSlot | null, PlayerSlot | null] = [
+    { playerId: p1.id, username: p1.username, color: p1.color, score: p1.score, wsId: "ws1" },
+    { playerId: p2.id, username: p2.username, color: p2.color, score: p2.score, wsId: "ws2" },
+  ];
+  const match = engine.createMatch(host.code, players);
+  engine.startMatch(match.id);
+
+  // Get a blue worker and a red worker
+  const blueWorkers = Array.from(match.entities.values()).filter(
+    (e) => e.type === "worker" && e.ownerId === p1.id
+  );
+  const redWorkers = Array.from(match.entities.values()).filter(
+    (e) => e.type === "worker" && e.ownerId === p2.id
+  );
+  const blueWorker = blueWorkers[0];
+  const redWorker = redWorkers[0];
+
+  // Place blue worker at same position as red worker (within range, no soft-collision push)
+  blueWorker.x = redWorker.x;
+  blueWorker.y = redWorker.y;
+
+  // Issue attack command
+  const attackResult = engine.processCommand(match.id, p1.id, {
+    type: "attack",
+    entityId: blueWorker.id,
+    targetEntityId: redWorker.id,
+  });
+  assert(attackResult.success, "Attack command succeeds");
+  assert(blueWorker.attackTargetId === redWorker.id, "Attack target is set");
+
+  // Reset attack cooldown so worker can attack immediately
+  blueWorker.attackCooldown = 0;
+
+  // Tick - damage should be dealt
+  engine.tick(match.id);
+  const redAfter = match.entities.get(redWorker.id)!;
+  assert(redAfter.health < redWorker.maxHealth, "Red worker took damage");
+
+  // Can't attack friendly
+  const blueAttackBlue = engine.processCommand(match.id, p1.id, {
+    type: "attack",
+    entityId: blueWorker.id,
+    targetEntityId: blueWorkers[1].id,
+  });
+  assert(!blueAttackBlue.success, "Cannot attack friendly units");
+
+  engine.stopMatch(match.id);
+}
+
+// ---- Combat: Counter Damage Multipliers ----
+console.log("\n--- Combat: Counter Damage Multipliers ---");
+{
+  const mgr = new LobbyManager();
+  const host = mgr.createLobby("HostUser");
+  mgr.joinLobby(host.code, "JoinUser");
+  const lobby = mgr.getLobby(host.code)!;
+  const p1 = lobby.players[0]!;
+  const p2 = lobby.players[1]!;
+
+  const engine = new MatchEngine();
+  const players: [PlayerSlot | null, PlayerSlot | null] = [
+    { playerId: p1.id, username: p1.username, color: p1.color, score: p1.score, wsId: "ws1" },
+    { playerId: p2.id, username: p2.username, color: p2.color, score: p2.score, wsId: "ws2" },
+  ];
+  const match = engine.createMatch(host.code, players);
+  engine.startMatch(match.id);
+
+  // Create a skirmisher for blue and a gunner for red
+  // Skirmisher beats gunner (2x damage)
+  const skirmisher = engine["createEntity"](
+    "skirmisher", p1.id, 3000, 300, 120, 12, "#44dd88"
+  );
+  const gunner = engine["createEntity"](
+    "gunner", p2.id, 3000, 300, 80, 11, "#ddaa44"
+  );
+  match.entities.set(skirmisher.id, skirmisher);
+  match.entities.set(gunner.id, gunner);
+
+  // Set attack target
+  skirmisher.attackTargetId = gunner.id;
+  skirmisher.attackCooldown = 0;
+
+  // Tick - skirmisher should deal 2x damage to gunner
+  engine.tick(match.id);
+  const gunnerAfter = match.entities.get(gunner.id)!;
+  const baseSkirmisherDamage = 15;
+  const expectedDamage = Math.round(baseSkirmisherDamage * 2.0);
+  assert(gunnerAfter.health === 80 - expectedDamage, `Gunner took ${expectedDamage} damage (2x counter)`);
+
+  engine.stopMatch(match.id);
+}
+
+// ---- Combat: Auto-Attack in Range ----
+console.log("\n--- Combat: Auto-Attack in Range ---");
+{
+  const mgr = new LobbyManager();
+  const host = mgr.createLobby("HostUser");
+  mgr.joinLobby(host.code, "JoinUser");
+  const lobby = mgr.getLobby(host.code)!;
+  const p1 = lobby.players[0]!;
+  const p2 = lobby.players[1]!;
+
+  const engine = new MatchEngine();
+  const players: [PlayerSlot | null, PlayerSlot | null] = [
+    { playerId: p1.id, username: p1.username, color: p1.color, score: p1.score, wsId: "ws1" },
+    { playerId: p2.id, username: p2.username, color: p2.color, score: p2.score, wsId: "ws2" },
+  ];
+  const match = engine.createMatch(host.code, players);
+  engine.startMatch(match.id);
+
+  // Create a skirmisher for blue and a worker for red, within range
+  const skirmisher = engine["createEntity"](
+    "skirmisher", p1.id, 3000, 300, 120, 12, "#44dd88"
+  );
+  const enemyWorker = engine["createEntity"](
+    "worker", p2.id, 3000, 300, 100, 10, "#ff6666"
+  );
+  match.entities.set(skirmisher.id, skirmisher);
+  match.entities.set(enemyWorker.id, enemyWorker);
+
+  // Verify autoAttackEnabled is set
+  assert(skirmisher.autoAttackEnabled === true, "Skirmisher has autoAttackEnabled");
+
+  // skirmisher has autoAttackEnabled=true, should auto-acquire target
+  engine.tick(match.id);
+  const skirmAfter = match.entities.get(skirmisher.id)!;
+  assert(skirmAfter.attackTargetId === enemyWorker.id, "Skirmisher auto-acquired enemy in range");
+
+  engine.stopMatch(match.id);
+}
+
+// ---- Combat: Medic Follow-Heal ----
+console.log("\n--- Combat: Medic Follow-Heal ---");
+{
+  const mgr = new LobbyManager();
+  const host = mgr.createLobby("HostUser");
+  mgr.joinLobby(host.code, "JoinUser");
+  const lobby = mgr.getLobby(host.code)!;
+  const p1 = lobby.players[0]!;
+
+  const engine = new MatchEngine();
+  const players: [PlayerSlot | null, PlayerSlot | null] = [
+    { playerId: p1.id, username: p1.username, color: p1.color, score: p1.score, wsId: "ws1" },
+    null,
+  ];
+  const match = engine.createMatch(host.code, players);
+  engine.startMatch(match.id);
+
+  // Create a medic and a bruiser for blue (bruiser maxHealth=250 from UNIT_DEFS)
+  const bruiser = engine["createEntity"](
+    "bruiser", p1.id, 3000, 300, 200, 14, "#8866cc"
+  );
+  bruiser.maxHealth = 250; // UNIT_DEFS.bruiser.health
+  const medic = engine["createEntity"](
+    "medic", p1.id, 3000, 300, 90, 11, "#44ccdd"
+  );
+  match.entities.set(bruiser.id, bruiser);
+  match.entities.set(medic.id, medic);
+
+  // Assign heal target
+  const healResult = engine.processCommand(match.id, p1.id, {
+    type: "heal",
+    entityId: medic.id,
+    targetEntityId: bruiser.id,
+  });
+  assert(healResult.success, "Heal command succeeds");
+  assert(medic.healTargetId === bruiser.id, "Medic has heal target set");
+
+  // Tick - medic should heal bruiser (both at same position, in range)
+  engine.tick(match.id);
+  const bruiserAfter = match.entities.get(bruiser.id)!;
+  assert(bruiserAfter.health === Math.min(250, 200 + 5), "Bruiser healed by Medic when in range");
+
+  // Move bruiser far from medic to trigger follow
+  bruiser.x = 3200;
+  bruiser.y = 300;
+
+  // Tick - medic should follow but not heal (out of range)
+  engine.tick(match.id);
+  const medicAfter = match.entities.get(medic.id)!;
+  assert(medicAfter.moveTarget !== undefined, "Medic moves toward heal target when out of range");
+
+  engine.stopMatch(match.id);
+}
+
+// ---- Combat: Worker Repair ----
+console.log("\n--- Combat: Worker Repair ---");
+{
+  const mgr = new LobbyManager();
+  const host = mgr.createLobby("HostUser");
+  mgr.joinLobby(host.code, "JoinUser");
+  const lobby = mgr.getLobby(host.code)!;
+  const p1 = lobby.players[0]!;
+
+  const engine = new MatchEngine();
+  const players: [PlayerSlot | null, PlayerSlot | null] = [
+    { playerId: p1.id, username: p1.username, color: p1.color, score: p1.score, wsId: "ws1" },
+    null,
+  ];
+  const match = engine.createMatch(host.code, players);
+  engine.startMatch(match.id);
+
+  // Get a blue worker
+  const blueWorkers = Array.from(match.entities.values()).filter(
+    (e) => e.type === "worker" && e.ownerId === p1.id
+  );
+  const worker = blueWorkers[0];
+
+  // Create a damaged barracks for blue
+  const barracks = engine["createEntity"](
+    "building", p1.id, 200, 300, 500, 20, "#4488cc", "barracks"
+  );
+  barracks.constructionProgress = 100;
+  barracks.health = 300;
+  barracks.maxHealth = 500;
+  match.entities.set(barracks.id, barracks);
+
+  // Issue repair command
+  const repairResult = engine.processCommand(match.id, p1.id, {
+    type: "repair",
+    entityId: worker.id,
+    targetEntityId: barracks.id,
+  });
+  assert(repairResult.success, "Repair command succeeds");
+  assert(barracks.repairTargetId === worker.id, "Building has repair worker assigned");
+
+  // Tick - repair should progress
+  engine.tick(match.id);
+  const barracksAfter = match.entities.get(barracks.id)!;
+  assert(barracksAfter.health > 300, "Building health increased from repair");
+
+  engine.stopMatch(match.id);
+}
+
+// ---- Combat: Turret Auto-Attack ----
+console.log("\n--- Combat: Turret Auto-Attack ---");
+{
+  const mgr = new LobbyManager();
+  const host = mgr.createLobby("HostUser");
+  mgr.joinLobby(host.code, "JoinUser");
+  const lobby = mgr.getLobby(host.code)!;
+  const p1 = lobby.players[0]!;
+  const p2 = lobby.players[1]!;
+
+  const engine = new MatchEngine();
+  const players: [PlayerSlot | null, PlayerSlot | null] = [
+    { playerId: p1.id, username: p1.username, color: p1.color, score: p1.score, wsId: "ws1" },
+    { playerId: p2.id, username: p2.username, color: p2.color, score: p2.score, wsId: "ws2" },
+  ];
+  const match = engine.createMatch(host.code, players);
+  engine.startMatch(match.id);
+
+  // Create a turret for blue
+  const turret = engine["createEntity"](
+    "building", p1.id, 3000, 300, 400, 15, "#aa8844", "turret"
+  );
+  turret.constructionProgress = 100;
+  turret.health = 400;
+  turret.maxHealth = 400;
+  match.entities.set(turret.id, turret);
+
+  // Create an enemy worker within range
+  const enemyWorker = engine["createEntity"](
+    "worker", p2.id, 3100, 300, 100, 10, "#ff6666"
+  );
+  match.entities.set(enemyWorker.id, enemyWorker);
+
+  // Tick - turret should auto-attack
+  engine.tick(match.id);
+  const turretAfter = match.entities.get(turret.id)!;
+  assert(turretAfter.autoAttackEnabled === true, "Turret has autoAttackEnabled");
+  assert(turretAfter.attackTargetId === enemyWorker.id, "Turret auto-acquired enemy in range");
+
+  const workerAfter = match.entities.get(enemyWorker.id)!;
+  assert(workerAfter.health < 100, "Enemy worker took turret damage");
+
+  engine.stopMatch(match.id);
+}
+
+// ---- Combat: Crystal Destruction Ends Match ----
+console.log("\n--- Combat: Crystal Destruction Ends Match ---");
+{
+  const mgr = new LobbyManager();
+  const host = mgr.createLobby("HostUser");
+  mgr.joinLobby(host.code, "JoinUser");
+  const lobby = mgr.getLobby(host.code)!;
+  const p1 = lobby.players[0]!;
+  const p2 = lobby.players[1]!;
+
+  const engine = new MatchEngine();
+  const players: [PlayerSlot | null, PlayerSlot | null] = [
+    { playerId: p1.id, username: p1.username, color: p1.color, score: p1.score, wsId: "ws1" },
+    { playerId: p2.id, username: p2.username, color: p2.color, score: p2.score, wsId: "ws2" },
+  ];
+  const match = engine.createMatch(host.code, players);
+  engine.startMatch(match.id);
+
+  // Get red crystal
+  const crystals = Array.from(match.entities.values()).filter(
+    (e) => e.type === "crystal"
+  );
+  const redCrystal = crystals.find((c) => c.ownerId === p2.id)!;
+
+  // Create a powerful skirmisher near the red crystal
+  const skirmisher = engine["createEntity"](
+    "skirmisher", p1.id, redCrystal.x - 10, redCrystal.y, 120, 12, "#44dd88"
+  );
+  match.entities.set(skirmisher.id, skirmisher);
+
+  // Attack the crystal multiple times until it dies
+  skirmisher.attackTargetId = redCrystal.id;
+  for (let i = 0; i < 100; i++) {
+    engine.tick(match.id);
+    const crystal = match.entities.get(redCrystal.id);
+    if (!crystal || crystal.health <= 0) {
+      break;
+    }
+    // Reset cooldown for faster testing
+    skirmisher.attackCooldown = 0;
+  }
+
+  // Check that the match has ended
+  const finalMatch = engine.getMatch(match.id);
+  assert(finalMatch!.phase === "ended", "Match ended when crystal was destroyed");
+  assert(finalMatch!.result!.winner === p1.id, "Blue player wins when red crystal is destroyed");
+
+  engine.stopMatch(match.id);
+}
+
+// ---- Combat: Rematch Reset After Combat ----
+console.log("\n--- Combat: Rematch Reset After Combat ---");
+{
+  const mgr = new LobbyManager();
+  const host = mgr.createLobby("HostUser");
+  mgr.joinLobby(host.code, "JoinUser");
+  const lobby = mgr.getLobby(host.code)!;
+  const p1 = lobby.players[0]!;
+  const p2 = lobby.players[1]!;
+
+  const engine = new MatchEngine();
+  const players: [PlayerSlot | null, PlayerSlot | null] = [
+    { playerId: p1.id, username: p1.username, color: p1.color, score: p1.score, wsId: "ws1" },
+    { playerId: p2.id, username: p2.username, color: p2.color, score: p2.score, wsId: "ws2" },
+  ];
+  const match = engine.createMatch(host.code, players);
+  engine.startMatch(match.id);
+
+  // Create a skirmisher and set some combat state
+  const skirmisher = engine["createEntity"](
+    "skirmisher", p1.id, 3000, 300, 120, 12, "#44dd88"
+  );
+  skirmisher.attackTargetId = "some-target";
+  skirmisher.moveTarget = { x: 5000, y: 300 };
+  skirmisher.attackCooldown = 5;
+  match.entities.set(skirmisher.id, skirmisher);
+
+  // Reset match for rematch
+  const newPlayers: [PlayerSlot | null, PlayerSlot | null] = [
+    { playerId: p1.id, username: p1.username, color: p1.color, score: p1.score, wsId: "ws1" },
+    { playerId: p2.id, username: p2.username, color: p2.color, score: p2.score, wsId: "ws2" },
+  ];
+  const resetMatch = engine.resetMatch(match.id, newPlayers);
+  assert(resetMatch !== null, "Reset succeeds");
+  assert(resetMatch!.phase === "spawn", "Phase reset to spawn");
+  assert(resetMatch!.tick === 0, "Tick reset to 0");
+  assert(resetMatch!.result === null, "Result cleared");
+
+  // Check that new entities don't have stale combat state
+  const newWorkers = Array.from(resetMatch!.entities.values()).filter(
+    (e) => e.type === "worker"
+  );
+  for (const w of newWorkers) {
+    assert(w.attackTargetId === undefined, "New worker has no attack target");
+    assert(w.moveTarget === undefined, "New worker has no move target");
+    assert(w.attackCooldown === 0, "New worker has reset attack cooldown");
+  }
+
+  engine.stopMatch(match.id);
+}
+
+// ---- Soft Collision ----
+console.log("\n--- Soft Collision ---");
+{
+  const mgr = new LobbyManager();
+  const host = mgr.createLobby("HostUser");
+  mgr.joinLobby(host.code, "JoinUser");
+  const lobby = mgr.getLobby(host.code)!;
+  const p1 = lobby.players[0]!;
+
+  const engine = new MatchEngine();
+  const players: [PlayerSlot | null, PlayerSlot | null] = [
+    { playerId: p1.id, username: p1.username, color: p1.color, score: p1.score, wsId: "ws1" },
+    null,
+  ];
+  const match = engine.createMatch(host.code, players);
+  engine.startMatch(match.id);
+
+  // Create two workers very close together (overlapping)
+  const w1 = engine["createEntity"](
+    "worker", p1.id, 3000, 300, 100, 10, "#6699ff"
+  );
+  const w2 = engine["createEntity"](
+    "worker", p1.id, 3005, 300, 100, 10, "#6699ff"
+  );
+  match.entities.set(w1.id, w1);
+  match.entities.set(w2.id, w2);
+
+  // Set move targets to trigger movement pass
+  w1.moveTarget = { x: 3100, y: 300 };
+  w2.moveTarget = { x: 3100, y: 300 };
+
+  // Tick - soft collision should push them apart
+  engine.tick(match.id);
+  const w1After = match.entities.get(w1.id)!;
+  const w2After = match.entities.get(w2.id)!;
+  const dx = Math.abs(w1After.x - w2After.x);
+  assert(dx >= w1After.radius + w2After.radius - 1, "Soft collision pushes overlapping units apart");
+
+  engine.stopMatch(match.id);
+}
 console.log(`\n${"=".repeat(40)}`);
 console.log(`Results: ${passed} passed, ${failed} failed`);
 console.log("=".repeat(40) + "\n");
