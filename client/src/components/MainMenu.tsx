@@ -1,5 +1,7 @@
 import { useState } from "react";
 
+declare const __APP_VERSION__: string;
+
 interface MainMenuProps {
   onHost: (username: string) => void;
   onJoin: (code: string, username: string) => void;
@@ -116,6 +118,8 @@ export default function MainMenu({ onHost, onJoin }: MainMenuProps) {
             <p style={styles.settingsSubtext}>Audio, controls, and display options will appear here.</p>
           </div>
         )}
+
+        <div style={styles.version}>v{__APP_VERSION__}</div>
       </div>
     </div>
   );
@@ -130,6 +134,7 @@ const styles = {
     height: "100%",
   },
   card: {
+    position: "relative" as const,
     background: "rgba(20, 20, 40, 0.9)",
     border: "1px solid rgba(100, 100, 200, 0.3)",
     borderRadius: "12px",
@@ -218,5 +223,13 @@ const styles = {
   settingsSubtext: {
     fontSize: "12px",
     color: "#666",
+  },
+  version: {
+    position: "absolute" as const,
+    bottom: "12px",
+    left: "12px",
+    fontSize: "11px",
+    color: "#555",
+    fontFamily: "monospace",
   },
 };
