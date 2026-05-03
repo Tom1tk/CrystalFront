@@ -242,6 +242,62 @@ export class MatchEngine {
     return Array.from(this.matches.values());
   }
 
+  debugSpawn(
+    matchId: string,
+    playerId: PlayerId,
+    entityType: "worker" | "skirmisher" | "gunner" | "bruiser" | "medic" | "building",
+    x: number,
+    y: number,
+    buildingType?: BuildingType
+  ): { success: boolean; message?: string } {
+    const match = this.matches.get(matchId);
+    if (!match) return { success: false, message: "Match not found" };
+
+    const playerIdx = match.players.findIndex((p) => p?.playerId === playerId);
+    if (playerIdx < 0) return { success: false, message: "Player not found" };
+
+    const playerColor = match.players[playerIdx]?.color ?? "blue";
+    const color = playerColor === "blue" ? "#6699ff" : "#ff6666";
+
+    if (entityType === "building") {
+      if (!buildingType || !(buildingType in BUILDING_DEFS)) {
+        return { success: false, message: "Invalid building type" };
+      }
+      const def = BUILDING_DEFS[buildingType];
+      const building = this.createEntity(
+        "building",
+        playerId,
+        x,
+        y,
+        def.health,
+        Math.max(def.width, def.height) / 2,
+        def.color,
+        buildingType
+      );
+      // Fully constructed — bypass build process
+      building.constructionProgress = 100;
+      building.health = def.health;
+      match.entities.set(building.id, building);
+      return { success: true };
+    }
+
+    const unitDef = UNIT_DEFS[entityType];
+    if (!unitDef) {
+      return { success: false, message: "Invalid unit type" };
+    }
+    const unit = this.createEntity(
+      entityType,
+      playerId,
+      x,
+      y,
+      unitDef.health,
+      unitDef.radius,
+      unitDef.color
+    );
+    match.entities.set(unit.id, unit);
+    return { success: true };
+  }
+
   processCommand(
     matchId: string,
     playerId: PlayerId,

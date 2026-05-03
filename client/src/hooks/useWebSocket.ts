@@ -22,6 +22,7 @@ interface UseWebSocketReturn {
   toggleReady: () => void;
   leaveLobby: () => void;
   debugWin: (winner: "player1" | "player2" | "self") => void;
+  debugSpawn: (entityType: string, x: number, y: number, buildingType?: string) => void;
   sendGameCommand: (command: {
     type: string;
     entityId?: string;
@@ -152,6 +153,13 @@ export function useWebSocket(): UseWebSocketReturn {
     [sendMessage]
   );
 
+  const debugSpawn = useCallback(
+    (entityType: string, x: number, y: number, buildingType?: string) => {
+      sendMessage({ type: "debug_spawn", payload: { entityType, x, y, buildingType } });
+    },
+    [sendMessage]
+  );
+
   const sendGameCommand = useCallback(
     (command: {
       type: string;
@@ -191,6 +199,7 @@ export function useWebSocket(): UseWebSocketReturn {
     toggleReady,
     leaveLobby,
     debugWin,
+    debugSpawn,
     sendGameCommand,
     error,
     connected,

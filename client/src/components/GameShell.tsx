@@ -7,6 +7,7 @@ interface GameShellProps {
   matchState: MatchState | null;
   resourceNodes: ResourceNodeDisplay[];
   onDebugWin: (winner: "player1" | "player2") => void;
+  onDebugSpawn: (entityType: string, x: number, y: number, buildingType?: string) => void;
   onGameCommand: (command: {
     type: string;
     entityId?: string;
@@ -339,6 +340,7 @@ export default function GameShell({
   matchState,
   resourceNodes,
   onDebugWin,
+  onDebugSpawn,
   onGameCommand,
   error,
   onClearError,
@@ -353,6 +355,7 @@ export default function GameShell({
   const [showUnitQueue, setShowUnitQueue] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
+  const [debugSpawnMode, setDebugSpawnMode] = useState<string | null>(null);
 
   const dprRef = useRef(window.devicePixelRatio || 1);
   const cameraXRef = useRef(0);
@@ -373,6 +376,7 @@ export default function GameShell({
   const selectedBuildingTypeRef = useRef<BuildingType | null>(selectedBuildingType);
   const isDraggingRef = useRef(isDragging);
   const dragStartRef = useRef<{ x: number; y: number } | null>(dragStart);
+  const debugSpawnModeRef = useRef<string | null>(null);
   const playerRef = useRef(player);
 
   // Death particle system
@@ -382,15 +386,17 @@ export default function GameShell({
     life: number; maxLife: number; color: string; size: number
   }>>([]);
 
-  resourceNodesRef.current = resourceNodes;
-  selectedEntityIdRef.current = selectedEntityId;
-  selectedEntityIdsRef.current = selectedEntityIds;
-  hoverPosRef.current = hoverPos;
-  buildModeRef.current = buildMode;
-  selectedBuildingTypeRef.current = selectedBuildingType;
-  isDraggingRef.current = isDragging;
-  dragStartRef.current = dragStart;
-  playerRef.current = player;
+  useEffect(() => {
+    resourceNodesRef.current = resourceNodes;
+    selectedEntityIdRef.current = selectedEntityId;
+    selectedEntityIdsRef.current = selectedEntityIds;
+    hoverPosRef.current = hoverPos;
+    buildModeRef.current = buildMode;
+    selectedBuildingTypeRef.current = selectedBuildingType;
+    isDraggingRef.current = isDragging;
+    dragStartRef.current = dragStart;
+    debugSpawnModeRef.current = debugSpawnMode;
+  });
 
   const isMyEntity = useCallback(
     (entity: { ownerId: string }) => entity.ownerId === player.id,
@@ -520,6 +526,16 @@ export default function GameShell({
 
       // Left click: selection + build placement
       if (e.button === 0) {
+        // Debug spawn mode: spawn entity at clicked position
+        if (debugSpawnMode) {
+          const isBuilding = debugSpawnMode.startsWith("building:");
+          const entityType = isBuilding ? "building" : debugSpawnMode;
+          const buildingType = isBuilding ? debugSpawnMode.replace("building:", "") : undefined;
+          onDebugSpawn(entityType, worldX, worldY, buildingType);
+          setDebugSpawnMode(null);
+          return;
+        }
+
         // Start drag origin for box-select
         console.log("[box-select] mousedown at", { screenX, screenY });
         setIsDragging(true);
@@ -672,6 +688,9 @@ export default function GameShell({
         setBuildMode(false);
         setSelectedBuildingType(null);
         setShowUnitQueue(false);
+      }
+      if (e.key === "Escape" && debugSpawnModeRef.current) {
+        setDebugSpawnMode(null);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -1592,6 +1611,47 @@ export default function GameShell({
               Simulate Opponent Win
             </button>
           </div>
+
+          <p style={styles.debugTitle}>Spawn Units (click to select, then click map)</p>
+          <div style={styles.debugButtons}>
+            {(["worker", "skirmisher", "gunner", "bruiser", "medic"] as const).map((unitType) => (
+              <button
+                key={unitType}
+                style={{
+                  ...styles.debugButton,
+                  ...(debugSpawnMode === unitType ? styles.debugButtonActive : {}),
+                }}
+                onClick={() => setDebugSpawnMode(debugSpawnMode === unitType ? null : unitType)}
+              >
+                + {unitType.charAt(0).toUpperCase() + unitType.slice(1)}
+              </button>
+            ))}
+          </div>
+
+          <p style={styles.debugTitle}>Spawn Buildings (click to select, then click map)</p>
+          <div style={styles.debugButtons}>
+            {(["barracks", "foundry", "supply_depot", "turret"] as const).map((buildingType) => (
+              <button
+                key={buildingType}
+                style={{
+                  ...styles.debugButton,
+                  ...(debugSpawnMode === `building:${buildingType}` ? styles.debugButtonActive : {}),
+                }}
+                onClick={() => setDebugSpawnMode(debugSpawnMode === `building:${buildingType}` ? null : `building:${buildingType}`)}
+              >
+                + {BUILDING_LABELS[buildingType]}
+              </button>
+            ))}
+          </div>
+
+          {debugSpawnMode && (
+            <button
+              style={{ ...styles.debugButton, ...styles.debugCancelButton }}
+              onClick={() => setDebugSpawnMode(null)}
+            >
+              Cancel Spawn (Esc)
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -1793,6 +1853,16 @@ const styles = {
     border: "1px solid rgba(100,100,100,0.3)",
     borderRadius: "4px",
     cursor: "pointer",
+  },
+  debugButtonActive: {
+    background: "rgba(100,200,255,0.3)",
+    color: "#88ddff",
+    border: "1px solid rgba(100,200,255,0.6)",
+  },
+  debugCancelButton: {
+    background: "rgba(255,100,100,0.2)",
+    color: "#ff8888",
+    border: "1px solid rgba(255,100,100,0.4)",
   },
   buildModeButton: {
     padding: "6px 16px",

@@ -1,4 +1,4 @@
-import type { PlayerId, LobbyState, MatchState, ClientCommand } from "./types.js";
+import type { PlayerId, LobbyState, MatchState, ClientCommand, EntityType, BuildingType } from "./types.js";
 
 export const WS_EVENT = {
   CONNECTED: "connected",
@@ -9,6 +9,7 @@ export const WS_EVENT = {
   READY_TOGGLE: "ready_toggle",
   LEAVE_LOBBY: "leave_lobby",
   DEBUG_WIN: "debug_win",
+  DEBUG_SPAWN: "debug_spawn",
   MATCH_END: "match_end",
   HOST_DISCONNECT: "host_disconnect",
   MATCH_START: "match_start",
@@ -22,6 +23,7 @@ export const CLIENT_MSG = {
   READY_TOGGLE: "ready_toggle",
   LEAVE_LOBBY: "leave_lobby",
   DEBUG_WIN: "debug_win",
+  DEBUG_SPAWN: "debug_spawn",
   USERNAME: "username",
   GAME_COMMAND: "game_command",
   MATCH_START: "match_start",
@@ -43,6 +45,7 @@ export type ClientToServerMsg =
   | { type: typeof CLIENT_MSG.READY_TOGGLE }
   | { type: typeof CLIENT_MSG.LEAVE_LOBBY }
   | { type: typeof CLIENT_MSG.DEBUG_WIN; payload: { winner: "player1" | "player2" | "self" } }
+  | { type: typeof CLIENT_MSG.DEBUG_SPAWN; payload: { entityType: EntityType; buildingType?: BuildingType; x: number; y: number } }
   | { type: typeof CLIENT_MSG.USERNAME; payload: { username: string } }
   | { type: typeof CLIENT_MSG.GAME_COMMAND; payload: ClientCommand }
   | { type: typeof CLIENT_MSG.MATCH_START };

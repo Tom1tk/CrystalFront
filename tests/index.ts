@@ -4,6 +4,7 @@ import { createMap } from "../server/src/match/map.js";
 import { DEFAULT_CONFIG } from "../server/src/match/types.js";
 import type { MatchEntity, PlayerSlot, ResourceNode } from "../server/src/match/types.js";
 import type { Player, LobbyCode } from "../shared/src/index.js";
+import { CLIENT_MSG, SERVER_EVT, WS_EVENT } from "../shared/src/messages.js";
 
 let passed = 0;
 let failed = 0;
@@ -868,6 +869,96 @@ console.log("\n--- Soft Collision ---");
 
   engine.stopMatch(match.id);
 }
+// ---- Message Type Constants Consistency ----
+console.log("\n--- Message Type Constants Consistency ---");
+{
+  // All CLIENT_MSG types should have corresponding WS_EVENT types
+  for (const [key, value] of Object.entries(CLIENT_MSG)) {
+    const wsValue = (WS_EVENT as any)[key];
+    assert(wsValue !== undefined, `WS_EVENT has ${key} (matches CLIENT_MSG.${key})`);
+    assert(wsValue === value, `WS_EVENT.${key} === CLIENT_MSG.${key} ("${value}")`);
+  }
+
+  // CLIENT_MSG.DEBUG_SPAWN must exist and equal "debug_spawn"
+  assert(CLIENT_MSG.DEBUG_SPAWN === "debug_spawn", "CLIENT_MSG.DEBUG_SPAWN === 'debug_spawn'");
+
+  // SERVER_EVT should be a subset of WS_EVENT
+  for (const [key, value] of Object.entries(SERVER_EVT)) {
+    const wsValue = (WS_EVENT as any)[key];
+    assert(wsValue !== undefined, `WS_EVENT has ${key} (matches SERVER_EVT.${key})`);
+    assert(wsValue === value, `WS_EVENT.${key} === SERVER_EVT.${key} ("${value}")`);
+  }
+
+  // No duplicate values in CLIENT_MSG
+  const clientMsgValues = Object.values(CLIENT_MSG);
+  const uniqueClientMsgValues = new Set(clientMsgValues);
+  assert(uniqueClientMsgValues.size === clientMsgValues.length, "CLIENT_MSG has no duplicate values");
+
+  // No duplicate values in SERVER_EVT
+  const serverEvtValues = Object.values(SERVER_EVT);
+  const uniqueServerEvtValues = new Set(serverEvtValues);
+  assert(uniqueServerEvtValues.size === serverEvtValues.length, "SERVER_EVT has no duplicate values");
+}
+
+// ---- Debug Spawn Functionality ----
+console.log("\n--- Debug Spawn Functionality ---");
+{
+  const mgr = new LobbyManager();
+  const host = mgr.createLobby("HostUser");
+  mgr.joinLobby(host.code, "JoinUser");
+  const lobby = mgr.getLobby(host.code)!;
+  const p1 = lobby.players[0]!;
+
+  const engine = new MatchEngine();
+  const players: [PlayerSlot | null, PlayerSlot | null] = [
+    { playerId: p1.id, username: p1.username, color: p1.color, score: p1.score, wsId: "ws1" },
+    null,
+  ];
+  const match = engine.createMatch(host.code, players);
+  engine.startMatch(match.id);
+
+  const initialEntityCount = match.entities.size;
+
+  // Debug spawn a worker
+  const workerResult = engine.debugSpawn(match.id, p1.id, "worker", 100, 100);
+  assert(workerResult.success, "Debug spawn worker succeeds");
+
+  // Debug spawn a skirmisher
+  const skirmisherResult = engine.debugSpawn(match.id, p1.id, "skirmisher", 200, 200);
+  assert(skirmisherResult.success, "Debug spawn skirmisher succeeds");
+
+  // Debug spawn a building (barracks)
+  const buildingResult = engine.debugSpawn(match.id, p1.id, "building", 300, 300, "barracks");
+  assert(buildingResult.success, "Debug spawn building (barracks) succeeds");
+
+  // Verify entities were added
+  const newEntityCount = match.entities.size;
+  assert(newEntityCount === initialEntityCount + 3, `3 entities added (${newEntityCount} - ${initialEntityCount} = ${newEntityCount - initialEntityCount})`);
+
+  // Debug spawn with invalid entity type
+  const invalidResult = engine.debugSpawn(match.id, p1.id, "nonexistent" as any, 400, 400);
+  assert(!invalidResult.success, "Debug spawn with invalid entity type fails");
+
+  // Debug spawn with invalid building type
+  const invalidBuildingResult = engine.debugSpawn(match.id, p1.id, "building", 500, 500, "nonexistent" as any);
+  assert(!invalidBuildingResult.success, "Debug spawn with invalid building type fails");
+
+  engine.stopMatch(match.id);
+}
+
+// ---- Server Message Handler Coverage ----
+console.log("\n--- Server Message Handler Coverage ---");
+{
+  // Read the server source and verify all CLIENT_MSG types are handled
+  const fs = require("fs");
+  const serverSrc = fs.readFileSync(require("path").resolve(__dirname, "../server/src/index.ts"), "utf-8");
+
+  for (const [key, value] of Object.entries(CLIENT_MSG)) {
+    const hasCase = serverSrc.includes(`CLIENT_MSG.${key}`);
+    assert(hasCase, `Server switch handles CLIENT_MSG.${key} ("${value}")`);
+  }
+}
+
 console.log(`\n${"=".repeat(40)}`);
 console.log(`Results: ${passed} passed, ${failed} failed`);
 console.log("=".repeat(40) + "\n");
