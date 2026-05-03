@@ -240,6 +240,7 @@ const allEntities = serializeEntities(match.entities);
              phase: match.phase,
              tick: match.tick,
              tickIntervalMs: match.tickIntervalMs,
+             stateTimestamp: Date.now(),
              players: match.players,
              entities: allEntities as any,
              attackLog: match.attackLog,

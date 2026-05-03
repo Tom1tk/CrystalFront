@@ -367,7 +367,9 @@ export default function GameShell({
 
   // Interpolation state
   const prevEntitiesRef = useRef<Map<string, { x: number; y: number }>>(new Map());
+  const oldPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
   const prevTimestampRef = useRef<number>(0);
+  const lastTickRef = useRef<number>(-1);
   const resourceNodesRef = useRef<ResourceNodeDisplay[]>(resourceNodes);
   const selectedEntityIdRef = useRef<string | null>(selectedEntityId);
   const selectedEntityIdsRef = useRef<Set<string>>(selectedEntityIds);
@@ -879,35 +881,88 @@ export default function GameShell({
       }
       prevEntityIdsRef.current = currentIds;
 
-      // Store previous positions on first frame or when entities change
-      if (!prevTimestampRef.current || entities.length !== prevEntitiesRef.current.size ||
-          !entities.every((e: MatchEntity) => prevEntitiesRef.current.has(e.id))) {
+      // --- Client-side interpolation ---
+      //
+      // Architecture:
+      // - oldPositionsRef: positions from the PREVIOUS server state (source of lerp)
+      // - prevEntitiesRef: positions from the CURRENT server state (target of lerp)
+      // - prevTimestampRef: client receive time of the current state
+      // - lastTickRef: tick number of the last-processed state
+      //
+      // When new state arrives (tick changes):
+      //   1. Shift current positions → old positions
+      //   2. Store new positions as current
+      //   3. Record receive time
+      //
+      // Each frame: lerp from old → current based on elapsed time since receive.
+      // Once alpha >= 1, snap to current and clear old (stop interpolating).
+      // This gives smooth movement with no backward jumps.
+
+      const tickMs = ms.tickIntervalMs ?? 100;
+
+      // Detect new state arrival via tick number
+      const isNewState = (lastTickRef.current !== ms.tick);
+
+      if (isNewState) {
+        // Shift: current → old, new → current
+        // Only keep entries for entities that still exist
+        const entityIds = new Set(entities.map((e: MatchEntity) => e.id));
+        const oldMap = new Map<string, { x: number; y: number }>();
+        for (const [id, pos] of prevEntitiesRef.current) {
+          if (entityIds.has(id)) {
+            oldMap.set(id, pos);
+          }
+        }
+        oldPositionsRef.current = oldMap;
+
         entities.forEach((e: MatchEntity) => {
           prevEntitiesRef.current.set(e.id, { x: e.x, y: e.y });
         });
-        prevTimestampRef.current = now;
+
+        prevTimestampRef.current = Date.now();
+        lastTickRef.current = ms.tick;
       }
 
-      const nowTs = ms.stateTimestamp ?? now;
-      const t = Math.min(1, (now - nowTs + 50) / 100);
+      // Skip interpolation if we don't have both old and current
+      const hasOld = oldPositionsRef.current.size > 0;
 
-      // Interpolate entity positions
-      const interpolatedEntities = entities.map((e: MatchEntity) => {
-        const prev = prevEntitiesRef.current.get(e.id);
-        if (prev) {
+      let interpolatedEntities: MatchEntity[];
+
+      if (!hasOld || !prevTimestampRef.current) {
+        // First frame or no previous state — just use current positions
+        entities.forEach((e: MatchEntity) => {
+          prevEntitiesRef.current.set(e.id, { x: e.x, y: e.y });
+        });
+        oldPositionsRef.current = new Map(prevEntitiesRef.current);
+        prevTimestampRef.current = Date.now();
+        lastTickRef.current = ms.tick;
+        interpolatedEntities = entities;
+      } else {
+        // Compute interpolation progress
+        const elapsed = now - prevTimestampRef.current;
+        const alpha = Math.max(0, Math.min(1, elapsed / tickMs));
+
+        interpolatedEntities = entities.map((e: MatchEntity) => {
+          const old = oldPositionsRef.current.get(e.id);
+          const curr = prevEntitiesRef.current.get(e.id);
+          if (!old || !curr) return e;
+
+          const dx = curr.x - old.x;
+          const dy = curr.y - old.y;
+
           return {
             ...e,
-            x: prev.x + (e.x - prev.x) * t,
-            y: prev.y + (e.y - prev.y) * t,
+            x: old.x + dx * alpha,
+            y: old.y + dy * alpha,
           } as MatchEntity;
-        }
-        return e;
-      });
+        });
 
-      prevTimestampRef.current = nowTs;
-      interpolatedEntities.forEach((e) => {
-        prevEntitiesRef.current.set(e.id, { x: e.x, y: e.y });
-      });
+        // Once interpolation is complete, clear old buffer
+        // so we stop lerping and just render current positions
+        if (alpha >= 1) {
+          oldPositionsRef.current.clear();
+        }
+      }
 
       drawGameScene(
         canvas, ctx, interpolatedEntities, resourceNodesRef.current,
