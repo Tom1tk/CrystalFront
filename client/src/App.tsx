@@ -23,7 +23,7 @@ function useScreenFlow() {
     }
   }, [ws.lobbyState]);
 
-  // Transition to game when match starts, back to lobby when ended
+  // Transition to game when match starts, back to matchEnd when ended
   useEffect(() => {
     if (screen === "matchEnd") return;
     // Don't override menu transitions
@@ -33,9 +33,9 @@ function useScreenFlow() {
       setScreen("game");
       return;
     }
-    // Return to lobby when match ends
+    // Transition to match end when match ends (MATCH_END event will populate winner)
     if (screen === "game" && ws.matchState && ws.matchState.phase === "ended") {
-      setScreen("lobby");
+      setScreen("matchEnd");
       return;
     }
   }, [ws.matchState, screen]);
@@ -123,7 +123,7 @@ function useScreenFlow() {
     isHost,
     ws,
     matchState: ws.matchState,
-    matchWinnerId: ws.matchEnd?.winner ?? null,
+    matchWinnerId: ws.matchEnd?.winner ?? ws.matchState?.result?.winner ?? null,
     getCurrentPlayer,
     getCurrentLobby,
     handleHost,
