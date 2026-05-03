@@ -141,6 +141,7 @@ export interface MatchState {
   phase: MatchPhase;
   tick: number;
   tickIntervalMs: number;
+  stateTimestamp?: number;
   players: [PlayerSlot | null, PlayerSlot | null];
   entities: Entity[];
   attackLog: AttackEvent[];
