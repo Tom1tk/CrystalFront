@@ -587,6 +587,19 @@ export default function GameShell({
             continue;
           }
 
+          // Worker build friendly building under construction
+          if (selEntity.type === "worker" && clickedEntity &&
+              clickedEntity.type === "building" && clickedEntity.ownerId === player.id &&
+              clickedEntity.constructionProgress !== undefined &&
+              clickedEntity.constructionProgress < 100) {
+            onGameCommand({
+              type: "assign_build",
+              entityId: sid,
+              targetEntityId: clickedEntity.id,
+            });
+            continue;
+          }
+
           // Worker repair friendly building
           if (selEntity.type === "worker" && clickedEntity &&
               clickedEntity.type === "building" && clickedEntity.ownerId === player.id &&

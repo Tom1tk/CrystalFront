@@ -544,7 +544,7 @@ wss.on("connection", (ws) => {
           workerIds?: string[];
         };
         const result = matchEngine.processCommand(matchId, playerId, {
-          type: cmd.type as "move" | "deselect" | "gather" | "train_worker" | "train_unit" | "build" | "repair" | "attack" | "heal",
+          type: cmd.type as "move" | "deselect" | "gather" | "train_worker" | "train_unit" | "build" | "assign_build" | "repair" | "attack" | "heal",
           entityId: cmd.entityId,
           entityIds: cmd.entityIds,
           targetX: cmd.targetX,

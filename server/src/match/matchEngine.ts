@@ -242,6 +242,7 @@ export class MatchEngine {
         | "train_worker"
         | "train_unit"
         | "build"
+        | "assign_build"
         | "repair"
         | "attack"
         | "heal";
@@ -536,8 +537,58 @@ if (command.type === "gather") {
          economy.maxSupply += def.supplyProvided;
        }
 
-       return { success: true };
-     }
+    return { success: true };
+    }
+
+    if (command.type === "assign_build") {
+      const workerId = command.entityId;
+      const buildingId = command.targetEntityId;
+      if (!workerId || !buildingId) {
+        return { success: false, message: "Missing worker or building ID" };
+      }
+
+      const worker = match.entities.get(workerId);
+      if (!worker || worker.type !== "worker" || worker.ownerId !== playerId) {
+        return { success: false, message: "Worker not found" };
+      }
+
+      const building = match.entities.get(buildingId);
+      if (!building || building.type !== "building" || building.ownerId !== playerId) {
+        return { success: false, message: "Building not found" };
+      }
+
+      // Building must be under construction
+      if (building.constructionProgress >= 100) {
+        return { success: false, message: "Building is already constructed" };
+      }
+
+      // Remove worker from previous build target if assigned
+      if (worker.buildTargetId && worker.buildTargetId !== buildingId) {
+        const prevBuilding = match.entities.get(worker.buildTargetId);
+        if (prevBuilding && prevBuilding.buildWorkerIds) {
+          prevBuilding.buildWorkerIds.delete(worker.id);
+        }
+      }
+
+      // Remove worker from gathering if active
+      if (worker.gatheringNodeId) {
+        const prevNode = match.resourceNodes.find((n) => n.id === worker.gatheringNodeId);
+        if (prevNode) {
+          prevNode.gathererSlots.delete(worker.id);
+        }
+        worker.gatheringNodeId = undefined;
+      }
+
+      // Assign worker to building
+      if (!building.buildWorkerIds) {
+        building.buildWorkerIds = new Set<EntityId>();
+      }
+      building.buildWorkerIds.add(worker.id);
+      worker.buildTargetId = building.id;
+      worker.moveTarget = { x: building.x, y: building.y };
+
+      return { success: true };
+    }
 
     if (command.type === "repair") {
       const workerId = command.entityId;
