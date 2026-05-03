@@ -27,9 +27,14 @@ export class MatchEngine {
   private matches = new Map<string, MatchState>();
   private intervals = new Map<string, NodeJS.Timeout>();
   private broadcastCallback: ((matchId: string) => void) | null = null;
+  private matchEndCallback: ((matchId: string, winner: PlayerId) => void) | null = null;
 
   setBroadcastCallback(cb: (matchId: string) => void): void {
     this.broadcastCallback = cb;
+  }
+
+  setMatchEndCallback(cb: (matchId: string, winner: PlayerId) => void): void {
+    this.matchEndCallback = cb;
   }
 
   createMatch(
@@ -220,6 +225,12 @@ export class MatchEngine {
     match.phase = "ended";
     match.result = { winner };
     match.endedAt = Date.now();
+
+    // Notify server to broadcast MATCH_END event
+    if (this.matchEndCallback) {
+      this.matchEndCallback(matchId, winner);
+    }
+
     return match;
   }
 

@@ -11,6 +11,7 @@ import {
   SERVER_EVT,
   type ClientToServerMsg,
   type ServerToClientMsg,
+  type PlayerId,
 } from "@crystalfront/shared";
 import {
   USERNAME_MIN_LENGTH,
@@ -36,6 +37,16 @@ matchEngine.setBroadcastCallback((matchId: string) => {
   for (const session of playerLobbyMap.values()) {
     if (session.matchId === matchId) {
       broadcastGameState(session.code);
+      break;
+    }
+  }
+});
+
+matchEngine.setMatchEndCallback((matchId: string, winner: string) => {
+  for (const session of playerLobbyMap.values()) {
+    if (session.matchId === matchId) {
+      broadcastMatchEnd(session.code, winner);
+      lobbyManager.resetReadyStates(session.code);
       break;
     }
   }
@@ -248,6 +259,21 @@ const allEntities = serializeEntities(match.entities);
            },
          },
        };
+  for (const session of playerLobbyMap.values()) {
+    if (session.code === code && session.matchId === matchId) {
+      sendWS(session.ws, msg);
+    }
+  }
+}
+
+function broadcastMatchEnd(code: string, winner: string) {
+  const matchId = lobbyMatchMap.get(code);
+  if (!matchId) return;
+
+  const msg: ServerToClientMsg = {
+    type: SERVER_EVT.MATCH_END,
+    payload: { winner: winner as PlayerId },
+  };
   for (const session of playerLobbyMap.values()) {
     if (session.code === code && session.matchId === matchId) {
       sendWS(session.ws, msg);
