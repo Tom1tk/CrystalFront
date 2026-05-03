@@ -64,6 +64,66 @@ function broadcastLobbyState(ws: WebSocket, code: string) {
   console.log("[Server] broadcastLobbyState sent to", count, "sessions");
 }
 
+function serializeEntities(entities: Map<string, MatchEntity>): Array<{
+  id: string;
+  type: string;
+  ownerId: string;
+  x: number;
+  y: number;
+  health: number;
+  maxHealth: number;
+  radius: number;
+  color: string;
+  buildingType?: string;
+  constructionProgress?: number;
+  buildWorkerIds?: string[];
+  buildTargetId?: string;
+  gatheringNodeId?: string;
+  productionQueue?: Array<{
+    unitType: string;
+    cost: number;
+    supplyCost: number;
+    buildTime: number;
+    remainingTicks: number;
+  }>;
+  repairTargetId?: string;
+  moveTarget?: { x: number; y: number };
+  attackTargetId?: string;
+  attackCooldown?: number;
+  healTargetId?: string;
+  autoAttackEnabled?: boolean;
+}> {
+  return Array.from(entities.values()).map((e) => ({
+    id: e.id,
+    type: e.type,
+    ownerId: e.ownerId,
+    x: e.x,
+    y: e.y,
+    health: e.health,
+    maxHealth: e.maxHealth,
+    radius: e.radius,
+    color: e.color,
+    buildingType: e.buildingType,
+    constructionProgress: e.constructionProgress,
+    buildWorkerIds: e.buildWorkerIds ? Array.from(e.buildWorkerIds) : undefined,
+    buildTargetId: e.buildTargetId,
+    gatheringNodeId: e.gatheringNodeId,
+    productionQueue: e.productionQueue.map((q) => ({
+      unitType: q.unitType,
+      cost: q.cost,
+      supplyCost: q.supplyCost,
+      buildTime: q.buildTime,
+      remainingTicks: q.remainingTicks,
+    })),
+    repairTargetId: e.repairTargetId,
+    moveTarget: e.moveTarget,
+    attackTargetId: e.attackTargetId,
+    attackCooldown: e.attackCooldown,
+    healTargetId: e.healTargetId,
+    autoAttackEnabled: e.autoAttackEnabled,
+  }));
+}
+
 function serializeResourceNodes(nodes: ResourceNode[]): Array<{
   id: string;
   x: number;
@@ -158,37 +218,12 @@ function broadcastGameState(code: string) {
   const match = matchEngine.getMatch(matchId);
   if (!match) return;
 
-  const allEntities = Array.from(match.entities.values()).map((e) => ({
-    id: e.id,
-    type: e.type,
-    ownerId: e.ownerId,
-    x: e.x,
-    y: e.y,
-    health: e.health,
-    maxHealth: e.maxHealth,
-    radius: e.radius,
-    color: e.color,
-    buildingType: e.buildingType,
-    constructionProgress: e.constructionProgress,
-    productionQueue: e.productionQueue.map((q) => ({
-      unitType: q.unitType,
-      cost: q.cost,
-      supplyCost: q.supplyCost,
-      buildTime: q.buildTime,
-      remainingTicks: q.remainingTicks,
-    })),
-    repairTargetId: e.repairTargetId,
-    moveTarget: e.moveTarget,
-    attackTargetId: e.attackTargetId,
-    attackCooldown: e.attackCooldown,
-    healTargetId: e.healTargetId,
-    autoAttackEnabled: e.autoAttackEnabled,
-  }));
+const allEntities = serializeEntities(match.entities);
 
    const msg: ServerToClientMsg = {
-         type: SERVER_EVT.GAME_STATE,
-         payload: {
-           match: {
+          type: SERVER_EVT.GAME_STATE,
+          payload: {
+            match: {
              id: match.id,
              lobbyCode: match.lobbyCode,
              phase: match.phase,
@@ -233,13 +268,12 @@ function validateUsername(username: string): string | null {
   return null;
 }
 
-function toPlayerSlot(player: { id: string; username: string; color: string; score: number }, wsId: string): PlayerSlot {
+function toPlayerSlot(player: { id: string; username: string; color: string; score: number }): PlayerSlot {
   return {
     playerId: player.id,
     username: player.username,
     color: player.color as "blue" | "red",
     score: player.score,
-    wsId,
   };
 }
 
@@ -283,32 +317,7 @@ wss.on("connection", (ws) => {
         if (matchId) {
           const match = matchEngine.getMatch(matchId);
           if (match) {
-            const allEntities = Array.from(match.entities.values()).map((e) => ({
-              id: e.id,
-              type: e.type,
-              ownerId: e.ownerId,
-              x: e.x,
-              y: e.y,
-              health: e.health,
-              maxHealth: e.maxHealth,
-              radius: e.radius,
-              color: e.color,
-              buildingType: e.buildingType,
-              constructionProgress: e.constructionProgress,
-              productionQueue: e.productionQueue.map((q) => ({
-                unitType: q.unitType,
-                cost: q.cost,
-                supplyCost: q.supplyCost,
-                buildTime: q.buildTime,
-                remainingTicks: q.remainingTicks,
-              })),
-              repairTargetId: e.repairTargetId,
-              moveTarget: e.moveTarget,
-              attackTargetId: e.attackTargetId,
-              attackCooldown: e.attackCooldown,
-              healTargetId: e.healTargetId,
-              autoAttackEnabled: e.autoAttackEnabled,
-            }));
+           const allEntities = serializeEntities(match.entities);
             const matchStartMsg: ServerToClientMsg = {
               type: SERVER_EVT.MATCH_START,
               payload: {
@@ -387,8 +396,8 @@ wss.on("connection", (ws) => {
           const p0 = result.lobby.players[0]!;
           const p1 = result.lobby.players[1]!;
           const players: [PlayerSlot | null, PlayerSlot | null] = [
-            toPlayerSlot(p0, playerLobbyMap.get(p0.id)?.playerId ?? p0.id),
-            toPlayerSlot(p1, playerLobbyMap.get(p1.id)?.playerId ?? p1.id),
+            toPlayerSlot(p0),
+            toPlayerSlot(p1),
           ];
 
           const match = matchEngine.createMatch(session.code, players);
@@ -406,32 +415,7 @@ wss.on("connection", (ws) => {
           }
 
           // Notify both players of match start
-          const allEntities = Array.from(match.entities.values()).map((e) => ({
-            id: e.id,
-            type: e.type,
-            ownerId: e.ownerId,
-            x: e.x,
-            y: e.y,
-            health: e.health,
-            maxHealth: e.maxHealth,
-            radius: e.radius,
-            color: e.color,
-            buildingType: e.buildingType,
-            constructionProgress: e.constructionProgress,
-            productionQueue: e.productionQueue.map((q) => ({
-              unitType: q.unitType,
-              cost: q.cost,
-              supplyCost: q.supplyCost,
-              buildTime: q.buildTime,
-              remainingTicks: q.remainingTicks,
-            })),
-            repairTargetId: e.repairTargetId,
-            moveTarget: e.moveTarget,
-            attackTargetId: e.attackTargetId,
-            attackCooldown: e.attackCooldown,
-            healTargetId: e.healTargetId,
-            autoAttackEnabled: e.autoAttackEnabled,
-          }));
+          const allEntities = serializeEntities(match.entities);
           const matchStartMsg: ServerToClientMsg = {
             type: SERVER_EVT.MATCH_START,
             payload: {
@@ -492,32 +476,7 @@ wss.on("connection", (ws) => {
           return;
         }
 
-        const allEntities = Array.from(match.entities.values()).map((e) => ({
-          id: e.id,
-          type: e.type,
-          ownerId: e.ownerId,
-          x: e.x,
-          y: e.y,
-          health: e.health,
-          maxHealth: e.maxHealth,
-          radius: e.radius,
-          color: e.color,
-          buildingType: e.buildingType,
-          constructionProgress: e.constructionProgress,
-          productionQueue: e.productionQueue.map((q) => ({
-            unitType: q.unitType,
-            cost: q.cost,
-            supplyCost: q.supplyCost,
-            buildTime: q.buildTime,
-            remainingTicks: q.remainingTicks,
-          })),
-          repairTargetId: e.repairTargetId,
-          moveTarget: e.moveTarget,
-          attackTargetId: e.attackTargetId,
-          attackCooldown: e.attackCooldown,
-          healTargetId: e.healTargetId,
-          autoAttackEnabled: e.autoAttackEnabled,
-        }));
+        const allEntities = serializeEntities(match.entities);
         const matchStartMsg: ServerToClientMsg = {
           type: SERVER_EVT.MATCH_START,
           payload: {
@@ -577,18 +536,22 @@ wss.on("connection", (ws) => {
           tick?: number;
           type: string;
           entityId?: string;
+          entityIds?: string[];
           targetX?: number;
           targetY?: number;
           targetEntityId?: string;
           buildingType?: string;
+          workerIds?: string[];
         };
         const result = matchEngine.processCommand(matchId, playerId, {
           type: cmd.type as "move" | "deselect" | "gather" | "train_worker" | "train_unit" | "build" | "repair" | "attack" | "heal",
           entityId: cmd.entityId,
+          entityIds: cmd.entityIds,
           targetX: cmd.targetX,
           targetY: cmd.targetY,
           targetEntityId: cmd.targetEntityId,
           buildingType: cmd.buildingType as "barracks" | "foundry" | "supply_depot" | "turret" | undefined,
+          workerIds: cmd.workerIds,
         });
 
         if (!result.success) {

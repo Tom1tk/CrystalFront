@@ -12,17 +12,18 @@ export interface PlacementResult {
   reason?: string;
 }
 
+const CENTER_EXCLUSION_HALF_WIDTH = 200;
+
 export function validatePlacement(
   x: number,
   y: number,
   buildingDef: BuildingDefinition,
-  buildZone: BuildZone,
-  laneCorridor: LaneCorridor,
   entities: Map<EntityId, MatchEntity>,
   resourceNodes: ResourceNode[],
   playerColor: "blue" | "red",
   crystals: MatchEntity[],
   playerId: string,
+  mapWidth: number,
   mapHeight: number
 ): PlacementResult {
   const halfW = buildingDef.width / 2;
@@ -31,20 +32,27 @@ export function validatePlacement(
   const by1 = y - halfH;
   const bx2 = x + halfW;
   const by2 = y + halfH;
+  const midX = mapWidth / 2;
 
-  // Check build zone
-  if (
-    bx1 < buildZone.x1 ||
-    bx2 > buildZone.x2 ||
-    by1 < 0 ||
-    by2 > buildZone.y2
-  ) {
-    return { valid: false, reason: "Outside build zone" };
+  // Check player half: blue = left half, red = right half
+  if (playerColor === "blue") {
+    if (bx2 > midX) {
+      return { valid: false, reason: "Outside your build zone" };
+    }
+  } else {
+    if (bx1 < midX) {
+      return { valid: false, reason: "Outside your build zone" };
+    }
   }
 
-  // Check lane corridor blocking
-  if (by2 > laneCorridor.top && by1 < laneCorridor.bottom) {
-    return { valid: false, reason: "Blocks lane corridor" };
+  // Check center exclusion zone
+  if (bx2 > midX - CENTER_EXCLUSION_HALF_WIDTH && bx1 < midX + CENTER_EXCLUSION_HALF_WIDTH) {
+    return { valid: false, reason: "Too close to center" };
+  }
+
+  // Check map bounds
+  if (bx1 < 0 || bx2 > mapWidth || by1 < 0 || by2 > mapHeight) {
+    return { valid: false, reason: "Outside map bounds" };
   }
 
   // Check overlap with existing entities (use bounding box)

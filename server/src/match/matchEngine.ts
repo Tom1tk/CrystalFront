@@ -14,6 +14,9 @@ import type {
 } from "./types.js";
 import { createMap } from "./map.js";
 import { DEFAULT_CONFIG, BUILDING_DEFS, UNIT_DEFS, COUNTER_MULTIPLIERS, HEAL_RATE_PER_TICK } from "./types.js";
+
+const GATHER_RANGE = 60;
+const GATHER_RATE_PER_WORKER = 1 / 3;
 import {
   validatePlacement,
   findCrystalByColor,
@@ -136,17 +139,18 @@ export class MatchEngine {
 
     for (const layout of allNodeLayouts) {
       const node: ResourceNode = {
-        id: randomUUID(),
-        x: layout.x,
-        y: layout.y,
-        radius: layout.radius,
-        color: "#ccaa44",
-        capacity: layout.capacity,
-        remaining: layout.capacity,
-        maxGathererSlots: 3,
-        gathererSlots: new Set<EntityId>(),
-      };
-      resourceNodes.push(node);
+         id: randomUUID(),
+         x: layout.x,
+         y: layout.y,
+         radius: layout.radius,
+         color: "#ccaa44",
+         capacity: layout.capacity,
+         remaining: layout.capacity,
+         maxGathererSlots: 3,
+         gathererSlots: new Set<EntityId>(),
+         accumulatedGather: 0,
+       };
+       resourceNodes.push(node);
     }
 
     // Create economy for each player
@@ -242,10 +246,12 @@ export class MatchEngine {
         | "attack"
         | "heal";
       entityId?: string;
+      entityIds?: string[];
       targetX?: number;
       targetY?: number;
       targetEntityId?: string;
       buildingType?: BuildingType;
+      workerIds?: string[];
     }
   ): { success: boolean; message?: string } {
     const match = this.matches.get(matchId);
@@ -258,62 +264,80 @@ export class MatchEngine {
       return { success: true };
     }
 
-    if (command.type === "move") {
-      const entity = Array.from(match.entities.values()).find(
-        (e) => e.id === command.entityId && e.ownerId === playerId
-      );
-      if (!entity) return { success: false, message: "Entity not found" };
+if (command.type === "move") {
+       const entity = Array.from(match.entities.values()).find(
+         (e) => e.id === command.entityId && e.ownerId === playerId
+       );
+       if (!entity) return { success: false, message: "Entity not found" };
 
-      // Only movable units can move
-      if (entity.type === "crystal" || entity.type === "building") {
-        return { success: false, message: "Unit cannot move" };
-      }
+       // Only movable units can move
+       if (entity.type === "crystal" || entity.type === "building") {
+         return { success: false, message: "Unit cannot move" };
+       }
 
-      if (command.targetX !== undefined && command.targetY !== undefined) {
-        entity.moveTarget = { x: command.targetX, y: command.targetY };
-        entity.attackTargetId = undefined;
-        entity.healTargetId = undefined;
-        entity.commandedTicks = 5;
-      }
+       if (command.targetX !== undefined && command.targetY !== undefined) {
+         entity.moveTarget = { x: command.targetX, y: command.targetY };
+         entity.attackTargetId = undefined;
+         entity.healTargetId = undefined;
+         entity.commandedTicks = 5;
+       }
 
-      // Clean up gathering assignment when moving
-      if (entity.type === "worker" && entity.gatheringNodeId) {
-        const prevNode = match.resourceNodes.find((n) => n.id === entity.gatheringNodeId);
-        if (prevNode) {
-          prevNode.gathererSlots.delete(entity.id);
-        }
-        entity.gatheringNodeId = undefined;
-      }
+       // Clean up gathering assignment when moving
+       if (entity.type === "worker" && entity.gatheringNodeId) {
+         const prevNode = match.resourceNodes.find((n) => n.id === entity.gatheringNodeId);
+         if (prevNode) {
+           prevNode.gathererSlots.delete(entity.id);
+         }
+         entity.gatheringNodeId = undefined;
+       }
 
-      return { success: true };
-    }
+       // Clean up building assignment when moving
+       if (entity.buildTargetId) {
+         const building = match.entities.get(entity.buildTargetId);
+         if (building && building.buildWorkerIds) {
+           building.buildWorkerIds.delete(entity.id);
+         }
+         entity.buildTargetId = undefined;
+       }
 
-    if (command.type === "gather") {
-      const worker = Array.from(match.entities.values()).find(
-        (e) => e.id === command.entityId && e.type === "worker" && e.ownerId === playerId
-      );
-      if (!worker) return { success: false, message: "Worker not found" };
+       return { success: true };
+     }
 
-      // Remove from previous node if gathering elsewhere
-      if (worker.gatheringNodeId) {
-        const prevNode = match.resourceNodes.find((n) => n.id === worker.gatheringNodeId);
-        if (prevNode) {
-          prevNode.gathererSlots.delete(worker.id);
-        }
-      }
+if (command.type === "gather") {
+       const worker = Array.from(match.entities.values()).find(
+         (e) => e.id === command.entityId && e.type === "worker" && e.ownerId === playerId
+       );
+       if (!worker) return { success: false, message: "Worker not found" };
 
-      const targetNode = match.resourceNodes.find(
-        (n) => n.id === command.targetEntityId
-      );
-      if (!targetNode) return { success: false, message: "Resource node not found" };
-      if (targetNode.remaining <= 0) return { success: false, message: "Node is depleted" };
-      if (targetNode.gathererSlots.size >= targetNode.maxGathererSlots)
-        return { success: false, message: "Node is full" };
+       // Remove from previous node if gathering elsewhere
+       if (worker.gatheringNodeId) {
+         const prevNode = match.resourceNodes.find((n) => n.id === worker.gatheringNodeId);
+         if (prevNode) {
+           prevNode.gathererSlots.delete(worker.id);
+         }
+       }
 
-      worker.gatheringNodeId = targetNode.id;
-      targetNode.gathererSlots.add(worker.id);
-      return { success: true };
-    }
+       // Clean up building assignment when gathering
+       if (worker.buildTargetId) {
+         const building = match.entities.get(worker.buildTargetId);
+         if (building && building.buildWorkerIds) {
+           building.buildWorkerIds.delete(worker.id);
+         }
+         worker.buildTargetId = undefined;
+       }
+
+       const targetNode = match.resourceNodes.find(
+         (n) => n.id === command.targetEntityId
+       );
+       if (!targetNode) return { success: false, message: "Resource node not found" };
+       if (targetNode.remaining <= 0) return { success: false, message: "Node is depleted" };
+       if (targetNode.gathererSlots.size >= targetNode.maxGathererSlots)
+         return { success: false, message: "Node is full" };
+
+       worker.gatheringNodeId = targetNode.id;
+       targetNode.gathererSlots.add(worker.id);
+       return { success: true };
+     }
 
     if (command.type === "train_worker") {
       const crystal = Array.from(match.entities.values()).find(
@@ -397,95 +421,123 @@ export class MatchEngine {
     }
 
    if (command.type === "build") {
-       const buildingType = command.buildingType;
-      if (!buildingType || !(buildingType in BUILDING_DEFS)) {
-        return { success: false, message: "Invalid building type" };
-      }
+        const buildingType = command.buildingType;
+       if (!buildingType || !(buildingType in BUILDING_DEFS)) {
+         return { success: false, message: "Invalid building type" };
+       }
 
-      const def = BUILDING_DEFS[buildingType];
-      const targetX = command.targetX;
-      const targetY = command.targetY;
-      if (targetX === undefined || targetY === undefined) {
-        return { success: false, message: "Missing placement position" };
-      }
+       const def = BUILDING_DEFS[buildingType];
+       const targetX = command.targetX;
+       const targetY = command.targetY;
+       if (targetX === undefined || targetY === undefined) {
+         return { success: false, message: "Missing placement position" };
+       }
 
-     const playerIdx = match.players.findIndex((p) => p?.playerId === playerId);
-       if (playerIdx < 0) return { success: false, message: "Player not found in match" };
+      const playerIdx = match.players.findIndex((p) => p?.playerId === playerId);
+        if (playerIdx < 0) return { success: false, message: "Player not found in match" };
 
-      const economy = match.economy[playerIdx];
-     if (!economy) return { success: false, message: "No economy" };
+       const economy = match.economy[playerIdx];
+      if (!economy) return { success: false, message: "No economy" };
 
-       if (economy.resources < def.cost) {
-        return { success: false, message: "Not enough resources" };
-      }
+        if (economy.resources < def.cost) {
+         return { success: false, message: "Not enough resources" };
+       }
 
-      // Determine build zone and player color
-      const playerColor = match.players[playerIdx]?.color ?? "blue";
-      const map = config.mapWidth === 1200 ? createMap(config) : createMap(config);
-      const buildZone =
-        playerColor === "blue" ? map.blueBuildZone : map.redBuildZone;
-      const laneCorridor = map.laneCorridor;
+       // Validate workers
+       const workerIds = command.workerIds;
+       if (!workerIds || workerIds.length === 0) {
+         return { success: false, message: "No workers specified" };
+       }
 
-      // Find crystals for this player
-      const playerCrystals = Array.from(match.entities.values()).filter(
-        (e) => e.type === "crystal" && e.ownerId === playerId
+       for (const wid of workerIds) {
+         const worker = match.entities.get(wid);
+         if (!worker || worker.type !== "worker" || worker.ownerId !== playerId) {
+           return { success: false, message: "Invalid worker" };
+         }
+         if (worker.buildTargetId) {
+           return { success: false, message: "Worker already building" };
+         }
+       }
+
+       // Determine player color
+       const playerColor = match.players[playerIdx]?.color ?? "blue";
+
+       // Find crystals for this player
+       const playerCrystals = Array.from(match.entities.values()).filter(
+         (e) => e.type === "crystal" && e.ownerId === playerId
+       );
+
+       // Validate placement
+       const placement = validatePlacement(
+         targetX,
+         targetY,
+         def,
+         match.entities,
+         match.resourceNodes,
+         playerColor,
+         playerCrystals,
+         playerId,
+         config.mapWidth,
+         config.mapHeight
       );
+        if (!placement.valid) {
+         return { success: false, message: placement.reason };
+       }
 
-      // Validate placement
-      const placement = validatePlacement(
-        targetX,
-        targetY,
-        def,
-        buildZone,
-        laneCorridor,
-        match.entities,
-        match.resourceNodes,
-        playerColor,
-        playerCrystals,
-        playerId,
-        config.mapHeight
-     );
-       if (!placement.valid) {
-        return { success: false, message: placement.reason };
-      }
+       // Deduct resources
+        economy.resources -= def.cost;
 
-      // Deduct resources
-       economy.resources -= def.cost;
+        // Create building entity
+        const buildingRadius = Math.max(def.width, def.height) / 2;
+       const building: MatchEntity = {
+         id: randomUUID(),
+         type: "building",
+         ownerId: playerId,
+         x: targetX,
+         y: targetY,
+         health: 0,
+         maxHealth: def.health,
+         radius: buildingRadius,
+         color: def.color,
+         buildingType,
+         constructionProgress: 0,
+         buildWorkerIds: new Set<EntityId>(workerIds),
+         productionQueue: [],
+         repairTargetId: undefined,
+         repairProgress: 0,
+         gatheringNodeId: undefined,
+         moveTarget: undefined,
+         attackTargetId: undefined,
+         attackCooldown: 0,
+         healTargetId: undefined,
+         autoAttackEnabled: buildingType === "turret",
+       };
+       match.entities.set(building.id, building);
 
-       // Create building entity
-       const buildingRadius = Math.max(def.width, def.height) / 2;
-      const building: MatchEntity = {
-        id: randomUUID(),
-        type: "building",
-        ownerId: playerId,
-        x: targetX,
-        y: targetY,
-        health: 0,
-        maxHealth: def.health,
-        radius: buildingRadius,
-        color: def.color,
-        buildingType,
-        constructionProgress: 0,
-        buildWorkerId: undefined,
-        productionQueue: [],
-        repairTargetId: undefined,
-        repairProgress: 0,
-        gatheringNodeId: undefined,
-        moveTarget: undefined,
-        attackTargetId: undefined,
-        attackCooldown: 0,
-        healTargetId: undefined,
-        autoAttackEnabled: buildingType === "turret",
-      };
-      match.entities.set(building.id, building);
+       // Assign workers to building
+       for (const wid of workerIds) {
+         const worker = match.entities.get(wid);
+         if (worker) {
+           worker.buildTargetId = building.id;
+           worker.moveTarget = { x: targetX, y: targetY };
+           // Clear gathering if active
+           if (worker.gatheringNodeId) {
+             const prevNode = match.resourceNodes.find((n) => n.id === worker.gatheringNodeId);
+             if (prevNode) {
+               prevNode.gathererSlots.delete(worker.id);
+             }
+             worker.gatheringNodeId = undefined;
+           }
+         }
+       }
 
-      // If supply depot, increase max supply immediately
-      if (def.supplyProvided) {
-        economy.maxSupply += def.supplyProvided;
-      }
+       // If supply depot, increase max supply immediately
+       if (def.supplyProvided) {
+         economy.maxSupply += def.supplyProvided;
+       }
 
-      return { success: true };
-    }
+       return { success: true };
+     }
 
     if (command.type === "repair") {
       const workerId = command.entityId;
@@ -549,22 +601,31 @@ export class MatchEngine {
       }
 
      entity.attackTargetId = targetId;
-       entity.moveTarget = undefined;
-       entity.healTargetId = undefined;
+        entity.moveTarget = undefined;
+        entity.healTargetId = undefined;
 
-      // Cancel gathering if worker
-      if (entity.type === "worker" && entity.gatheringNodeId) {
-        const prevNode = match.resourceNodes.find((n) => n.id === entity.gatheringNodeId);
-        if (prevNode) {
-          prevNode.gathererSlots.delete(entity.id);
-        }
-        entity.gatheringNodeId = undefined;
-      }
+       // Cancel gathering if worker
+       if (entity.type === "worker" && entity.gatheringNodeId) {
+         const prevNode = match.resourceNodes.find((n) => n.id === entity.gatheringNodeId);
+         if (prevNode) {
+           prevNode.gathererSlots.delete(entity.id);
+         }
+         entity.gatheringNodeId = undefined;
+       }
 
-      return { success: true };
-    }
+       // Cancel building if worker
+       if (entity.buildTargetId) {
+         const building = match.entities.get(entity.buildTargetId);
+         if (building && building.buildWorkerIds) {
+           building.buildWorkerIds.delete(entity.id);
+         }
+         entity.buildTargetId = undefined;
+       }
 
-    if (command.type === "heal") {
+       return { success: true };
+     }
+
+     if (command.type === "heal") {
       const medicId = command.entityId;
       const targetId = command.targetEntityId;
       if (!medicId || !targetId) {
@@ -635,6 +696,16 @@ export class MatchEngine {
     return Math.sqrt(dx * dx + dy * dy);
   }
 
+  private buildSpatialGrid(entities: MatchEntity[], cellSize: number): Map<string, MatchEntity[]> {
+    const grid = new Map<string, MatchEntity[]>();
+    for (const entity of entities) {
+      const key = `${Math.floor(entity.x / cellSize)},${Math.floor(entity.y / cellSize)}`;
+      if (!grid.has(key)) grid.set(key, []);
+      grid.get(key)!.push(entity);
+    }
+    return grid;
+  }
+
   private processMovement(match: MatchState, subStepMs: number = 100): void {
     const entities = Array.from(match.entities.values());
     const arrivalThreshold = 1;
@@ -666,28 +737,40 @@ export class MatchEngine {
       }
     }
 
-    // Soft collision (run twice for stability)
+    // Soft collision with spatial grid (run twice for stability)
+    const mobile = entities.filter(
+      (e) => e.type !== "crystal" && e.type !== "building"
+    );
+    const cellSize = 50;
     for (let pass = 0; pass < 2; pass++) {
-      const mobile = entities.filter(
-        (e) => e.type !== "crystal" && e.type !== "building"
-      );
-      for (let i = 0; i < mobile.length; i++) {
-        for (let j = i + 1; j < mobile.length; j++) {
-          const a = mobile[i];
-          const b = mobile[j];
-          const dx = b.x - a.x;
-          const dy = b.y - a.y;
-          const distance = Math.sqrt(dx * dx + dy * dy);
-          const minDist = a.radius + b.radius;
-
-          if (distance < minDist && distance > 0) {
-            const push = (minDist - distance) * 0.5;
-            const nx = dx / distance;
-            const ny = dy / distance;
-            a.x -= nx * push;
-            a.y -= ny * push;
-            b.x += nx * push;
-            b.y += ny * push;
+      const grid = this.buildSpatialGrid(mobile, cellSize);
+      const checked = new Set<string>();
+      for (const entity of mobile) {
+        const cx = Math.floor(entity.x / cellSize);
+        const cy = Math.floor(entity.y / cellSize);
+        for (let ddx = -1; ddx <= 1; ddx++) {
+          for (let ddy = -1; ddy <= 1; ddy++) {
+            const key = `${cx + ddx},${cy + ddy}`;
+            const cell = grid.get(key);
+            if (!cell) continue;
+            for (const other of cell) {
+              if (other.id <= entity.id) continue;
+              if (checked.has(`${entity.id}-${other.id}`)) continue;
+              checked.add(`${entity.id}-${other.id}`);
+              const dx = other.x - entity.x;
+              const dy = other.y - entity.y;
+              const distance = Math.sqrt(dx * dx + dy * dy);
+              const minDist = entity.radius + other.radius;
+              if (distance < minDist && distance > 0) {
+                const push = (minDist - distance) * 0.5;
+                const nx = dx / distance;
+                const ny = dy / distance;
+                entity.x -= nx * push;
+                entity.y -= ny * push;
+                other.x += nx * push;
+                other.y += ny * push;
+              }
+            }
           }
         }
       }
@@ -853,28 +936,61 @@ export class MatchEngine {
     for (const node of match.resourceNodes) {
       if (node.remaining <= 0 || node.gathererSlots.size === 0) continue;
 
-      const gatherCount = node.gathererSlots.size;
-      const totalGather = gatherCount * 1;
-
-      const gatheredByPlayer = new Map<string, number>();
+      const inRangeWorkers: EntityId[] = [];
       for (const workerId of node.gathererSlots) {
         const worker = match.entities.get(workerId);
-        if (worker) {
-          gatheredByPlayer.set(
-            worker.ownerId,
-            (gatheredByPlayer.get(worker.ownerId) ?? 0) + 1
-          );
+        if (!worker) continue;
+
+        const d = this.dist(worker.x, worker.y, node.x, node.y);
+        if (d <= GATHER_RANGE) {
+          inRangeWorkers.push(workerId);
+          if (worker.moveTarget) {
+            const dx = worker.moveTarget.x - node.x;
+            const dy = worker.moveTarget.y - node.y;
+            if (Math.sqrt(dx * dx + dy * dy) < 5) {
+              worker.moveTarget = undefined;
+            }
+          }
+        } else {
+          worker.moveTarget = { x: node.x, y: node.y };
         }
       }
 
-      for (const [ownerId, count] of gatheredByPlayer) {
-        const playerIdx = match.players.findIndex((p) => p?.playerId === ownerId);
-        if (playerIdx >= 0 && match.economy[playerIdx]) {
-          match.economy[playerIdx]!.resources += count;
-        }
-      }
+      const gatherCount = inRangeWorkers.length;
+      if (gatherCount === 0) continue;
 
-      node.remaining = Math.max(0, node.remaining - totalGather);
+      const totalGather = gatherCount * GATHER_RATE_PER_WORKER;
+      node.accumulatedGather = (node.accumulatedGather ?? 0) + totalGather;
+      const wholeResources = Math.floor(node.accumulatedGather);
+
+      if (wholeResources > 0) {
+        const perWorker = wholeResources / Math.max(inRangeWorkers.length, 1);
+        const gatheredByPlayer = new Map<string, number>();
+        for (const workerId of inRangeWorkers) {
+          const worker = match.entities.get(workerId);
+          if (worker) {
+            gatheredByPlayer.set(
+              worker.ownerId,
+              (gatheredByPlayer.get(worker.ownerId) ?? 0) + perWorker
+            );
+          }
+        }
+
+        let distributed = 0;
+        for (const [ownerId, count] of gatheredByPlayer) {
+          const rounded = Math.round(count);
+          const capped = Math.min(rounded, wholeResources - distributed);
+          if (capped <= 0) continue;
+          const playerIdx = match.players.findIndex((p) => p?.playerId === ownerId);
+          if (playerIdx >= 0 && match.economy[playerIdx]) {
+            match.economy[playerIdx]!.resources += capped;
+            distributed += capped;
+          }
+        }
+
+        node.remaining = Math.max(0, node.remaining - distributed);
+        node.accumulatedGather -= distributed;
+      }
 
       if (node.remaining <= 0) {
         node.gathererSlots.clear();
@@ -882,54 +998,86 @@ export class MatchEngine {
     }
   }
 
-  private processConstruction(match: MatchState): void {
-    for (const entity of match.entities.values()) {
-      if (entity.type !== "building") continue;
+private processConstruction(match: MatchState): void {
+     for (const entity of match.entities.values()) {
+       if (entity.type !== "building") continue;
 
-      // If under construction, advance progress
-      if (entity.constructionProgress < 100) {
-        const def = entity.buildingType ? BUILDING_DEFS[entity.buildingType] : null;
-        if (def) {
-          const progressPerTick = 100 / def.buildTime;
-          entity.constructionProgress = Math.min(
-            100,
-            entity.constructionProgress + progressPerTick
-          );
+       // If under construction, advance progress based on workers in range
+       if (entity.constructionProgress < 100) {
+         const def = entity.buildingType ? BUILDING_DEFS[entity.buildingType] : null;
+         if (def && entity.buildWorkerIds && entity.buildWorkerIds.size > 0) {
+           let workersInRange = 0;
+           for (const wid of entity.buildWorkerIds) {
+             const worker = match.entities.get(wid);
+             if (!worker) continue;
+             const d = this.dist(worker.x, worker.y, entity.x, entity.y);
+             if (d <= GATHER_RANGE) {
+               workersInRange++;
+               // Stop worker at building edge
+               if (worker.moveTarget) {
+                 const dx = worker.moveTarget.x - entity.x;
+                 const dy = worker.moveTarget.y - entity.y;
+                 if (Math.sqrt(dx * dx + dy * dy) < 5) {
+                   worker.moveTarget = undefined;
+                 }
+               }
+             } else {
+               // Move worker toward building
+               worker.moveTarget = { x: entity.x, y: entity.y };
+             }
+           }
 
-          if (entity.constructionProgress >= 100) {
-            entity.health = def.health;
-            entity.maxHealth = def.health;
-          }
-        }
-      }
+           if (workersInRange > 0) {
+             const progressPerTick = (workersInRange / def.buildTime) * 100;
+             entity.constructionProgress = Math.min(
+               100,
+               entity.constructionProgress + progressPerTick
+             );
 
-      // Process production queue
-      if (entity.constructionProgress >= 100 && entity.productionQueue.length > 0) {
-        const item = entity.productionQueue[0];
-        if (item) {
-          item.remainingTicks -= 1;
+             if (entity.constructionProgress >= 100) {
+               entity.health = def.health;
+               entity.maxHealth = def.health;
+               // Free workers
+               for (const wid of entity.buildWorkerIds) {
+                 const worker = match.entities.get(wid);
+                 if (worker) {
+                   worker.buildTargetId = undefined;
+                   worker.moveTarget = undefined;
+                 }
+               }
+               entity.buildWorkerIds.clear();
+             }
+           }
+         }
+       }
 
-          if (item.remainingTicks <= 0) {
-            const unitDef = UNIT_DEFS[item.unitType];
-            if (unitDef) {
-              const spawn = this.spawnOutside(entity, unitDef.radius);
-              const unit = this.createEntity(
-                item.unitType,
-                entity.ownerId,
-                spawn.x,
-                spawn.y,
-                unitDef.health,
-                unitDef.radius,
-                unitDef.color
-              );
-              match.entities.set(unit.id, unit);
-              entity.productionQueue.shift();
-            }
-          }
-        }
-      }
-    }
-  }
+       // Process production queue
+       if (entity.constructionProgress >= 100 && entity.productionQueue.length > 0) {
+         const item = entity.productionQueue[0];
+         if (item) {
+           item.remainingTicks -= 1;
+
+           if (item.remainingTicks <= 0) {
+             const unitDef = UNIT_DEFS[item.unitType];
+             if (unitDef) {
+               const spawn = this.spawnOutside(entity, unitDef.radius);
+               const unit = this.createEntity(
+                 item.unitType,
+                 entity.ownerId,
+                 spawn.x,
+                 spawn.y,
+                 unitDef.health,
+                 unitDef.radius,
+                 unitDef.color
+               );
+               match.entities.set(unit.id, unit);
+               entity.productionQueue.shift();
+             }
+           }
+         }
+       }
+     }
+   }
 
   private processRepairAndHealing(match: MatchState): void {
     for (const entity of match.entities.values()) {
@@ -1017,21 +1165,32 @@ export class MatchEngine {
         }
       }
 
-      // Handle supply depot death
-      if (entity.type === "building" && entity.buildingType === "supply_depot") {
-        const def = BUILDING_DEFS.supply_depot;
-        const playerIdx = match.players.findIndex((p) => p?.playerId === entity.ownerId);
-        if (playerIdx >= 0 && match.economy[playerIdx]) {
-          match.economy[playerIdx]!.maxSupply = Math.max(
-            0,
-            match.economy[playerIdx]!.maxSupply - (def.supplyProvided ?? 0)
-          );
-          match.economy[playerIdx]!.supply = Math.min(
-            match.economy[playerIdx]!.supply,
-            match.economy[playerIdx]!.maxSupply
-          );
-        }
-      }
+     // Free workers assigned to this building
+       if (entity.type === "building" && entity.buildWorkerIds) {
+         for (const wid of entity.buildWorkerIds) {
+           const worker = match.entities.get(wid);
+           if (worker) {
+             worker.buildTargetId = undefined;
+             worker.moveTarget = undefined;
+           }
+         }
+       }
+
+       // Handle supply depot death
+       if (entity.type === "building" && entity.buildingType === "supply_depot") {
+         const def = BUILDING_DEFS.supply_depot;
+         const playerIdx = match.players.findIndex((p) => p?.playerId === entity.ownerId);
+         if (playerIdx >= 0 && match.economy[playerIdx]) {
+           match.economy[playerIdx]!.maxSupply = Math.max(
+             0,
+             match.economy[playerIdx]!.maxSupply - (def.supplyProvided ?? 0)
+           );
+           match.economy[playerIdx]!.supply = Math.min(
+             match.economy[playerIdx]!.supply,
+             match.economy[playerIdx]!.maxSupply
+           );
+         }
+       }
 
       match.entities.delete(entityId);
 
@@ -1158,18 +1317,19 @@ export class MatchEngine {
     ];
 
     for (const layout of allNodeLayouts) {
-      const node: ResourceNode = {
-        id: randomUUID(),
-        x: layout.x,
-        y: layout.y,
-        radius: layout.radius,
-        color: "#ccaa44",
-        capacity: layout.capacity,
-        remaining: layout.capacity,
-        maxGathererSlots: 3,
-        gathererSlots: new Set<EntityId>(),
-      };
-      match.resourceNodes.push(node);
+     const node: ResourceNode = {
+         id: randomUUID(),
+         x: layout.x,
+         y: layout.y,
+         radius: layout.radius,
+         color: "#ccaa44",
+         capacity: layout.capacity,
+         remaining: layout.capacity,
+         maxGathererSlots: 3,
+         gathererSlots: new Set<EntityId>(),
+         accumulatedGather: 0,
+       };
+       match.resourceNodes.push(node);
     }
 
     // Reset economy (keep scores)
@@ -1234,11 +1394,12 @@ export class MatchEngine {
         color: def.color,
         buildingType,
         constructionProgress: 0,
-        buildWorkerId: undefined,
+        buildWorkerIds: undefined,
         productionQueue: [],
         repairTargetId: undefined,
         repairProgress: 0,
         gatheringNodeId: undefined,
+        buildTargetId: undefined,
         moveTarget: undefined,
         attackTargetId: undefined,
         attackCooldown: 0,
@@ -1259,7 +1420,8 @@ export class MatchEngine {
       color,
       buildingType: undefined,
       constructionProgress: 100,
-      buildWorkerId: undefined,
+      buildWorkerIds: undefined,
+      buildTargetId: undefined,
       productionQueue: [],
       repairTargetId: undefined,
       repairProgress: 0,
