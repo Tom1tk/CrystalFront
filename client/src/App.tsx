@@ -90,6 +90,13 @@ function useScreenFlow() {
     [ws]
   );
 
+  const handleDebugSpawn = useCallback(
+    (entityType: string, x: number, y: number, buildingType?: string) => {
+      ws.debugSpawn(entityType, x, y, buildingType);
+    },
+    [ws]
+  );
+
   const handleGameCommand = useCallback(
     (command: { type: string; entityId?: string; targetX?: number; targetY?: number; targetEntityId?: string; buildingType?: string }) => {
       console.log("[App] handleGameCommand:", JSON.stringify(command), "playerId:", ws.playerId);
@@ -132,6 +139,7 @@ function useScreenFlow() {
     handleRematch,
     handleExit,
     handleDebugWin,
+    handleDebugSpawn,
     handleGameCommand,
   };
 }
@@ -151,6 +159,7 @@ export default function App() {
     handleRematch,
     handleExit,
     handleDebugWin,
+    handleDebugSpawn,
     handleGameCommand,
   } = useScreenFlow();
 
@@ -179,6 +188,7 @@ export default function App() {
           matchState={matchState}
           resourceNodes={ws.resourceNodes}
           onDebugWin={handleDebugWin}
+          onDebugSpawn={handleDebugSpawn}
           onGameCommand={handleGameCommand}
           error={ws.error}
           onClearError={ws.clearError}

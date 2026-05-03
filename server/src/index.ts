@@ -710,6 +710,37 @@ wss.on("connection", (ws) => {
         break;
       }
 
+      case CLIENT_MSG.DEBUG_SPAWN: {
+        if (!playerId) {
+          sendWS(ws, { type: SERVER_EVT.ERROR, payload: { message: "Not connected." } });
+          return;
+        }
+        const session = playerLobbyMap.get(playerId);
+        if (!session || !session.matchId) {
+          sendWS(ws, { type: SERVER_EVT.ERROR, payload: { message: "No active match." } });
+          return;
+        }
+
+        const spawnPayload = msg.payload as { entityType: string; buildingType?: string; x: number; y: number };
+        const result = matchEngine.debugSpawn(
+          session.matchId,
+          playerId,
+          spawnPayload.entityType as "worker" | "skirmisher" | "gunner" | "bruiser" | "medic" | "building",
+          spawnPayload.x,
+          spawnPayload.y,
+          spawnPayload.buildingType as "barracks" | "foundry" | "supply_depot" | "turret" | undefined
+        );
+
+        if (!result.success) {
+          sendWS(ws, { type: SERVER_EVT.ERROR, payload: { message: result.message ?? "Spawn failed." } });
+          return;
+        }
+
+        // Broadcast updated state
+        broadcastGameState(session.code);
+        break;
+      }
+
       case CLIENT_MSG.USERNAME: {
         if (!playerId) {
           sendWS(ws, { type: SERVER_EVT.ERROR, payload: { message: "Not connected." } });
