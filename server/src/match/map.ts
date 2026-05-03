@@ -71,22 +71,28 @@ export function createMap(config: MatchConfig): MapLayout {
     { x: mapWidth - 200, y: midY },
   ];
 
-  // Safe resource nodes near each base
+  // Safe resource nodes near each base (4 per side)
   const blueSafeNodes: ResourceNodeLayout[] = [
-    { x: 250, y: midY - 120, radius: 18, capacity: 300, type: "safe" },
-    { x: 250, y: midY + 120, radius: 18, capacity: 300, type: "safe" },
+    { x: 250, y: midY - 160, radius: 18, capacity: 100, type: "safe" },
+    { x: 250, y: midY - 60, radius: 18, capacity: 100, type: "safe" },
+    { x: 250, y: midY + 60, radius: 18, capacity: 100, type: "safe" },
+    { x: 250, y: midY + 160, radius: 18, capacity: 100, type: "safe" },
   ];
 
   const redSafeNodes: ResourceNodeLayout[] = [
-    { x: mapWidth - 250, y: midY - 120, radius: 18, capacity: 300, type: "safe" },
-    { x: mapWidth - 250, y: midY + 120, radius: 18, capacity: 300, type: "safe" },
+    { x: mapWidth - 250, y: midY - 160, radius: 18, capacity: 100, type: "safe" },
+    { x: mapWidth - 250, y: midY - 60, radius: 18, capacity: 100, type: "safe" },
+    { x: mapWidth - 250, y: midY + 60, radius: 18, capacity: 100, type: "safe" },
+    { x: mapWidth - 250, y: midY + 160, radius: 18, capacity: 100, type: "safe" },
   ];
 
-  // Contested resource nodes spread across the middle
+  // Contested resource nodes - pattern of 5 across the middle
   const contestedNodes: ResourceNodeLayout[] = [
-    { x: midX - 400, y: midY - 80, radius: 22, capacity: 500, type: "contested" },
-    { x: midX, y: midY, radius: 22, capacity: 500, type: "contested" },
-    { x: midX + 400, y: midY + 80, radius: 22, capacity: 500, type: "contested" },
+    { x: midX - 400, y: midY - 80, radius: 22, capacity: 100, type: "contested" },
+    { x: midX - 200, y: midY - 40, radius: 22, capacity: 100, type: "contested" },
+    { x: midX, y: midY, radius: 22, capacity: 100, type: "contested" },
+    { x: midX + 200, y: midY + 40, radius: 22, capacity: 100, type: "contested" },
+    { x: midX + 400, y: midY + 80, radius: 22, capacity: 100, type: "contested" },
   ];
 
   // Build zones (per-player areas near base, 20% of map width each)

@@ -10,8 +10,8 @@ describe("Combat System", () => {
   beforeEach(() => {
     engine = new MatchEngine();
     match = engine.createMatch("TEST", [
-      { playerId: "p1", username: "Player1", color: "blue", score: 0, wsId: "ws1" },
-      { playerId: "p2", username: "Player2", color: "red", score: 0, wsId: "ws2" },
+      { playerId: "p1", username: "Player1", color: "blue", score: 0 },
+      { playerId: "p2", username: "Player2", color: "red", score: 0 },
     ]);
     match.phase = "playing";
   });

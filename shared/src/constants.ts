@@ -167,7 +167,7 @@ export const CRYSTAL_NO_BUILD_RADIUS = 80;
 
 export const WORLD_WIDTH = 3000;
 export const WORLD_HEIGHT = 600;
-export const VIEWPORT_WIDTH = 600;
-export const VIEWPORT_HEIGHT = 600;
+export const VIEWPORT_WIDTH = 960;
+export const VIEWPORT_HEIGHT = 540;
 export const EDGE_SCROLL_THRESHOLD = 50;
 export const EDGE_SCROLL_SPEED = 3;

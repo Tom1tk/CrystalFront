@@ -55,10 +55,12 @@ export interface MatchEntity {
   color: string;
   buildingType?: BuildingType;
   constructionProgress: number;
-  buildWorkerId?: string;
+  buildWorkerIds?: string[];
+  buildTargetId?: string;
   productionQueue: ProductionQueueItem[];
   repairTargetId?: string;
   repairProgress: number;
+  gatheringNodeId?: string;
   moveTarget?: { x: number; y: number };
   attackTargetId?: string;
   attackCooldown?: number;

@@ -10,6 +10,8 @@ interface GameShellProps {
   onGameCommand: (command: {
     type: string;
     entityId?: string;
+    entityIds?: string[];
+    workerIds?: string[];
     targetX?: number;
     targetY?: number;
     targetEntityId?: string;
@@ -45,6 +47,20 @@ const BUILDING_UNIT_MAP: Record<BuildingType, string[]> = {
   foundry: ["bruiser", "medic"],
   supply_depot: [],
   turret: [],
+};
+
+const BUILDING_COSTS: Record<BuildingType, number> = {
+  barracks: 75,
+  foundry: 100,
+  supply_depot: 50,
+  turret: 60,
+};
+
+const BUILDING_SIZES: Record<BuildingType, { w: number; h: number }> = {
+  barracks: { w: 40, h: 40 },
+  foundry: { w: 44, h: 44 },
+  supply_depot: { w: 36, h: 36 },
+  turret: { w: 30, h: 30 },
 };
 
 const UNIT_COSTS: Record<string, { cost: number; supplyCost: number }> = {
@@ -215,6 +231,105 @@ function drawAttackLines(
     ctx.fillStyle = color;
     ctx.fill();
     ctx.restore();
+  }
+}
+
+const GATHER_RANGE = 60;
+
+function drawConstructionLines(
+  ctx: CanvasRenderingContext2D,
+  entities: MatchEntity[]
+) {
+  for (const entity of entities) {
+    if (entity.type !== "worker" || !entity.buildTargetId) continue;
+    const target = entities.find((e) => e.id === entity.buildTargetId);
+    if (!target) continue;
+    const dx = target.x - entity.x;
+    const dy = target.y - entity.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    const mx = (entity.x + target.x) / 2;
+    const my = (entity.y + target.y) / 2;
+    const angle = Math.atan2(dy, dx);
+
+    ctx.beginPath();
+    ctx.moveTo(entity.x, entity.y);
+    ctx.lineTo(target.x, target.y);
+
+    if (dist <= GATHER_RANGE) {
+      ctx.strokeStyle = "rgba(100,255,150,0.3)";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+    } else {
+      ctx.strokeStyle = "rgba(100,255,150,0.55)";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    if (dist > GATHER_RANGE) {
+      ctx.save();
+      ctx.translate(mx, my);
+      ctx.rotate(angle);
+      ctx.beginPath();
+      ctx.moveTo(5, 0);
+      ctx.lineTo(-4, -4);
+      ctx.lineTo(-4, 4);
+      ctx.closePath();
+      ctx.fillStyle = "rgba(100,255,150,0.5)";
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+}
+
+function drawGatherLines(
+  ctx: CanvasRenderingContext2D,
+  entities: MatchEntity[],
+  resourceNodes: ResourceNodeDisplay[]
+) {
+  for (const entity of entities) {
+    if (entity.type !== "worker" || !entity.gatheringNodeId) continue;
+    const node = resourceNodes.find((n) => n.id === entity.gatheringNodeId);
+    if (!node) continue;
+    const dx = node.x - entity.x;
+    const dy = node.y - entity.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    const mx = (entity.x + node.x) / 2;
+    const my = (entity.y + node.y) / 2;
+    const angle = Math.atan2(dy, dx);
+
+    ctx.beginPath();
+    ctx.moveTo(entity.x, entity.y);
+    ctx.lineTo(node.x, node.y);
+
+    if (dist <= GATHER_RANGE) {
+      ctx.strokeStyle = "rgba(255,255,100,0.25)";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+    } else {
+      ctx.strokeStyle = "rgba(255,200,50,0.5)";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    if (dist > GATHER_RANGE) {
+      ctx.save();
+      ctx.translate(mx, my);
+      ctx.rotate(angle);
+      ctx.beginPath();
+      ctx.moveTo(5, 0);
+      ctx.lineTo(-4, -4);
+      ctx.lineTo(-4, 4);
+      ctx.closePath();
+      ctx.fillStyle = "rgba(255,200,50,0.5)";
+      ctx.fill();
+      ctx.restore();
+    }
   }
 }
 
@@ -405,19 +520,6 @@ export default function GameShell({
 
       // Left click: selection + build placement
       if (e.button === 0) {
-        if (buildMode && selectedBuildingType && myCrystal) {
-          onGameCommand({
-            type: "build",
-            entityId: myCrystal.id,
-            buildingType: selectedBuildingType,
-            targetX: worldX,
-            targetY: worldY,
-          });
-          setBuildMode(false);
-          setSelectedBuildingType(null);
-          return;
-        }
-
         // Start drag origin for box-select
         console.log("[box-select] mousedown at", { screenX, screenY });
         setIsDragging(true);
@@ -427,6 +529,10 @@ export default function GameShell({
 
       // Right click: commands
       if (e.button === 2) {
+        if (buildMode) {
+          setBuildMode(false);
+          setSelectedBuildingType(null);
+        }
         const allSelectedIds = selectedEntityIds.size > 0 ? selectedEntityIds : (selectedEntityId ? new Set([selectedEntityId]) : new Set());
         if (allSelectedIds.size === 0) return;
 
@@ -546,6 +652,19 @@ export default function GameShell({
     mousePosRef.current = null;
   }, []);
 
+  // Keyboard handler for Escape to cancel build mode
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && buildModeRef.current) {
+        setBuildMode(false);
+        setSelectedBuildingType(null);
+        setShowUnitQueue(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   const handleMouseUp = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
       if (e.button === 0 && isDragging && dragStart) {
@@ -558,6 +677,29 @@ export default function GameShell({
 
         const dx = screenX - dragStart.x;
         const dy = screenY - dragStart.y;
+
+        // Build placement takes priority over selection
+        if (buildMode && selectedBuildingType && Math.abs(dx) <= 10 && Math.abs(dy) <= 10) {
+          const worldX = screenX + cameraXRef.current;
+          const worldY = screenY;
+          const workerIds = Array.from(selectedEntityIds).filter((id) =>
+            myEntities.find((ent) => ent.id === id && ent.type === "worker")
+          );
+          if (workerIds.length > 0) {
+            onGameCommand({
+              type: "build",
+              workerIds,
+              buildingType: selectedBuildingType,
+              targetX: worldX,
+              targetY: worldY,
+            });
+          }
+          setBuildMode(false);
+          setSelectedBuildingType(null);
+          setIsDragging(false);
+          setDragStart(null);
+          return;
+        }
 
         // Box-select if dragged more than 10px
         console.log("[box-select] mouseup at", { screenX, screenY, dx, dy, dragStart });
@@ -629,6 +771,7 @@ export default function GameShell({
   const handleBuildClick = useCallback(
     (type: BuildingType) => {
       setSelectedBuildingType(type);
+      setBuildMode(true);
     },
     []
   );
@@ -926,6 +1069,13 @@ export default function GameShell({
           ctx.fillRect(bx, barY, barWidth, barHeight);
           ctx.fillStyle = "#44cc44";
           ctx.fillRect(bx, barY, barWidth * (entity.constructionProgress / 100), barHeight);
+          const workerCount = entity.buildWorkerIds?.length ?? 0;
+          if (workerCount > 0) {
+            ctx.fillStyle = "#aaa";
+            ctx.font = "8px monospace";
+            ctx.textAlign = "center";
+            ctx.fillText(`${workerCount}W`, entity.x, barY - 3);
+          }
         }
 
         if (entity.health < entity.maxHealth) {
@@ -1025,6 +1175,12 @@ export default function GameShell({
     // Attack visualization lines
     drawAttackLines(ctx, entities, matchState);
 
+    // Gather lines (yellow)
+    drawGatherLines(ctx, entities, resourceNodes);
+
+    // Construction lines (green)
+    drawConstructionLines(ctx, entities);
+
     // Death particles
     const particles = particlesRef.current;
     for (let i = particles.length - 1; i >= 0; i--) {
@@ -1089,18 +1245,30 @@ export default function GameShell({
       }
     }
 
-    // Build mode preview
+    // Build mode preview with validity indicator
     if (buildMode && selectedBuildingType && hoverPos) {
+      const size = BUILDING_SIZES[selectedBuildingType];
+      const halfW = size.w / 2;
+      const halfH = size.h / 2;
+      const midX = mapWidth / 2;
+      const centerExclusion = 200;
+      const isBlue = player.color === "blue";
+      const inPlayerHalf = isBlue ? hoverPos.x < midX : hoverPos.x > midX;
+      const notInCenter = isBlue ? hoverPos.x <= midX - centerExclusion : hoverPos.x >= midX + centerExclusion;
+      const valid = inPlayerHalf && notInCenter;
+      const previewColor = valid ? "rgba(68,204,68,0.5)" : "rgba(204,68,68,0.5)";
+      const borderColor = valid ? "rgba(68,204,68,0.8)" : "rgba(204,68,68,0.8)";
+
       ctx.beginPath();
-      ctx.arc(hoverPos.x, hoverPos.y, 22, 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(255,255,255,0.5)";
+      ctx.arc(hoverPos.x, hoverPos.y, halfW + 2, 0, Math.PI * 2);
+      ctx.strokeStyle = borderColor;
       ctx.lineWidth = 2;
       ctx.setLineDash([4, 4]);
       ctx.stroke();
       ctx.setLineDash([]);
       const color = BUILDING_COLORS[selectedBuildingType];
-      ctx.fillStyle = `${color}44`;
-      ctx.fillRect(hoverPos.x - 22, hoverPos.y - 22, 44, 44);
+      ctx.fillStyle = valid ? `${color}66` : "rgba(204,68,68,0.3)";
+      ctx.fillRect(hoverPos.x - halfW, hoverPos.y - halfH, halfW * 2, halfH * 2);
     }
 
     ctx.restore();
@@ -1169,6 +1337,11 @@ export default function GameShell({
   const isBuildingSelected = selectedEntity?.type === "building";
   const isMultiSelect = selectedEntityIds.size > 0;
 
+  const selectedWorkers = Array.from(selectedEntityIds).filter(
+    (id) => myEntities.find((e) => e.id === id && e.type === "worker")
+  );
+  const hasSelectedWorkers = selectedWorkers.length > 0;
+
   const canBuildSupplyDepot = myEconomy && myEconomy.resources >= 50;
   const canBuildBarracks = myEconomy && myEconomy.resources >= 75;
   const canBuildFoundry = myEconomy && myEconomy.resources >= 100;
@@ -1222,17 +1395,19 @@ export default function GameShell({
               </span>
             </div>
             <span style={styles.infoText}>
-              {isMultiSelect
-                ? `Selected ${selectedEntityIds.size} units`
-                : selectedEntityId
-                  ? selectedEntity?.type === "crystal"
-                    ? "Crystal selected"
-                    : selectedEntity?.type === "building"
-                      ? `${selectedEntity.buildingType || "Building"} selected`
-                      : selectedEntity?.ownerId === player.id
-                        ? "Click ground to move, click node to gather, click enemy to attack"
-                        : `Enemy ${selectedEntity?.type} selected`
-                  : "Click units to select, drag to box-select"}
+              {buildMode && selectedBuildingType
+                ? `Placing ${BUILDING_LABELS[selectedBuildingType]} — click map to place, Esc to cancel`
+                : isMultiSelect
+                  ? `Selected ${selectedEntityIds.size} units`
+                  : selectedEntityId
+                    ? selectedEntity?.type === "crystal"
+                      ? "Crystal selected"
+                      : selectedEntity?.type === "building"
+                        ? `${selectedEntity.buildingType || "Building"} selected`
+                        : selectedEntity?.ownerId === player.id
+                          ? "Click ground to move, click node to gather, click enemy to attack"
+                          : `Enemy ${selectedEntity?.type} selected`
+                    : "Click units to select, drag to box-select"}
             </span>
             <span style={styles.infoText}>Tick: {matchState?.tick ?? 0}</span>
           </div>
@@ -1259,31 +1434,65 @@ export default function GameShell({
                   : `Need ${myEconomy.maxSupply - myEconomy.supply} more supply capacity`}
               </span>
             )}
-            <button
-              style={{
-                ...styles.buildModeButton,
-                ...(buildMode ? styles.buildModeButtonActive : {}),
-              }}
-              onClick={() => setBuildMode(!buildMode)}
-            >
-              {buildMode ? "Cancel Build" : "Build Structure"}
-            </button>
           </div>
         )}
 
         {buildMode && selectedBuildingType && (
           <div style={styles.buildBar}>
             <span style={styles.buildLabel}>
-              Building: {selectedBuildingType} ({BUILDING_LABELS[selectedBuildingType]})
+              Placing: {BUILDING_LABELS[selectedBuildingType]} ({BUILDING_COSTS[selectedBuildingType]} resource)
             </span>
-            <button
-              style={styles.buildConfirmButton}
-              onClick={() => {}}
-            >
-              Click on map to place
-            </button>
+            <span style={styles.buildLabel}>Click map to place</span>
             <button style={styles.buildCancelButton} onClick={handleCancelBuild}>
               Cancel
+            </button>
+          </div>
+        )}
+
+        {hasSelectedWorkers && !buildMode && (
+          <div style={styles.buildTypeBar}>
+            <span style={styles.buildTypeLabel}>
+              {selectedWorkers.length} worker{selectedWorkers.length > 1 ? 's' : ''} selected — Build:
+            </span>
+            <button
+              style={{
+                ...styles.buildTypeButton,
+                ...(canBuildSupplyDepot ? {} : styles.buildTypeButtonDisabled),
+              }}
+              onClick={() => handleBuildClick("supply_depot")}
+              disabled={!canBuildSupplyDepot}
+            >
+              Supply Depot (50)
+            </button>
+            <button
+              style={{
+                ...styles.buildTypeButton,
+                ...(canBuildBarracks ? {} : styles.buildTypeButtonDisabled),
+              }}
+              onClick={() => handleBuildClick("barracks")}
+              disabled={!canBuildBarracks}
+            >
+              Barracks (75)
+            </button>
+            <button
+              style={{
+                ...styles.buildTypeButton,
+                ...(canBuildFoundry ? {} : styles.buildTypeButtonDisabled),
+              }}
+              onClick={() => handleBuildClick("foundry")}
+              disabled={!canBuildFoundry}
+            >
+              Foundry (100)
+            </button>
+            <button
+              style={{
+                ...styles.buildTypeButton,
+                ...(canBuildTurret ? {} : styles.buildTypeButtonDisabled),
+              }}
+              onClick={() => handleBuildClick("turret")}
+              disabled={!canBuildTurret}
+            >
+              Turret (60)
             </button>
           </div>
         )}
@@ -1293,6 +1502,11 @@ export default function GameShell({
             <span style={styles.buildLabel}>
               {selectedEntity?.buildingType ? BUILDING_LABELS[selectedEntity.buildingType] : "Building"}
             </span>
+            {selectedEntity?.constructionProgress !== undefined && selectedEntity.constructionProgress < 100 && (
+              <span style={{ ...styles.buildLabel, color: "#44cc44" }}>
+                Building: {Math.floor(selectedEntity.constructionProgress)}% ({(selectedEntity.buildWorkerIds?.length ?? 0)} workers)
+              </span>
+            )}
             {selectedEntity?.productionQueue.length > 0 && (
               <span style={styles.buildLabel}>
                 Producing: {selectedEntity.productionQueue[0].unitType} ({Math.ceil(selectedEntity.productionQueue[0].remainingTicks / 10)}s)
@@ -1339,51 +1553,7 @@ export default function GameShell({
           </div>
         )}
 
-        {buildMode && (
-          <div style={styles.buildTypeBar}>
-            <span style={styles.buildTypeLabel}>Select building:</span>
-            <button
-              style={{
-                ...styles.buildTypeButton,
-                ...(canBuildSupplyDepot ? {} : styles.buildTypeButtonDisabled),
-              }}
-              onClick={() => handleBuildClick("supply_depot")}
-              disabled={!canBuildSupplyDepot}
-            >
-              Supply Depot (50⛏)
-            </button>
-            <button
-              style={{
-                ...styles.buildTypeButton,
-                ...(canBuildBarracks ? {} : styles.buildTypeButtonDisabled),
-              }}
-              onClick={() => handleBuildClick("barracks")}
-              disabled={!canBuildBarracks}
-            >
-              Barracks (75⛏)
-            </button>
-            <button
-              style={{
-                ...styles.buildTypeButton,
-                ...(canBuildFoundry ? {} : styles.buildTypeButtonDisabled),
-              }}
-              onClick={() => handleBuildClick("foundry")}
-              disabled={!canBuildFoundry}
-            >
-              Foundry (100⛏)
-            </button>
-            <button
-              style={{
-                ...styles.buildTypeButton,
-                ...(canBuildTurret ? {} : styles.buildTypeButtonDisabled),
-              }}
-              onClick={() => handleBuildClick("turret")}
-              disabled={!canBuildTurret}
-            >
-              Turret (60⛏)
-            </button>
-          </div>
-        )}
+  
 
         <div style={styles.debugSection}>
           <p style={styles.debugTitle}>Debug Controls</p>

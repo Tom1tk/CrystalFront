@@ -57,10 +57,12 @@ export interface Entity {
   color: string;
   buildingType?: BuildingType;
   constructionProgress?: number;
-  buildWorkerId?: string;
+  buildWorkerIds?: string[];
+  buildTargetId?: string;
   productionQueue?: ProductionQueueItem[];
   repairTargetId?: string;
   repairProgress?: number;
+  gatheringNodeId?: string;
   moveTarget?: { x: number; y: number };
   attackTargetId?: string;
   attackCooldown: number;
@@ -175,9 +177,12 @@ export interface ClientCommand {
   tick: number;
   type: CommandType;
   entityId?: string;
+  entityIds?: string[];
   targetX?: number;
   targetY?: number;
   targetEntityId?: string;
+  buildingType?: BuildingType;
+  workerIds?: string[];
 }
 
 export interface GameSnapshot {

@@ -57,11 +57,6 @@ export function useWebSocket(): UseWebSocketReturn {
       setError(null);
     };
 
-    ws.onclose = () => {
-      console.log("[useWebSocket] ws.onclose");
-      setConnected(false);
-    };
-
     ws.onerror = () => {
       console.log("[useWebSocket] ws.onerror");
       setError("Connection error.");

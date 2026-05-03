@@ -7,7 +7,6 @@ export interface PlayerSlot {
   username: string;
   color: PlayerColor;
   score: number;
-  wsId: string;
 }
 
 export interface PlayerEconomy {
@@ -26,6 +25,8 @@ export interface ResourceNode {
   remaining: number;
   maxGathererSlots: number;
   gathererSlots: Set<EntityId>;
+  ownerId?: PlayerId;
+  accumulatedGather?: number;
 }
 
 export type BuildingType = "barracks" | "foundry" | "supply_depot" | "turret";
@@ -80,11 +81,12 @@ export interface MatchEntity {
   color: string;
   buildingType?: BuildingType;
   constructionProgress: number;
-  buildWorkerId?: EntityId;
+  buildWorkerIds?: Set<EntityId>;
   productionQueue: ProductionQueueItem[];
   repairTargetId?: EntityId;
   repairProgress: number;
   gatheringNodeId?: string;
+  buildTargetId?: EntityId;
   moveTarget?: { x: number; y: number };
   attackTargetId?: EntityId;
   attackCooldown: number;
@@ -102,15 +104,18 @@ export interface CommandEntry {
     | "deselect"
     | "gather"
     | "train_worker"
+    | "train_unit"
     | "build"
     | "repair"
     | "attack"
     | "heal";
   entityId?: string;
+  entityIds?: string[];
   targetX?: number;
   targetY?: number;
   targetEntityId?: string;
   buildingType?: BuildingType;
+  workerIds?: string[];
 }
 
 export interface BuildingDefinition {
@@ -294,6 +299,6 @@ export const DEFAULT_CONFIG: MatchConfig = {
   workerTrainCost: 25,
   workerSupplyCost: 1,
   gatherRatePerTick: 1,
-  viewportWidth: 600,
-  viewportHeight: 600,
+  viewportWidth: 960,
+  viewportHeight: 540,
 };
