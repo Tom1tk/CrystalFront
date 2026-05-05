@@ -357,7 +357,9 @@ export default function GameShell({
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [debugSpawnMode, setDebugSpawnMode] = useState<string | null>(null);
   const [rallyMode, setRallyMode] = useState<{ buildingId: string } | null>(null);
-  const [debugDragNode, setDebugDragNode] = useState<string | null>(null);
+  const [debugDragMode, setDebugDragMode] = useState(false);
+  const [debugDraggingNodeId, setDebugDraggingNodeId] = useState<string | null>(null);
+  const debugDragLastSendRef = useRef(0);
 
   // Hotkey menu state - QWER/ASDF grid (context-aware)
   type HotkeyAction =
@@ -593,9 +595,19 @@ export default function GameShell({
 
       // Left click: selection + build placement
       if (e.button === 0) {
-        // Debug drag resource node mode
-        if (debugDragNode) {
-          return; // handled by mousemove
+        // Debug drag resource node mode: left-click to pick up a node
+        if (debugDragMode) {
+          for (const node of resourceNodes) {
+            const dx = worldX - node.x;
+            const dy = worldY - node.y;
+            if (Math.sqrt(dx * dx + dy * dy) <= node.radius + 10) {
+              setDebugDraggingNodeId(node.id);
+              return;
+            }
+          }
+          // Clicked empty space while in drag mode — cancel
+          setDebugDraggingNodeId(null);
+          return;
         }
 
         // Rally point placement mode
@@ -627,18 +639,14 @@ export default function GameShell({
         return;
       }
 
-      // Middle click: debug drag resource node
+      // Middle click: pan camera (or cancel drag mode)
       if (e.button === 1) {
         e.preventDefault();
-        for (const node of resourceNodes) {
-          const dx = worldX - node.x;
-          const dy = worldY - node.y;
-          if (Math.sqrt(dx * dx + dy * dy) <= node.radius + 10) {
-            setDebugDragNode(debugDragNode === node.id ? null : node.id);
-            return;
-          }
+        if (debugDragMode) {
+          setDebugDragMode(false);
+          setDebugDraggingNodeId(null);
+          return;
         }
-        setDebugDragNode(null);
         return;
       }
 
@@ -772,18 +780,22 @@ export default function GameShell({
       const worldY = screenY;
       setHoverPos({ x: worldX, y: worldY });
 
-      // Debug drag resource node
-      if (debugDragNode) {
-        onGameCommand({
-          type: "debug_move_node",
-          targetEntityId: debugDragNode,
-          targetX: worldX,
-          targetY: worldY,
-        });
+      // Debug drag resource node (throttled to ~10 cmds/sec)
+      if (debugDraggingNodeId) {
+        const now = performance.now();
+        if (now - debugDragLastSendRef.current > 100) {
+          debugDragLastSendRef.current = now;
+          onGameCommand({
+            type: "debug_move_node",
+            targetEntityId: debugDraggingNodeId,
+            targetX: worldX,
+            targetY: worldY,
+          });
+        }
         return;
       }
     },
-    [debugDragNode, onGameCommand]
+    [debugDraggingNodeId, onGameCommand]
   );
 
   const handleMouseLeave = useCallback(() => {
@@ -805,8 +817,9 @@ export default function GameShell({
         setRallyMode(null);
         return;
       }
-      if (e.key === "Escape" && debugDragNode) {
-        setDebugDragNode(null);
+      if (e.key === "Escape" && (debugDragMode || debugDraggingNodeId)) {
+        setDebugDragMode(false);
+        setDebugDraggingNodeId(null);
         return;
       }
       // Enter rally mode with 'R' when a building or crystal is selected
@@ -973,6 +986,11 @@ export default function GameShell({
 
   const handleMouseUp = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
+      // Drop debug-dragged resource node
+      if (e.button === 0 && debugDraggingNodeId) {
+        setDebugDraggingNodeId(null);
+        return;
+      }
       if (e.button === 0 && isDragging && dragStart) {
         const canvas = canvasRef.current;
         if (!canvas) return;
@@ -1346,8 +1364,8 @@ export default function GameShell({
       const depletion = node.remaining / node.capacity;
       ctx.fillStyle = `rgba(204, 170, 68, ${0.3 + depletion * 0.7})`;
       ctx.fill();
-      ctx.strokeStyle = debugDragNode === node.id ? "#ff4444" : "#ccaa44";
-      ctx.lineWidth = debugDragNode === node.id ? 3 : 2;
+      ctx.strokeStyle = debugDraggingNodeId === node.id ? "#ff4444" : debugDragMode ? "#ffaa44" : "#ccaa44";
+      ctx.lineWidth = debugDraggingNodeId === node.id ? 3 : 2;
       ctx.stroke();
       ctx.fillStyle = "#ffffff";
       ctx.font = "bold 10px monospace";
@@ -1357,7 +1375,7 @@ export default function GameShell({
     }
 
     // Debug drag node indicator
-    if (debugDragNode && hoverPos) {
+    if (debugDraggingNodeId && hoverPos) {
       ctx.beginPath();
       ctx.arc(hoverPos.x, hoverPos.y, 6, 0, Math.PI * 2);
       ctx.fillStyle = "rgba(255, 68, 68, 0.6)";
@@ -1886,15 +1904,15 @@ export default function GameShell({
               </div>
 
               <div style={styles.debugPanelRow}>
-                <span style={styles.debugLabel}>Map Editing (middle-click nodes to drag)</span>
+                <span style={styles.debugLabel}>Map Editing (click toggle, then click+drag nodes)</span>
                 <button
                   style={{
                     ...styles.debugButton,
-                    ...(debugDragNode ? styles.debugButtonActive : {}),
+                    ...(debugDragMode ? styles.debugButtonActive : {}),
                   }}
-                  onClick={() => setDebugDragNode(debugDragNode ? null : "toggle")}
+                  onClick={() => { setDebugDragMode(!debugDragMode); setDebugDraggingNodeId(null); }}
                 >
-                  {debugDragNode ? "Dragging Node (Esc to stop)" : "Toggle Node Drag"}
+                  {debugDragMode ? "Node Drag ON (Esc to stop)" : "Toggle Node Drag"}
                 </button>
                 <button
                   style={styles.debugButton}

@@ -588,7 +588,10 @@ wss.on("connection", (ws) => {
         });
 
         if (!result.success) {
-          sendWS(ws, { type: SERVER_EVT.ERROR, payload: { message: result.message ?? "Command rejected." } });
+          // Silently ignore debug command failures — they're expected during exploration
+          if (cmd.type !== "debug_move_node") {
+            sendWS(ws, { type: SERVER_EVT.ERROR, payload: { message: result.message ?? "Command rejected." } });
+          }
           return;
         }
 
