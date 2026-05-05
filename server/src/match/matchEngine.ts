@@ -1159,7 +1159,7 @@ if (command.type === "gather") {
         if (other.ownerId === entity.ownerId) continue;
         const range = this.getRange(entity);
         const d = this.dist(entity.x, entity.y, other.x, other.y);
-        if (d <= range && d < nearestDist) {
+        if (d <= range + other.radius && d < nearestDist) {
           nearestDist = d;
           nearestId = other.id;
         }
@@ -1180,7 +1180,7 @@ if (command.type === "gather") {
       }
       const range = this.getRange(entity);
       const d = this.dist(entity.x, entity.y, target.x, target.y);
-      if (d > range) {
+      if (d > range + target.radius) {
         entity.moveTarget = { x: target.x, y: target.y };
       }
     }
@@ -1195,7 +1195,7 @@ if (command.type === "gather") {
       }
       const healRange = UNIT_DEFS.medic.range;
       const d = this.dist(entity.x, entity.y, target.x, target.y);
-      if (d > healRange) {
+      if (d > healRange + entity.radius + target.radius) {
         entity.moveTarget = { x: target.x, y: target.y };
       } else if (entity.moveTarget) {
         if (!entity.attackTargetId) {
@@ -1215,10 +1215,10 @@ if (command.type === "gather") {
         continue;
       }
 
-      // Check range
+      // Check range (edge-to-edge: include target radius)
       const range = this.getRange(entity);
       const d = this.dist(entity.x, entity.y, target.x, target.y);
-       if (d > range) {
+       if (d > range + target.radius) {
         if (entity.type === "building") {
           entity.attackTargetId = undefined;
         }
@@ -1490,7 +1490,7 @@ private processConstruction(match: MatchState): void {
         }
       const healRange = this.getRange(entity);
         const d = this.dist(entity.x, entity.y, target.x, target.y);
-        if (d <= healRange && target.health < target.maxHealth) {
+        if (d <= healRange + target.radius && target.health < target.maxHealth) {
           const healed = Math.min(
             target.maxHealth,
             target.health + HEAL_RATE_PER_TICK
