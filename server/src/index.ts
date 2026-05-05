@@ -47,7 +47,15 @@ matchEngine.setMatchEndCallback((matchId: string, winner: string) => {
   const code = matchLobbyMap.get(matchId);
   if (code) {
     broadcastMatchEnd(code, winner);
+    // Record the win for score tracking
+    const lobby = lobbyManager.getLobby(code);
+    if (lobby) {
+      const winnerSlot = winner === lobby.players[0]?.id ? "player1" : "player2";
+      lobbyManager.recordWin(code, winnerSlot);
+    }
+    // Reset ready states and broadcast so both players see updated scores + un-ready status
     lobbyManager.resetReadyStates(code);
+    broadcastLobbyStateForCode(code);
     lobbyMatchMap.delete(code);
     matchLobbyMap.delete(matchId);
   }
@@ -75,6 +83,16 @@ function broadcastLobbyState(ws: WebSocket, code: string) {
     if (session.code === code) {
       sendWS(session.ws, msg);
       count++;
+    }
+  }
+}
+
+function broadcastLobbyStateForCode(code: string) {
+  const state = { lobbies: lobbyManager.getAllLobbies() };
+  const msg: ServerToClientMsg = { type: SERVER_EVT.LOBBY_STATE, payload: { lobby: state } };
+  for (const session of playerLobbyMap.values()) {
+    if (session.code === code) {
+      sendWS(session.ws, msg);
     }
   }
 }

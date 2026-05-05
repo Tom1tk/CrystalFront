@@ -173,7 +173,7 @@ export const COUNTER_MULTIPLIERS = COUNTER_MODIFIER;
 
 export const REPAIR_COST_PER_HP = 0.5;
 export const REPAIR_RATE_PER_TICK = 2;
-export const HEAL_RATE_PER_TICK = 5;
+export const HEAL_RATE_PER_TICK = 2;
 
 // ---- Building Placement ----
 

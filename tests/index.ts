@@ -622,7 +622,7 @@ console.log("\n--- Combat: Medic Follow-Heal ---");
   // Tick - medic should heal bruiser (both at same position, in range)
   engine.tick(match.id);
   const bruiserAfter = match.entities.get(bruiser.id)!;
-  assert(bruiserAfter.health === Math.min(250, 200 + 5), "Bruiser healed by Medic when in range");
+  assert(bruiserAfter.health === Math.min(250, 200 + 2), "Bruiser healed by Medic when in range");
 
   // Move bruiser far from medic to trigger follow
   bruiser.x = 3200;
