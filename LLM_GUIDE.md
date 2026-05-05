@@ -52,3 +52,6 @@ Rules:
 - No console.log in final code
 - Run tests after changes
 ```
+
+## 11. RTS Rate Limiting: 100/s Not 15/s
+You set `MAX_COMMANDS_PER_SECOND = 15` but RTS group commands send N commands per action (1 per selected unit). A single right-click with 10 workers = 10 commands. At 15/s the player hits the cap after 2 clicks, units silently stop responding → "stuttery movement". Set to at least 100/s for any RTS project. Consider token-bucket (burst-friendly) instead of flat counter if burst behavior matters.
