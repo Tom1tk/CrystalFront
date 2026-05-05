@@ -358,6 +358,7 @@ export default function GameShell({
   const [debugSpawnMode, setDebugSpawnMode] = useState<string | null>(null);
   const [rallyMode, setRallyMode] = useState<{ buildingId: string } | null>(null);
   const [debugDragMode, setDebugDragMode] = useState(false);
+  const [debugCollapsed, setDebugCollapsed] = useState(true);
   const [debugDraggingNodeId, setDebugDraggingNodeId] = useState<string | null>(null);
   const debugDragLastSendRef = useRef(0);
 
@@ -447,6 +448,7 @@ export default function GameShell({
   const dragStartRef = useRef<{ x: number; y: number } | null>(dragStart);
   const debugSpawnModeRef = useRef<string | null>(null);
   const playerRef = useRef(player);
+  const minimapDraggingRef = useRef(false);
 
   // Death particle system
   const prevEntityIdsRef = useRef<Set<string>>(new Set());
@@ -490,20 +492,24 @@ export default function GameShell({
     if (!canvas) return;
 
     const viewW = canvas.clientWidth;
+    const viewH = canvas.clientHeight;
     const mapWidth = matchState.mapWidth ?? matchState.config?.mapWidth ?? 6000;
+    const mapHeight = matchState.mapHeight ?? matchState.config?.mapHeight ?? 600;
 
     const myIdx = matchState.players.findIndex((p) => p?.playerId === player.id);
     const myCrystal = matchState.entities.find((e) => e.type === "crystal" && e.ownerId === player.id);
 
     if (myCrystal) {
       cameraXRef.current = Math.max(0, Math.min(myCrystal.x - viewW / 2, mapWidth - viewW));
+      cameraYRef.current = Math.max(0, Math.min(myCrystal.y - viewH / 2, mapHeight - viewH));
     } else if (myIdx === 0) {
       cameraXRef.current = 0;
+      cameraYRef.current = 0;
     } else {
       cameraXRef.current = Math.max(0, mapWidth - viewW);
+      cameraYRef.current = 0;
     }
 
-    cameraYRef.current = 0;
   }, [matchState, player.id]);
 
   // Resize handler with DPR support
@@ -570,7 +576,14 @@ export default function GameShell({
         const fraction = (screenX - minimapX) / MINIMAP_WIDTH;
         const mapWidth = matchState.mapWidth ?? matchState.config?.mapWidth ?? 6000;
         const viewW = canvas.clientWidth;
+        const viewH = canvas.clientHeight;
+        const mapHeight = matchState.mapHeight ?? matchState.config?.mapHeight ?? 600;
         cameraXRef.current = Math.max(0, Math.min(fraction * mapWidth - viewW / 2, mapWidth - viewW));
+        if (screenY >= minimapY && screenY <= minimapY + MINIMAP_HEIGHT) {
+          const yFraction = (screenY - minimapY) / MINIMAP_HEIGHT;
+          cameraYRef.current = Math.max(0, Math.min(yFraction * mapHeight - viewH / 2, mapHeight - viewH));
+        }
+        minimapDraggingRef.current = true;
         return true;
       }
       return false;
@@ -664,7 +677,11 @@ export default function GameShell({
         for (const entity of matchState?.entities ?? []) {
           const dx = worldX - entity.x;
           const dy = worldY - entity.y;
-          const hitRadius = entity.type === "building" || entity.type === "crystal" ? 22 : entity.radius;
+          const hitRadius = entity.type === "building"
+            ? (entity.buildingType && BUILDING_SIZES[entity.buildingType]
+              ? Math.max(BUILDING_SIZES[entity.buildingType].w, BUILDING_SIZES[entity.buildingType].h) / 2
+              : 22)
+            : entity.type === "crystal" ? 22 : entity.radius;
           if (Math.sqrt(dx * dx + dy * dy) <= hitRadius) {
             clickedEntity = entity;
             break;
@@ -991,6 +1008,11 @@ export default function GameShell({
         setDebugDraggingNodeId(null);
         return;
       }
+      // Stop minimap drag
+      if (e.button === 0 && minimapDraggingRef.current) {
+        minimapDraggingRef.current = false;
+        return;
+      }
       if (e.button === 0 && isDragging && dragStart) {
         const canvas = canvasRef.current;
         if (!canvas) return;
@@ -1064,7 +1086,11 @@ export default function GameShell({
           for (const entity of matchState?.entities ?? []) {
             const entityDx = worldX - entity.x;
             const entityDy = worldY - entity.y;
-            const hitRadius = entity.type === "building" || entity.type === "crystal" ? 22 : entity.radius;
+            const hitRadius = entity.type === "building"
+              ? (entity.buildingType && BUILDING_SIZES[entity.buildingType]
+                ? Math.max(BUILDING_SIZES[entity.buildingType].w, BUILDING_SIZES[entity.buildingType].h) / 2
+                : 22)
+              : entity.type === "crystal" ? 22 : entity.radius;
             if (Math.sqrt(entityDx * entityDx + entityDy * entityDy) <= hitRadius) {
               clickedEntity = entity;
               break;
@@ -1127,18 +1153,43 @@ export default function GameShell({
 
       const now = Date.now();
 
-      // Edge scrolling
+      // Edge scrolling + minimap drag
       const edgeCanvas = canvasRef.current;
       if (edgeCanvas) {
         const pos = mousePosRef.current;
         if (pos) {
           const viewW = edgeCanvas.clientWidth;
-          let dx = 0;
-          if (pos.x < EDGE_SCROLL_THRESHOLD) dx = -EDGE_SCROLL_SPEED;
-          else if (pos.x > viewW - EDGE_SCROLL_THRESHOLD) dx = EDGE_SCROLL_SPEED;
-          if (dx !== 0) {
+          const viewH = edgeCanvas.clientHeight;
+          const mapHeight = ms.mapHeight ?? 600;
+
+          // Minimap drag: update camera while dragging on minimap
+          if (minimapDraggingRef.current) {
+            const mmX = viewW - MINIMAP_WIDTH - 10;
+            const mmY = viewH - MINIMAP_HEIGHT - 10;
+            if (pos.y >= mmY && pos.y <= mmY + MINIMAP_HEIGHT) {
+              const yFraction = Math.max(0, Math.min(1, (pos.y - mmY) / MINIMAP_HEIGHT));
+              cameraYRef.current = Math.max(0, Math.min(yFraction * mapHeight - viewH / 2, mapHeight - viewH));
+            }
+            const xFraction = Math.max(0, Math.min(1, (pos.x - mmX) / MINIMAP_WIDTH));
             const mapWidth = ms.mapWidth ?? 6000;
-            cameraXRef.current = Math.max(0, Math.min(mapWidth - viewW, cameraXRef.current + dx));
+            cameraXRef.current = Math.max(0, Math.min(xFraction * mapWidth - viewW / 2, mapWidth - viewW));
+          }
+
+          // Edge scrolling (only when not dragging minimap)
+          if (!minimapDraggingRef.current) {
+            let dx = 0;
+            if (pos.x < EDGE_SCROLL_THRESHOLD) dx = -EDGE_SCROLL_SPEED;
+            else if (pos.x > viewW - EDGE_SCROLL_THRESHOLD) dx = EDGE_SCROLL_SPEED;
+            if (dx !== 0) {
+              const mapWidth = ms.mapWidth ?? 6000;
+              cameraXRef.current = Math.max(0, Math.min(mapWidth - viewW, cameraXRef.current + dx));
+            }
+            let dy = 0;
+            if (pos.y < EDGE_SCROLL_THRESHOLD) dy = -EDGE_SCROLL_SPEED;
+            else if (pos.y > viewH - EDGE_SCROLL_THRESHOLD) dy = EDGE_SCROLL_SPEED;
+            if (dy !== 0) {
+              cameraYRef.current = Math.max(0, Math.min(mapHeight - viewH, cameraYRef.current + dy));
+            }
           }
         }
       }
@@ -1603,6 +1654,32 @@ export default function GameShell({
     // Attack visualization lines
     drawAttackLines(ctx, entities, matchState);
 
+    // Medic attachment lines (dotted line even when not actively healing)
+    for (const entity of entities) {
+      if (entity.type === "medic" && entity.healTargetId) {
+        const target = entities.find((e) => e.id === entity.healTargetId);
+        if (target) {
+          ctx.beginPath();
+          ctx.moveTo(entity.x, entity.y);
+          ctx.lineTo(target.x, target.y);
+          ctx.strokeStyle = "rgba(80,255,80,0.25)";
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([4, 6]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          if (!entity.attackTargetId) {
+            ctx.beginPath();
+            ctx.arc(entity.x, entity.y, entity.radius + 3, 0, Math.PI * 2);
+            ctx.strokeStyle = "rgba(80,255,80,0.35)";
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([2, 4]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
+        }
+      }
+    }
+
     // Gather lines (yellow)
     drawGatherLines(ctx, entities, resourceNodes);
 
@@ -1829,12 +1906,18 @@ export default function GameShell({
                   ? `Selected ${selectedEntityIds.size} units`
                   : selectedEntityId
                     ? selectedEntity?.type === "crystal"
-                      ? "Crystal selected"
+                      ? selectedEntity?.ownerId === player.id
+                        ? `HQ \u2022 HP: ${Math.floor(selectedEntity.health)}/${selectedEntity.maxHealth} \u2022 Q: Worker`
+                        : "Enemy HQ"
                       : selectedEntity?.type === "building"
-                        ? `${selectedEntity.buildingType || "Building"} selected`
+                        ? `${selectedEntity.buildingType || "Building"} \u2022 HP: ${Math.floor(selectedEntity.health)}/${selectedEntity.maxHealth}${selectedEntity?.constructionProgress !== undefined && selectedEntity.constructionProgress < 100
+                          ? ` \u2022 Building: ${Math.floor(selectedEntity.constructionProgress)}%`
+                          : selectedEntity?.productionQueue.length > 0
+                            ? ` \u2022 ${selectedEntity.productionQueue[0]?.unitType}: ${Math.ceil((selectedEntity.productionQueue[0]?.remainingTicks ?? 0) / 10)}s`
+                            : ""}`
                         : selectedEntity?.ownerId === player.id
-                          ? "Click ground to move, click node to gather, click enemy to attack"
-                          : `Enemy ${selectedEntity?.type} selected`
+                          ? `${selectedEntity.type} \u2022 HP: ${Math.floor(selectedEntity.health)}/${selectedEntity.maxHealth}${selectedEntity.autoAttackEnabled ? " \u2022 AA:ON" : ""}`
+                          : `Enemy ${selectedEntity?.type}`
                     : "Click units to select, drag to box-select"}
             </span>
             <span style={styles.infoText}>Tick: {matchState?.tick ?? 0}</span>
@@ -1843,6 +1926,31 @@ export default function GameShell({
           {/* Hotkey Menu - QWER/ASDF Grid */}
           {showHotkeyMenu && (
             <div style={styles.hotkeyMenu}>
+              {/* Selection info strip */}
+              {selectedEntityId && selectedEntity && selectedEntity.ownerId === player.id && (
+                <div style={styles.selectionInfo}>
+                  <span style={styles.selectionInfoName}>
+                    {selectedEntity.type === "crystal" ? "HQ" : selectedEntity.type === "building" ? (selectedEntity.buildingType ?? "Building") : selectedEntity.type}
+                  </span>
+                  <span style={styles.selectionInfoHp}>
+                    HP: {Math.floor(selectedEntity.health)}/{selectedEntity.maxHealth}
+                  </span>
+                  {selectedEntity?.type === "building" && selectedEntity?.constructionProgress !== undefined && selectedEntity.constructionProgress < 100 && (
+                    <span style={{ ...styles.selectionInfoHp, color: "#44cc44" }}>
+                      Build: {Math.floor(selectedEntity.constructionProgress)}%
+                    </span>
+                  )}
+                  {selectedEntity?.type === "building" && selectedEntity?.productionQueue.length > 0 && (
+                    <span style={{ ...styles.selectionInfoHp, color: "#88aaff" }}>
+                      {selectedEntity.productionQueue[0]?.unitType}: {Math.ceil((selectedEntity.productionQueue[0]?.remainingTicks ?? 0) / 10)}s
+                      {selectedEntity.productionQueue.length > 1 ? ` (+${selectedEntity.productionQueue.length - 1})` : ""}
+                    </span>
+                  )}
+                  {selectedEntity.autoAttackEnabled && (
+                    <span style={{ ...styles.selectionInfoHp, color: "#88aaff" }}>AA:ON</span>
+                  )}
+                </div>
+              )}
               <div style={styles.hotkeyRow}>
                 {hotkeys.filter((h: HotkeySlot) => "qwer".includes(h.key)).map((hk: HotkeySlot) => (
                   <div
@@ -1876,9 +1984,16 @@ export default function GameShell({
             </div>
           )}
 
-          {/* Debug Panel - centered bottom */}
+          {/* Debug Panel - collapsible, default hidden */}
           <div style={styles.debugPanel}>
-            <div style={styles.debugPanelHeader}>Debug Controls</div>
+            <div
+              style={styles.debugToggleBar}
+              onClick={() => setDebugCollapsed(!debugCollapsed)}
+            >
+              <span style={styles.debugToggleArrow}>{debugCollapsed ? "▶" : "▼"}</span>
+              <span style={styles.debugPanelHeader}>Debug Controls</span>
+            </div>
+            {!debugCollapsed && (
             <div style={styles.debugPanelBody}>
               <div style={styles.debugPanelRow}>
                 <button
@@ -1975,33 +2090,12 @@ export default function GameShell({
                 </button>
               )}
             </div>
+            )}
           </div>
         </div>
       </div>
 
       <div style={styles.bottomBars}>
-        {isCrystalSelected && (
-          <div style={styles.trainBar}>
-            <button
-              style={{
-                ...styles.trainButton,
-                ...(canTrain ? styles.trainButtonActive : styles.trainButtonDisabled),
-              }}
-              onClick={handleTrainWorker}
-              disabled={!canTrain}
-            >
-              Train Worker (25⛏ + 1📦)
-            </button>
-            {!canTrain && myEconomy && (
-              <span style={styles.trainHint}>
-                {myEconomy.resources < 25
-                  ? `Need ${25 - myEconomy.resources} more resources`
-                  : `Need ${myEconomy.maxSupply - myEconomy.supply} more supply capacity`}
-              </span>
-            )}
-          </div>
-        )}
-
         {buildMode && selectedBuildingType && (
           <div style={styles.buildBar}>
             <span style={styles.buildLabel}>
@@ -2017,7 +2111,7 @@ export default function GameShell({
         {hasSelectedWorkers && !buildMode && (
           <div style={styles.buildTypeBar}>
             <span style={styles.buildTypeLabel}>
-              {selectedWorkers.length} worker{selectedWorkers.length > 1 ? 's' : ''} selected — Build:
+              {selectedWorkers.length} worker{selectedWorkers.length > 1 ? 's' : ''} — Build:
             </span>
             <button
               style={{
@@ -2059,85 +2153,6 @@ export default function GameShell({
             >
               Turret (60)
             </button>
-          </div>
-        )}
-
-        {isBuildingSelected && !buildMode && (
-          <div style={styles.buildBar}>
-            <span style={styles.buildLabel}>
-              {selectedEntity?.buildingType ? BUILDING_LABELS[selectedEntity.buildingType] : "Building"}
-            </span>
-            {selectedEntity?.constructionProgress !== undefined && selectedEntity.constructionProgress < 100 && (
-              <span style={{ ...styles.buildLabel, color: "#44cc44" }}>
-                Building: {Math.floor(selectedEntity.constructionProgress)}% ({(selectedEntity.buildWorkerIds?.length ?? 0)} workers)
-              </span>
-            )}
-            {selectedEntity?.productionQueue.length > 0 && (
-              <div style={{ marginBottom: 4 }}>
-                <span style={styles.buildLabel}>Queue ({selectedEntity.productionQueue.length}): </span>
-                {selectedEntity.productionQueue.map((item, idx) => (
-                  <span key={idx} style={{ ...styles.buildLabel, display: "inline-flex", alignItems: "center", gap: 4, marginRight: 8 }}>
-                    <span>{item.unitType} ({Math.ceil(item.remainingTicks / 10)}s)</span>
-                    <button
-                      style={{
-                        background: "transparent",
-                        border: "1px solid #ff4444",
-                        color: "#ff4444",
-                        cursor: "pointer",
-                        padding: "1px 5px",
-                        fontSize: "10px",
-                        borderRadius: 3,
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onGameCommand({ type: "cancel_queue", entityId: selectedEntity.id, targetX: idx });
-                      }}
-                    >
-                      ✕
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-            {selectedEntity?.buildingType && BUILDING_UNIT_MAP[selectedEntity.buildingType].length > 0 && (
-              <button
-                style={{
-                  ...styles.buildConfirmButton,
-                  ...(!showUnitQueue ? styles.buildConfirmButtonActive : {}),
-                }}
-                onClick={() => setShowUnitQueue(!showUnitQueue)}
-              >
-                Queue Unit
-              </button>
-            )}
-            {showUnitQueue && selectedEntity?.buildingType && (
-              <div style={styles.unitQueuePanel}>
-                {BUILDING_UNIT_MAP[selectedEntity.buildingType].map((unitType) => {
-                  const unitCost = UNIT_COSTS[unitType];
-                  const queuedSupply = (selectedEntity.productionQueue ?? []).reduce((sum, item) => sum + (item.supplyCost || 0), 0);
-                  const canAfford = myEconomy && myEconomy.resources >= unitCost.cost && myEconomy.supply + queuedSupply + unitCost.supplyCost <= myEconomy.maxSupply;
-                  return (
-                    <button
-                      key={unitType}
-                      style={{
-                        ...styles.unitQueueButton,
-                        ...(canAfford ? styles.unitQueueButtonActive : styles.unitQueueButtonDisabled),
-                      }}
-                      onClick={() => {
-                        onGameCommand({ type: "train_unit", entityId: selectedEntity.id, targetEntityId: unitType });
-                        setShowUnitQueue(false);
-                      }}
-                      disabled={!canAfford}
-                    >
-                      {unitType} ({unitCost.cost}⛏ + {unitCost.supplyCost}📦)
-                    </button>
-                  );
-                })}
-                <button style={styles.unitQueueCancelButton} onClick={() => setShowUnitQueue(false)}>
-                  Cancel
-                </button>
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -2293,12 +2308,27 @@ const styles = {
     backdropFilter: "blur(8px)",
     border: "1px solid rgba(100, 100, 200, 0.25)",
     borderRadius: "8px",
-    padding: "10px 14px",
+    padding: "6px 14px",
     maxWidth: "90vw",
     minWidth: "320px",
     pointerEvents: "auto" as const,
     zIndex: 20,
     boxShadow: "0 4px 16px rgba(0, 0, 0, 0.5)",
+  },
+  debugToggleBar: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "6px",
+    cursor: "pointer",
+    userSelect: "none" as const,
+    padding: "2px 0",
+  },
+  debugToggleArrow: {
+    fontSize: "10px",
+    color: "#666",
+    width: "12px",
+    textAlign: "center" as const,
   },
   debugPanelHeader: {
     fontSize: "10px",
@@ -2473,6 +2503,27 @@ const styles = {
     pointerEvents: "none" as const,
     zIndex: 10,
   },
+  selectionInfo: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    padding: "3px 8px",
+    background: "rgba(0,0,0,0.6)",
+    borderRadius: "4px",
+    marginBottom: "2px",
+  },
+  selectionInfoName: {
+    fontSize: "11px",
+    fontWeight: 700,
+    color: "#88aaff",
+    fontFamily: "monospace",
+    textTransform: "uppercase" as const,
+  },
+  selectionInfoHp: {
+    fontSize: "10px",
+    color: "#44cc44",
+    fontFamily: "monospace",
+  },
   hotkeyRow: {
     display: "flex",
     gap: "3px",
@@ -2481,7 +2532,7 @@ const styles = {
     width: "60px",
     height: "60px",
     background: "rgba(0,0,0,0.75)",
-    border: "1px solid rgba(100,150,255,0.3)",
+    border: "1px solid transparent",
     borderRadius: "4px",
     display: "flex",
     flexDirection: "column" as const,
