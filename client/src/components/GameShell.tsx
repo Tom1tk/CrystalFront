@@ -1917,9 +1917,8 @@ export default function GameShell({
                 <button
                   style={styles.debugButton}
                   onClick={() => {
-                    const data = JSON.stringify(resourceNodes.map(n => ({ id: n.id, x: n.x, y: n.y, remaining: n.remaining })));
-                    localStorage.setItem("crystalfront_map_layout", data);
-                    alert("Map layout saved!");
+                    onGameCommand({ type: "debug_save_layout" });
+                    alert("Map layout saved to server!");
                   }}
                 >
                   Save Layout
@@ -1927,31 +1926,11 @@ export default function GameShell({
                 <button
                   style={styles.debugButton}
                   onClick={() => {
-                    const data = localStorage.getItem("crystalfront_map_layout");
-                    if (data) {
-                      try {
-                        const saved = JSON.parse(data);
-                        for (const s of saved) {
-                          const node = resourceNodes.find(n => n.id === s.id);
-                          if (node) {
-                            onGameCommand({
-                              type: "debug_move_node",
-                              targetEntityId: s.id,
-                              targetX: s.x,
-                              targetY: s.y,
-                            });
-                          }
-                        }
-                        alert("Layout loaded!");
-                      } catch {
-                        alert("Invalid saved layout");
-                      }
-                    } else {
-                      alert("No saved layout found");
-                    }
+                    onGameCommand({ type: "debug_mirror_nodes" });
+                    alert("Blue nodes mirrored to red side!");
                   }}
                 >
-                  Load Layout
+                  Mirror Blue→Red
                 </button>
               </div>
 

@@ -45,6 +45,22 @@ export interface MapLayout {
   combatZoneBottom: number;
 }
 
+/** Mirror blue safe nodes onto red side (pixel-perfect horizontal flip around map center) */
+export function mirrorBlueToRed(map: MapLayout): void {
+  const midX = map.width / 2;
+  // Ensure red has same count as blue, mirroring each blue node
+  const mirrored: ResourceNodeLayout[] = map.blueSafeNodes.map((bn) => ({
+    x: map.width - bn.x,
+    y: bn.y,
+    radius: bn.radius,
+    capacity: bn.capacity,
+    type: "safe",
+  }));
+  // Sort by y to keep consistent ordering
+  mirrored.sort((a, b) => a.y - b.y);
+  map.redSafeNodes = mirrored;
+}
+
 export function createMap(config: MatchConfig): MapLayout {
   const { mapWidth, mapHeight } = config;
   const midY = mapHeight / 2;

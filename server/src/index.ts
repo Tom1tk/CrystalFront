@@ -575,7 +575,7 @@ wss.on("connection", (ws) => {
           unitType?: string;
         };
         const result = matchEngine.processCommand(matchId, playerId, {
-          type: cmd.type as "move" | "deselect" | "gather" | "train_worker" | "train_unit" | "cancel_queue" | "build" | "assign_build" | "repair" | "attack" | "heal" | "set_rally" | "toggle_auto_attack" | "retreat" | "stop" | "debug_move_node",
+          type: cmd.type as "move" | "deselect" | "gather" | "train_worker" | "train_unit" | "cancel_queue" | "build" | "assign_build" | "repair" | "attack" | "heal" | "set_rally" | "toggle_auto_attack" | "retreat" | "stop" | "debug_move_node" | "debug_save_layout" | "debug_mirror_nodes",
           entityId: cmd.entityId,
           entityIds: cmd.entityIds,
           targetX: cmd.targetX,
@@ -589,7 +589,7 @@ wss.on("connection", (ws) => {
 
         if (!result.success) {
           // Silently ignore debug command failures — they're expected during exploration
-          if (cmd.type !== "debug_move_node") {
+          if (!["debug_move_node", "debug_save_layout", "debug_mirror_nodes"].includes(cmd.type)) {
             sendWS(ws, { type: SERVER_EVT.ERROR, payload: { message: result.message ?? "Command rejected." } });
           }
           return;
