@@ -1,11 +1,11 @@
-import type { MatchEntity, BuildingType, ResourceNode, PlayerSlot } from "./types.js";
+import type { MatchEntity, BuildingType, ResourceNode, PlayerSlot, BuildingDefinition } from "./types.js";
 import type { EntityId } from "@crystalfront/shared";
 import type { BuildZone, LaneCorridor } from "./map.js";
 import {
+  BUILDING_DEFS,
   BUILDING_MIN_SPACING,
   CRYSTAL_NO_BUILD_RADIUS,
-  type BuildingDefinition,
-} from "./types.js";
+} from "@crystalfront/shared";
 
 export interface PlacementResult {
   valid: boolean;

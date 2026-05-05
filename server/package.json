@@ -1,6 +1,6 @@
 {
   "name": "@crystalfront/server",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,11 +10,11 @@
   },
   "dependencies": {
     "@crystalfront/shared": "file:../shared",
-    "express": "^5.0.0",
+    "express": "^4.21.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "@types/express": "^5.0.0",
+    "@types/express": "^4.17.21",
     "@types/node": "^22.19.17",
     "@types/ws": "^8.5.0",
     "typescript": "^5.7.0",

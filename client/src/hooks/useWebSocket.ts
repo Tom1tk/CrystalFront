@@ -88,21 +88,13 @@ export function useWebSocket(): UseWebSocketReturn {
           const ms = msg.payload.match as MatchState;
           ms.attackLog = ms.attackLog ?? [];
           setMatchState(ms);
-          setResourceNodes(
-            ((msg.payload as unknown as Record<string, unknown>).match as Record<string, unknown>)?.resourceNodes
-              ? (((msg.payload as unknown as Record<string, unknown>).match as Record<string, unknown>).resourceNodes as ResourceNodeDisplay[])
-              : []
-          );
+          setResourceNodes(ms.resourceNodes ?? []);
         }
         if (msg.type === "game_state" && msg.payload?.match) {
           const ms = msg.payload.match as MatchState;
           ms.attackLog = ms.attackLog ?? [];
           setMatchState(ms);
-          setResourceNodes(
-            ((msg.payload as unknown as Record<string, unknown>).match as Record<string, unknown>)?.resourceNodes
-              ? (((msg.payload as unknown as Record<string, unknown>).match as Record<string, unknown>).resourceNodes as ResourceNodeDisplay[])
-              : []
-          );
+          setResourceNodes(ms.resourceNodes ?? []);
         }
       } catch {
         // ignore parse errors

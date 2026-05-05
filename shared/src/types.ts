@@ -98,6 +98,9 @@ export interface BuildingStats {
   color: string;
   supplyProvided?: number;
   produces?: string[];
+  damage?: number;
+  range?: number;
+  attackCooldown?: number;
 }
 
 export interface UnitStats {
@@ -110,6 +113,7 @@ export interface UnitStats {
   range: number;
   speed: number;
   color: string;
+  attackCooldown: number;
   produces?: string[];
 }
 

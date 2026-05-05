@@ -1427,7 +1427,7 @@ export default function GameShell({
         }
 
         if (entity.repairTargetId && entity.health < entity.maxHealth) {
-          const repairPct = entity.repairProgress / (entity.maxHealth - entity.health);
+          const repairPct = (entity.repairProgress ?? 0) / Math.max(1, entity.maxHealth - entity.health);
           ctx.fillStyle = "rgba(68, 204, 68, 0.4)";
           ctx.fillRect(bx, by, w * repairPct, h);
         }

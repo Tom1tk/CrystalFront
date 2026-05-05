@@ -29,6 +29,9 @@ export const BUILDING_DEFS: Record<
     color: string;
     supplyProvided?: number;
     produces?: string[];
+    damage?: number;
+    range?: number;
+    attackCooldown?: number;
   }
 > = {
   barracks: {
@@ -65,6 +68,9 @@ export const BUILDING_DEFS: Record<
     width: 30,
     height: 30,
     color: "#aa8844",
+    damage: 18,
+    range: 150,
+    attackCooldown: 12,
   },
 };
 
@@ -84,6 +90,7 @@ export const UNIT_DEFS: Record<
     range: number;
     speed: number;
     color: string;
+    attackCooldown: number;
     produces?: string[];
   }
 > = {
@@ -97,6 +104,7 @@ export const UNIT_DEFS: Record<
     range: 15,
     speed: 2,
     color: "#aabbcc",
+    attackCooldown: 20,
   },
   skirmisher: {
     cost: 50,
@@ -108,6 +116,7 @@ export const UNIT_DEFS: Record<
     range: 20,
     speed: 2.5,
     color: "#44dd88",
+    attackCooldown: 10,
   },
   gunner: {
     cost: 75,
@@ -119,6 +128,7 @@ export const UNIT_DEFS: Record<
     range: 120,
     speed: 1.5,
     color: "#ddaa44",
+    attackCooldown: 15,
   },
   bruiser: {
     cost: 100,
@@ -130,6 +140,7 @@ export const UNIT_DEFS: Record<
     range: 20,
     speed: 1.8,
     color: "#8866cc",
+    attackCooldown: 8,
   },
   medic: {
     cost: 60,
@@ -141,6 +152,7 @@ export const UNIT_DEFS: Record<
     range: 80,
     speed: 2,
     color: "#44ccdd",
+    attackCooldown: 25,
   },
 };
 
@@ -148,19 +160,25 @@ export const UNIT_DEFS: Record<
 // skirmisher > gunner > bruiser > skirmisher
 
 export const COUNTER_MODIFIER: Record<string, Record<string, number>> = {
-  skirmisher: { gunner: 2.0 },
-  gunner: { bruiser: 2.0 },
-  bruiser: { skirmisher: 2.0 },
+  skirmisher: { gunner: 2.0, bruiser: 0.5, worker: 1.0, medic: 1.0 },
+  gunner: { bruiser: 2.0, skirmisher: 0.5, worker: 1.0, medic: 1.0 },
+  bruiser: { skirmisher: 2.0, gunner: 0.5, worker: 1.0, medic: 1.0 },
+  medic: { worker: 1.0, skirmisher: 1.0, gunner: 1.0, bruiser: 1.0 },
+  worker: { worker: 1.0, skirmisher: 1.0, gunner: 1.0, bruiser: 1.0, medic: 1.0 },
 };
+
+export const COUNTER_MULTIPLIERS = COUNTER_MODIFIER;
 
 // ---- Repair ----
 
 export const REPAIR_COST_PER_HP = 0.5;
 export const REPAIR_RATE_PER_TICK = 2;
+export const HEAL_RATE_PER_TICK = 5;
 
 // ---- Building Placement ----
 
 export const BUILDING_PLACEMENT_MIN_SPACING = 50;
+export const BUILDING_MIN_SPACING = BUILDING_PLACEMENT_MIN_SPACING;
 export const CRYSTAL_NO_BUILD_RADIUS = 80;
 
 // ---- World / Camera Constants ----

@@ -105,17 +105,17 @@ sudo usermod -aG www-data crystalfront
 1. Copy the project to the server (e.g., `/opt/crystalfront-rts`):
 ```bash
 # On local machine
-scp -r CrystalFront-RTS user@your-server:/opt/crystalfront-rts
+scp -r . user@your-server:/opt/crystalfront-rts
 
 # Or clone from git
 ssh user@your-server
-git clone https://github.com/Tom1tk/CrystalFront.git /opt/crystalfront-rts/CrystalFront-RTS
-cd /opt/crystalfront-rts/CrystalFront-RTS
+git clone https://github.com/Tom1tk/CrystalFront.git /opt/crystalfront-rts
+cd /opt/crystalfront-rts
 ```
 
 2. Install dependencies and build:
 ```bash
-cd /opt/crystalfront-rts/CrystalFront-RTS
+cd /opt/crystalfront-rts
 npm install --production
 npm run build
 ```
@@ -138,10 +138,10 @@ After=network.target
 Type=simple
 User=crystalfront
 Group=crystalfront
-WorkingDirectory=/opt/crystalfront-rts/CrystalFront-RTS
+WorkingDirectory=/opt/crystalfront-rts
 Environment=NODE_ENV=production
 Environment=PORT=3777
-ExecStart=/usr/bin/node server/dist/index.js
+ExecStart=/usr/local/bin/node server/dist/index.js
 Restart=on-failure
 RestartSec=5
 # Restart if process uses more than 512MB memory
@@ -390,7 +390,7 @@ sudo iptables -A INPUT -p tcp --dport 3777 -j ACCEPT
 
 ```bash
 # Navigate to project directory
-cd /opt/crystalfront-rts/CrystalFront-RTS
+cd /opt/crystalfront-rts
 
 # Pull latest changes
 git pull origin main
@@ -437,18 +437,24 @@ crontab -e
 
 ### Log Rotation
 
-Create `/etc/logrotate.d/crystalfront`:
+The server logs to the systemd journal, not to individual log files. Log rotation is handled automatically by `journald`. To control journal log retention and size, configure `/etc/systemd/journald.conf`:
 
+```ini
+# Limit journal to 500MB
+SystemMaxUse=500M
+
+# Keep logs for 2 weeks
+MaxRetentionSec=2week
 ```
-/var/log/crystalfront/*.log {
-    weekly
-    rotate 12
-    compress
-    delaycompress
-    missingok
-    notifempty
-    create 0644 crystalfront crystalfront
-}
+
+Then restart journald:
+```bash
+sudo systemctl restart systemd-journald
+```
+
+To view server logs:
+```bash
+sudo journalctl -u crystalfront-rts -f
 ```
 
 ### Resource Monitoring
@@ -488,7 +494,7 @@ sudo chown -R crystalfront:crystalfront /opt/crystalfront-rts
 sudo journalctl -u crystalfront-rts -xe
 
 # Test running manually
-cd /opt/crystalfront-rts/CrystalFront-RTS
+cd /opt/crystalfront-rts
 node server/dist/index.js
 ```
 

@@ -1,46 +1,22 @@
+import type {
+  Lobby,
+  Player,
+  LobbyState,
+  BuildingType,
+  UnitType,
+  ProductionQueueItem,
+  AttackEvent,
+  PlayerSlot,
+  CameraState,
+} from "@crystalfront/shared";
+
+export type { Lobby, Player, LobbyState, BuildingType, UnitType, ProductionQueueItem, AttackEvent, PlayerSlot, CameraState };
+
 export type Screen = "menu" | "lobby" | "game" | "matchEnd";
-
-export interface Player {
-  id: string;
-  username: string;
-  color: "blue" | "red";
-  ready: boolean;
-  score: number;
-}
-
-export interface Lobby {
-  code: string;
-  players: [Player | null, Player | null];
-  status: "waiting" | "ready" | "match";
-  hostId: string;
-}
-
-export interface LobbyState {
-  lobbies: Record<string, Lobby>;
-}
 
 export interface WSMessage {
   type: string;
   payload?: Record<string, unknown>;
-}
-
-export type BuildingType = "barracks" | "foundry" | "supply_depot" | "turret";
-export type UnitType = "worker" | "skirmisher" | "gunner" | "bruiser" | "medic";
-
-export interface ProductionQueueItem {
-  unitType: UnitType;
-  cost: number;
-  supplyCost: number;
-  buildTime: number;
-  remainingTicks: number;
-}
-
-export interface AttackEvent {
-  attackerId: string;
-  targetId: string;
-  damage: number;
-  tick: number;
-  isHeal: boolean;
 }
 
 export interface MatchEntity {
@@ -59,13 +35,13 @@ export interface MatchEntity {
   buildTargetId?: string;
   productionQueue: ProductionQueueItem[];
   repairTargetId?: string;
-  repairProgress: number;
+  repairProgress?: number;
   gatheringNodeId?: string;
   moveTarget?: { x: number; y: number };
   attackTargetId?: string;
-  attackCooldown?: number;
+  attackCooldown: number;
   healTargetId?: string;
-  autoAttackEnabled?: boolean;
+  autoAttackEnabled: boolean;
   rallyPoint?: { x: number; y: number };
 }
 
@@ -83,20 +59,6 @@ export interface PlayerEconomyDisplay {
   resources: number;
   supply: number;
   maxSupply: number;
-}
-
-export interface PlayerSlot {
-  playerId: string;
-  username: string;
-  color: "blue" | "red";
-  score: number;
-}
-
-export interface CameraState {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
 }
 
 export interface MatchState {

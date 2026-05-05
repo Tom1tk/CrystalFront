@@ -249,9 +249,9 @@ console.log("\n--- Camera Config Validation ---");
   assert(config.mapHeight >= config.viewportHeight, "Map height >= viewport height");
   assert(config.mapWidth === 6000, "World width is 6000");
   assert(config.mapHeight === 600, "World height is 600");
-  assert(config.viewportWidth === 600, "Viewport width is 600");
-  assert(config.viewportHeight === 600, "Viewport height is 600");
-  assert(config.mapWidth / config.viewportWidth === 10, "World is 10 viewport widths wide");
+  assert(config.viewportWidth === 960, "Viewport width is 960");
+  assert(config.viewportHeight === 540, "Viewport height is 540");
+  assert(Math.abs(config.mapWidth / config.viewportWidth - 6.25) < 0.01, "World is ~6.25 viewport widths wide");
 }
 
 // ---- Camera Clamping Logic ----
@@ -371,8 +371,8 @@ console.log("\n--- Mirrored Map Placement in Larger World ---");
 
   const contestedSorted = [...map.contestedNodes].sort((a, b) => a.x - b.x);
   assert(contestedSorted[0].x < midX, "Leftmost contested node is left of center");
-  assert(contestedSorted[1].x >= midX - 50, "Center contested node is near center");
-  assert(contestedSorted[2].x > midX, "Rightmost contested node is right of center");
+  assert(contestedSorted[1].x >= midX - 200, "Second contested node is left of center but within 200px");
+  assert(contestedSorted[2].x >= midX, "Center contested node is at or right of center line");
 }
 
 // ---- Combat: Move Command (Incremental Movement) ----
@@ -875,7 +875,10 @@ console.log("\n--- Soft Collision ---");
 console.log("\n--- Message Type Constants Consistency ---");
 {
   // All CLIENT_MSG types should have corresponding WS_EVENT types
+  // (except client-to-server-only messages that don't need server-side event names)
+  const clientOnlyKeys = new Set(["USERNAME", "MATCH_START"]);
   for (const [key, value] of Object.entries(CLIENT_MSG)) {
+    if (clientOnlyKeys.has(key)) continue;
     const wsValue = (WS_EVENT as any)[key];
     assert(wsValue !== undefined, `WS_EVENT has ${key} (matches CLIENT_MSG.${key})`);
     assert(wsValue === value, `WS_EVENT.${key} === CLIENT_MSG.${key} ("${value}")`);

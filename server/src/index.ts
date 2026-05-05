@@ -5,13 +5,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { LobbyManager } from "./lobby/lobbyManager.js";
 import { MatchEngine } from "./match/matchEngine.js";
-import type { MatchEntity, PlayerSlot, ResourceNode, PlayerEconomy } from "./match/types.js";
+import type { MatchEntity, MatchState, PlayerSlot, ResourceNode, PlayerEconomy } from "./match/types.js";
 import {
   CLIENT_MSG,
   SERVER_EVT,
   type ClientToServerMsg,
   type ServerToClientMsg,
   type PlayerId,
+  type EntityType,
+  type BuildingType,
+  type UnitType,
 } from "@crystalfront/shared";
 import {
   USERNAME_MIN_LENGTH,
@@ -34,26 +37,29 @@ const lobbyManager = new LobbyManager();
 const matchEngine = new MatchEngine();
 
 matchEngine.setBroadcastCallback((matchId: string) => {
-  for (const session of playerLobbyMap.values()) {
-    if (session.matchId === matchId) {
-      broadcastGameState(session.code);
-      break;
-    }
+  const code = matchLobbyMap.get(matchId);
+  if (code) {
+    broadcastGameState(code);
   }
 });
 
 matchEngine.setMatchEndCallback((matchId: string, winner: string) => {
-  for (const session of playerLobbyMap.values()) {
-    if (session.matchId === matchId) {
-      broadcastMatchEnd(session.code, winner);
-      lobbyManager.resetReadyStates(session.code);
-      break;
-    }
+  const code = matchLobbyMap.get(matchId);
+  if (code) {
+    broadcastMatchEnd(code, winner);
+    lobbyManager.resetReadyStates(code);
+    lobbyMatchMap.delete(code);
+    matchLobbyMap.delete(matchId);
   }
 });
 
 const playerLobbyMap = new Map<string, { playerId: string; code: string; ws: WebSocket; matchId?: string }>();
 const lobbyMatchMap = new Map<string, string>();
+const matchLobbyMap = new Map<string, string>(); // matchId -> lobbyCode reverse lookup
+
+// Rate limiting for game commands
+const commandRateMap = new Map<string, { count: number; resetTime: number }>();
+const MAX_COMMANDS_PER_SECOND = 15;
 
 function sendWS(ws: WebSocket, msg: ServerToClientMsg) {
   if (ws.readyState === WebSocket.OPEN) {
@@ -62,7 +68,6 @@ function sendWS(ws: WebSocket, msg: ServerToClientMsg) {
 }
 
 function broadcastLobbyState(ws: WebSocket, code: string) {
-  console.log("[Server] broadcastLobbyState called for code:", code, "total sessions:", playerLobbyMap.size);
   const state = { lobbies: lobbyManager.getAllLobbies() };
   const msg: ServerToClientMsg = { type: SERVER_EVT.LOBBY_STATE, payload: { lobby: state } };
   let count = 0;
@@ -72,12 +77,11 @@ function broadcastLobbyState(ws: WebSocket, code: string) {
       count++;
     }
   }
-  console.log("[Server] broadcastLobbyState sent to", count, "sessions");
 }
 
 function serializeEntities(entities: Map<string, MatchEntity>): Array<{
   id: string;
-  type: string;
+  type: EntityType;
   ownerId: string;
   x: number;
   y: number;
@@ -85,13 +89,13 @@ function serializeEntities(entities: Map<string, MatchEntity>): Array<{
   maxHealth: number;
   radius: number;
   color: string;
-  buildingType?: string;
+  buildingType?: BuildingType;
   constructionProgress?: number;
   buildWorkerIds?: string[];
   buildTargetId?: string;
   gatheringNodeId?: string;
   productionQueue?: Array<{
-    unitType: string;
+    unitType: UnitType;
     cost: number;
     supplyCost: number;
     buildTime: number;
@@ -100,9 +104,9 @@ function serializeEntities(entities: Map<string, MatchEntity>): Array<{
   repairTargetId?: string;
   moveTarget?: { x: number; y: number };
   attackTargetId?: string;
-  attackCooldown?: number;
+  attackCooldown: number;
   healTargetId?: string;
-  autoAttackEnabled?: boolean;
+  autoAttackEnabled: boolean;
   rallyPoint?: { x: number; y: number };
 }> {
   return Array.from(entities.values()).map((e) => ({
@@ -157,52 +161,6 @@ function serializeResourceNodes(nodes: ResourceNode[]): Array<{
   }));
 }
 
-function serializeBuildings(entities: Map<string, MatchEntity>): Array<{
-  id: string;
-  type: string;
-  ownerId: string;
-  x: number;
-  y: number;
-  health: number;
-  maxHealth: number;
-  radius: number;
-  color: string;
-  buildingType?: string;
-  constructionProgress?: number;
-  productionQueue?: Array<{
-    unitType: string;
-    cost: number;
-    supplyCost: number;
-    buildTime: number;
-    remainingTicks: number;
-  }>;
-  repairTargetId?: string;
-}> {
-  return Array.from(entities.values())
-    .filter((e) => e.type === "building")
-    .map((e) => ({
-      id: e.id,
-      type: e.type,
-      ownerId: e.ownerId,
-      x: e.x,
-      y: e.y,
-      health: e.health,
-      maxHealth: e.maxHealth,
-      radius: e.radius,
-      color: e.color,
-      buildingType: e.buildingType,
-      constructionProgress: e.constructionProgress,
-      productionQueue: e.productionQueue.map((q) => ({
-        unitType: q.unitType,
-        cost: q.cost,
-        supplyCost: q.supplyCost,
-        buildTime: q.buildTime,
-        remainingTicks: q.remainingTicks,
-      })),
-      repairTargetId: e.repairTargetId,
-    }));
-}
-
 function serializeEconomy(economy: [PlayerEconomy | null, PlayerEconomy | null]): [
   { resources: number; supply: number; maxSupply: number } | null,
   { resources: number; supply: number; maxSupply: number } | null,
@@ -225,43 +183,50 @@ function serializeEconomy(economy: [PlayerEconomy | null, PlayerEconomy | null])
   ];
 }
 
+/**
+ * Build a serialized match state payload from the internal MatchState.
+ * stateTimestamp is optional — included for GAME_STATE broadcasts but omitted for MATCH_START.
+ */
+function buildMatchStatePayload(match: MatchState, stateTimestamp?: number) {
+  const allEntities = serializeEntities(match.entities);
+  return {
+    id: match.id,
+    lobbyCode: match.lobbyCode,
+    phase: match.phase,
+    tick: match.tick,
+    tickIntervalMs: match.tickIntervalMs,
+    ...(stateTimestamp !== undefined ? { stateTimestamp } : {}),
+    players: match.players,
+    entities: allEntities,
+    attackLog: match.attackLog,
+    result: match.result,
+    startedAt: match.startedAt,
+    endedAt: match.endedAt,
+    economy: serializeEconomy(match.economy),
+    resourceNodes: serializeResourceNodes(match.resourceNodes),
+    config: {
+      mapWidth: match.config.mapWidth,
+      mapHeight: match.config.mapHeight,
+      viewportWidth: match.config.viewportWidth,
+      viewportHeight: match.config.viewportHeight,
+    },
+    mapWidth: match.config.mapWidth,
+    mapHeight: match.config.mapHeight,
+  };
+}
+
 function broadcastGameState(code: string) {
   const matchId = lobbyMatchMap.get(code);
   if (!matchId) return;
   const match = matchEngine.getMatch(matchId);
   if (!match) return;
 
-const allEntities = serializeEntities(match.entities);
-
-   const msg: ServerToClientMsg = {
-          type: SERVER_EVT.GAME_STATE,
-          payload: {
-            match: {
-             id: match.id,
-             lobbyCode: match.lobbyCode,
-             phase: match.phase,
-             tick: match.tick,
-             tickIntervalMs: match.tickIntervalMs,
-             stateTimestamp: Date.now(),
-             players: match.players,
-             entities: allEntities as any,
-             attackLog: match.attackLog,
-             result: match.result,
-             startedAt: match.startedAt,
-             endedAt: match.endedAt,
-             economy: serializeEconomy(match.economy),
-             resourceNodes: serializeResourceNodes(match.resourceNodes),
-             config: {
-               mapWidth: match.config.mapWidth,
-               mapHeight: match.config.mapHeight,
-               viewportWidth: match.config.viewportWidth,
-               viewportHeight: match.config.viewportHeight,
-             },
-             mapWidth: match.config.mapWidth,
-             mapHeight: match.config.mapHeight,
-           },
-         },
-       };
+  const msg: ServerToClientMsg = {
+    type: SERVER_EVT.GAME_STATE,
+    payload: {
+      match: buildMatchStatePayload(match, Date.now()),
+    },
+  };
   for (const session of playerLobbyMap.values()) {
     if (session.code === code && session.matchId === matchId) {
       sendWS(session.ws, msg);
@@ -346,33 +311,10 @@ wss.on("connection", (ws) => {
         if (matchId) {
           const match = matchEngine.getMatch(matchId);
           if (match) {
-           const allEntities = serializeEntities(match.entities);
             const matchStartMsg: ServerToClientMsg = {
               type: SERVER_EVT.MATCH_START,
               payload: {
-                match: {
-                  id: match.id,
-                  lobbyCode: match.lobbyCode,
-                  phase: match.phase,
-                  tick: match.tick,
-                  tickIntervalMs: match.tickIntervalMs,
-                  players: match.players,
-                entities: allEntities as any,
-                   attackLog: match.attackLog,
-                   result: match.result,
-                   startedAt: match.startedAt,
-                  endedAt: match.endedAt,
-                  economy: serializeEconomy(match.economy),
-                  resourceNodes: serializeResourceNodes(match.resourceNodes),
-                  config: {
-                    mapWidth: match.config.mapWidth,
-                    mapHeight: match.config.mapHeight,
-                    viewportWidth: match.config.viewportWidth,
-                    viewportHeight: match.config.viewportHeight,
-                  },
-                  mapWidth: match.config.mapWidth,
-                  mapHeight: match.config.mapHeight,
-                },
+                match: buildMatchStatePayload(match),
               },
             };
             sendWS(ws, matchStartMsg);
@@ -382,9 +324,7 @@ wss.on("connection", (ws) => {
       }
 
     case CLIENT_MSG.CREATE_LOBBY: {
-        console.log("[Server] create_lobby received, username:", msg.payload.username);
         const { code, player } = lobbyManager.createLobby(msg.payload.username);
-        console.log("[Server] lobby created, code:", code, "playerId:", player.id);
 
         playerId = player.id;
         playerLobbyMap.set(playerId, {
@@ -394,7 +334,6 @@ wss.on("connection", (ws) => {
         });
 
         broadcastLobbyState(ws, code);
-        console.log("[Server] broadcastLobbyState sent");
 
         // Send the player's real ID back so client can identify itself
         sendWS(ws, { type: SERVER_EVT.CONNECTED, payload: { playerId: player.id } });
@@ -443,34 +382,14 @@ wss.on("connection", (ws) => {
             }
           }
 
+          // Also record in reverse map for broadcast callback
+          matchLobbyMap.set(match.id, session.code);
+
           // Notify both players of match start
-          const allEntities = serializeEntities(match.entities);
           const matchStartMsg: ServerToClientMsg = {
             type: SERVER_EVT.MATCH_START,
             payload: {
-              match: {
-                id: match.id,
-                lobbyCode: match.lobbyCode,
-                phase: match.phase,
-                tick: match.tick,
-                tickIntervalMs: match.tickIntervalMs,
-                players: match.players,
-               entities: allEntities as any,
-                   attackLog: match.attackLog,
-                   result: match.result,
-                   startedAt: match.startedAt,
-                endedAt: match.endedAt,
-                economy: serializeEconomy(match.economy),
-                resourceNodes: serializeResourceNodes(match.resourceNodes),
-                config: {
-                  mapWidth: match.config.mapWidth,
-                  mapHeight: match.config.mapHeight,
-                  viewportWidth: match.config.viewportWidth,
-                  viewportHeight: match.config.viewportHeight,
-                },
-                mapWidth: match.config.mapWidth,
-                mapHeight: match.config.mapHeight,
-              },
+              match: buildMatchStatePayload(match),
             },
           };
           for (const s of playerLobbyMap.values()) {
@@ -505,33 +424,10 @@ wss.on("connection", (ws) => {
           return;
         }
 
-        const allEntities = serializeEntities(match.entities);
         const matchStartMsg: ServerToClientMsg = {
           type: SERVER_EVT.MATCH_START,
           payload: {
-            match: {
-              id: match.id,
-              lobbyCode: match.lobbyCode,
-              phase: match.phase,
-              tick: match.tick,
-              tickIntervalMs: match.tickIntervalMs,
-              players: match.players,
-               entities: allEntities as any,
-                   attackLog: match.attackLog,
-                   result: match.result,
-                   startedAt: match.startedAt,
-              endedAt: match.endedAt,
-              economy: serializeEconomy(match.economy),
-              resourceNodes: serializeResourceNodes(match.resourceNodes),
-              config: {
-                mapWidth: match.config.mapWidth,
-                mapHeight: match.config.mapHeight,
-                viewportWidth: match.config.viewportWidth,
-                viewportHeight: match.config.viewportHeight,
-              },
-              mapWidth: match.config.mapWidth,
-              mapHeight: match.config.mapHeight,
-            },
+            match: buildMatchStatePayload(match),
           },
         };
         for (const s of playerLobbyMap.values()) {
@@ -543,13 +439,11 @@ wss.on("connection", (ws) => {
       }
 
       case CLIENT_MSG.GAME_COMMAND: {
-        console.log("[Server] GAME_COMMAND - playerId:", playerId, "type:", (msg.payload as unknown as Record<string, unknown>)?.type);
         if (!playerId) {
           sendWS(ws, { type: SERVER_EVT.ERROR, payload: { message: "Not connected." } });
           return;
         }
         const session = playerLobbyMap.get(playerId);
-        console.log("[Server] GAME_COMMAND - session found:", !!session, "matchId:", session?.matchId, "playerId:", playerId);
         if (!session) {
           sendWS(ws, { type: SERVER_EVT.ERROR, payload: { message: "Not in a lobby." } });
           return;
@@ -558,6 +452,19 @@ wss.on("connection", (ws) => {
         const matchId = session.matchId;
         if (!matchId) {
           sendWS(ws, { type: SERVER_EVT.ERROR, payload: { message: "No active match." } });
+          return;
+        }
+
+        // Rate limiting: max MAX_COMMANDS_PER_SECOND commands per second per player
+        const now = Date.now();
+        let rateEntry = commandRateMap.get(playerId);
+        if (!rateEntry || now - rateEntry.resetTime > 1000) {
+          rateEntry = { count: 0, resetTime: now };
+          commandRateMap.set(playerId, rateEntry);
+        }
+        rateEntry.count++;
+        if (rateEntry.count > MAX_COMMANDS_PER_SECOND) {
+          // Silently ignore rate-limited commands
           return;
         }
 
@@ -846,6 +753,31 @@ wss.on("connection", (ws) => {
       }
     }
   });
+});
+
+// WebSocket ping/pong heartbeat — keep connections alive
+const pingInterval = setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.ping();
+    }
+  });
+}, 30000);
+
+// Periodic cleanup of stale rate-limit entries (every 5 minutes)
+const rateLimitCleanup = setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of commandRateMap.entries()) {
+    if (now - entry.resetTime > 60000) {
+      commandRateMap.delete(key);
+    }
+  }
+}, 300000);
+
+// Clean up intervals when server closes
+httpServer.on("close", () => {
+  clearInterval(pingInterval);
+  clearInterval(rateLimitCleanup);
 });
 
 // API routes
