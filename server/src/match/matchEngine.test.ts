@@ -177,7 +177,7 @@ describe("Combat System", () => {
       gunner.y = 300;
 
       const enemyWorker = findEntity(match, "worker", "p2")!;
-      enemyWorker.x = 200;
+      enemyWorker.x = 300;
       enemyWorker.y = 300;
       gunner.attackTargetId = enemyWorker.id;
 
@@ -563,6 +563,235 @@ describe("Combat System", () => {
         (e) => e.attackerId === skirm.id
       );
       expect(oldEvent).toBeUndefined();
+    });
+  });
+
+  describe("Toggle Auto-Attack Command", () => {
+    it("toggles auto-attack on from off", () => {
+      const worker = findEntity(match, "worker", "p1")!;
+      worker.autoAttackEnabled = false;
+
+      const result = engine.processCommand(match.id, "p1", {
+        type: "toggle_auto_attack",
+        entityIds: [worker.id],
+      });
+
+      expect(result.success).toBe(true);
+      expect(worker.autoAttackEnabled).toBe(true);
+    });
+
+    it("toggles auto-attack off from on", () => {
+      const worker = findEntity(match, "worker", "p1")!;
+      worker.autoAttackEnabled = true;
+
+      const result = engine.processCommand(match.id, "p1", {
+        type: "toggle_auto_attack",
+        entityIds: [worker.id],
+      });
+
+      expect(result.success).toBe(true);
+      expect(worker.autoAttackEnabled).toBe(false);
+    });
+
+    it("ignores buildings when toggling auto-attack", () => {
+      const worker = findEntity(match, "worker", "p1")!;
+      worker.autoAttackEnabled = false;
+
+      const result = engine.processCommand(match.id, "p1", {
+        type: "toggle_auto_attack",
+        entityIds: [worker.id, "nonexistent_building"],
+      });
+
+      expect(result.success).toBe(true);
+      expect(worker.autoAttackEnabled).toBe(true);
+    });
+
+    it("toggles multiple units at once", () => {
+      const w1 = findEntity(match, "worker", "p1")!;
+      const w2 = findEntity(match, "worker", "p1")!;
+      w1.autoAttackEnabled = false;
+      w2.autoAttackEnabled = false;
+
+      const result = engine.processCommand(match.id, "p1", {
+        type: "toggle_auto_attack",
+        entityIds: [w1.id, w2.id],
+      });
+
+      expect(result.success).toBe(true);
+      expect(w1.autoAttackEnabled).toBe(true);
+      expect(w2.autoAttackEnabled).toBe(true);
+    });
+
+    it("returns error with no entity IDs", () => {
+      const result = engine.processCommand(match.id, "p1", {
+        type: "toggle_auto_attack",
+        entityIds: [],
+      });
+
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("Stop Command", () => {
+    it("clears move target and attack target", () => {
+      const worker = findEntity(match, "worker", "p1")!;
+      worker.moveTarget = { x: 500, y: 500 };
+      worker.autoAttackEnabled = true;
+      worker.healTargetId = "some_target";
+
+      const result = engine.processCommand(match.id, "p1", {
+        type: "stop",
+        entityIds: [worker.id],
+      });
+
+      expect(result.success).toBe(true);
+      expect(worker.moveTarget).toBeUndefined();
+      expect(worker.autoAttackEnabled).toBe(false);
+      expect(worker.healTargetId).toBeUndefined();
+    });
+
+    it("stops multiple units at once", () => {
+      const w1 = findEntity(match, "worker", "p1")!;
+      const w2 = findEntity(match, "worker", "p1")!;
+      w1.moveTarget = { x: 100, y: 100 };
+      w1.autoAttackEnabled = true;
+      w2.moveTarget = { x: 200, y: 200 };
+      w2.autoAttackEnabled = true;
+
+      const result = engine.processCommand(match.id, "p1", {
+        type: "stop",
+        entityIds: [w1.id, w2.id],
+      });
+
+      expect(result.success).toBe(true);
+      expect(w1.moveTarget).toBeUndefined();
+      expect(w1.autoAttackEnabled).toBe(false);
+      expect(w2.moveTarget).toBeUndefined();
+      expect(w2.autoAttackEnabled).toBe(false);
+    });
+
+    it("ignores buildings when stopping", () => {
+      const worker = findEntity(match, "worker", "p1")!;
+      worker.moveTarget = { x: 100, y: 100 };
+
+      const crystal = findEntity(match, "crystal", "p1")!;
+
+      const result = engine.processCommand(match.id, "p1", {
+        type: "stop",
+        entityIds: [worker.id, crystal.id],
+      });
+
+      expect(result.success).toBe(true);
+      expect(worker.moveTarget).toBeUndefined();
+    });
+
+    it("returns error with no entity IDs", () => {
+      const result = engine.processCommand(match.id, "p1", {
+        type: "stop",
+        entityIds: [],
+      });
+
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("Retreat Command", () => {
+    it("moves unit toward own crystal", () => {
+      const worker = findEntity(match, "worker", "p1")!;
+      worker.x = 500;
+      worker.y = 300;
+      worker.autoAttackEnabled = true;
+
+      const crystal = findEntity(match, "crystal", "p1")!;
+
+      const result = engine.processCommand(match.id, "p1", {
+        type: "retreat",
+        entityIds: [worker.id],
+      });
+
+      expect(result.success).toBe(true);
+      expect(worker.moveTarget).toEqual({ x: crystal.x, y: crystal.y });
+      expect(worker.autoAttackEnabled).toBe(false);
+    });
+
+    it("clears attack target on retreat", () => {
+      const worker = findEntity(match, "worker", "p1")!;
+      worker.attackTargetId = "enemy_id";
+      worker.healTargetId = "ally_id";
+
+      const result = engine.processCommand(match.id, "p1", {
+        type: "retreat",
+        entityIds: [worker.id],
+      });
+
+      expect(result.success).toBe(true);
+      expect(worker.attackTargetId).toBeUndefined();
+      expect(worker.healTargetId).toBeUndefined();
+    });
+
+    it("cancels gathering on retreat", () => {
+      const worker = findEntity(match, "worker", "p1")!;
+      worker.gatheringNodeId = match.resourceNodes[0]?.id;
+      if (match.resourceNodes[0]) {
+        match.resourceNodes[0].gathererSlots.add(worker.id);
+      }
+
+      const result = engine.processCommand(match.id, "p1", {
+        type: "retreat",
+        entityIds: [worker.id],
+      });
+
+      expect(result.success).toBe(true);
+      expect(worker.gatheringNodeId).toBeUndefined();
+    });
+
+    it("retreats multiple units at once", () => {
+      const w1 = findEntity(match, "worker", "p1")!;
+      const w2 = findEntity(match, "worker", "p1")!;
+      w1.autoAttackEnabled = true;
+      w2.autoAttackEnabled = true;
+
+      const crystal = findEntity(match, "crystal", "p1")!;
+
+      const result = engine.processCommand(match.id, "p1", {
+        type: "retreat",
+        entityIds: [w1.id, w2.id],
+      });
+
+      expect(result.success).toBe(true);
+      expect(w1.moveTarget).toEqual({ x: crystal.x, y: crystal.y });
+      expect(w2.moveTarget).toEqual({ x: crystal.x, y: crystal.y });
+      expect(w1.autoAttackEnabled).toBe(false);
+      expect(w2.autoAttackEnabled).toBe(false);
+    });
+
+    it("ignores buildings when retreating", () => {
+      const worker = findEntity(match, "worker", "p1")!;
+      const crystal = findEntity(match, "crystal", "p1")!;
+
+      const result = engine.processCommand(match.id, "p1", {
+        type: "retreat",
+        entityIds: [worker.id, crystal.id],
+      });
+
+      expect(result.success).toBe(true);
+      expect(worker.moveTarget).toEqual({ x: crystal.x, y: crystal.y });
+    });
+
+    it("returns error with no entity IDs", () => {
+      const result = engine.processCommand(match.id, "p1", {
+        type: "retreat",
+        entityIds: [],
+      });
+
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("Unit Default Auto-Attack", () => {
+    it("newly created combat units should NOT have auto-attack enabled by default", () => {
+      const worker = findEntity(match, "worker", "p1")!;
+      expect(worker.autoAttackEnabled).toBe(false);
     });
   });
 });

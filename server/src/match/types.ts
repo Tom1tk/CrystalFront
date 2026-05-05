@@ -83,6 +83,7 @@ export interface MatchEntity {
   constructionProgress: number;
   buildWorkerIds?: Set<EntityId>;
   productionQueue: ProductionQueueItem[];
+  rallyPoint?: { x: number; y: number };
   repairTargetId?: EntityId;
   repairProgress: number;
   gatheringNodeId?: string;

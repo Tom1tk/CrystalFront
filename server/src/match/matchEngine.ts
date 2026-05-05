@@ -308,11 +308,17 @@ export class MatchEngine {
         | "gather"
         | "train_worker"
         | "train_unit"
+        | "cancel_queue"
         | "build"
         | "assign_build"
         | "repair"
         | "attack"
-        | "heal";
+        | "heal"
+        | "set_rally"
+        | "toggle_auto_attack"
+        | "retreat"
+        | "stop"
+        | "debug_move_node";
       entityId?: string;
       entityIds?: string[];
       targetX?: number;
@@ -320,6 +326,8 @@ export class MatchEngine {
       targetEntityId?: string;
       buildingType?: BuildingType;
       workerIds?: string[];
+      buildingId?: string;
+      unitType?: string;
     }
   ): { success: boolean; message?: string } {
     const match = this.matches.get(matchId);
@@ -445,15 +453,19 @@ if (command.type === "gather") {
     }
 
     if (command.type === "train_unit") {
-      const building = Array.from(match.entities.values()).find(
-        (e) => e.id === command.entityId && e.type === "building" && e.ownerId === playerId
-      );
-      if (!building) return { success: false, message: "Building not found" };
+      const buildingId = command.buildingId ?? command.entityId;
+      if (!buildingId) {
+        return { success: false, message: "Missing building ID" };
+      }
+      const building = match.entities.get(buildingId);
+      if (!building || building.type !== "building" || building.ownerId !== playerId) {
+        return { success: false, message: "Invalid building" };
+      }
       if (building.constructionProgress < 100) {
         return { success: false, message: "Building not yet constructed" };
       }
 
-      const unitType = command.targetEntityId as UnitType | undefined;
+      const unitType = (command.unitType ?? command.targetEntityId) as UnitType | undefined;
       if (!unitType || !(unitType in UNIT_DEFS)) {
         return { success: false, message: "Invalid unit type" };
       }
@@ -470,12 +482,18 @@ if (command.type === "gather") {
       const economy = match.economy[playerIdx];
       if (!economy) return { success: false, message: "No economy" };
 
+      // Check total queue supply demand (existing queue + new unit)
+      const queuedSupply = (building.productionQueue ?? []).reduce((sum, item) => sum + item.supplyCost, 0);
+      if (economy.supply + queuedSupply + unitDef.supplyCost > economy.maxSupply) {
+        return { success: false, message: "Not enough supply" };
+      }
+
       if (economy.resources < unitDef.cost) {
         return { success: false, message: "Not enough resources" };
       }
-      if (economy.supply + unitDef.supplyCost > economy.maxSupply) {
-        return { success: false, message: "Not enough supply" };
-      }
+
+      // Deduct resources immediately on queue
+      economy.resources -= unitDef.cost;
 
       building.productionQueue.push({
         unitType,
@@ -485,6 +503,30 @@ if (command.type === "gather") {
         remainingTicks: unitDef.buildTime,
       });
 
+      return { success: true };
+    }
+
+    if (command.type === "cancel_queue") {
+      const building = Array.from(match.entities.values()).find(
+        (e) => e.id === command.entityId && e.type === "building" && e.ownerId === playerId
+      );
+      if (!building) return { success: false, message: "Building not found" };
+
+      const queueIndex = command.targetX ?? 0;
+      if (!building.productionQueue || building.productionQueue.length === 0) {
+        return { success: false, message: "Queue is empty" };
+      }
+
+      const item = building.productionQueue[queueIndex];
+      if (!item) return { success: false, message: "Queue item not found" };
+
+      // Refund resources
+      const playerIdx = match.players.findIndex((p) => p?.playerId === playerId);
+      if (playerIdx >= 0 && match.economy[playerIdx]) {
+        match.economy[playerIdx]!.resources += item.cost;
+      }
+
+      building.productionQueue.splice(queueIndex, 1);
       return { success: true };
     }
 
@@ -769,6 +811,129 @@ if (command.type === "gather") {
       return { success: true };
     }
 
+    if (command.type === "set_rally") {
+      const entityId = command.entityId;
+      if (!entityId) {
+        return { success: false, message: "Missing entity ID" };
+      }
+
+      const entity = match.entities.get(entityId);
+      if (!entity || entity.ownerId !== playerId) {
+        return { success: false, message: "Entity not found" };
+      }
+
+      // Only buildings and crystals can have rally points
+      if (entity.type !== "building" && entity.type !== "crystal") {
+        return { success: false, message: "Only buildings and crystals can have rally points" };
+      }
+
+      if (command.targetX !== undefined && command.targetY !== undefined) {
+        entity.rallyPoint = { x: command.targetX, y: command.targetY };
+      } else {
+        entity.rallyPoint = undefined;
+      }
+
+      return { success: true };
+    }
+
+    // --- toggle_auto_attack: toggle auto-attack mode on selected unit(s) ---
+    if (command.type === "toggle_auto_attack") {
+      const entityIds = command.entityIds || [];
+      if (entityIds.length === 0) {
+        return { success: false, message: "No entities specified" };
+      }
+      for (const eid of entityIds) {
+        const entity = Array.from(match.entities.values()).find(
+          (e) => e.id === eid && e.ownerId === playerId
+        );
+        if (!entity) continue;
+        if (entity.type === "building") continue;
+        entity.autoAttackEnabled = !entity.autoAttackEnabled;
+      }
+      return { success: true };
+    }
+
+    // --- retreat: path unit(s) toward own crystal ---
+    if (command.type === "retreat") {
+      const entityIds = command.entityIds || [];
+      if (entityIds.length === 0) {
+        return { success: false, message: "No entities specified" };
+      }
+      // Find this player's crystal
+      const crystal = Array.from(match.entities.values()).find(
+        (e) => e.type === "crystal" && e.ownerId === playerId
+      );
+      if (!crystal) {
+        return { success: false, message: "Player crystal not found" };
+      }
+      for (const eid of entityIds) {
+        const entity = Array.from(match.entities.values()).find(
+          (e) => e.id === eid && e.ownerId === playerId
+        );
+        if (!entity) continue;
+        if (entity.type === "building") continue;
+        // Cancel all modes
+        entity.moveTarget = { x: crystal.x, y: crystal.y };
+        entity.attackTargetId = undefined;
+        entity.autoAttackEnabled = false;
+        entity.healTargetId = undefined;
+        // Cancel gathering
+        if (entity.gatheringNodeId) {
+          const prevNode = match.resourceNodes.find((n) => n.id === entity.gatheringNodeId);
+          if (prevNode) prevNode.gathererSlots.delete(entity.id);
+          entity.gatheringNodeId = undefined;
+        }
+        // Cancel building
+        if (entity.buildTargetId) {
+          const building = match.entities.get(entity.buildTargetId);
+          if (building && building.buildWorkerIds) {
+            building.buildWorkerIds.delete(entity.id);
+          }
+          entity.buildTargetId = undefined;
+        }
+      }
+      return { success: true };
+    }
+
+    // --- stop: halt all movement and clear targets ---
+    if (command.type === "stop") {
+      const entityIds = command.entityIds || [];
+      if (entityIds.length === 0) {
+        return { success: false, message: "No entities specified" };
+      }
+      for (const eid of entityIds) {
+        const entity = Array.from(match.entities.values()).find(
+          (e) => e.id === eid && e.ownerId === playerId
+        );
+        if (!entity) continue;
+        if (entity.type === "building") continue;
+        entity.moveTarget = undefined;
+        entity.attackTargetId = undefined;
+        entity.autoAttackEnabled = false;
+        entity.healTargetId = undefined;
+      }
+      return { success: true };
+    }
+
+    if (command.type === "debug_move_node") {
+      const nodeId = command.targetEntityId;
+      if (!nodeId) {
+        return { success: false, message: "Missing node ID" };
+      }
+
+      const node = match.resourceNodes.find((n) => n.id === nodeId);
+      if (!node) {
+        return { success: false, message: "Resource node not found" };
+      }
+
+      if (command.targetX !== undefined && command.targetY !== undefined) {
+        node.x = command.targetX;
+        node.y = command.targetY;
+      }
+
+      return { success: true };
+    }
+
     return { success: false };
   }
 
@@ -786,17 +951,20 @@ if (command.type === "gather") {
     // Phase 2: Combat
     const damageLog = this.processCombat(match);
 
+    // Phase 2.5: Post-combat movement (chase/follow initiated this tick)
+    this.processMovement(match, 100);
+
     // Phase 3: Gathering
     this.processGathering(match);
 
     // Phase 4: Construction & production
     this.processConstruction(match);
 
-    // Phase 5: Repair & Medic healing
-    this.processRepairAndHealing(match);
-
-    // Phase 6: Death removal
+    // Phase 5: Death removal (before healing so dead targets are detected)
     this.processDeaths(match, damageLog);
+
+    // Phase 6: Repair & Medic healing
+    this.processRepairAndHealing(match);
 
     match.stateTimestamp = Date.now();
     return match;
@@ -1188,6 +1356,10 @@ private processConstruction(match: MatchState): void {
                  unitDef.radius,
                  unitDef.color
                );
+               // Apply rally point if set
+               if (entity.rallyPoint) {
+                 unit.moveTarget = { ...entity.rallyPoint };
+               }
                match.entities.set(unit.id, unit);
                entity.productionQueue.shift();
              }
@@ -1495,8 +1667,7 @@ private processConstruction(match: MatchState): void {
     color: string,
     buildingType?: BuildingType
   ): MatchEntity {
-    const autoAttackEnabled =
-      type === "skirmisher" || type === "gunner" || type === "bruiser" || type === "medic";
+    const autoAttackEnabled = false; // Units start with auto-attack off; player toggles via hotkey
 
     if (type === "building" && buildingType) {
       const def = BUILDING_DEFS[buildingType];
@@ -1514,6 +1685,7 @@ private processConstruction(match: MatchState): void {
         constructionProgress: 0,
         buildWorkerIds: undefined,
         productionQueue: [],
+        rallyPoint: undefined,
         repairTargetId: undefined,
         repairProgress: 0,
         gatheringNodeId: undefined,
@@ -1541,6 +1713,7 @@ private processConstruction(match: MatchState): void {
       buildWorkerIds: undefined,
       buildTargetId: undefined,
       productionQueue: [],
+      rallyPoint: undefined,
       repairTargetId: undefined,
       repairProgress: 0,
       gatheringNodeId: undefined,

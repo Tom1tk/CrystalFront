@@ -66,6 +66,7 @@ export interface MatchEntity {
   attackCooldown?: number;
   healTargetId?: string;
   autoAttackEnabled?: boolean;
+  rallyPoint?: { x: number; y: number };
 }
 
 export interface ResourceNodeDisplay {

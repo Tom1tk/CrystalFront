@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Lobby, Player, MatchState, ResourceNodeDisplay, BuildingType, MatchEntity } from "../types";
 
 interface GameShellProps {
@@ -356,6 +356,71 @@ export default function GameShell({
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [debugSpawnMode, setDebugSpawnMode] = useState<string | null>(null);
+  const [rallyMode, setRallyMode] = useState<{ buildingId: string } | null>(null);
+  const [debugDragNode, setDebugDragNode] = useState<string | null>(null);
+
+  // Hotkey menu state - QWER/ASDF grid (context-aware)
+  type HotkeyAction =
+    | "train_worker"
+    | "train_skirmisher"
+    | "train_gunner"
+    | "train_bruiser"
+    | "train_medic"
+    | "toggle_auto_attack"
+    | "unit_stop"
+    | "retreat"
+    | "fortify"
+    | "none";
+
+  type HotkeySlot = { key: string; action: HotkeyAction; label: string; icon: string };
+
+  // Context-aware hotkey computation
+  const hotkeys = useMemo((): HotkeySlot[] => {
+    const allSelected = Array.from(selectedEntityIds);
+    if (allSelected.length === 0) {
+      return [
+        { key: "q", action: "none", label: "", icon: "" },
+        { key: "w", action: "none", label: "", icon: "" },
+        { key: "e", action: "none", label: "", icon: "" },
+        { key: "r", action: "none", label: "", icon: "" },
+        { key: "a", action: "none", label: "", icon: "" },
+        { key: "s", action: "none", label: "", icon: "" },
+        { key: "d", action: "none", label: "", icon: "" },
+        { key: "f", action: "none", label: "", icon: "" },
+      ];
+    }
+
+    const selectedEntities = allSelected
+      .map((id) => matchState?.entities.find((ent) => ent.id === id))
+      .filter((e): e is MatchEntity => e != null);
+
+    const crystalSelected = selectedEntities.some(
+      (e) => e.type === "crystal" && e.ownerId === player.id
+    );
+    const barracksSelected = selectedEntities.some(
+      (e) => e.type === "building" && e.buildingType === "barracks" && e.ownerId === player.id
+    );
+    const foundrySelected = selectedEntities.some(
+      (e) => e.type === "building" && e.buildingType === "foundry" && e.ownerId === player.id
+    );
+    const hasUnits = selectedEntities.some(
+      (e) => e.type !== "building" && e.type !== "crystal" && e.ownerId === player.id
+    );
+
+    return [
+      { key: "q", action: crystalSelected ? "train_worker" : barracksSelected ? "train_skirmisher" : "none", label: crystalSelected ? "Worker" : barracksSelected ? "Skirmisher" : "", icon: crystalSelected ? "👷" : barracksSelected ? "⚔️" : "" },
+      { key: "w", action: barracksSelected ? "train_gunner" : "none", label: barracksSelected ? "Gunner" : "", icon: barracksSelected ? "🔫" : "" },
+      { key: "e", action: foundrySelected ? "train_bruiser" : "none", label: foundrySelected ? "Bruiser" : "", icon: foundrySelected ? "🛡️" : "" },
+      { key: "r", action: foundrySelected ? "train_medic" : "none", label: foundrySelected ? "Medic" : "", icon: foundrySelected ? "💊" : "" },
+      { key: "a", action: hasUnits ? "toggle_auto_attack" : "none", label: hasUnits ? "Attack" : "", icon: hasUnits ? "⚔️" : "" },
+      { key: "s", action: hasUnits ? "unit_stop" : "none", label: hasUnits ? "Stop" : "", icon: hasUnits ? "⏹" : "" },
+      { key: "d", action: hasUnits ? "retreat" : "none", label: hasUnits ? "Retreat" : "", icon: hasUnits ? "↩️" : "" },
+      { key: "f", action: hasUnits ? "fortify" : "none", label: hasUnits ? "Fortify" : "", icon: hasUnits ? "🔧" : "" },
+    ];
+  }, [selectedEntityIds, matchState, player.id]);
+
+  const [showHotkeyMenu, setShowHotkeyMenu] = useState(true);
+  const [hotkeyFlash, setHotkeyFlash] = useState<string | null>(null);
 
   const dprRef = useRef(window.devicePixelRatio || 1);
   const cameraXRef = useRef(0);
@@ -528,6 +593,23 @@ export default function GameShell({
 
       // Left click: selection + build placement
       if (e.button === 0) {
+        // Debug drag resource node mode
+        if (debugDragNode) {
+          return; // handled by mousemove
+        }
+
+        // Rally point placement mode
+        if (rallyMode) {
+          onGameCommand({
+            type: "set_rally",
+            entityId: rallyMode.buildingId,
+            targetX: worldX,
+            targetY: worldY,
+          });
+          setRallyMode(null);
+          return;
+        }
+
         // Debug spawn mode: spawn entity at clicked position
         if (debugSpawnMode) {
           const isBuilding = debugSpawnMode.startsWith("building:");
@@ -542,6 +624,21 @@ export default function GameShell({
         console.log("[box-select] mousedown at", { screenX, screenY });
         setIsDragging(true);
         setDragStart({ x: screenX, y: screenY });
+        return;
+      }
+
+      // Middle click: debug drag resource node
+      if (e.button === 1) {
+        e.preventDefault();
+        for (const node of resourceNodes) {
+          const dx = worldX - node.x;
+          const dy = worldY - node.y;
+          if (Math.sqrt(dx * dx + dy * dy) <= node.radius + 10) {
+            setDebugDragNode(debugDragNode === node.id ? null : node.id);
+            return;
+          }
+        }
+        setDebugDragNode(null);
         return;
       }
 
@@ -671,19 +768,29 @@ export default function GameShell({
 
       mousePosRef.current = { x: screenX, y: screenY };
 
-      setHoverPos({
-        x: screenX + cameraXRef.current,
-        y: screenY,
-      });
+      const worldX = screenX + cameraXRef.current;
+      const worldY = screenY;
+      setHoverPos({ x: worldX, y: worldY });
+
+      // Debug drag resource node
+      if (debugDragNode) {
+        onGameCommand({
+          type: "debug_move_node",
+          targetEntityId: debugDragNode,
+          targetX: worldX,
+          targetY: worldY,
+        });
+        return;
+      }
     },
-    []
+    [debugDragNode, onGameCommand]
   );
 
   const handleMouseLeave = useCallback(() => {
     mousePosRef.current = null;
   }, []);
 
-  // Keyboard handler for Escape to cancel build mode
+   // Keyboard handler for Escape to cancel build mode
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" && buildModeRef.current) {
@@ -694,10 +801,175 @@ export default function GameShell({
       if (e.key === "Escape" && debugSpawnModeRef.current) {
         setDebugSpawnMode(null);
       }
+      if (e.key === "Escape" && rallyMode) {
+        setRallyMode(null);
+        return;
+      }
+      if (e.key === "Escape" && debugDragNode) {
+        setDebugDragNode(null);
+        return;
+      }
+      // Enter rally mode with 'R' when a building or crystal is selected
+      if (e.key === "r" || e.key === "R") {
+        if (selectedEntityId) {
+          const entity = matchState?.entities.find((ent) => ent.id === selectedEntityId);
+          if (entity && (entity.type === "building" || entity.type === "crystal") && entity.ownerId === player.id) {
+            setRallyMode({ buildingId: entity.id });
+            return;
+          }
+        }
+        // If in rally mode, cancel it
+        if (rallyMode) {
+          setRallyMode(null);
+          return;
+        }
+      }
+
+      // Hotkey handling - QWER/ASDF
+      const key = e.key.toLowerCase();
+      const hotkey = hotkeys.find((h: HotkeySlot) => h.key === key);
+      if (hotkey && !e.ctrlKey && !e.metaKey && !e.altKey && hotkey.action !== "none") {
+        // Flash the hotkey
+        setHotkeyFlash(key);
+        setTimeout(() => setHotkeyFlash(null), 200);
+
+        const selectedIds = Array.from(selectedEntityIds);
+        const entities = matchState?.entities ?? [];
+
+        // Filter to only movable units (exclude buildings/crystals)
+        const movableUnitIds = selectedIds.filter(
+          (id) => {
+            const ent = entities.find((e) => e.id === id);
+            return ent && ent.type !== "building" && ent.type !== "crystal" && ent.ownerId === player.id;
+          }
+        );
+
+        switch (hotkey.action) {
+          case "train_worker": {
+            // Train worker from selected crystal
+            const crystal = selectedIds
+              .map((id) => entities.find((ent) => ent.id === id))
+              .filter((ent): ent is MatchEntity => ent != null && ent.type === "crystal" && ent.ownerId === player.id);
+            if (crystal.length > 0) {
+              onGameCommand({ type: "train_worker", entityId: crystal[0].id });
+            }
+            break;
+          }
+          case "train_skirmisher":
+          case "train_gunner":
+          case "train_bruiser":
+          case "train_medic": {
+            // Train unit from selected building
+            const unitType = hotkey.action.replace("train_", "");
+            let building: MatchEntity | undefined;
+            if (unitType === "skirmisher" || unitType === "gunner") {
+              building = selectedIds
+                .map((id) => entities.find((ent) => ent.id === id))
+                .find((ent): ent is MatchEntity => ent != null && ent.type === "building" && ent.buildingType === "barracks" && ent.ownerId === player.id);
+            } else {
+              building = selectedIds
+                .map((id) => entities.find((ent) => ent.id === id))
+                .find((ent): ent is MatchEntity => ent != null && ent.type === "building" && ent.buildingType === "foundry" && ent.ownerId === player.id);
+            }
+            if (building) {
+              onGameCommand({
+                type: "train_unit",
+                entityId: building.id,
+                targetEntityId: unitType,
+              });
+            }
+            break;
+          }
+          case "toggle_auto_attack": {
+            // Toggle auto-attack on compatible units (those with attack capability)
+            if (movableUnitIds.length > 0) {
+              onGameCommand({
+                type: "toggle_auto_attack",
+                entityIds: movableUnitIds,
+              });
+            }
+            break;
+          }
+          case "unit_stop": {
+            // Stop all selected movable units
+            if (movableUnitIds.length > 0) {
+              onGameCommand({
+                type: "stop",
+                entityIds: movableUnitIds,
+              });
+            }
+            break;
+          }
+          case "retreat": {
+            // Retreat all selected movable units to own crystal
+            if (movableUnitIds.length > 0) {
+              onGameCommand({
+                type: "retreat",
+                entityIds: movableUnitIds,
+              });
+            }
+            break;
+          }
+          case "fortify": {
+            // Fortify: workers repair buildings, medics heal units, others do nothing
+            if (movableUnitIds.length > 0) {
+              const workers = movableUnitIds.filter(
+                (id) => entities.find((ent) => ent.id === id)?.type === "worker"
+              );
+              const medics = movableUnitIds.filter(
+                (id) => entities.find((ent) => ent.id === id)?.type === "medic"
+              );
+
+              // Workers repair nearest damaged friendly building
+              for (const wid of workers) {
+                const damagedBuildings = entities.filter(
+                  (ent) => ent.type === "building" && ent.ownerId === player.id && ent.health < ent.maxHealth
+                );
+                if (damagedBuildings.length > 0) {
+                  const worker = entities.find((ent) => ent.id === wid);
+                  let nearest = damagedBuildings[0];
+                  let nearestDist = Infinity;
+                  for (const b of damagedBuildings) {
+                    const d = Math.hypot((worker?.x ?? 0) - b.x, (worker?.y ?? 0) - b.y);
+                    if (d < nearestDist) { nearestDist = d; nearest = b; }
+                  }
+                  onGameCommand({
+                    type: "repair",
+                    entityId: wid,
+                    targetEntityId: nearest.id,
+                  });
+                }
+              }
+
+              // Medics heal nearest damaged friendly unit
+              for (const mid of medics) {
+                const damagedUnits = entities.filter(
+                  (ent) => ent.type !== "building" && ent.type !== "crystal" && ent.ownerId === player.id && ent.health < ent.maxHealth
+                );
+                if (damagedUnits.length > 0) {
+                  const medic = entities.find((ent) => ent.id === mid);
+                  let nearest = damagedUnits[0];
+                  let nearestDist = Infinity;
+                  for (const u of damagedUnits) {
+                    const d = Math.hypot((medic?.x ?? 0) - u.x, (medic?.y ?? 0) - u.y);
+                    if (d < nearestDist) { nearestDist = d; nearest = u; }
+                  }
+                  onGameCommand({
+                    type: "heal",
+                    entityId: mid,
+                    targetEntityId: nearest.id,
+                  });
+                }
+              }
+            }
+            break;
+          }
+        }
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [rallyMode, selectedEntityId, selectedEntityIds, matchState, player.id, hotkeys]);
 
   const handleMouseUp = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -1074,14 +1346,25 @@ export default function GameShell({
       const depletion = node.remaining / node.capacity;
       ctx.fillStyle = `rgba(204, 170, 68, ${0.3 + depletion * 0.7})`;
       ctx.fill();
-      ctx.strokeStyle = "#ccaa44";
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = debugDragNode === node.id ? "#ff4444" : "#ccaa44";
+      ctx.lineWidth = debugDragNode === node.id ? 3 : 2;
       ctx.stroke();
       ctx.fillStyle = "#ffffff";
       ctx.font = "bold 10px monospace";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(`${Math.floor(node.remaining)}`, node.x, node.y);
+    }
+
+    // Debug drag node indicator
+    if (debugDragNode && hoverPos) {
+      ctx.beginPath();
+      ctx.arc(hoverPos.x, hoverPos.y, 6, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255, 68, 68, 0.6)";
+      ctx.fill();
+      ctx.strokeStyle = "rgba(255, 100, 100, 0.9)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
     }
 
     // Entities
@@ -1257,6 +1540,46 @@ export default function GameShell({
         const label = entity.type === "crystal" ? "C" : entity.type === "worker" ? "W" : entity.type === "resource_node" ? "R" : entity.type === "skirmisher" ? "S" : entity.type === "gunner" ? "G" : entity.type === "bruiser" ? "B" : entity.type === "medic" ? "M" : "?";
         ctx.fillText(label, entity.x, entity.y);
       }
+    }
+
+    // Rally point markers
+    for (const entity of entities) {
+      if (entity.rallyPoint) {
+        const rx = entity.rallyPoint.x;
+        const ry = entity.rallyPoint.y;
+        // Draw rally point marker - orange diamond
+        ctx.save();
+        ctx.translate(rx, ry);
+        ctx.rotate(Math.PI / 4);
+        ctx.beginPath();
+        ctx.rect(-5, -5, 10, 10);
+        ctx.fillStyle = "rgba(255, 180, 50, 0.8)";
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255, 220, 100, 0.9)";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // Rally point placement indicator
+    if (rallyMode && hoverPos) {
+      ctx.beginPath();
+      ctx.arc(hoverPos.x, hoverPos.y, 6, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255, 180, 50, 0.6)";
+      ctx.fill();
+      ctx.strokeStyle = "rgba(255, 220, 100, 0.9)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      // Crosshair
+      ctx.beginPath();
+      ctx.moveTo(hoverPos.x - 10, hoverPos.y);
+      ctx.lineTo(hoverPos.x + 10, hoverPos.y);
+      ctx.moveTo(hoverPos.x, hoverPos.y - 10);
+      ctx.lineTo(hoverPos.x, hoverPos.y + 10);
+      ctx.strokeStyle = "rgba(255, 220, 100, 0.7)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
     }
 
     // Attack visualization lines
@@ -1498,6 +1821,164 @@ export default function GameShell({
             </span>
             <span style={styles.infoText}>Tick: {matchState?.tick ?? 0}</span>
           </div>
+
+          {/* Hotkey Menu - QWER/ASDF Grid */}
+          {showHotkeyMenu && (
+            <div style={styles.hotkeyMenu}>
+              <div style={styles.hotkeyRow}>
+                {hotkeys.filter((h: HotkeySlot) => "qwer".includes(h.key)).map((hk: HotkeySlot) => (
+                  <div
+                    key={hk.key}
+                    style={{
+                      ...styles.hotkeySlot,
+                      ...(hotkeyFlash === hk.key ? styles.hotkeyFlash : {}),
+                    }}
+                  >
+                    <span style={styles.hotkeyLabel}>{hk.key.toUpperCase()}</span>
+                    <span style={styles.hotkeyIcon}>{hk.icon}</span>
+                    <span style={styles.hotkeyName}>{hk.label}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={styles.hotkeyRow}>
+                {hotkeys.filter((h: HotkeySlot) => "asdf".includes(h.key)).map((hk: HotkeySlot) => (
+                  <div
+                    key={hk.key}
+                    style={{
+                      ...styles.hotkeySlot,
+                      ...(hotkeyFlash === hk.key ? styles.hotkeyFlash : {}),
+                    }}
+                  >
+                    <span style={styles.hotkeyLabel}>{hk.key.toUpperCase()}</span>
+                    <span style={styles.hotkeyIcon}>{hk.icon}</span>
+                    <span style={styles.hotkeyName}>{hk.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Debug Panel - centered bottom */}
+          <div style={styles.debugPanel}>
+            <div style={styles.debugPanelHeader}>Debug Controls</div>
+            <div style={styles.debugPanelBody}>
+              <div style={styles.debugPanelRow}>
+                <button
+                  style={styles.debugButton}
+                  onClick={() =>
+                    onDebugWin(
+                      player.id === lobby.players[0]?.id ? "player1" : "player2"
+                    )
+                  }
+                >
+                  Simulate My Win
+                </button>
+                <button
+                  style={styles.debugButton}
+                  onClick={() =>
+                    onDebugWin(
+                      player.id === lobby.players[0]?.id ? "player2" : "player1"
+                    )
+                  }
+                >
+                  Simulate Opponent Win
+                </button>
+              </div>
+
+              <div style={styles.debugPanelRow}>
+                <span style={styles.debugLabel}>Map Editing (middle-click nodes to drag)</span>
+                <button
+                  style={{
+                    ...styles.debugButton,
+                    ...(debugDragNode ? styles.debugButtonActive : {}),
+                  }}
+                  onClick={() => setDebugDragNode(debugDragNode ? null : "toggle")}
+                >
+                  {debugDragNode ? "Dragging Node (Esc to stop)" : "Toggle Node Drag"}
+                </button>
+                <button
+                  style={styles.debugButton}
+                  onClick={() => {
+                    const data = JSON.stringify(resourceNodes.map(n => ({ id: n.id, x: n.x, y: n.y, remaining: n.remaining })));
+                    localStorage.setItem("crystalfront_map_layout", data);
+                    alert("Map layout saved!");
+                  }}
+                >
+                  Save Layout
+                </button>
+                <button
+                  style={styles.debugButton}
+                  onClick={() => {
+                    const data = localStorage.getItem("crystalfront_map_layout");
+                    if (data) {
+                      try {
+                        const saved = JSON.parse(data);
+                        for (const s of saved) {
+                          const node = resourceNodes.find(n => n.id === s.id);
+                          if (node) {
+                            onGameCommand({
+                              type: "debug_move_node",
+                              targetEntityId: s.id,
+                              targetX: s.x,
+                              targetY: s.y,
+                            });
+                          }
+                        }
+                        alert("Layout loaded!");
+                      } catch {
+                        alert("Invalid saved layout");
+                      }
+                    } else {
+                      alert("No saved layout found");
+                    }
+                  }}
+                >
+                  Load Layout
+                </button>
+              </div>
+
+              <div style={styles.debugPanelRow}>
+                <span style={styles.debugLabel}>Spawn (click type, then click map)</span>
+                {(["worker", "skirmisher", "gunner", "bruiser", "medic"] as const).map((unitType) => (
+                  <button
+                    key={unitType}
+                    style={{
+                      ...styles.debugButton,
+                      ...(debugSpawnMode === unitType ? styles.debugButtonActive : {}),
+                    }}
+                    onClick={() => setDebugSpawnMode(debugSpawnMode === unitType ? null : unitType)}
+                  >
+                    + {unitType.charAt(0).toUpperCase() + unitType.slice(1)}
+                  </button>
+                ))}
+              </div>
+
+              <div style={styles.debugPanelRow}>
+                <span style={styles.debugLabel}>Buildings</span>
+                {(["barracks", "foundry", "supply_depot", "turret"] as const).map((buildingType) => (
+                  <button
+                    key={buildingType}
+                    style={{
+                      ...styles.debugButton,
+                      ...(debugSpawnMode === `building:${buildingType}` ? styles.debugButtonActive : {}),
+                    }}
+                    onClick={() => setDebugSpawnMode(debugSpawnMode === `building:${buildingType}` ? null : `building:${buildingType}`)}
+                  >
+                    + {BUILDING_LABELS[buildingType]}
+                  </button>
+                ))}
+              </div>
+
+              {debugSpawnMode && (
+                <button
+                  style={{ ...styles.debugButton, ...styles.debugCancelButton }}
+                  onClick={() => setDebugSpawnMode(null)}
+                >
+                  Cancel Spawn (Esc)
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1595,9 +2076,31 @@ export default function GameShell({
               </span>
             )}
             {selectedEntity?.productionQueue.length > 0 && (
-              <span style={styles.buildLabel}>
-                Producing: {selectedEntity.productionQueue[0].unitType} ({Math.ceil(selectedEntity.productionQueue[0].remainingTicks / 10)}s)
-              </span>
+              <div style={{ marginBottom: 4 }}>
+                <span style={styles.buildLabel}>Queue ({selectedEntity.productionQueue.length}): </span>
+                {selectedEntity.productionQueue.map((item, idx) => (
+                  <span key={idx} style={{ ...styles.buildLabel, display: "inline-flex", alignItems: "center", gap: 4, marginRight: 8 }}>
+                    <span>{item.unitType} ({Math.ceil(item.remainingTicks / 10)}s)</span>
+                    <button
+                      style={{
+                        background: "transparent",
+                        border: "1px solid #ff4444",
+                        color: "#ff4444",
+                        cursor: "pointer",
+                        padding: "1px 5px",
+                        fontSize: "10px",
+                        borderRadius: 3,
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onGameCommand({ type: "cancel_queue", entityId: selectedEntity.id, targetX: idx });
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ))}
+              </div>
             )}
             {selectedEntity?.buildingType && BUILDING_UNIT_MAP[selectedEntity.buildingType].length > 0 && (
               <button
@@ -1614,7 +2117,8 @@ export default function GameShell({
               <div style={styles.unitQueuePanel}>
                 {BUILDING_UNIT_MAP[selectedEntity.buildingType].map((unitType) => {
                   const unitCost = UNIT_COSTS[unitType];
-                  const canAfford = myEconomy && myEconomy.resources >= unitCost.cost && myEconomy.supply + unitCost.supplyCost <= myEconomy.maxSupply;
+                  const queuedSupply = (selectedEntity.productionQueue ?? []).reduce((sum, item) => sum + (item.supplyCost || 0), 0);
+                  const canAfford = myEconomy && myEconomy.resources >= unitCost.cost && myEconomy.supply + queuedSupply + unitCost.supplyCost <= myEconomy.maxSupply;
                   return (
                     <button
                       key={unitType}
@@ -1639,75 +2143,6 @@ export default function GameShell({
             )}
           </div>
         )}
-
-  
-
-        <div style={styles.debugSection}>
-          <p style={styles.debugTitle}>Debug Controls</p>
-          <div style={styles.debugButtons}>
-            <button
-              style={styles.debugButton}
-              onClick={() =>
-                onDebugWin(
-                  player.id === lobby.players[0]?.id ? "player1" : "player2"
-                )
-              }
-            >
-              Simulate My Win
-            </button>
-            <button
-              style={styles.debugButton}
-              onClick={() =>
-                onDebugWin(
-                  player.id === lobby.players[0]?.id ? "player2" : "player1"
-                )
-              }
-            >
-              Simulate Opponent Win
-            </button>
-          </div>
-
-          <p style={styles.debugTitle}>Spawn Units (click to select, then click map)</p>
-          <div style={styles.debugButtons}>
-            {(["worker", "skirmisher", "gunner", "bruiser", "medic"] as const).map((unitType) => (
-              <button
-                key={unitType}
-                style={{
-                  ...styles.debugButton,
-                  ...(debugSpawnMode === unitType ? styles.debugButtonActive : {}),
-                }}
-                onClick={() => setDebugSpawnMode(debugSpawnMode === unitType ? null : unitType)}
-              >
-                + {unitType.charAt(0).toUpperCase() + unitType.slice(1)}
-              </button>
-            ))}
-          </div>
-
-          <p style={styles.debugTitle}>Spawn Buildings (click to select, then click map)</p>
-          <div style={styles.debugButtons}>
-            {(["barracks", "foundry", "supply_depot", "turret"] as const).map((buildingType) => (
-              <button
-                key={buildingType}
-                style={{
-                  ...styles.debugButton,
-                  ...(debugSpawnMode === `building:${buildingType}` ? styles.debugButtonActive : {}),
-                }}
-                onClick={() => setDebugSpawnMode(debugSpawnMode === `building:${buildingType}` ? null : `building:${buildingType}`)}
-              >
-                + {BUILDING_LABELS[buildingType]}
-              </button>
-            ))}
-          </div>
-
-          {debugSpawnMode && (
-            <button
-              style={{ ...styles.debugButton, ...styles.debugCancelButton }}
-              onClick={() => setDebugSpawnMode(null)}
-            >
-              Cancel Spawn (Esc)
-            </button>
-          )}
-        </div>
       </div>
     </div>
   );
@@ -1743,6 +2178,7 @@ const styles = {
     top: 0,
     left: 0,
     right: 0,
+    bottom: 0,
     pointerEvents: "none" as const,
   },
   scoreboard: {
@@ -1851,18 +2287,73 @@ const styles = {
     color: "#884444",
     fontFamily: "monospace",
   },
-  debugSection: {
-    padding: "8px 16px",
-    background: "rgba(0,0,0,0.8)",
-    borderTop: "1px solid rgba(100,100,200,0.15)",
+  debugPanel: {
+    position: "absolute" as const,
+    bottom: "8px",
+    left: "50%",
+    transform: "translateX(-50%)",
+    background: "rgba(10, 10, 30, 0.92)",
+    backdropFilter: "blur(8px)",
+    border: "1px solid rgba(100, 100, 200, 0.25)",
+    borderRadius: "8px",
+    padding: "10px 14px",
+    maxWidth: "90vw",
+    minWidth: "320px",
+    pointerEvents: "auto" as const,
+    zIndex: 20,
+    boxShadow: "0 4px 16px rgba(0, 0, 0, 0.5)",
   },
-  debugTitle: {
-    fontSize: "11px",
+  debugPanelHeader: {
+    fontSize: "10px",
     color: "#666",
     textTransform: "uppercase" as const,
-    letterSpacing: "1px",
-    marginBottom: "6px",
+    letterSpacing: "1.5px",
+    marginBottom: "8px",
     textAlign: "center" as const,
+    borderBottom: "1px solid rgba(100, 100, 200, 0.15)",
+    paddingBottom: "6px",
+  },
+  debugPanelBody: {
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: "6px",
+  },
+  debugPanelRow: {
+    display: "flex",
+    gap: "6px",
+    alignItems: "center",
+    justifyContent: "center",
+    flexWrap: "wrap" as const,
+  },
+  debugLabel: {
+    fontSize: "10px",
+    color: "#555",
+    textTransform: "uppercase" as const,
+    letterSpacing: "0.5px",
+    marginRight: "4px",
+    whiteSpace: "nowrap" as const,
+  },
+  debugButton: {
+    padding: "4px 10px",
+    fontSize: "11px",
+    background: "rgba(100, 100, 100, 0.15)",
+    color: "#888",
+    border: "1px solid rgba(100, 100, 100, 0.25)",
+    borderRadius: "4px",
+    cursor: "pointer",
+    fontFamily: "monospace",
+    transition: "all 0.15s ease",
+  },
+  debugButtonActive: {
+    background: "rgba(100, 200, 255, 0.25)",
+    color: "#88ddff",
+    border: "1px solid rgba(100, 200, 255, 0.5)",
+    boxShadow: "0 0 6px rgba(100, 200, 255, 0.2)",
+  },
+  debugCancelButton: {
+    background: "rgba(255, 100, 100, 0.2)",
+    color: "#ff8888",
+    border: "1px solid rgba(255, 100, 100, 0.4)",
   },
   errorBanner: {
     position: "absolute" as const,
@@ -1894,30 +2385,6 @@ const styles = {
     borderRadius: "4px",
     cursor: "pointer",
     lineHeight: 1,
-  },
-  debugButtons: {
-    display: "flex",
-    gap: "8px",
-    justifyContent: "center",
-  },
-  debugButton: {
-    padding: "6px 12px",
-    fontSize: "12px",
-    background: "rgba(100,100,100,0.2)",
-    color: "#999",
-    border: "1px solid rgba(100,100,100,0.3)",
-    borderRadius: "4px",
-    cursor: "pointer",
-  },
-  debugButtonActive: {
-    background: "rgba(100,200,255,0.3)",
-    color: "#88ddff",
-    border: "1px solid rgba(100,200,255,0.6)",
-  },
-  debugCancelButton: {
-    background: "rgba(255,100,100,0.2)",
-    color: "#ff8888",
-    border: "1px solid rgba(255,100,100,0.4)",
   },
   buildModeButton: {
     padding: "6px 16px",
@@ -1998,6 +2465,56 @@ const styles = {
     color: "#555",
     borderColor: "rgba(100,100,100,0.2)",
     cursor: "not-allowed",
+  },
+  hotkeyMenu: {
+    position: "absolute" as const,
+    bottom: "8px",
+    left: "8px",
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: "3px",
+    pointerEvents: "none" as const,
+    zIndex: 10,
+  },
+  hotkeyRow: {
+    display: "flex",
+    gap: "3px",
+  },
+  hotkeySlot: {
+    width: "60px",
+    height: "60px",
+    background: "rgba(0,0,0,0.75)",
+    border: "1px solid rgba(100,150,255,0.3)",
+    borderRadius: "4px",
+    display: "flex",
+    flexDirection: "column" as const,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "2px",
+    transition: "all 0.1s ease",
+  },
+  hotkeyFlash: {
+    background: "rgba(100,150,255,0.4)",
+    borderColor: "rgba(100,150,255,0.8)",
+    transform: "scale(1.1)",
+  },
+  hotkeyLabel: {
+    fontSize: "11px",
+    fontFamily: "monospace",
+    color: "#88aaff",
+    fontWeight: 700,
+    lineHeight: 1,
+  },
+  hotkeyIcon: {
+    fontSize: "16px",
+    lineHeight: 1,
+  },
+  hotkeyName: {
+    fontSize: "8px",
+    fontFamily: "monospace",
+    color: "#6688cc",
+    lineHeight: 1,
+    textTransform: "uppercase" as const,
   },
   unitQueuePanel: {
     display: "flex",
