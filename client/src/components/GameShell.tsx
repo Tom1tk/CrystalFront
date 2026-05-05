@@ -539,7 +539,7 @@ export default function GameShell({
     return () => observer.disconnect();
   }, []);
 
-  // Edge scrolling loop
+  // Edge scrolling loop + window mouseup guard
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -549,9 +549,16 @@ export default function GameShell({
       mousePosRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
     };
 
+    // Clear minimap drag on any window-level mouseup (catches releases outside canvas)
+    const onWindowMouseUp = () => {
+      minimapDraggingRef.current = false;
+    };
+
     canvas.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onWindowMouseUp);
     return () => {
       canvas.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onWindowMouseUp);
     };
   }, []);
 
@@ -597,6 +604,9 @@ export default function GameShell({
       const canvas = canvasRef.current;
       if (!canvas) return;
 
+      // Clear any stuck minimap drag state on any new mouse down
+      minimapDraggingRef.current = false;
+
       const rect = canvas.getBoundingClientRect();
       const screenX = e.clientX - rect.left;
       const screenY = e.clientY - rect.top;
@@ -604,7 +614,7 @@ export default function GameShell({
       if (handleMinimapClick(e)) return;
 
       const worldX = screenX + cameraXRef.current;
-      const worldY = screenY;
+      const worldY = screenY + cameraYRef.current;
 
       // Left click: selection + build placement
       if (e.button === 0) {
@@ -794,7 +804,7 @@ export default function GameShell({
       mousePosRef.current = { x: screenX, y: screenY };
 
       const worldX = screenX + cameraXRef.current;
-      const worldY = screenY;
+      const worldY = screenY + cameraYRef.current;
       setHoverPos({ x: worldX, y: worldY });
 
       // Debug drag resource node (throttled to ~10 cmds/sec)
@@ -1027,7 +1037,7 @@ export default function GameShell({
         // Build placement takes priority over selection
         if (buildMode && selectedBuildingType && Math.abs(dx) <= 10 && Math.abs(dy) <= 10) {
           const worldX = screenX + cameraXRef.current;
-          const worldY = screenY;
+          const worldY = screenY + cameraYRef.current;
           const workerIds = Array.from(selectedEntityIds).filter((id) =>
             myEntities.find((ent) => ent.id === id && ent.type === "worker")
           );
@@ -1057,9 +1067,9 @@ export default function GameShell({
           const y2 = Math.max(dragStart.y, screenY);
 
           const worldX1 = x1 + cameraXRef.current;
-          const worldY1 = y1;
+          const worldY1 = y1 + cameraYRef.current;
           const worldX2 = x2 + cameraXRef.current;
-          const worldY2 = y2;
+          const worldY2 = y2 + cameraYRef.current;
 
           console.log("[box-select] world bounds", { worldX1, worldY1, worldX2, worldY2 });
 
@@ -1080,7 +1090,7 @@ export default function GameShell({
         // Single-click: hit detection
         else {
           const worldX = screenX + cameraXRef.current;
-          const worldY = screenY;
+          const worldY = screenY + cameraYRef.current;
 
           let clickedEntity: MatchEntity | undefined;
           for (const entity of matchState?.entities ?? []) {
