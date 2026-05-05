@@ -176,7 +176,9 @@ export type CommandType =
   | "attack"
   | "heal"
   | "set_rally"
-  | "debug_move_node";
+  | "debug_move_node"
+  | "debug_save_layout"
+  | "debug_mirror_nodes";
 
 export interface ClientCommand {
   tick: number;

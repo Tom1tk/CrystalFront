@@ -318,7 +318,9 @@ export class MatchEngine {
         | "toggle_auto_attack"
         | "retreat"
         | "stop"
-        | "debug_move_node";
+        | "debug_move_node"
+        | "debug_save_layout"
+        | "debug_mirror_nodes";
       entityId?: string;
       entityIds?: string[];
       targetX?: number;
@@ -931,6 +933,67 @@ if (command.type === "gather") {
         node.y = command.targetY;
       }
 
+      return { success: true };
+    }
+
+    // --- debug_save_layout: save current resource node positions to file ---
+    if (command.type === "debug_save_layout") {
+      const fs = require("fs");
+      const pathLib = require("path");
+      const layoutDir = pathLib.join(process.env.HOME || "/root", ".hermes");
+      const layoutFile = pathLib.join(layoutDir, "crystalfront_map_layout.json");
+      const layoutData = match.resourceNodes.map((n: any) => ({
+        x: Math.round(n.x),
+        y: Math.round(n.y),
+        radius: n.radius,
+        capacity: n.capacity,
+        ownerId: n.ownerId || "",
+      }));
+      const midX = match.config.mapWidth / 2;
+      const p1Id = match.players[0]?.playerId;
+      const p2Id = match.players[1]?.playerId;
+      const blueSafe = layoutData
+        .filter((n: any) => n.ownerId === p1Id && n.x < midX)
+        .sort((a: any, b: any) => a.y - b.y);
+      const contested = layoutData
+        .filter((n: any) => !n.ownerId)
+        .sort((a: any, b: any) => a.x - b.x);
+      const redSafe = layoutData
+        .filter((n: any) => n.ownerId === p2Id && n.x > midX)
+        .sort((a: any, b: any) => a.y - b.y);
+      const output = {
+        mapWidth: match.config.mapWidth,
+        mapHeight: match.config.mapHeight,
+        blueSafeNodes: blueSafe,
+        contestedNodes: contested,
+        redSafeNodes: redSafe,
+      };
+      fs.mkdirSync(layoutDir, { recursive: true });
+      fs.writeFileSync(layoutFile, JSON.stringify(output, null, 2) + "\n");
+      return { success: true };
+    }
+
+    // --- debug_mirror_nodes: mirror blue safe nodes onto red side ---
+    if (command.type === "debug_mirror_nodes") {
+      const midX = match.config.mapWidth / 2;
+      const p1Id = match.players[0]?.playerId;
+      const p2Id = match.players[1]?.playerId;
+      const blueNodes = match.resourceNodes.filter(
+        (n: any) => n.ownerId === p1Id && n.x < midX
+      );
+      const redNodes = match.resourceNodes.filter(
+        (n: any) => n.ownerId === p2Id && n.x > midX
+      );
+      const sortedBlue = [...blueNodes].sort((a: any, b: any) => a.y - b.y);
+      const sortedRed = [...redNodes].sort((a: any, b: any) => a.y - b.y);
+      for (let i = 0; i < sortedBlue.length; i++) {
+        const blue = sortedBlue[i];
+        const mirroredX = match.config.mapWidth - blue.x;
+        if (i < sortedRed.length) {
+          sortedRed[i].x = mirroredX;
+          sortedRed[i].y = blue.y;
+        }
+      }
       return { success: true };
     }
 
