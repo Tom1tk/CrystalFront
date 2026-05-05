@@ -1,6 +1,6 @@
 {
   "name": "@crystalfront/client",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@crystalfront/shared": "file:../shared",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

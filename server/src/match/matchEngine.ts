@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import fs from "node:fs";
+import pathLib from "node:path";
 import type { PlayerId, PlayerColor, EntityId } from "@crystalfront/shared";
 import type {
   MatchState,
@@ -13,10 +15,17 @@ import type {
   UnitType,
 } from "./types.js";
 import { createMap } from "./map.js";
-import { DEFAULT_CONFIG, BUILDING_DEFS, UNIT_DEFS, COUNTER_MULTIPLIERS, HEAL_RATE_PER_TICK } from "./types.js";
+import { DEFAULT_CONFIG } from "./types.js";
+import {
+  BUILDING_DEFS,
+  UNIT_DEFS,
+  COUNTER_MULTIPLIERS,
+  HEAL_RATE_PER_TICK,
+  GATHER_RATE_PER_TICK,
+} from "@crystalfront/shared";
 
 const GATHER_RANGE = 60;
-const GATHER_RATE_PER_WORKER = 1 / 3;
+const GATHER_RATE_PER_WORKER = GATHER_RATE_PER_TICK / 3;
 import {
   validatePlacement,
   findCrystalByColor,
@@ -258,6 +267,10 @@ export class MatchEngine {
 
     const playerColor = match.players[playerIdx]?.color ?? "blue";
     const color = playerColor === "blue" ? "#6699ff" : "#ff6666";
+
+    if (x < 0 || x > match.config.mapWidth || y < 0 || y > match.config.mapHeight) {
+      return { success: false, message: "Position out of bounds" };
+    }
 
     if (entityType === "building") {
       if (!buildingType || !(buildingType in BUILDING_DEFS)) {
@@ -643,11 +656,6 @@ if (command.type === "gather") {
          }
        }
 
-       // If supply depot, increase max supply immediately
-       if (def.supplyProvided) {
-         economy.maxSupply += def.supplyProvided;
-       }
-
     return { success: true };
     }
 
@@ -938,8 +946,6 @@ if (command.type === "gather") {
 
     // --- debug_save_layout: save current resource node positions to file ---
     if (command.type === "debug_save_layout") {
-      const fs = require("fs");
-      const pathLib = require("path");
       const layoutDir = pathLib.join(process.env.HOME || "/root", ".hermes");
       const layoutFile = pathLib.join(layoutDir, "crystalfront_map_layout.json");
       const layoutData = match.resourceNodes.map((n: any) => ({
@@ -1395,7 +1401,15 @@ private processConstruction(match: MatchState): void {
                  }
                }
                entity.buildWorkerIds.clear();
-             }
+
+              // If supply depot, increase max supply upon completion
+              if (entity.buildingType === "supply_depot") {
+                const playerIdx = match.players.findIndex((p) => p?.playerId === entity.ownerId);
+                if (playerIdx >= 0 && match.economy[playerIdx]) {
+                  match.economy[playerIdx]!.maxSupply += BUILDING_DEFS.supply_depot.supplyProvided!;
+                }
+              }
+            }
            }
          }
        }

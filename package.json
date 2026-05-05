@@ -1,6 +1,6 @@
 {
   "name": "crystalfront-rts",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "private": true,
   "description": "A multiplayer browser RTS prototype",
   "scripts": {
@@ -25,7 +25,7 @@
     "tsx": "^4.19.0",
     "concurrently": "^9.1.0",
     "@types/node": "^22.10.0",
-    "@types/express": "^5.0.0",
+    "@types/express": "^4.17.21",
     "@types/ws": "^8.5.0"
   }
 }

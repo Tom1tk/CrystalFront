@@ -1,4 +1,3 @@
-import { randomInt } from "node:crypto";
 import {
   LOBBY_CODE_LENGTH,
   LOBBY_CODE_CHARS,
@@ -10,7 +9,7 @@ function generateLobbyCode(): LobbyCode {
   const chars = LOBBY_CODE_CHARS;
   let code = "";
   for (let i = 0; i < LOBBY_CODE_LENGTH; i++) {
-    code += chars[randomInt(chars.length)];
+    code += chars[Math.floor(Math.random() * chars.length)];
   }
   return code;
 }
@@ -42,8 +41,14 @@ export class LobbyManager {
 
   createLobby(username: string): { code: LobbyCode; player: Player } {
     let code: LobbyCode;
+    let attempts = 0;
+    const MAX_RETRIES = 100;
     do {
       code = generateLobbyCode();
+      attempts++;
+      if (attempts > MAX_RETRIES) {
+        throw new Error("Failed to generate unique lobby code after " + MAX_RETRIES + " attempts");
+      }
     } while (this.lobbies.has(code));
 
     const player = createPlayer(username, "blue", true);

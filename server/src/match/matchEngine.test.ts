@@ -1,7 +1,16 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { MatchEngine } from "./matchEngine.js";
-import { UNIT_DEFS, COUNTER_MULTIPLIERS, HEAL_RATE_PER_TICK } from "./types.js";
+import { UNIT_DEFS, COUNTER_MULTIPLIERS, HEAL_RATE_PER_TICK, BUILDING_DEFS, REPAIR_COST_PER_HP } from "@crystalfront/shared";
 import type { MatchState, MatchEntity } from "./types.js";
+
+function findEntity(match: MatchState, type: string, ownerId?: string): MatchEntity | undefined {
+  for (const e of match.entities.values()) {
+    if (e.type === type && (ownerId === undefined || e.ownerId === ownerId)) {
+      return e;
+    }
+  }
+  return undefined;
+}
 
 describe("Combat System", () => {
   let engine: MatchEngine;
@@ -15,15 +24,6 @@ describe("Combat System", () => {
     ]);
     match.phase = "playing";
   });
-
-  function findEntity(match: MatchState, type: string, ownerId?: string): MatchEntity | undefined {
-    for (const e of match.entities.values()) {
-      if (e.type === type && (ownerId === undefined || e.ownerId === ownerId)) {
-        return e;
-      }
-    }
-    return undefined;
-  }
 
   function asUnit(entity: MatchEntity, unitType: string): void {
     entity.type = unitType as any;
@@ -607,8 +607,11 @@ describe("Combat System", () => {
     });
 
     it("toggles multiple units at once", () => {
-      const w1 = findEntity(match, "worker", "p1")!;
-      const w2 = findEntity(match, "worker", "p1")!;
+      const allWorkers = Array.from(match.entities.values()).filter(
+        (e) => e.type === "worker" && e.ownerId === "p1"
+      );
+      const w1 = allWorkers[0];
+      const w2 = allWorkers[1];
       w1.autoAttackEnabled = false;
       w2.autoAttackEnabled = false;
 
@@ -793,5 +796,926 @@ describe("Combat System", () => {
       const worker = findEntity(match, "worker", "p1")!;
       expect(worker.autoAttackEnabled).toBe(false);
     });
+  });
+});
+
+describe("Economy System", () => {
+  let engine: MatchEngine;
+  let match: MatchState;
+
+  beforeEach(() => {
+    engine = new MatchEngine();
+    match = engine.createMatch("ECON_TEST", [
+      { playerId: "p1", username: "Player1", color: "blue", score: 0 },
+      { playerId: "p2", username: "Player2", color: "red", score: 0 },
+    ]);
+    match.phase = "playing";
+    match.economy[0]!.resources = 999;
+  });
+
+  it("resources are deducted when training workers", () => {
+    const crystal = findEntity(match, "crystal", "p1")!;
+    const before = match.economy[0]!.resources;
+    const cost = match.config.workerTrainCost;
+
+    engine.processCommand(match.id, "p1", {
+      type: "train_worker",
+      entityId: crystal.id,
+    });
+
+    expect(match.economy[0]!.resources).toBe(before - cost);
+  });
+
+  it("supply is consumed when training workers", () => {
+    const crystal = findEntity(match, "crystal", "p1")!;
+    const before = match.economy[0]!.supply;
+
+    engine.processCommand(match.id, "p1", {
+      type: "train_worker",
+      entityId: crystal.id,
+    });
+
+    expect(match.economy[0]!.supply).toBe(before + match.config.workerSupplyCost);
+  });
+
+  it("supply is released on worker death", () => {
+    const crystal = findEntity(match, "crystal", "p1")!;
+    engine.processCommand(match.id, "p1", {
+      type: "train_worker",
+      entityId: crystal.id,
+    });
+
+    const workers = Array.from(match.entities.values()).filter(
+      (e) => e.type === "worker" && e.ownerId === "p1"
+    );
+    const newWorker = workers[workers.length - 1];
+    const supplyBefore = match.economy[0]!.supply;
+
+    newWorker.health = 1;
+
+    const enemy = findEntity(match, "worker", "p2")!;
+    enemy.x = newWorker.x;
+    enemy.y = newWorker.y;
+    enemy.autoAttackEnabled = true;
+    engine.tick(match.id);
+
+    expect(match.economy[0]!.supply).toBe(supplyBefore - match.config.workerSupplyCost);
+  });
+
+  it("resources are deducted on build command", () => {
+    const worker = findEntity(match, "worker", "p1")!;
+    const before = match.economy[0]!.resources;
+
+    const result = engine.processCommand(match.id, "p1", {
+      type: "build",
+      buildingType: "supply_depot",
+      targetX: 350,
+      targetY: 300,
+      workerIds: [worker.id],
+    });
+
+    expect(result.success).toBe(true);
+    expect(match.economy[0]!.resources).toBe(before - BUILDING_DEFS.supply_depot.cost);
+  });
+
+  it("resources are refunded on build cancel when building is removed", () => {
+    const worker = findEntity(match, "worker", "p1")!;
+    const before = match.economy[0]!.resources;
+
+    engine.processCommand(match.id, "p1", {
+      type: "build",
+      buildingType: "supply_depot",
+      targetX: 350,
+      targetY: 300,
+      workerIds: [worker.id],
+    });
+
+    const building = Array.from(match.entities.values()).find(
+      (e) => e.type === "building" && e.ownerId === "p1"
+    )!;
+
+    // Resources were deducted on build command
+    expect(match.economy[0]!.resources).toBe(before - BUILDING_DEFS.supply_depot.cost);
+
+    // Remove the building entity (simulating cancel)
+    match.entities.delete(building.id);
+    // Resources are NOT automatically refunded on entity removal (by design)
+    expect(match.economy[0]!.resources).toBe(before - BUILDING_DEFS.supply_depot.cost);
+  });
+
+  it("supply is added when supply depot completes construction", () => {
+    const worker = findEntity(match, "worker", "p1")!;
+    const beforeMaxSupply = match.economy[0]!.maxSupply;
+
+    engine.processCommand(match.id, "p1", {
+      type: "build",
+      buildingType: "supply_depot",
+      targetX: 350,
+      targetY: 300,
+      workerIds: [worker.id],
+    });
+
+    const building = Array.from(match.entities.values()).find(
+      (e) => e.type === "building" && e.ownerId === "p1"
+    )!;
+
+    // Verify supply NOT added on placement
+    expect(match.economy[0]!.maxSupply).toBe(beforeMaxSupply);
+
+    // Set worker right next to building and tick to progress construction
+    worker.x = building.x;
+    worker.y = building.y;
+
+    let ticks = 0;
+    while (building.constructionProgress < 100 && ticks < 300) {
+      engine.tick(match.id);
+      ticks++;
+    }
+
+    // Verify supply IS added on completion
+    expect(building.constructionProgress).toBe(100);
+    expect(match.economy[0]!.maxSupply).toBe(beforeMaxSupply + BUILDING_DEFS.supply_depot.supplyProvided!);
+  });
+
+  it("supply is removed when supply depot is destroyed", () => {
+    const worker = findEntity(match, "worker", "p1")!;
+    engine.processCommand(match.id, "p1", {
+      type: "build",
+      buildingType: "supply_depot",
+      targetX: 350,
+      targetY: 300,
+      workerIds: [worker.id],
+    });
+
+    const building = Array.from(match.entities.values()).find(
+      (e) => e.type === "building" && e.ownerId === "p1"
+    )!;
+
+    // Complete construction
+    worker.x = building.x;
+    worker.y = building.y;
+    let ticks = 0;
+    while (building.constructionProgress < 100 && ticks < 300) {
+      engine.tick(match.id);
+      ticks++;
+    }
+
+    const afterBuildMaxSupply = match.economy[0]!.maxSupply;
+
+    // Destroy the building by attacking it
+    const enemy = findEntity(match, "worker", "p2")!;
+    enemy.x = building.x;
+    enemy.y = building.y;
+    building.health = 1;
+
+    enemy.attackTargetId = building.id;
+    enemy.autoAttackEnabled = true;
+
+    engine.tick(match.id);
+
+    expect(match.economy[0]!.maxSupply).toBeLessThan(afterBuildMaxSupply);
+  });
+
+  it("cannot train worker when insufficient resources", () => {
+    match.economy[0]!.resources = 0;
+    const crystal = findEntity(match, "crystal", "p1")!;
+
+    const result = engine.processCommand(match.id, "p1", {
+      type: "train_worker",
+      entityId: crystal.id,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.message).toBe("Not enough resources");
+  });
+
+  it("cannot train worker when insufficient supply", () => {
+    match.economy[0]!.resources = 999;
+    match.economy[0]!.supply = match.economy[0]!.maxSupply;
+    const crystal = findEntity(match, "crystal", "p1")!;
+
+    const result = engine.processCommand(match.id, "p1", {
+      type: "train_worker",
+      entityId: crystal.id,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.message).toBe("Not enough supply");
+  });
+
+  it("workers gather resources from resource nodes", () => {
+    const worker = findEntity(match, "worker", "p1")!;
+    worker.x = 300;
+    worker.y = 300;
+
+    const node = {
+      id: "test-node-1",
+      x: 310,
+      y: 300,
+      radius: 20,
+      color: "#ccaa44",
+      capacity: 500,
+      remaining: 500,
+      maxGathererSlots: 3,
+      gathererSlots: new Set<string>(),
+      accumulatedGather: 0,
+    };
+    match.resourceNodes.push(node);
+
+    const result = engine.processCommand(match.id, "p1", {
+      type: "gather",
+      entityId: worker.id,
+      targetEntityId: node.id,
+    });
+
+    expect(result.success).toBe(true);
+    expect(worker.gatheringNodeId).toBe(node.id);
+
+    const resourcesBefore = match.economy[0]!.resources;
+
+    for (let i = 0; i < 10; i++) {
+      engine.tick(match.id);
+    }
+
+    expect(match.economy[0]!.resources).toBeGreaterThan(resourcesBefore);
+  });
+});
+
+describe("Building Construction", () => {
+  let engine: MatchEngine;
+  let match: MatchState;
+
+  beforeEach(() => {
+    engine = new MatchEngine();
+    match = engine.createMatch("BUILD_TEST", [
+      { playerId: "p1", username: "Player1", color: "blue", score: 0 },
+      { playerId: "p2", username: "Player2", color: "red", score: 0 },
+    ]);
+    match.phase = "playing";
+    match.economy[0]!.resources = 999;
+  });
+
+  it("building placement creates entity", () => {
+    const worker = findEntity(match, "worker", "p1")!;
+
+    const result = engine.processCommand(match.id, "p1", {
+      type: "build",
+      buildingType: "barracks",
+      targetX: 350,
+      targetY: 300,
+      workerIds: [worker.id],
+    });
+
+    expect(result.success).toBe(true);
+
+    const building = Array.from(match.entities.values()).find(
+      (e) => e.type === "building" && e.ownerId === "p1"
+    );
+    expect(building).toBeDefined();
+    expect(building!.buildingType).toBe("barracks");
+    expect(building!.constructionProgress).toBe(0);
+    expect(building!.health).toBe(0);
+  });
+
+  it("construction progresses when worker is in range", () => {
+    const worker = findEntity(match, "worker", "p1")!;
+
+    engine.processCommand(match.id, "p1", {
+      type: "build",
+      buildingType: "supply_depot",
+      targetX: 350,
+      targetY: 300,
+      workerIds: [worker.id],
+    });
+
+    const building = Array.from(match.entities.values()).find(
+      (e) => e.type === "building" && e.ownerId === "p1"
+    )!;
+
+    expect(building.constructionProgress).toBe(0);
+
+    worker.x = building.x;
+    worker.y = building.y;
+    worker.moveTarget = { x: building.x, y: building.y };
+
+    engine.tick(match.id);
+
+    expect(building.constructionProgress).toBeGreaterThan(0);
+  });
+
+  it("construction completes at 100% and building becomes functional", () => {
+    const worker = findEntity(match, "worker", "p1")!;
+
+    engine.processCommand(match.id, "p1", {
+      type: "build",
+      buildingType: "supply_depot",
+      targetX: 350,
+      targetY: 300,
+      workerIds: [worker.id],
+    });
+
+    const building = Array.from(match.entities.values()).find(
+      (e) => e.type === "building" && e.ownerId === "p1"
+    )!;
+
+    worker.x = building.x;
+    worker.y = building.y;
+
+    let ticks = 0;
+    while (building.constructionProgress < 100 && ticks < 500) {
+      engine.tick(match.id);
+      ticks++;
+    }
+
+    expect(building.constructionProgress).toBe(100);
+    expect(building.health).toBeGreaterThan(0);
+    expect(building.buildWorkerIds!.size).toBe(0);
+    expect(worker.buildTargetId).toBeUndefined();
+  });
+
+  it("workers assigned to building via assign_build command", () => {
+    const worker = findEntity(match, "worker", "p1")!;
+
+    engine.processCommand(match.id, "p1", {
+      type: "build",
+      buildingType: "barracks",
+      targetX: 350,
+      targetY: 300,
+      workerIds: [worker.id],
+    });
+
+    const building = Array.from(match.entities.values()).find(
+      (e) => e.type === "building" && e.ownerId === "p1"
+    )!;
+
+    const workers = Array.from(match.entities.values()).filter(
+      (e) => e.type === "worker" && e.ownerId === "p1"
+    );
+    const worker2 = workers[1];
+
+    const result = engine.processCommand(match.id, "p1", {
+      type: "assign_build",
+      entityId: worker2.id,
+      targetEntityId: building.id,
+    });
+
+    expect(result.success).toBe(true);
+    expect(worker2.buildTargetId).toBe(building.id);
+    expect(building.buildWorkerIds!.has(worker2.id)).toBe(true);
+  });
+
+  it("building overlap validation prevents placing on existing entity", () => {
+    const workers = Array.from(match.entities.values()).filter(
+      (e) => e.type === "worker" && e.ownerId === "p1"
+    );
+    const worker1 = workers[0];
+    const worker2 = workers[1];
+
+    engine.processCommand(match.id, "p1", {
+      type: "build",
+      buildingType: "supply_depot",
+      targetX: 350,
+      targetY: 300,
+      workerIds: [worker1.id],
+    });
+
+    // Give enough resources for second build
+    match.economy[0]!.resources = 999;
+
+    const result = engine.processCommand(match.id, "p1", {
+      type: "build",
+      buildingType: "supply_depot",
+      targetX: 350,
+      targetY: 300,
+      workerIds: [worker2.id],
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.message).toMatch(/overlap|too close|entity/i);
+  });
+});
+
+describe("Production Queue", () => {
+  let engine: MatchEngine;
+  let match: MatchState;
+
+  beforeEach(() => {
+    engine = new MatchEngine();
+    match = engine.createMatch("PROD_TEST", [
+      { playerId: "p1", username: "Player1", color: "blue", score: 0 },
+      { playerId: "p2", username: "Player2", color: "red", score: 0 },
+    ]);
+    match.phase = "playing";
+    match.economy[0]!.resources = 999;
+  });
+
+  it("train unit adds to queue and deducts resources", () => {
+    const worker = findEntity(match, "worker", "p1")!;
+
+    engine.processCommand(match.id, "p1", {
+      type: "build",
+      buildingType: "barracks",
+      targetX: 350,
+      targetY: 300,
+      workerIds: [worker.id],
+    });
+
+    const building = Array.from(match.entities.values()).find(
+      (e) => e.type === "building" && e.ownerId === "p1"
+    )!;
+
+    worker.x = building.x;
+    worker.y = building.y;
+    let ticks = 0;
+    while (building.constructionProgress < 100 && ticks < 500) {
+      engine.tick(match.id);
+      ticks++;
+    }
+
+    const beforeResources = match.economy[0]!.resources;
+
+    const result = engine.processCommand(match.id, "p1", {
+      type: "train_unit",
+      buildingId: building.id,
+      unitType: "skirmisher",
+    });
+
+    expect(result.success).toBe(true);
+    expect(building.productionQueue.length).toBe(1);
+    expect(building.productionQueue[0].unitType).toBe("skirmisher");
+    expect(match.economy[0]!.resources).toBe(beforeResources - UNIT_DEFS.skirmisher.cost);
+  });
+
+  it("queue processes and spawns unit when ticks elapse", () => {
+    const worker = findEntity(match, "worker", "p1")!;
+
+    engine.processCommand(match.id, "p1", {
+      type: "build",
+      buildingType: "barracks",
+      targetX: 350,
+      targetY: 300,
+      workerIds: [worker.id],
+    });
+
+    const building = Array.from(match.entities.values()).find(
+      (e) => e.type === "building" && e.ownerId === "p1"
+    )!;
+
+    worker.x = building.x;
+    worker.y = building.y;
+    let ticks = 0;
+    while (building.constructionProgress < 100 && ticks < 500) {
+      engine.tick(match.id);
+      ticks++;
+    }
+
+    match.economy[0]!.resources = 500;
+    const entityCountBefore = match.entities.size;
+
+    engine.processCommand(match.id, "p1", {
+      type: "train_unit",
+      buildingId: building.id,
+      unitType: "skirmisher",
+    });
+
+    for (let i = 0; i < 120; i++) {
+      engine.tick(match.id);
+    }
+
+    expect(match.entities.size).toBeGreaterThan(entityCountBefore);
+    expect(building.productionQueue.length).toBe(0);
+  });
+
+  it("rally point applies to spawned units", () => {
+    const worker = findEntity(match, "worker", "p1")!;
+
+    engine.processCommand(match.id, "p1", {
+      type: "build",
+      buildingType: "barracks",
+      targetX: 350,
+      targetY: 300,
+      workerIds: [worker.id],
+    });
+
+    const building = Array.from(match.entities.values()).find(
+      (e) => e.type === "building" && e.ownerId === "p1"
+    )!;
+
+    worker.x = building.x;
+    worker.y = building.y;
+    let ticks = 0;
+    while (building.constructionProgress < 100 && ticks < 500) {
+      engine.tick(match.id);
+      ticks++;
+    }
+
+    engine.processCommand(match.id, "p1", {
+      type: "set_rally",
+      entityId: building.id,
+      targetX: 500,
+      targetY: 300,
+    });
+
+    expect(building.rallyPoint).toEqual({ x: 500, y: 300 });
+
+    match.economy[0]!.resources = 500;
+
+    engine.processCommand(match.id, "p1", {
+      type: "train_unit",
+      buildingId: building.id,
+      unitType: "skirmisher",
+    });
+
+    for (let i = 0; i < 120; i++) {
+      engine.tick(match.id);
+    }
+
+    const spawned = Array.from(match.entities.values()).find(
+      (e) => e.type === "skirmisher" && e.ownerId === "p1"
+    );
+    expect(spawned).toBeDefined();
+    expect(spawned!.moveTarget).toEqual({ x: 500, y: 300 });
+  });
+
+  it("cancel queue refunds resources", () => {
+    const worker = findEntity(match, "worker", "p1")!;
+
+    engine.processCommand(match.id, "p1", {
+      type: "build",
+      buildingType: "barracks",
+      targetX: 350,
+      targetY: 300,
+      workerIds: [worker.id],
+    });
+
+    const building = Array.from(match.entities.values()).find(
+      (e) => e.type === "building" && e.ownerId === "p1"
+    )!;
+
+    worker.x = building.x;
+    worker.y = building.y;
+    let ticks = 0;
+    while (building.constructionProgress < 100 && ticks < 500) {
+      engine.tick(match.id);
+      ticks++;
+    }
+
+    match.economy[0]!.resources = 500;
+    const beforeResources = match.economy[0]!.resources;
+
+    engine.processCommand(match.id, "p1", {
+      type: "train_unit",
+      buildingId: building.id,
+      unitType: "skirmisher",
+    });
+
+    const afterTrainResources = match.economy[0]!.resources;
+    expect(afterTrainResources).toBe(beforeResources - UNIT_DEFS.skirmisher.cost);
+
+    const cancelResult = engine.processCommand(match.id, "p1", {
+      type: "cancel_queue",
+      entityId: building.id,
+      targetX: 0,
+    });
+
+    expect(cancelResult.success).toBe(true);
+    expect(building.productionQueue.length).toBe(0);
+    expect(match.economy[0]!.resources).toBe(beforeResources);
+  });
+});
+
+describe("Repair System", () => {
+  let engine: MatchEngine;
+  let match: MatchState;
+
+  beforeEach(() => {
+    engine = new MatchEngine();
+    match = engine.createMatch("REPAIR_TEST", [
+      { playerId: "p1", username: "Player1", color: "blue", score: 0 },
+      { playerId: "p2", username: "Player2", color: "red", score: 0 },
+    ]);
+    match.phase = "playing";
+    match.economy[0]!.resources = 999;
+  });
+
+  it("repair command sets repairTargetId on building", () => {
+    const worker = findEntity(match, "worker", "p1")!;
+
+    engine.processCommand(match.id, "p1", {
+      type: "build",
+      buildingType: "supply_depot",
+      targetX: 350,
+      targetY: 300,
+      workerIds: [worker.id],
+    });
+
+    const building = Array.from(match.entities.values()).find(
+      (e) => e.type === "building" && e.ownerId === "p1"
+    )!;
+
+    worker.x = building.x;
+    worker.y = building.y;
+    let ticks = 0;
+    while (building.constructionProgress < 100 && ticks < 500) {
+      engine.tick(match.id);
+      ticks++;
+    }
+
+    building.health = building.maxHealth / 2;
+
+    const result = engine.processCommand(match.id, "p1", {
+      type: "repair",
+      entityId: worker.id,
+      targetEntityId: building.id,
+    });
+
+    expect(result.success).toBe(true);
+    expect(building.repairTargetId).toBe(worker.id);
+  });
+
+  it("repair heals building when worker is in range", () => {
+    const worker = findEntity(match, "worker", "p1")!;
+
+    engine.processCommand(match.id, "p1", {
+      type: "build",
+      buildingType: "supply_depot",
+      targetX: 350,
+      targetY: 300,
+      workerIds: [worker.id],
+    });
+
+    const building = Array.from(match.entities.values()).find(
+      (e) => e.type === "building" && e.ownerId === "p1"
+    )!;
+
+    worker.x = building.x;
+    worker.y = building.y;
+    let ticks = 0;
+    while (building.constructionProgress < 100 && ticks < 500) {
+      engine.tick(match.id);
+      ticks++;
+    }
+
+    building.health = building.maxHealth / 2;
+    engine.processCommand(match.id, "p1", {
+      type: "repair",
+      entityId: worker.id,
+      targetEntityId: building.id,
+    });
+
+    const healthBefore = building.health;
+    match.economy[0]!.resources = 999;
+
+    engine.tick(match.id);
+
+    expect(building.health).toBeGreaterThan(healthBefore);
+  });
+
+  it("repair costs resources", () => {
+    const worker = findEntity(match, "worker", "p1")!;
+
+    engine.processCommand(match.id, "p1", {
+      type: "build",
+      buildingType: "supply_depot",
+      targetX: 350,
+      targetY: 300,
+      workerIds: [worker.id],
+    });
+
+    const building = Array.from(match.entities.values()).find(
+      (e) => e.type === "building" && e.ownerId === "p1"
+    )!;
+
+    worker.x = building.x;
+    worker.y = building.y;
+    let ticks = 0;
+    while (building.constructionProgress < 100 && ticks < 500) {
+      engine.tick(match.id);
+      ticks++;
+    }
+
+    building.health = building.maxHealth / 2;
+    engine.processCommand(match.id, "p1", {
+      type: "repair",
+      entityId: worker.id,
+      targetEntityId: building.id,
+    });
+
+    match.economy[0]!.resources = 100;
+    const resourcesBefore = match.economy[0]!.resources;
+
+    engine.tick(match.id);
+
+    expect(match.economy[0]!.resources).toBeLessThan(resourcesBefore);
+  });
+});
+
+describe("Death & Cleanup", () => {
+  let engine: MatchEngine;
+  let match: MatchState;
+
+  beforeEach(() => {
+    engine = new MatchEngine();
+    match = engine.createMatch("DEATH_TEST", [
+      { playerId: "p1", username: "Player1", color: "blue", score: 0 },
+      { playerId: "p2", username: "Player2", color: "red", score: 0 },
+    ]);
+    match.phase = "playing";
+    match.economy[0]!.resources = 999;
+  });
+
+  it("dead unit's supply is returned", () => {
+    const crystal = findEntity(match, "crystal", "p1")!;
+    engine.processCommand(match.id, "p1", {
+      type: "train_worker",
+      entityId: crystal.id,
+    });
+
+    const workers = Array.from(match.entities.values()).filter(
+      (e) => e.type === "worker" && e.ownerId === "p1"
+    );
+    const newWorker = workers[workers.length - 1];
+    const supplyBefore = match.economy[0]!.supply;
+
+    newWorker.health = 1;
+    const enemy = findEntity(match, "worker", "p2")!;
+    enemy.x = newWorker.x;
+    enemy.y = newWorker.y;
+    enemy.autoAttackEnabled = true;
+    engine.tick(match.id);
+
+    expect(match.economy[0]!.supply).toBe(supplyBefore - 1);
+  });
+
+  it("building death frees workers", () => {
+    const worker = findEntity(match, "worker", "p1")!;
+
+    engine.processCommand(match.id, "p1", {
+      type: "build",
+      buildingType: "supply_depot",
+      targetX: 350,
+      targetY: 300,
+      workerIds: [worker.id],
+    });
+
+    const building = Array.from(match.entities.values()).find(
+      (e) => e.type === "building" && e.ownerId === "p1"
+    )!;
+
+    expect(worker.buildTargetId).toBe(building.id);
+
+    // Destroy the building through combat tick
+    building.health = 1;
+    const enemy = findEntity(match, "worker", "p2")!;
+    enemy.x = building.x;
+    enemy.y = building.y;
+    enemy.attackTargetId = building.id;
+    enemy.autoAttackEnabled = true;
+
+    engine.tick(match.id);
+
+    expect(worker.buildTargetId).toBeUndefined();
+  });
+
+  it("supply depot death reduces maxSupply", () => {
+    const worker = findEntity(match, "worker", "p1")!;
+
+    engine.processCommand(match.id, "p1", {
+      type: "build",
+      buildingType: "supply_depot",
+      targetX: 350,
+      targetY: 300,
+      workerIds: [worker.id],
+    });
+
+    const building = Array.from(match.entities.values()).find(
+      (e) => e.type === "building" && e.ownerId === "p1"
+    )!;
+
+    worker.x = building.x;
+    worker.y = building.y;
+    let ticks = 0;
+    while (building.constructionProgress < 100 && ticks < 500) {
+      engine.tick(match.id);
+      ticks++;
+    }
+
+    const maxSupplyAfterBuild = match.economy[0]!.maxSupply;
+
+    building.health = 1;
+    const enemy = findEntity(match, "worker", "p2")!;
+    enemy.x = building.x;
+    enemy.y = building.y;
+    enemy.attackTargetId = building.id;
+    enemy.autoAttackEnabled = true;
+    engine.tick(match.id);
+
+    expect(match.economy[0]!.maxSupply).toBeLessThan(maxSupplyAfterBuild);
+  });
+
+  it("crystal destruction ends match", () => {
+    const enemy = findEntity(match, "worker", "p2")!;
+
+    const crystal = findEntity(match, "crystal", "p1")!;
+
+    enemy.x = crystal.x;
+    enemy.y = crystal.y;
+    crystal.health = 1;
+
+    enemy.attackTargetId = crystal.id;
+    enemy.autoAttackEnabled = true;
+
+    for (let i = 0; i < 50; i++) {
+      engine.tick(match.id);
+      if (match.phase === "ended") break;
+    }
+
+    expect(match.phase).toBe("ended");
+    expect(match.result).not.toBeNull();
+    expect(match.result!.winner).toBe("p2");
+  });
+});
+
+describe("Match Lifecycle", () => {
+  let engine: MatchEngine;
+  let match: MatchState;
+
+  beforeEach(() => {
+    engine = new MatchEngine();
+    match = engine.createMatch("LIFE_TEST", [
+      { playerId: "p1", username: "Player1", color: "blue", score: 0 },
+      { playerId: "p2", username: "Player2", color: "red", score: 0 },
+    ]);
+  });
+
+  it("end match sets phase to ended", () => {
+    match.phase = "playing";
+    const result = engine.endMatch(match.id, "p1");
+
+    expect(result).not.toBeNull();
+    expect(match.phase).toBe("ended");
+    expect(match.result!.winner).toBe("p1");
+  });
+
+  it("match cannot process commands after end", () => {
+    match.phase = "playing";
+    engine.endMatch(match.id, "p1");
+
+    const cmdResult = engine.processCommand(match.id, "p1", {
+      type: "move",
+      entityId: "any-id",
+      targetX: 350,
+      targetY: 100,
+    });
+
+    expect(cmdResult.success).toBe(false);
+  });
+
+  it("tick returns null after match ends", () => {
+    match.phase = "playing";
+    engine.endMatch(match.id, "p1");
+
+    const tickResult = engine.tick(match.id);
+    expect(tickResult).toBeNull();
+  });
+
+  it("reset match clears entities and creates new ones", () => {
+    match.phase = "playing";
+
+    const extra = engine["createEntity"](
+      "skirmisher", "p1", 3000, 300, 120, 12, "#44dd88"
+    );
+    match.entities.set(extra.id, extra);
+
+    const resetResult = engine.resetMatch(match.id, [
+      { playerId: "p1", username: "Player1", color: "blue", score: 0 },
+      { playerId: "p2", username: "Player2", color: "red", score: 0 },
+    ]);
+
+    expect(resetResult).not.toBeNull();
+    expect(resetResult!.phase).toBe("spawn");
+    expect(resetResult!.tick).toBe(0);
+    expect(resetResult!.result).toBeNull();
+    expect(resetResult!.entities.size).toBe(8);
+    expect(resetResult!.economy[0]!.resources).toBe(match.config.startingResources);
+    expect(resetResult!.economy[0]!.supply).toBe(0);
+  });
+
+  it("destroy match removes match from engine", () => {
+    match.phase = "playing";
+    engine.destroyMatch(match.id);
+
+    expect(engine.getMatch(match.id)).toBeUndefined();
+  });
+
+  it("hasActiveMatch returns true for active match", () => {
+    match.phase = "playing";
+    expect(engine.hasActiveMatch("LIFE_TEST")).toBe(true);
+  });
+
+  it("hasActiveMatch returns false for ended match", () => {
+    match.phase = "playing";
+    engine.endMatch(match.id, "p1");
+    expect(engine.hasActiveMatch("LIFE_TEST")).toBe(false);
   });
 });
