@@ -24,8 +24,8 @@ interface GameShellProps {
 
 const CANVAS_WIDTH = 960;
 const CANVAS_HEIGHT = 540;
-const MINIMAP_WIDTH = 150;
-const MINIMAP_HEIGHT = 40;
+const MINIMAP_WIDTH = 450;
+const MINIMAP_HEIGHT = 120;
 const EDGE_SCROLL_THRESHOLD = 50;
 const EDGE_SCROLL_SPEED = 3;
 
@@ -501,13 +501,13 @@ export default function GameShell({
 
     if (myCrystal) {
       cameraXRef.current = Math.max(0, Math.min(myCrystal.x - viewW / 2, mapWidth - viewW));
-      cameraYRef.current = Math.max(0, Math.min(myCrystal.y - viewH / 2, mapHeight - viewH));
+      cameraYRef.current = Math.max(0, Math.min(myCrystal.y - viewH / 2, (mapHeight ?? 600) - viewH));
     } else if (myIdx === 0) {
       cameraXRef.current = 0;
       cameraYRef.current = 0;
     } else {
       cameraXRef.current = Math.max(0, mapWidth - viewW);
-      cameraYRef.current = 0;
+      cameraYRef.current = Math.max(0, (mapHeight ?? 600) - viewH);
     }
 
   }, [matchState, player.id]);
@@ -2539,8 +2539,8 @@ const styles = {
     gap: "3px",
   },
   hotkeySlot: {
-    width: "60px",
-    height: "60px",
+    width: "78px",
+    height: "78px",
     background: "rgba(0,0,0,0.75)",
     border: "1px solid transparent",
     borderRadius: "4px",
@@ -2557,18 +2557,18 @@ const styles = {
     transform: "scale(1.1)",
   },
   hotkeyLabel: {
-    fontSize: "11px",
+    fontSize: "14px",
     fontFamily: "monospace",
     color: "#88aaff",
     fontWeight: 700,
     lineHeight: 1,
   },
   hotkeyIcon: {
-    fontSize: "16px",
+    fontSize: "20px",
     lineHeight: 1,
   },
   hotkeyName: {
-    fontSize: "8px",
+    fontSize: "10px",
     fontFamily: "monospace",
     color: "#6688cc",
     lineHeight: 1,

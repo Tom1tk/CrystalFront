@@ -67,7 +67,7 @@ const matchLobbyMap = new Map<string, string>(); // matchId -> lobbyCode reverse
 
 // Rate limiting for game commands
 const commandRateMap = new Map<string, { count: number; resetTime: number }>();
-const MAX_COMMANDS_PER_SECOND = 15;
+const MAX_COMMANDS_PER_SECOND = 100;
 
 function sendWS(ws: WebSocket, msg: ServerToClientMsg) {
   if (ws.readyState === WebSocket.OPEN) {
