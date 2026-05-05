@@ -27,6 +27,7 @@ export const CLIENT_MSG = {
   USERNAME: "username",
   GAME_COMMAND: "game_command",
   MATCH_START: "match_start",
+  START_SOLO_TEST: "start_solo_test",
 } as const;
 
 export const SERVER_EVT = {
@@ -48,7 +49,8 @@ export type ClientToServerMsg =
   | { type: typeof CLIENT_MSG.DEBUG_SPAWN; payload: { entityType: EntityType; buildingType?: BuildingType; x: number; y: number } }
   | { type: typeof CLIENT_MSG.USERNAME; payload: { username: string } }
   | { type: typeof CLIENT_MSG.GAME_COMMAND; payload: ClientCommand }
-  | { type: typeof CLIENT_MSG.MATCH_START };
+  | { type: typeof CLIENT_MSG.MATCH_START }
+  | { type: typeof CLIENT_MSG.START_SOLO_TEST; payload: { username: string } };
 
 export type ServerToClientMsg =
   | { type: typeof SERVER_EVT.CONNECTED; payload: { playerId: PlayerId } }

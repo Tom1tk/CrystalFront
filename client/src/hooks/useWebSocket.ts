@@ -19,6 +19,7 @@ interface UseWebSocketReturn {
   resourceNodes: ResourceNodeDisplay[];
   createLobby: (username: string) => void;
   joinLobby: (code: string, username: string) => void;
+  startSoloTest: (username: string) => void;
   toggleReady: () => void;
   leaveLobby: () => void;
   debugWin: (winner: "player1" | "player2" | "self") => void;
@@ -130,6 +131,13 @@ export function useWebSocket(): UseWebSocketReturn {
     [sendMessage]
   );
 
+  const startSoloTest = useCallback(
+    (username: string) => {
+      sendMessage({ type: "start_solo_test", payload: { username } });
+    },
+    [sendMessage]
+  );
+
   const toggleReady = useCallback(() => {
     sendMessage({ type: "ready_toggle" });
   }, [sendMessage]);
@@ -188,6 +196,7 @@ export function useWebSocket(): UseWebSocketReturn {
     resourceNodes,
     createLobby,
     joinLobby,
+    startSoloTest,
     toggleReady,
     leaveLobby,
     debugWin,

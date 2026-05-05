@@ -876,7 +876,7 @@ console.log("\n--- Message Type Constants Consistency ---");
 {
   // All CLIENT_MSG types should have corresponding WS_EVENT types
   // (except client-to-server-only messages that don't need server-side event names)
-  const clientOnlyKeys = new Set(["USERNAME", "MATCH_START"]);
+  const clientOnlyKeys = new Set(["USERNAME", "MATCH_START", "START_SOLO_TEST"]);
   for (const [key, value] of Object.entries(CLIENT_MSG)) {
     if (clientOnlyKeys.has(key)) continue;
     const wsValue = (WS_EVENT as any)[key];
