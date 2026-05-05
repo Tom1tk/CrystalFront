@@ -5,9 +5,10 @@ declare const __APP_VERSION__: string;
 interface MainMenuProps {
   onHost: (username: string) => void;
   onJoin: (code: string, username: string) => void;
+  onSoloTest: (username: string) => void;
 }
 
-export default function MainMenu({ onHost, onJoin }: MainMenuProps) {
+export default function MainMenu({ onHost, onJoin, onSoloTest }: MainMenuProps) {
   const [username, setUsername] = useState("");
   const [lobbyCode, setLobbyCode] = useState("");
   const [error, setError] = useState("");
@@ -114,8 +115,26 @@ export default function MainMenu({ onHost, onJoin }: MainMenuProps) {
 
         {showSettings && (
           <div style={styles.settingsSection}>
-            <p style={styles.settingsText}>Settings panel (placeholder)</p>
-            <p style={styles.settingsSubtext}>Audio, controls, and display options will appear here.</p>
+            <p style={styles.settingsText}>Test Mode</p>
+            <p style={styles.settingsSubtext}>Launch a solo game against a dummy opponent to test features.</p>
+            <button
+              style={styles.soloButton}
+              onClick={() => {
+                setError("");
+                if (!username.trim()) {
+                  setError("Enter a username to continue.");
+                  return;
+                }
+                if (username.trim().length > 20) {
+                  setError("Username too long.");
+                  return;
+                }
+                onSoloTest(username.trim());
+              }}
+              disabled={!username.trim()}
+            >
+              🎮 Solo Test
+            </button>
           </div>
         )}
 
@@ -231,5 +250,18 @@ const styles = {
     fontSize: "11px",
     color: "#555",
     fontFamily: "monospace",
+  },
+  soloButton: {
+    width: "100%",
+    padding: "12px 16px",
+    marginTop: "12px",
+    fontSize: "15px",
+    fontWeight: 700,
+    background: "linear-gradient(135deg, #4488cc, #44aa44)",
+    color: "#fff",
+    border: "none",
+    borderRadius: "8px",
+    cursor: "pointer",
+    letterSpacing: "1px",
   },
 };

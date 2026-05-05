@@ -65,6 +65,14 @@ function useScreenFlow() {
     [ws]
   );
 
+  const handleSoloTest = useCallback(
+    (name: string) => {
+      ws.startSoloTest(name);
+      setIsHost(true);
+    },
+    [ws]
+  );
+
   const handleLeave = useCallback(() => {
     ws.leaveLobby();
     setScreen("menu");
@@ -135,6 +143,7 @@ function useScreenFlow() {
     getCurrentLobby,
     handleHost,
     handleJoin,
+    handleSoloTest,
     handleLeave,
     handleRematch,
     handleExit,
@@ -155,6 +164,7 @@ export default function App() {
     getCurrentLobby,
     handleHost,
     handleJoin,
+    handleSoloTest,
     handleLeave,
     handleRematch,
     handleExit,
@@ -169,7 +179,7 @@ export default function App() {
   return (
     <div style={styles.container}>
       {screen === "menu" && (
-        <MainMenu onHost={handleHost} onJoin={handleJoin} />
+        <MainMenu onHost={handleHost} onJoin={handleJoin} onSoloTest={handleSoloTest} />
       )}
       {screen === "lobby" && lobby && player && (
         <LobbyScreen

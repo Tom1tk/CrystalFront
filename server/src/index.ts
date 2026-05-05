@@ -358,7 +358,74 @@ wss.on("connection", (ws) => {
         break;
       }
 
-      case CLIENT_MSG.READY_TOGGLE: {
+    case CLIENT_MSG.START_SOLO_TEST: {
+        // Create a solo test lobby with a bot opponent
+        const { code, player } = lobbyManager.createLobby(msg.payload.username);
+        
+        playerId = player.id;
+        playerLobbyMap.set(playerId, {
+          playerId,
+          code,
+          ws,
+        });
+        
+        sendWS(ws, { type: SERVER_EVT.CONNECTED, payload: { playerId: player.id } });
+        
+        // Add a dummy bot player
+        const botPlayer = lobbyManager.addBotToLobby(code);
+        if (!botPlayer) {
+          sendWS(ws, { type: SERVER_EVT.ERROR, payload: { message: "Failed to create test game." } });
+          return;
+        }
+        
+        // Register bot's fake connection (won't actually send anything)
+        playerLobbyMap.set(botPlayer.id, {
+          playerId: botPlayer.id,
+          code,
+          ws: ws, // reuse player's WS for bot's messages so game state reaches them
+        });
+        
+        // Mark both ready
+        lobbyManager.toggleReady(code, player.id);
+        lobbyManager.toggleReady(code, botPlayer.id);
+        
+        broadcastLobbyState(ws, code);
+        
+        // Both are ready — start the match
+        const lobby = lobbyManager.getLobby(code);
+        if (lobby && lobby.players[0]?.ready && lobby.players[1]?.ready) {
+          const p0 = lobby.players[0]!;
+          const p1 = lobby.players[1]!;
+          const players: [PlayerSlot | null, PlayerSlot | null] = [
+            toPlayerSlot(p0),
+            toPlayerSlot(p1),
+          ];
+          
+          const match = matchEngine.createMatch(code, players);
+          lobbyMatchMap.set(code, match.id);
+          matchEngine.startMatch(match.id);
+          matchLobbyMap.set(match.id, code);
+          
+          // Update player sessions with matchId
+          for (const p of lobby.players) {
+            if (p) {
+              const s = playerLobbyMap.get(p.id);
+              if (s) s.matchId = match.id;
+            }
+          }
+          
+          const matchStartMsg: ServerToClientMsg = {
+            type: SERVER_EVT.MATCH_START,
+            payload: {
+              match: buildMatchStatePayload(match),
+            },
+          };
+          sendWS(ws, matchStartMsg);
+        }
+        break;
+      }
+
+    case CLIENT_MSG.READY_TOGGLE: {
         if (!playerId) {
           sendWS(ws, { type: SERVER_EVT.ERROR, payload: { message: "Not connected." } });
           return;

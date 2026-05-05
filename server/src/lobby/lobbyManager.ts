@@ -87,6 +87,15 @@ export class LobbyManager {
     return { success: true, player, lobby };
   }
 
+  addBotToLobby(code: LobbyCode): Player | null {
+    const lobby = this.lobbies.get(code);
+    if (!lobby) return null;
+    if (lobby.players[1] !== null) return null;
+    const bot = createPlayer("Bot", "red");
+    lobby.players[1] = bot;
+    return bot;
+  }
+
   toggleReady(code: LobbyCode, playerId: PlayerId): { success: true; lobby: Lobby } | { success: false; message: string } {
     const lobby = this.lobbies.get(code);
     if (!lobby) {
