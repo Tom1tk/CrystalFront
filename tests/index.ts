@@ -569,13 +569,15 @@ console.log("\n--- Combat: Auto-Attack in Range ---");
   match.entities.set(skirmisher.id, skirmisher);
   match.entities.set(enemyWorker.id, enemyWorker);
 
-  // Verify autoAttackEnabled is set
-  assert(skirmisher.autoAttackEnabled === true, "Skirmisher has autoAttackEnabled");
+  // Verify autoAttackEnabled is false by default for units
+  assert(skirmisher.autoAttackEnabled === false, "Skirmisher autoAttackEnabled is false by default");
 
-  // skirmisher has autoAttackEnabled=true, should auto-acquire target
+  // Enable auto-attack manually, skirmisher should auto-acquire target
+  skirmisher.autoAttackEnabled = true;
+  match.entities.set(skirmisher.id, skirmisher);
   engine.tick(match.id);
   const skirmAfter = match.entities.get(skirmisher.id)!;
-  assert(skirmAfter.attackTargetId === enemyWorker.id, "Skirmisher auto-acquired enemy in range");
+  assert(skirmAfter.attackTargetId === enemyWorker.id, "Skirmisher auto-acquired enemy in range when auto-attack enabled");
 
   engine.stopMatch(match.id);
 }

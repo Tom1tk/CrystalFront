@@ -103,6 +103,7 @@ function serializeEntities(entities: Map<string, MatchEntity>): Array<{
   attackCooldown?: number;
   healTargetId?: string;
   autoAttackEnabled?: boolean;
+  rallyPoint?: { x: number; y: number };
 }> {
   return Array.from(entities.values()).map((e) => ({
     id: e.id,
@@ -132,6 +133,7 @@ function serializeEntities(entities: Map<string, MatchEntity>): Array<{
     attackCooldown: e.attackCooldown,
     healTargetId: e.healTargetId,
     autoAttackEnabled: e.autoAttackEnabled,
+    rallyPoint: e.rallyPoint,
   }));
 }
 
@@ -569,9 +571,11 @@ wss.on("connection", (ws) => {
           targetEntityId?: string;
           buildingType?: string;
           workerIds?: string[];
+          buildingId?: string;
+          unitType?: string;
         };
         const result = matchEngine.processCommand(matchId, playerId, {
-          type: cmd.type as "move" | "deselect" | "gather" | "train_worker" | "train_unit" | "build" | "assign_build" | "repair" | "attack" | "heal",
+          type: cmd.type as "move" | "deselect" | "gather" | "train_worker" | "train_unit" | "cancel_queue" | "build" | "assign_build" | "repair" | "attack" | "heal" | "set_rally" | "toggle_auto_attack" | "retreat" | "stop" | "debug_move_node",
           entityId: cmd.entityId,
           entityIds: cmd.entityIds,
           targetX: cmd.targetX,
@@ -579,6 +583,8 @@ wss.on("connection", (ws) => {
           targetEntityId: cmd.targetEntityId,
           buildingType: cmd.buildingType as "barracks" | "foundry" | "supply_depot" | "turret" | undefined,
           workerIds: cmd.workerIds,
+          buildingId: cmd.buildingId,
+          unitType: cmd.unitType,
         });
 
         if (!result.success) {

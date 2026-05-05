@@ -68,6 +68,7 @@ export interface Entity {
   attackCooldown: number;
   healTargetId?: string;
   autoAttackEnabled: boolean;
+  rallyPoint?: { x: number; y: number };
 }
 
 export type MatchPhase = "spawn" | "playing" | "ended";
@@ -169,10 +170,13 @@ export type CommandType =
   | "gather"
   | "train_worker"
   | "train_unit"
+  | "cancel_queue"
   | "build"
   | "repair"
   | "attack"
-  | "heal";
+  | "heal"
+  | "set_rally"
+  | "debug_move_node";
 
 export interface ClientCommand {
   tick: number;
@@ -184,6 +188,8 @@ export interface ClientCommand {
   targetEntityId?: string;
   buildingType?: BuildingType;
   workerIds?: string[];
+  buildingId?: string;
+  unitType?: "skirmisher" | "gunner" | "bruiser" | "medic";
 }
 
 export interface GameSnapshot {
