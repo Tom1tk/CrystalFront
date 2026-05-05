@@ -501,14 +501,13 @@ export default function GameShell({
 
     if (myCrystal) {
       cameraXRef.current = Math.max(0, Math.min(myCrystal.x - viewW / 2, mapWidth - viewW));
-      cameraYRef.current = Math.max(0, Math.min(myCrystal.y - viewH / 2, (mapHeight ?? 600) - viewH));
     } else if (myIdx === 0) {
       cameraXRef.current = 0;
-      cameraYRef.current = 0;
     } else {
       cameraXRef.current = Math.max(0, mapWidth - viewW);
-      cameraYRef.current = Math.max(0, (mapHeight ?? 600) - viewH);
     }
+    // Vertically center the map in the viewport
+    cameraYRef.current = Math.max(0, (mapHeight - viewH) / 2);
 
   }, [matchState, player.id]);
 
@@ -1497,6 +1496,12 @@ export default function GameShell({
           ctx.strokeStyle = "#ffff44";
           ctx.lineWidth = 2;
           ctx.strokeRect(bx - 3, by - 3, w + 6, h + 6);
+        } else if (entity.autoAttackEnabled) {
+          ctx.strokeStyle = "rgba(255,100,100,0.5)";
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([3, 3]);
+          ctx.strokeRect(bx - 3, by - 3, w + 6, h + 6);
+          ctx.setLineDash([]);
         }
 
         ctx.strokeStyle = localIsMyTeam ? "rgba(100,150,255,0.6)" : "rgba(255,100,100,0.6)";
@@ -1586,6 +1591,14 @@ export default function GameShell({
           ctx.strokeStyle = "#ffff44";
           ctx.lineWidth = 2;
           ctx.stroke();
+        } else if (entity.autoAttackEnabled) {
+          ctx.beginPath();
+          ctx.arc(entity.x, entity.y, entity.radius + 3, 0, Math.PI * 2);
+          ctx.strokeStyle = "rgba(255,100,100,0.5)";
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([3, 3]);
+          ctx.stroke();
+          ctx.setLineDash([]);
         }
 
         ctx.beginPath();
@@ -2542,7 +2555,6 @@ const styles = {
     width: "78px",
     height: "78px",
     background: "rgba(0,0,0,0.75)",
-    border: "1px solid transparent",
     borderRadius: "4px",
     display: "flex",
     flexDirection: "column" as const,
@@ -2553,7 +2565,7 @@ const styles = {
   },
   hotkeyFlash: {
     background: "rgba(100,150,255,0.4)",
-    borderColor: "rgba(100,150,255,0.8)",
+    border: "1px solid rgba(100,150,255,0.8)",
     transform: "scale(1.1)",
   },
   hotkeyLabel: {
