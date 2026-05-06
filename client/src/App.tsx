@@ -5,6 +5,7 @@ import LobbyScreen from "./components/LobbyScreen";
 import GameShell from "./components/GameShell";
 import MatchEndScreen from "./components/MatchEndScreen";
 import type { Screen, Player } from "./types";
+import { FCT } from "./design/facet";
 
 function useScreenFlow() {
   const [screen, setScreen] = useState<Screen>("menu");
@@ -224,6 +225,6 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    background: "linear-gradient(135deg, #0a0a1a 0%, #1a1a3a 100%)",
+    background: FCT.bg,
   },
 };

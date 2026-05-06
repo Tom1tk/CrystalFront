@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Lobby, Player, MatchState, ResourceNodeDisplay, BuildingType, MatchEntity } from "../types";
+import { FCT, FctMark, FctStat, DbgBtn, HEX_CLIP, NOTCH_R } from "../design/facet";
 
 interface GameShellProps {
   lobby: Lobby;
@@ -1917,49 +1918,69 @@ export default function GameShell({
           </div>
         )}
         <div style={styles.overlay}>
+          {/* Phase overlay band */}
+          <div style={styles.phaseOverlay}>
+            <span style={{ flex: 1 }} />
+            <span>[{matchState?.phase === "playing" ? "IN GAME" : matchState?.phase?.toUpperCase() ?? "WAITING"}] · Tick: {matchState?.tick ?? 0}</span>
+            <span style={{ flex: 1, textAlign: "right", color: FCT.inkFaint, fontWeight: 400 }}>
+              Match: {(matchState?.id ?? "").slice(0, 8)}
+            </span>
+          </div>
+
+          {/* Scoreboard with economy stats */}
           <div style={styles.scoreboard}>
-            <div style={{ ...styles.scorePlayer, color: myColor }}>
-              <span style={{ fontSize: "18px", fontWeight: 700 }}>{player.username}</span>
-              <span style={{ ...styles.scoreNum, color: "#8888ff" }}>{player.score}</span>
+            <div style={{ display: "flex", gap: 18, alignItems: "center" }}>
+              <FctMark size={28} />
+              <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+                <span style={{ fontFamily: FCT.display, fontSize: 18, color: myColor === "#4488ff" ? FCT.ice : FCT.red, letterSpacing: "0.04em", fontWeight: 700 }}>
+                  {player.username}
+                </span>
+                <span style={{ fontFamily: FCT.display, fontSize: 22, color: myColor === "#4488ff" ? FCT.ice : FCT.red, fontWeight: 700 }}>
+                  {player.score}
+                </span>
+              </div>
             </div>
-            <div style={styles.vs}>VS</div>
-            <div style={{ ...styles.scorePlayer, color: opponentColor }}>
-              <span style={{ ...styles.scoreNum, color: "#8888ff" }}>{opponent?.score ?? 0}</span>
-              <span style={{ fontSize: "18px", fontWeight: 700 }}>{opponent?.username ?? "..."}</span>
+            <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+              <FctStat icon="⛏" label="RESOURCES" value={myEconomy?.resources ?? 0} tint={FCT.amber} />
+              <FctStat icon="📦" label="SUPPLY" value={`${myEconomy?.supply ?? 0} / ${myEconomy?.maxSupply ?? 0}`} tint={FCT.green} />
+            </div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+              <span style={{ fontFamily: FCT.display, fontSize: 22, color: opponentColor === "#ff4444" ? FCT.red : FCT.ice, fontWeight: 700 }}>
+                {opponent?.score ?? 0}
+              </span>
+              <span style={{ fontFamily: FCT.display, fontSize: 18, color: opponentColor === "#ff4444" ? FCT.red : FCT.ice, letterSpacing: "0.04em", fontWeight: 700 }}>
+                {opponent?.username ?? "..."}
+              </span>
+              <span style={{ fontFamily: FCT.mono, fontSize: 9, color: FCT.inkFaint, letterSpacing: "0.22em", marginLeft: 6 }}>
+                VS
+              </span>
             </div>
           </div>
 
+          {/* Info bar */}
           <div style={styles.infoBar}>
-            <div style={styles.economyDisplay}>
-              <span style={styles.resourceIcon}>⛏</span>
-              <span style={styles.resourceValue}>{myEconomy?.resources ?? 0}</span>
-              <span style={styles.supplyIcon}>📦</span>
-              <span style={styles.supplyValue}>
-                {myEconomy?.supply ?? 0}/{myEconomy?.maxSupply ?? 0}
-              </span>
-            </div>
-            <span style={styles.infoText}>
+            <span style={{ color: FCT.ice }}>
               {buildMode && selectedBuildingType
-                ? `Placing ${BUILDING_LABELS[selectedBuildingType]} — click map to place, Esc to cancel`
+                ? `Placing ${BUILDING_LABELS[selectedBuildingType]}`
                 : isMultiSelect
                   ? `Selected ${selectedEntityIds.size} units`
                   : selectedEntityId
                     ? selectedEntity?.type === "crystal"
                       ? selectedEntity?.ownerId === player.id
-                        ? `HQ \u2022 HP: ${Math.floor(selectedEntity.health)}/${selectedEntity.maxHealth} \u2022 Q: Worker`
+                        ? `HQ · HP: ${Math.floor(selectedEntity.health)}/${selectedEntity.maxHealth} · Q: Worker`
                         : "Enemy HQ"
                       : selectedEntity?.type === "building"
-                        ? `${selectedEntity.buildingType || "Building"} \u2022 HP: ${Math.floor(selectedEntity.health)}/${selectedEntity.maxHealth}${selectedEntity?.constructionProgress !== undefined && selectedEntity.constructionProgress < 100
-                          ? ` \u2022 Building: ${Math.floor(selectedEntity.constructionProgress)}%`
+                        ? `${selectedEntity.buildingType || "Building"} · HP: ${Math.floor(selectedEntity.health)}/${selectedEntity.maxHealth}${selectedEntity?.constructionProgress !== undefined && selectedEntity.constructionProgress < 100
+                          ? ` · Building: ${Math.floor(selectedEntity.constructionProgress)}%`
                           : selectedEntity?.productionQueue.length > 0
-                            ? ` \u2022 ${selectedEntity.productionQueue[0]?.unitType}: ${Math.ceil((selectedEntity.productionQueue[0]?.remainingTicks ?? 0) / 10)}s`
+                            ? ` · ${selectedEntity.productionQueue[0]?.unitType}: ${Math.ceil((selectedEntity.productionQueue[0]?.remainingTicks ?? 0) / 10)}s`
                             : ""}`
                         : selectedEntity?.ownerId === player.id
-                          ? `${selectedEntity.type} \u2022 HP: ${Math.floor(selectedEntity.health)}/${selectedEntity.maxHealth}${selectedEntity.autoAttackEnabled ? " \u2022 AA:ON" : ""}`
+                          ? `${selectedEntity.type} · HP: ${Math.floor(selectedEntity.health)}/${selectedEntity.maxHealth}${selectedEntity.autoAttackEnabled ? " · AA:ON" : ""}`
                           : `Enemy ${selectedEntity?.type}`
-                    : "Click units to select, drag to box-select"}
+                    : "Click ground to move · click node to gather · click enemy to attack"}
             </span>
-            <span style={styles.infoText}>Tick: {matchState?.tick ?? 0}</span>
+            <span style={{ fontFamily: FCT.mono, fontSize: 11, color: FCT.inkDim }}>Tick: {matchState?.tick ?? 0}</span>
           </div>
 
           {/* Hotkey Menu - QWER/ASDF Grid */}
@@ -2153,7 +2174,7 @@ const styles = {
     flexDirection: "column" as const,
     width: "100vw",
     height: "100vh",
-    background: "#0a0a1a",
+    background: FCT.bg,
     overflow: "hidden",
     alignItems: "stretch",
   },
@@ -2180,67 +2201,54 @@ const styles = {
     bottom: 0,
     pointerEvents: "none" as const,
   },
-  scoreboard: {
+  phaseOverlay: {
+    position: "absolute" as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 32,
+    background: "rgba(0,0,0,0.6)",
     display: "flex",
     alignItems: "center",
-    justifyContent: "center",
-    gap: "24px",
-    padding: "8px 16px",
-    background: "rgba(0,0,0,0.7)",
-    backdropFilter: "blur(4px)",
-  },
-  scorePlayer: {
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    fontSize: "16px",
-  },
-  vs: {
-    fontSize: "14px",
-    color: "#666",
-    fontWeight: 600,
-  },
-  scoreNum: {
-    fontSize: "20px",
+    justifyContent: "space-between",
+    padding: "0 16px",
+    fontFamily: FCT.mono,
+    fontSize: 12,
+    letterSpacing: "0.14em",
+    color: FCT.ice,
     fontWeight: 700,
-    minWidth: "24px",
+    zIndex: 6,
+  },
+  scoreboard: {
+    position: "absolute" as const,
+    top: 32,
+    left: 0,
+    right: 0,
+    height: 56,
+    background: "linear-gradient(180deg, rgba(12,16,20,0.92), rgba(12,16,20,0.65))",
+    borderBottom: `1px solid ${FCT.lineHi}`,
+    display: "grid",
+    gridTemplateColumns: "auto 1fr auto",
+    alignItems: "center",
+    padding: "0 24px",
+    gap: 24,
+    zIndex: 5,
   },
   infoBar: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: "4px 16px",
+    position: "absolute" as const,
+    top: 88,
+    left: 0,
+    right: 0,
+    height: 26,
     background: "rgba(0,0,0,0.5)",
-  },
-  economyDisplay: {
     display: "flex",
     alignItems: "center",
-    gap: "12px",
-  },
-  resourceIcon: {
-    fontSize: "14px",
-    color: "#ccaa44",
-  },
-  resourceValue: {
-    fontSize: "14px",
-    fontWeight: 700,
-    color: "#ccaa44",
-    fontFamily: "monospace",
-  },
-  supplyIcon: {
-    fontSize: "14px",
-    color: "#88aa88",
-  },
-  supplyValue: {
-    fontSize: "14px",
-    fontWeight: 700,
-    color: "#88aa88",
-    fontFamily: "monospace",
-  },
-  infoText: {
-    fontSize: "11px",
-    color: "#888",
-    fontFamily: "monospace",
+    justifyContent: "space-between",
+    padding: "0 16px",
+    fontFamily: FCT.mono,
+    fontSize: 11,
+    color: FCT.inkDim,
+    zIndex: 5,
   },
   bottomBars: {
     width: "100%",
@@ -2249,6 +2257,7 @@ const styles = {
     flexShrink: 0,
     overflow: "auto",
     maxHeight: 180,
+    borderTop: `1px solid ${FCT.line}`,
   },
   trainBar: {
     padding: "8px 16px",
@@ -2258,42 +2267,41 @@ const styles = {
     alignItems: "center",
     gap: "4px",
     pointerEvents: "auto" as const,
-    borderTop: "1px solid rgba(100,100,200,0.15)",
+    borderTop: `1px solid ${FCT.line}`,
   },
   trainButton: {
     padding: "8px 20px",
     fontSize: "13px",
     fontWeight: 700,
-    fontFamily: "monospace",
-    border: "1px solid rgba(100,100,200,0.4)",
-    borderRadius: "6px",
+    fontFamily: FCT.display,
+    border: `1px solid ${FCT.lineHi}`,
+    clipPath: NOTCH_R,
     cursor: "pointer",
-    background: "rgba(30,30,60,0.9)",
-    color: "#aaa",
-    backdropFilter: "blur(4px)",
+    background: FCT.bgPanel,
+    color: FCT.ink,
   },
   trainButtonActive: {
-    color: "#44cc44",
-    borderColor: "rgba(68,204,68,0.6)",
-    background: "rgba(30,60,30,0.9)",
+    color: FCT.green,
+    borderColor: FCT.green,
+    background: "rgba(124,255,176,0.1)",
   },
   trainButtonDisabled: {
-    color: "#666",
-    borderColor: "rgba(100,100,100,0.2)",
+    color: FCT.inkFaint,
+    borderColor: FCT.line,
+    background: FCT.bgPanel,
   },
   trainHint: {
     fontSize: "10px",
-    color: "#884444",
-    fontFamily: "monospace",
+    color: FCT.red,
+    fontFamily: FCT.mono,
   },
   debugPanel: {
     position: "absolute" as const,
     bottom: "8px",
     left: "50%",
     transform: "translateX(-50%)",
-    background: "rgba(10, 10, 30, 0.92)",
-    backdropFilter: "blur(8px)",
-    border: "1px solid rgba(100, 100, 200, 0.25)",
+    background: "rgba(10,10,30,0.92)",
+    border: `1px solid ${FCT.line}`,
     borderRadius: "8px",
     padding: "6px 14px",
     maxWidth: "90vw",
@@ -2313,19 +2321,20 @@ const styles = {
   },
   debugToggleArrow: {
     fontSize: "10px",
-    color: "#666",
+    color: FCT.inkFaint,
     width: "12px",
     textAlign: "center" as const,
   },
   debugPanelHeader: {
     fontSize: "10px",
-    color: "#666",
+    color: FCT.inkFaint,
     textTransform: "uppercase" as const,
     letterSpacing: "1.5px",
     marginBottom: "8px",
     textAlign: "center" as const,
-    borderBottom: "1px solid rgba(100, 100, 200, 0.15)",
+    borderBottom: `1px solid ${FCT.line}`,
     paddingBottom: "6px",
+    fontFamily: FCT.mono,
   },
   debugPanelBody: {
     display: "flex",
@@ -2341,33 +2350,34 @@ const styles = {
   },
   debugLabel: {
     fontSize: "10px",
-    color: "#555",
+    color: FCT.inkFaint,
     textTransform: "uppercase" as const,
     letterSpacing: "0.5px",
     marginRight: "4px",
     whiteSpace: "nowrap" as const,
+    fontFamily: FCT.mono,
   },
   debugButton: {
     padding: "4px 10px",
     fontSize: "11px",
-    background: "rgba(100, 100, 100, 0.15)",
-    color: "#888",
-    border: "1px solid rgba(100, 100, 100, 0.25)",
+    fontFamily: FCT.mono,
+    background: "rgba(120,120,140,0.12)",
+    color: FCT.inkDim,
+    border: `1px solid rgba(120,120,140,0.25)`,
     borderRadius: "4px",
     cursor: "pointer",
-    fontFamily: "monospace",
     transition: "all 0.15s ease",
   },
   debugButtonActive: {
-    background: "rgba(100, 200, 255, 0.25)",
-    color: "#88ddff",
-    border: "1px solid rgba(100, 200, 255, 0.5)",
-    boxShadow: "0 0 6px rgba(100, 200, 255, 0.2)",
+    background: "rgba(124,232,255,0.22)",
+    color: FCT.ice,
+    border: `1px solid ${FCT.ice}`,
+    boxShadow: `0 0 6px rgba(124,232,255,0.2)`,
   },
   debugCancelButton: {
-    background: "rgba(255, 100, 100, 0.2)",
-    color: "#ff8888",
-    border: "1px solid rgba(255, 100, 100, 0.4)",
+    background: "rgba(255,92,243,0.2)",
+    color: FCT.red,
+    border: `1px solid rgba(255,92,243,0.4)`,
   },
   errorBanner: {
     position: "absolute" as const,
@@ -2376,7 +2386,7 @@ const styles = {
     transform: "translateX(-50%)",
     padding: "8px 16px",
     background: "rgba(180,40,40,0.9)",
-    borderRadius: "6px",
+    clipPath: HEX_CLIP,
     display: "flex",
     alignItems: "center",
     gap: "12px",
@@ -2387,7 +2397,7 @@ const styles = {
   errorText: {
     fontSize: "12px",
     color: "#ffffff",
-    fontFamily: "monospace",
+    fontFamily: FCT.mono,
     fontWeight: 600,
   },
   errorCloseButton: {
@@ -2404,16 +2414,16 @@ const styles = {
     padding: "6px 16px",
     fontSize: "12px",
     fontWeight: 700,
-    fontFamily: "monospace",
-    border: "1px solid rgba(100,150,255,0.4)",
-    borderRadius: "4px",
+    fontFamily: FCT.mono,
+    border: `1px solid ${FCT.lineHi}`,
+    clipPath: NOTCH_R,
     cursor: "pointer",
-    background: "rgba(30,30,60,0.9)",
-    color: "#88aaff",
+    background: FCT.bgPanel,
+    color: FCT.ice,
   },
   buildModeButtonActive: {
-    background: "rgba(30,60,100,0.9)",
-    borderColor: "rgba(100,150,255,0.8)",
+    background: "rgba(124,232,255,0.15)",
+    borderColor: FCT.ice,
   },
   buildBar: {
     padding: "6px 16px",
@@ -2422,32 +2432,32 @@ const styles = {
     alignItems: "center",
     gap: "12px",
     pointerEvents: "auto" as const,
-    borderTop: "1px solid rgba(100,150,255,0.15)",
+    borderTop: `1px solid ${FCT.lineHi}`,
   },
   buildLabel: {
     fontSize: "11px",
-    color: "#aaa",
-    fontFamily: "monospace",
+    color: FCT.inkDim,
+    fontFamily: FCT.mono,
   },
   buildConfirmButton: {
     padding: "4px 12px",
     fontSize: "11px",
-    background: "rgba(68,204,68,0.3)",
-    color: "#44cc44",
-    border: "1px solid rgba(68,204,68,0.5)",
+    background: "rgba(124,255,176,0.3)",
+    color: FCT.green,
+    border: `1px solid rgba(124,255,176,0.5)`,
     borderRadius: "4px",
     cursor: "pointer",
-    fontFamily: "monospace",
+    fontFamily: FCT.mono,
   },
   buildCancelButton: {
     padding: "4px 12px",
     fontSize: "11px",
-    background: "rgba(200,68,68,0.3)",
-    color: "#cc6644",
-    border: "1px solid rgba(200,68,68,0.5)",
+    background: "rgba(255,92,243,0.3)",
+    color: FCT.red,
+    border: `1px solid rgba(255,92,243,0.5)`,
     borderRadius: "4px",
     cursor: "pointer",
-    fontFamily: "monospace",
+    fontFamily: FCT.mono,
   },
   buildTypeBar: {
     padding: "8px 16px",
@@ -2456,29 +2466,30 @@ const styles = {
     alignItems: "center",
     gap: "8px",
     pointerEvents: "auto" as const,
-    borderTop: "1px solid rgba(100,150,255,0.2)",
+    borderTop: `1px solid ${FCT.line}`,
     flexWrap: "wrap" as const,
   },
   buildTypeLabel: {
     fontSize: "11px",
-    color: "#88aaff",
-    fontFamily: "monospace",
+    color: FCT.ice,
+    fontFamily: FCT.mono,
     fontWeight: 700,
   },
   buildTypeButton: {
     padding: "4px 10px",
     fontSize: "10px",
-    fontFamily: "monospace",
-    border: "1px solid rgba(100,150,255,0.4)",
-    borderRadius: "4px",
+    fontFamily: FCT.mono,
+    border: `1px solid ${FCT.lineHi}`,
+    clipPath: NOTCH_R,
     cursor: "pointer",
-    background: "rgba(30,30,60,0.9)",
-    color: "#88aaff",
+    background: FCT.bgPanel,
+    color: FCT.ice,
   },
   buildTypeButtonDisabled: {
-    color: "#555",
-    borderColor: "rgba(100,100,100,0.2)",
+    color: FCT.inkFaint,
+    borderColor: FCT.line,
     cursor: "not-allowed",
+    background: FCT.bgPanel,
   },
   hotkeyMenu: {
     position: "absolute" as const,
@@ -2496,20 +2507,20 @@ const styles = {
     gap: "8px",
     padding: "3px 8px",
     background: "rgba(0,0,0,0.6)",
-    borderRadius: "4px",
+    clipPath: HEX_CLIP,
     marginBottom: "2px",
   },
   selectionInfoName: {
     fontSize: "11px",
     fontWeight: 700,
-    color: "#88aaff",
-    fontFamily: "monospace",
+    color: FCT.ice,
+    fontFamily: FCT.mono,
     textTransform: "uppercase" as const,
   },
   selectionInfoHp: {
     fontSize: "10px",
-    color: "#44cc44",
-    fontFamily: "monospace",
+    color: FCT.green,
+    fontFamily: FCT.mono,
   },
   hotkeyRow: {
     display: "flex",
@@ -2518,8 +2529,9 @@ const styles = {
   hotkeySlot: {
     width: "78px",
     height: "78px",
-    background: "rgba(0,0,0,0.75)",
-    borderRadius: "4px",
+    background: "rgba(0,0,0,0.78)",
+    border: `1px solid ${FCT.line}`,
+    clipPath: HEX_CLIP,
     display: "flex",
     flexDirection: "column" as const,
     alignItems: "center",
@@ -2528,14 +2540,14 @@ const styles = {
     transition: "all 0.1s ease",
   },
   hotkeyFlash: {
-    background: "rgba(100,150,255,0.4)",
-    border: "1px solid rgba(100,150,255,0.8)",
+    background: "rgba(124,232,255,0.25)",
+    border: `1px solid ${FCT.ice}`,
     transform: "scale(1.1)",
   },
   hotkeyLabel: {
     fontSize: "14px",
-    fontFamily: "monospace",
-    color: "#88aaff",
+    fontFamily: FCT.mono,
+    color: FCT.ice,
     fontWeight: 700,
     lineHeight: 1,
   },
@@ -2545,10 +2557,11 @@ const styles = {
   },
   hotkeyName: {
     fontSize: "10px",
-    fontFamily: "monospace",
-    color: "#6688cc",
+    fontFamily: FCT.display,
+    color: FCT.ink,
     lineHeight: 1,
     textTransform: "uppercase" as const,
+    letterSpacing: "0.06em",
   },
   unitQueuePanel: {
     display: "flex",
@@ -2558,34 +2571,35 @@ const styles = {
   unitQueueButton: {
     padding: "3px 8px",
     fontSize: "10px",
-    fontFamily: "monospace",
-    border: "1px solid rgba(100,150,255,0.4)",
-    borderRadius: "4px",
+    fontFamily: FCT.mono,
+    border: `1px solid ${FCT.lineHi}`,
+    clipPath: NOTCH_R,
     cursor: "pointer",
-    background: "rgba(30,30,60,0.9)",
-    color: "#88aaff",
+    background: FCT.bgPanel,
+    color: FCT.ice,
   },
   unitQueueButtonActive: {
-    color: "#44cc44",
-    borderColor: "rgba(68,204,68,0.6)",
-    background: "rgba(30,60,30,0.9)",
+    color: FCT.green,
+    borderColor: FCT.green,
+    background: "rgba(124,255,176,0.1)",
   },
   unitQueueButtonDisabled: {
-    color: "#555",
-    borderColor: "rgba(100,100,100,0.2)",
+    color: FCT.inkFaint,
+    borderColor: FCT.line,
     cursor: "not-allowed",
+    background: FCT.bgPanel,
   },
   unitQueueCancelButton: {
     padding: "3px 8px",
     fontSize: "10px",
-    fontFamily: "monospace",
-    border: "1px solid rgba(200,68,68,0.4)",
-    borderRadius: "4px",
+    fontFamily: FCT.mono,
+    border: `1px solid rgba(255,92,243,0.4)`,
+    clipPath: NOTCH_R,
     cursor: "pointer",
-    background: "rgba(60,30,30,0.9)",
-    color: "#cc6644",
+    background: "rgba(255,92,243,0.1)",
+    color: FCT.red,
   },
   buildConfirmButtonActive: {
-    background: "rgba(68,204,68,0.5)",
+    background: "rgba(124,255,176,0.5)",
   },
 };

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { FCT, FctFrame, FctPanel, FctBtn, Refract, HEX_CLIP } from "../design/facet";
 
 declare const __APP_VERSION__: string;
 
@@ -45,223 +46,311 @@ export default function MainMenu({ onHost, onJoin, onSoloTest }: MainMenuProps) 
   };
 
   return (
-    <div style={styles.container}>
-      <div style={styles.card}>
-        <h1 style={styles.title}>CrystalFront RTS</h1>
-        <p style={styles.subtitle}>Real-time strategy prototype</p>
-
-        <div style={styles.inputGroup}>
-          <label style={styles.label}>Username</label>
-          <input
-            type="text"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="Enter your username"
-            style={styles.input}
-            maxLength={20}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                if (showJoin) handleJoinSubmit();
-                else handleHost();
-              }
-            }}
-          />
-        </div>
-
-        {error && <p style={styles.error}>{error}</p>}
-
-        <div style={styles.buttonGroup}>
-          <button style={styles.primaryButton} onClick={handleHost}>
-            Host Game
-          </button>
-          <button
-            style={styles.secondaryButton}
-            onClick={() => {
-              setShowJoin(!showJoin);
-              setShowSettings(false);
-            }}
-          >
-            {showJoin ? "Back" : "Join Game"}
-          </button>
-          <button
-            style={styles.secondaryButton}
-            onClick={() => {
-              setShowSettings(!showSettings);
-              setShowJoin(false);
-            }}
-          >
-            Settings
-          </button>
-        </div>
-
-        {showJoin && (
-          <div style={styles.joinSection}>
-            <input
-              type="text"
-              value={lobbyCode}
-              onChange={(e) => setLobbyCode(e.target.value.toUpperCase())}
-              placeholder="Lobby Code"
-              style={styles.input}
-              maxLength={6}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleJoinSubmit();
+    <FctFrame top="MAIN MENU" version={__APP_VERSION__}>
+      <div
+        style={{
+          position: "absolute",
+          top: 36,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          padding: 56,
+          display: "grid",
+          gridTemplateColumns: "1.2fr 1fr",
+          gap: 56,
+        }}
+      >
+        {/* ─── LEFT COLUMN ─────────────────────────────────── */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "space-between",
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontFamily: FCT.mono,
+                fontSize: 10,
+                letterSpacing: "0.32em",
+                color: FCT.inkDim,
               }}
-            />
-            <button style={styles.primaryButton} onClick={handleJoinSubmit}>
-              Join
-            </button>
-          </div>
-        )}
-
-        {showSettings && (
-          <div style={styles.settingsSection}>
-            <p style={styles.settingsText}>Test Mode</p>
-            <p style={styles.settingsSubtext}>Launch a solo game against a dummy opponent to test features.</p>
-            <button
-              style={styles.soloButton}
-              onClick={() => {
-                setError("");
-                if (!username.trim()) {
-                  setError("Enter a username to continue.");
-                  return;
-                }
-                if (username.trim().length > 20) {
-                  setError("Username too long.");
-                  return;
-                }
-                onSoloTest(username.trim());
-              }}
-              disabled={!username.trim()}
             >
-              🎮 Solo Test
-            </button>
+              ▰ CRYSTALFRONT RTS
+            </div>
+            <div
+              style={{
+                marginTop: 18,
+                fontFamily: FCT.display,
+                fontSize: 124,
+                lineHeight: 0.85,
+                letterSpacing: "-0.045em",
+                textTransform: "uppercase",
+                fontWeight: 700,
+              }}
+            >
+              <Refract offset={2}>Crystal</Refract>
+              <br />
+              <Refract accent offset={2} style={{ fontStyle: "italic", fontWeight: 700 }}>
+                Front.
+              </Refract>
+            </div>
+            <div
+              style={{
+                marginTop: 22,
+                fontSize: 16,
+                color: FCT.inkDim,
+                maxWidth: 420,
+                lineHeight: 1.55,
+              }}
+            >
+              Real-time strategy prototype. One lane, one resource,
+              one Crystal each. Out-build, out-counter, shatter the
+              opposing core.
+            </div>
           </div>
-        )}
+          <div
+            style={{
+              fontFamily: FCT.mono,
+              fontSize: 10,
+              color: FCT.inkFaint,
+              letterSpacing: "0.22em",
+            }}
+          >
+            v{__APP_VERSION__}
+          </div>
+        </div>
 
-        <div style={styles.version}>v{__APP_VERSION__}</div>
+        {/* ─── RIGHT COLUMN ────────────────────────────────── */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+            alignSelf: "center",
+          }}
+        >
+          {/* ── Username panel ───────────────────────────── */}
+          <FctPanel clip={HEX_CLIP} accent={FCT.ice} style={{ padding: "18px 22px 22px" }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontFamily: FCT.mono,
+                fontSize: 9,
+                color: FCT.ice,
+                letterSpacing: "0.28em",
+              }}
+            >
+              <span>▰ USERNAME</span>
+              <span style={{ color: FCT.inkDim }}>
+                {username.length.toString().padStart(2, "0")} / 20
+              </span>
+            </div>
+            <div
+              style={{
+                marginTop: 8,
+                display: "flex",
+                alignItems: "baseline",
+                gap: 8,
+                background: FCT.bg,
+                padding: "10px 14px",
+                border: `1px solid ${FCT.lineHi}`,
+              }}
+            >
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder=""
+                maxLength={20}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    if (showJoin) handleJoinSubmit();
+                    else handleHost();
+                  }
+                }}
+                style={{
+                  fontFamily: FCT.display,
+                  fontSize: 32,
+                  letterSpacing: "-0.02em",
+                  color: FCT.ink,
+                  background: "transparent",
+                  border: "none",
+                  outline: "none",
+                  width: "100%",
+                  flex: 1,
+                }}
+              />
+              <span
+                style={{
+                  fontFamily: FCT.mono,
+                  fontSize: 12,
+                  color: FCT.ice,
+                }}
+              >
+                ▮
+              </span>
+            </div>
+            <div
+              style={{
+                fontFamily: FCT.mono,
+                fontSize: 9,
+                color: FCT.inkFaint,
+                letterSpacing: "0.22em",
+                marginTop: 8,
+              }}
+            >
+              A–Z · 0–9 · _ –   ·   max 20 chars
+            </div>
+          </FctPanel>
+
+          {/* ── Error message ────────────────────────────── */}
+          {error && (
+            <div
+              style={{
+                fontFamily: FCT.mono,
+                fontSize: 10,
+                color: FCT.red,
+                letterSpacing: "0.15em",
+                textAlign: "center",
+              }}
+            >
+              {error}
+            </div>
+          )}
+
+          {/* ── Main buttons ─────────────────────────────── */}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+              marginTop: 8,
+            }}
+          >
+            <FctBtn primary sub="↵ ENTER" full onClick={handleHost}>
+              ▷ Host Game
+            </FctBtn>
+            <FctBtn
+              full
+              sub="OPEN CODE FIELD"
+              onClick={() => {
+                setShowJoin(!showJoin);
+                setShowSettings(false);
+              }}
+            >
+              ▷ Join Game
+            </FctBtn>
+            <FctBtn
+              full
+              sub="OPEN PANEL"
+              onClick={() => {
+                setShowSettings(!showSettings);
+                setShowJoin(false);
+              }}
+            >
+              ▷ Settings
+            </FctBtn>
+          </div>
+
+          {/* ── Join code panel (conditional) ────────────── */}
+          {showJoin && (
+            <FctPanel clip={HEX_CLIP} style={{ padding: 18, marginTop: 12 }}>
+              <div
+                style={{
+                  fontFamily: FCT.mono,
+                  fontSize: 9,
+                  color: FCT.inkDim,
+                  letterSpacing: "0.28em",
+                  marginBottom: 10,
+                }}
+              >
+                ▰ LOBBY CODE  ·  6 CHARS
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                {Array.from({ length: 6 }).map((_, i) => {
+                  const char = lobbyCode[i] || "";
+                  const isCursorPos = i === lobbyCode.length;
+                  return (
+                    <div
+                      key={i}
+                      style={{
+                        flex: 1,
+                        height: 44,
+                        background: FCT.bgPanelHi,
+                        border: `1px solid ${isCursorPos ? FCT.ice : FCT.lineHi}`,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontFamily: FCT.display,
+                        fontSize: 22,
+                        color: char ? FCT.ink : FCT.ice,
+                        clipPath: HEX_CLIP,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {char || (isCursorPos ? "▮" : "")}
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
+                <FctBtn primary sub="↵ JOIN" onClick={handleJoinSubmit}>
+                  ▷ Join
+                </FctBtn>
+              </div>
+            </FctPanel>
+          )}
+
+          {/* ── Settings panel (conditional) ─────────────── */}
+          {showSettings && (
+            <FctPanel clip={HEX_CLIP} style={{ padding: 18, marginTop: 12 }}>
+              <div
+                style={{
+                  fontFamily: FCT.mono,
+                  fontSize: 9,
+                  color: FCT.inkDim,
+                  letterSpacing: "0.28em",
+                  marginBottom: 6,
+                }}
+              >
+                ▰ TEST MODE
+              </div>
+              <div
+                style={{
+                  fontFamily: FCT.ui,
+                  fontSize: 12,
+                  color: FCT.inkFaint,
+                  marginBottom: 12,
+                }}
+              >
+                Launch a solo game against a dummy opponent to test features.
+              </div>
+              <FctBtn
+                primary
+                full
+                disabled={!username.trim()}
+                onClick={() => {
+                  setError("");
+                  if (!username.trim()) {
+                    setError("Enter a username to continue.");
+                    return;
+                  }
+                  if (username.trim().length > 20) {
+                    setError("Username too long.");
+                    return;
+                  }
+                  onSoloTest(username.trim());
+                }}
+              >
+                ◆ Solo Test
+              </FctBtn>
+            </FctPanel>
+          )}
+        </div>
       </div>
-    </div>
+    </FctFrame>
   );
 }
-
-const styles = {
-  container: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: "100%",
-    height: "100%",
-  },
-  card: {
-    position: "relative" as const,
-    background: "rgba(20, 20, 40, 0.9)",
-    border: "1px solid rgba(100, 100, 200, 0.3)",
-    borderRadius: "12px",
-    padding: "40px",
-    width: "400px",
-    maxWidth: "90vw",
-    textAlign: "center" as const,
-  },
-  title: {
-    fontSize: "32px",
-    fontWeight: 700,
-    color: "#8888ff",
-    marginBottom: "4px",
-  },
-  subtitle: {
-    fontSize: "14px",
-    color: "#8888aa",
-    marginBottom: "24px",
-  },
-  inputGroup: {
-    marginBottom: "16px",
-    textAlign: "left" as const,
-  },
-  label: {
-    display: "block",
-    fontSize: "12px",
-    color: "#aaa",
-    marginBottom: "4px",
-  },
-  input: {
-    width: "100%",
-    padding: "10px 12px",
-    fontSize: "14px",
-    background: "rgba(0, 0, 0, 0.3)",
-    border: "1px solid rgba(100, 100, 200, 0.3)",
-    borderRadius: "6px",
-    color: "#e0e0e0",
-    outline: "none",
-  },
-  error: {
-    color: "#ff6666",
-    fontSize: "13px",
-    marginBottom: "12px",
-  },
-  buttonGroup: {
-    display: "flex",
-    gap: "8px",
-    marginBottom: "16px",
-  },
-  primaryButton: {
-    flex: 1,
-    padding: "10px 16px",
-    fontSize: "14px",
-    fontWeight: 600,
-    background: "#4444cc",
-    color: "#fff",
-    border: "none",
-    borderRadius: "6px",
-    cursor: "pointer",
-  },
-  secondaryButton: {
-    flex: 1,
-    padding: "10px 16px",
-    fontSize: "14px",
-    background: "rgba(100, 100, 200, 0.2)",
-    color: "#aaa",
-    border: "1px solid rgba(100, 100, 200, 0.3)",
-    borderRadius: "6px",
-    cursor: "pointer",
-  },
-  joinSection: {
-    display: "flex",
-    gap: "8px",
-    marginBottom: "8px",
-  },
-  settingsSection: {
-    background: "rgba(0, 0, 0, 0.2)",
-    borderRadius: "6px",
-    padding: "16px",
-  },
-  settingsText: {
-    fontSize: "14px",
-    color: "#aaa",
-    marginBottom: "4px",
-  },
-  settingsSubtext: {
-    fontSize: "12px",
-    color: "#666",
-  },
-  version: {
-    position: "absolute" as const,
-    bottom: "12px",
-    left: "12px",
-    fontSize: "11px",
-    color: "#555",
-    fontFamily: "monospace",
-  },
-  soloButton: {
-    width: "100%",
-    padding: "12px 16px",
-    marginTop: "12px",
-    fontSize: "15px",
-    fontWeight: 700,
-    background: "linear-gradient(135deg, #4488cc, #44aa44)",
-    color: "#fff",
-    border: "none",
-    borderRadius: "8px",
-    cursor: "pointer",
-    letterSpacing: "1px",
-  },
-};
