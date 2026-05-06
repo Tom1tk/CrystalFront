@@ -809,7 +809,7 @@ export default function GameShell({
         }
       }
     },
-    [myEntities, selectedEntityId, selectedEntityIds, resourceNodes, onGameCommand, buildMode, selectedBuildingType, myCrystal, matchState, handleMinimapClick, player.id]
+    [myEntities, selectedEntityId, selectedEntityIds, resourceNodes, onGameCommand, buildMode, selectedBuildingType, myCrystal, matchState, handleMinimapClick, player.id, rallyMode, debugDragMode, debugDraggingNodeId, debugSpawnMode]
   );
 
   const handleContextMenu = useCallback(
