@@ -65,6 +65,8 @@ export function Refract({
           transform: `translate(${-offset}px,0)`,
           mixBlendMode: "screen",
           opacity: 0.85,
+          userSelect: "none",
+          pointerEvents: "none",
         }}
       >
         {children}
@@ -78,11 +80,13 @@ export function Refract({
           transform: `translate(${offset}px,0)`,
           mixBlendMode: "screen",
           opacity: 0.85,
+          userSelect: "none",
+          pointerEvents: "none",
         }}
       >
         {children}
       </span>
-      <span style={{ position: "relative" }}>{children}</span>
+      <span style={{ position: "relative", userSelect: "text" }}>{children}</span>
     </span>
   );
 }
