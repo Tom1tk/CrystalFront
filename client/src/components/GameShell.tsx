@@ -369,6 +369,10 @@ export default function GameShell({
     | "train_gunner"
     | "train_bruiser"
     | "train_medic"
+    | "build_supply_depot"
+    | "build_barracks"
+    | "build_foundry"
+    | "build_turret"
     | "toggle_auto_attack"
     | "unit_stop"
     | "retreat"
@@ -406,19 +410,36 @@ export default function GameShell({
     const foundrySelected = selectedEntities.some(
       (e) => e.type === "building" && e.buildingType === "foundry" && e.ownerId === player.id
     );
-    const hasUnits = selectedEntities.some(
-      (e) => e.type !== "building" && e.type !== "crystal" && e.ownerId === player.id
+    const hasWorkers = selectedEntities.some(
+      (e) => e.type === "worker" && e.ownerId === player.id
+    );
+    const hasCombatUnits = selectedEntities.some(
+      (e) => e.type !== "building" && e.type !== "crystal" && e.type !== "worker" && e.ownerId === player.id
     );
 
+    // Workers → building hotkeys (QWER), non-worker units → combat hotkeys (ASDF)
+    if (hasWorkers) {
+      return [
+        { key: "q", action: "build_supply_depot", label: "Supply Depot (50)", icon: "📦" },
+        { key: "w", action: "build_barracks", label: "Barracks (75)", icon: "🏰" },
+        { key: "e", action: "build_foundry", label: "Foundry (100)", icon: "🏭" },
+        { key: "r", action: "build_turret", label: "Turret (60)", icon: "🔫" },
+        { key: "a", action: "none", label: "", icon: "" },
+        { key: "s", action: "none", label: "", icon: "" },
+        { key: "d", action: "none", label: "", icon: "" },
+        { key: "f", action: "none", label: "", icon: "" },
+      ];
+    }
+
     return [
-      { key: "q", action: crystalSelected ? "train_worker" : barracksSelected ? "train_skirmisher" : "none", label: crystalSelected ? "Worker" : barracksSelected ? "Skirmisher" : "", icon: crystalSelected ? "👷" : barracksSelected ? "⚔️" : "" },
-      { key: "w", action: barracksSelected ? "train_gunner" : "none", label: barracksSelected ? "Gunner" : "", icon: barracksSelected ? "🔫" : "" },
-      { key: "e", action: foundrySelected ? "train_bruiser" : "none", label: foundrySelected ? "Bruiser" : "", icon: foundrySelected ? "🛡️" : "" },
-      { key: "r", action: foundrySelected ? "train_medic" : "none", label: foundrySelected ? "Medic" : "", icon: foundrySelected ? "💊" : "" },
-      { key: "a", action: hasUnits ? "toggle_auto_attack" : "none", label: hasUnits ? "Attack" : "", icon: hasUnits ? "⚔️" : "" },
-      { key: "s", action: hasUnits ? "unit_stop" : "none", label: hasUnits ? "Stop" : "", icon: hasUnits ? "⏹" : "" },
-      { key: "d", action: hasUnits ? "retreat" : "none", label: hasUnits ? "Retreat" : "", icon: hasUnits ? "↩️" : "" },
-      { key: "f", action: hasUnits ? "fortify" : "none", label: hasUnits ? "Fortify" : "", icon: hasUnits ? "🔧" : "" },
+      { key: "q", action: crystalSelected ? "train_worker" : barracksSelected ? "train_skirmisher" : "none", label: crystalSelected ? "Worker (25)" : barracksSelected ? "Skirmisher (50)" : "", icon: crystalSelected ? "👷" : barracksSelected ? "⚔️" : "" },
+      { key: "w", action: barracksSelected ? "train_gunner" : "none", label: barracksSelected ? "Gunner (75)" : "", icon: barracksSelected ? "🔫" : "" },
+      { key: "e", action: foundrySelected ? "train_bruiser" : "none", label: foundrySelected ? "Bruiser (100)" : "", icon: foundrySelected ? "🛡️" : "" },
+      { key: "r", action: foundrySelected ? "train_medic" : "none", label: foundrySelected ? "Medic (60)" : "", icon: foundrySelected ? "💊" : "" },
+      { key: "a", action: hasCombatUnits ? "toggle_auto_attack" : "none", label: hasCombatUnits ? "Attack" : "", icon: hasCombatUnits ? "⚔️" : "" },
+      { key: "s", action: hasCombatUnits ? "unit_stop" : "none", label: hasCombatUnits ? "Stop" : "", icon: hasCombatUnits ? "⏹" : "" },
+      { key: "d", action: hasCombatUnits ? "retreat" : "none", label: hasCombatUnits ? "Retreat" : "", icon: hasCombatUnits ? "↩️" : "" },
+      { key: "f", action: hasCombatUnits ? "fortify" : "none", label: hasCombatUnits ? "Fortify" : "", icon: hasCombatUnits ? "🔧" : "" },
     ];
   }, [selectedEntityIds, matchState, player.id]);
 
@@ -489,10 +510,13 @@ export default function GameShell({
     if (!matchState || cameraInitializedRef.current) return;
     cameraInitializedRef.current = true;
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
 
-    const viewW = canvas.clientWidth;
-    const viewH = canvas.clientHeight;
+    // Use container dimensions — they're set by CSS flexbox during layout,
+    // before effects run. canvas.clientHeight is 0/default until ResizeObserver fires later.
+    const viewW = container.clientWidth;
+    const viewH = container.clientHeight;
     const mapWidth = matchState.mapWidth ?? matchState.config?.mapWidth ?? 6000;
     const mapHeight = matchState.mapHeight ?? matchState.config?.mapHeight ?? 600;
 
@@ -506,8 +530,10 @@ export default function GameShell({
     } else {
       cameraXRef.current = Math.max(0, mapWidth - viewW);
     }
-    // Vertically center the map in the viewport
-    cameraYRef.current = Math.max(0, (mapHeight - viewH) / 2);
+    // Vertically center the map in the viewport.
+    // Allow negative cameraY — when viewport is taller than the map,
+    // this pushes the map down, centering it visually with equal space above and below.
+    cameraYRef.current = (mapHeight - viewH) / 2;
 
   }, [matchState, player.id]);
 
@@ -582,13 +608,7 @@ export default function GameShell({
         const fraction = (screenX - minimapX) / MINIMAP_WIDTH;
         const mapWidth = matchState.mapWidth ?? matchState.config?.mapWidth ?? 6000;
         const viewW = canvas.clientWidth;
-        const viewH = canvas.clientHeight;
-        const mapHeight = matchState.mapHeight ?? matchState.config?.mapHeight ?? 600;
         cameraXRef.current = Math.max(0, Math.min(fraction * mapWidth - viewW / 2, mapWidth - viewW));
-        if (screenY >= minimapY && screenY <= minimapY + MINIMAP_HEIGHT) {
-          const yFraction = (screenY - minimapY) / MINIMAP_HEIGHT;
-          cameraYRef.current = Math.max(0, Math.min(yFraction * mapHeight - viewH / 2, mapHeight - viewH));
-        }
         minimapDraggingRef.current = true;
         return true;
       }
@@ -919,6 +939,15 @@ export default function GameShell({
             }
             break;
           }
+          case "build_supply_depot":
+          case "build_barracks":
+          case "build_foundry":
+          case "build_turret": {
+            // Enter build mode — identical to bottom bar buttons
+            const buildingType = hotkey.action.replace("build_", "") as BuildingType;
+            handleBuildClick(buildingType);
+            break;
+          }
           case "toggle_auto_attack": {
             // Toggle auto-attack on compatible units (those with attack capability)
             if (movableUnitIds.length > 0) {
@@ -1168,23 +1197,16 @@ export default function GameShell({
         const pos = mousePosRef.current;
         if (pos) {
           const viewW = edgeCanvas.clientWidth;
-          const viewH = edgeCanvas.clientHeight;
-          const mapHeight = ms.mapHeight ?? 600;
 
-          // Minimap drag: update camera while dragging on minimap
+          // Minimap drag: update camera while dragging on minimap (X-axis only)
           if (minimapDraggingRef.current) {
             const mmX = viewW - MINIMAP_WIDTH - 10;
-            const mmY = viewH - MINIMAP_HEIGHT - 10;
-            if (pos.y >= mmY && pos.y <= mmY + MINIMAP_HEIGHT) {
-              const yFraction = Math.max(0, Math.min(1, (pos.y - mmY) / MINIMAP_HEIGHT));
-              cameraYRef.current = Math.max(0, Math.min(yFraction * mapHeight - viewH / 2, mapHeight - viewH));
-            }
             const xFraction = Math.max(0, Math.min(1, (pos.x - mmX) / MINIMAP_WIDTH));
             const mapWidth = ms.mapWidth ?? 6000;
             cameraXRef.current = Math.max(0, Math.min(xFraction * mapWidth - viewW / 2, mapWidth - viewW));
           }
 
-          // Edge scrolling (only when not dragging minimap)
+          // Edge scrolling — X-axis only (Y is locked, game is side-scrolling)
           if (!minimapDraggingRef.current) {
             let dx = 0;
             if (pos.x < EDGE_SCROLL_THRESHOLD) dx = -EDGE_SCROLL_SPEED;
@@ -1192,12 +1214,6 @@ export default function GameShell({
             if (dx !== 0) {
               const mapWidth = ms.mapWidth ?? 6000;
               cameraXRef.current = Math.max(0, Math.min(mapWidth - viewW, cameraXRef.current + dx));
-            }
-            let dy = 0;
-            if (pos.y < EDGE_SCROLL_THRESHOLD) dy = -EDGE_SCROLL_SPEED;
-            else if (pos.y > viewH - EDGE_SCROLL_THRESHOLD) dy = EDGE_SCROLL_SPEED;
-            if (dy !== 0) {
-              cameraYRef.current = Math.max(0, Math.min(mapHeight - viewH, cameraYRef.current + dy));
             }
           }
         }
@@ -2122,60 +2138,8 @@ export default function GameShell({
         {buildMode && selectedBuildingType && (
           <div style={styles.buildBar}>
             <span style={styles.buildLabel}>
-              Placing: {BUILDING_LABELS[selectedBuildingType]} ({BUILDING_COSTS[selectedBuildingType]} resource)
+              Placing: {BUILDING_LABELS[selectedBuildingType]} ({BUILDING_COSTS[selectedBuildingType]} resource) — Click map to place (Esc to cancel)
             </span>
-            <span style={styles.buildLabel}>Click map to place</span>
-            <button style={styles.buildCancelButton} onClick={handleCancelBuild}>
-              Cancel
-            </button>
-          </div>
-        )}
-
-        {hasSelectedWorkers && !buildMode && (
-          <div style={styles.buildTypeBar}>
-            <span style={styles.buildTypeLabel}>
-              {selectedWorkers.length} worker{selectedWorkers.length > 1 ? 's' : ''} — Build:
-            </span>
-            <button
-              style={{
-                ...styles.buildTypeButton,
-                ...(canBuildSupplyDepot ? {} : styles.buildTypeButtonDisabled),
-              }}
-              onClick={() => handleBuildClick("supply_depot")}
-              disabled={!canBuildSupplyDepot}
-            >
-              Supply Depot (50)
-            </button>
-            <button
-              style={{
-                ...styles.buildTypeButton,
-                ...(canBuildBarracks ? {} : styles.buildTypeButtonDisabled),
-              }}
-              onClick={() => handleBuildClick("barracks")}
-              disabled={!canBuildBarracks}
-            >
-              Barracks (75)
-            </button>
-            <button
-              style={{
-                ...styles.buildTypeButton,
-                ...(canBuildFoundry ? {} : styles.buildTypeButtonDisabled),
-              }}
-              onClick={() => handleBuildClick("foundry")}
-              disabled={!canBuildFoundry}
-            >
-              Foundry (100)
-            </button>
-            <button
-              style={{
-                ...styles.buildTypeButton,
-                ...(canBuildTurret ? {} : styles.buildTypeButtonDisabled),
-              }}
-              onClick={() => handleBuildClick("turret")}
-              disabled={!canBuildTurret}
-            >
-              Turret (60)
-            </button>
           </div>
         )}
       </div>
