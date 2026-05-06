@@ -12,6 +12,7 @@ interface GameShellProps {
   onGameCommand: (command: {
     type: string;
     entityId?: string;
+    buildingId?: string;
     entityIds?: string[];
     workerIds?: string[];
     targetX?: number;
@@ -934,6 +935,7 @@ export default function GameShell({
             if (building) {
               onGameCommand({
                 type: "train_unit",
+                buildingId: building.id,
                 entityId: building.id,
                 targetEntityId: unitType,
               });
@@ -2381,18 +2383,19 @@ const styles = {
   },
   errorBanner: {
     position: "absolute" as const,
-    top: "40px",
+    top: "116px",
     left: "50%",
     transform: "translateX(-50%)",
-    padding: "8px 16px",
-    background: "rgba(180,40,40,0.9)",
-    clipPath: HEX_CLIP,
+    padding: "6px 14px",
+    background: "rgba(180,40,40,0.85)",
+    borderRadius: "4px",
     display: "flex",
     alignItems: "center",
     gap: "12px",
     pointerEvents: "auto" as const,
     zIndex: 100,
     boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
+    maxWidth: "500px",
   },
   errorText: {
     fontSize: "12px",

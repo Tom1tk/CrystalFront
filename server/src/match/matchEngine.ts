@@ -1360,6 +1360,13 @@ if (command.type === "gather") {
         node.gathererSlots.clear();
       }
     }
+
+    // Passive refresh: slowly replenish nodes not being actively gathered
+    for (const node of match.resourceNodes) {
+      if (node.gathererSlots.size === 0 && node.remaining < node.capacity) {
+        node.remaining = Math.min(node.capacity, node.remaining + 0.1);
+      }
+    }
   }
 
 private processConstruction(match: MatchState): void {

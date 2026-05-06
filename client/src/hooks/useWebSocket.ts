@@ -62,6 +62,7 @@ export function useWebSocket(): UseWebSocketReturn {
     ws.onerror = () => {
       console.log("[useWebSocket] ws.onerror");
       setError("Connection error.");
+      setTimeout(() => setError(null), 4000);
     };
 
     ws.onclose = (event) => {
@@ -81,6 +82,8 @@ export function useWebSocket(): UseWebSocketReturn {
         }
         if (msg.type === "error" && msg.payload?.message) {
           setError(msg.payload.message as string);
+          // Auto-clear after 4 seconds
+          setTimeout(() => setError(null), 4000);
         }
         if (msg.type === "match_end" && msg.payload?.winner) {
           setMatchEnd({ winner: msg.payload.winner as string });
