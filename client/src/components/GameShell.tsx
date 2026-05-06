@@ -878,8 +878,11 @@ export default function GameShell({
       }
       // Enter rally mode with 'F' when a building or crystal is selected
       if (e.key === "f" || e.key === "F") {
-        if (selectedEntityId) {
-          const entity = matchState?.entities.find((ent) => ent.id === selectedEntityId);
+        // Find a production building or crystal from the current selection
+        const selectedIds = Array.from(selectedEntityIds);
+        const targetId = selectedEntityId ?? selectedIds[0] ?? null;
+        if (targetId && matchState) {
+          const entity = matchState.entities.find((ent) => ent.id === targetId);
           if (entity && (entity.type === "building" || entity.type === "crystal") && entity.ownerId === player.id) {
             setRallyMode({ buildingId: entity.id });
             return;
