@@ -1990,7 +1990,7 @@ export default function GameShell({
             </div>
           </div>
 
-          {/* Info bar */}
+          {/* Info bar — selection / status text only (tick lives in phase overlay) */}
           <div style={styles.infoBar}>
             <span style={{ color: FCT.ice }}>
               {buildMode && selectedBuildingType
@@ -2013,7 +2013,6 @@ export default function GameShell({
                           : `Enemy ${selectedEntity?.type}`
                     : "Click ground to move · click node to gather · click enemy to attack"}
             </span>
-            <span style={{ fontFamily: FCT.mono, fontSize: 11, color: FCT.inkDim }}>Tick: {matchState?.tick ?? 0}</span>
           </div>
 
           {/* Hotkey Menu - QWER/ASDF Grid */}
