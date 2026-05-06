@@ -379,6 +379,7 @@ export default function GameShell({
     | "unit_stop"
     | "retreat"
     | "fortify"
+    | "set_rally"
     | "none";
 
   type HotkeySlot = { key: string; action: HotkeyAction; label: string; icon: string };
@@ -420,6 +421,11 @@ export default function GameShell({
     );
 
     // Workers → building hotkeys (QWER), non-worker units → combat hotkeys (ASDF)
+    // Rally point (F) available when any production building is selected
+    const hasProductionBuilding = selectedEntities.some(
+      (e) => e.type === "building" && (e.buildingType === "barracks" || e.buildingType === "foundry") && e.ownerId === player.id
+    );
+
     if (hasWorkers) {
       return [
         { key: "q", action: "build_supply_depot", label: "Supply Depot (50)", icon: "📦" },
@@ -441,7 +447,7 @@ export default function GameShell({
       { key: "a", action: hasCombatUnits ? "toggle_auto_attack" : "none", label: hasCombatUnits ? "Attack" : "", icon: hasCombatUnits ? "⚔️" : "" },
       { key: "s", action: hasCombatUnits ? "unit_stop" : "none", label: hasCombatUnits ? "Stop" : "", icon: hasCombatUnits ? "⏹" : "" },
       { key: "d", action: hasCombatUnits ? "retreat" : "none", label: hasCombatUnits ? "Retreat" : "", icon: hasCombatUnits ? "↩️" : "" },
-      { key: "f", action: hasCombatUnits ? "fortify" : "none", label: hasCombatUnits ? "Fortify" : "", icon: hasCombatUnits ? "🔧" : "" },
+      { key: "f", action: hasProductionBuilding ? "set_rally" : "none", label: hasProductionBuilding ? "Rally" : "", icon: hasProductionBuilding ? "🚩" : "" },
     ];
   }, [selectedEntityIds, matchState, player.id]);
 
@@ -870,8 +876,8 @@ export default function GameShell({
         setDebugDraggingNodeId(null);
         return;
       }
-      // Enter rally mode with 'R' when a building or crystal is selected
-      if (e.key === "r" || e.key === "R") {
+      // Enter rally mode with 'F' when a building or crystal is selected
+      if (e.key === "f" || e.key === "F") {
         if (selectedEntityId) {
           const entity = matchState?.entities.find((ent) => ent.id === selectedEntityId);
           if (entity && (entity.type === "building" || entity.type === "crystal") && entity.ownerId === player.id) {
@@ -978,6 +984,16 @@ export default function GameShell({
                 type: "retreat",
                 entityIds: movableUnitIds,
               });
+            }
+            break;
+          }
+          case "set_rally": {
+            // Enter rally point placement mode for selected production building
+            if (selectedEntityId) {
+              const entity = entities.find((ent) => ent.id === selectedEntityId);
+              if (entity && (entity.type === "building" || entity.type === "crystal") && entity.ownerId === player.id) {
+                setRallyMode({ buildingId: entity.id });
+              }
             }
             break;
           }
@@ -1653,12 +1669,24 @@ export default function GameShell({
       }
     }
 
-    // Rally point markers
+    // Rally point markers + dotted lines — only visible when the connected building is selected
     for (const entity of entities) {
-      if (entity.rallyPoint) {
+      if (entity.rallyPoint && selectedEntityIds.has(entity.id)) {
         const rx = entity.rallyPoint.x;
         const ry = entity.rallyPoint.y;
-        // Draw rally point marker - orange diamond
+
+        // Dotted line from building to rally point
+        ctx.save();
+        ctx.beginPath();
+        ctx.setLineDash([6, 4]);
+        ctx.moveTo(entity.x, entity.y);
+        ctx.lineTo(rx, ry);
+        ctx.strokeStyle = "rgba(255, 180, 50, 0.5)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
+
+        // Rally point marker - orange diamond
         ctx.save();
         ctx.translate(rx, ry);
         ctx.rotate(Math.PI / 4);
