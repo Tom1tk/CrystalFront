@@ -269,32 +269,55 @@ export default function MainMenu({ onHost, onJoin, onSoloTest }: MainMenuProps) 
               >
                 ▰ LOBBY CODE  ·  6 CHARS
               </div>
-              <div style={{ display: "flex", gap: 6 }}>
-                {Array.from({ length: 6 }).map((_, i) => {
-                  const char = lobbyCode[i] || "";
-                  const isCursorPos = i === lobbyCode.length;
-                  return (
-                    <div
-                      key={i}
-                      style={{
-                        flex: 1,
-                        height: 44,
-                        background: FCT.bgPanelHi,
-                        border: `1px solid ${isCursorPos ? FCT.ice : FCT.lineHi}`,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontFamily: FCT.display,
-                        fontSize: 22,
-                        color: char ? FCT.ink : FCT.ice,
-                        clipPath: HEX_CLIP,
-                        fontWeight: 600,
-                      }}
-                    >
-                      {char || (isCursorPos ? "▮" : "")}
-                    </div>
-                  );
-                })}
+              <div style={{ position: "relative" }}>
+                {/* Hidden input that captures keyboard input */}
+                <input
+                  type="text"
+                  value={lobbyCode}
+                  onChange={(e) => setLobbyCode(e.target.value.toUpperCase().slice(0, 6))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleJoinSubmit();
+                  }}
+                  maxLength={6}
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    opacity: 0,
+                    cursor: "text",
+                    zIndex: 2,
+                    width: "100%",
+                    height: "100%",
+                  }}
+                  autoFocus
+                />
+                {/* Visual 6-char display */}
+                <div style={{ display: "flex", gap: 6, pointerEvents: "none" }}>
+                  {Array.from({ length: 6 }).map((_, i) => {
+                    const char = lobbyCode[i] || "";
+                    const isCursorPos = i === lobbyCode.length;
+                    return (
+                      <div
+                        key={i}
+                        style={{
+                          flex: 1,
+                          height: 44,
+                          background: FCT.bgPanelHi,
+                          border: `1px solid ${isCursorPos ? FCT.ice : FCT.lineHi}`,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontFamily: FCT.display,
+                          fontSize: 22,
+                          color: char ? FCT.ink : FCT.ice,
+                          clipPath: HEX_CLIP,
+                          fontWeight: 600,
+                        }}
+                      >
+                        {char || (isCursorPos ? "▮" : "")}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
               <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
                 <FctBtn primary sub="↵ JOIN" onClick={handleJoinSubmit}>
