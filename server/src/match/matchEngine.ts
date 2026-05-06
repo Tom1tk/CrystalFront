@@ -367,7 +367,10 @@ if (command.type === "move") {
        }
 
        if (command.targetX !== undefined && command.targetY !== undefined) {
-         entity.moveTarget = { x: command.targetX, y: command.targetY };
+         // Clamp to map bounds
+         const clampedX = Math.max(entity.radius, Math.min(config.mapWidth - entity.radius, command.targetX));
+         const clampedY = Math.max(entity.radius, Math.min(config.mapHeight - entity.radius, command.targetY));
+         entity.moveTarget = { x: clampedX, y: clampedY };
          entity.attackTargetId = undefined;
          entity.healTargetId = undefined;
          entity.commandedTicks = 5;
@@ -1085,6 +1088,12 @@ if (command.type === "gather") {
 
       entity.x += (dx / distance) * moveAmount;
       entity.y += (dy / distance) * moveAmount;
+
+      // Clamp to map bounds (prevent units walking off-map)
+      const mapW = match.config.mapWidth;
+      const mapH = match.config.mapHeight;
+      entity.x = Math.max(entity.radius, Math.min(mapW - entity.radius, entity.x));
+      entity.y = Math.max(entity.radius, Math.min(mapH - entity.radius, entity.y));
 
       const newDistance = this.dist(entity.x, entity.y, entity.moveTarget.x, entity.moveTarget.y);
       if (newDistance <= arrivalThreshold) {
