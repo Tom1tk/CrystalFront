@@ -1869,22 +1869,6 @@ export default function GameShell({
       );
     }
 
-    // Phase overlay
-    if (matchState) {
-      ctx.fillStyle = "rgba(0,0,0,0.6)";
-      ctx.fillRect(0, 0, cssW, 32);
-      ctx.fillStyle = "#8888ff";
-      ctx.font = "bold 14px monospace";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      const phaseLabel = matchState.phase === "spawn" ? "SPAWNING" : matchState.phase === "playing" ? "IN GAME" : "ENDED";
-      ctx.fillText(`[${phaseLabel}] Tick: ${matchState.tick}`, cssW / 2, 16);
-      ctx.fillStyle = "#666";
-      ctx.font = "11px monospace";
-      ctx.textAlign = "right";
-      ctx.fillText(`Match: ${matchState.id.slice(0, 8)}`, cssW - 10, 16);
-    }
-
     ctx.restore();
   }
 
