@@ -1424,15 +1424,20 @@ if (command.type === "gather") {
       }
 
       if (node.remaining <= 0) {
-        node.gathererSlots.clear();
+        // Don't clear gatherers — they stay assigned for passive re-drain
       }
     }
 
-    // Passive refresh: slowly replenish nodes not being actively gathered
+    // Passive refresh: slowly replenish nodes; re-drain when workers are assigned
     for (const node of match.resourceNodes) {
-      if (node.gathererSlots.size === 0 && node.remaining < node.capacity) {
+      if (node.remaining < node.capacity) {
         node.remaining = Math.min(node.capacity, node.remaining + 0.1);
       }
+
+      // If workers are still assigned and node has re-accumulated enough,
+      // they should start gathering again (handled automatically above since
+      // gathererSlots isn't cleared — workers just need to be in range).
+      // No extra logic needed here; the gather loop above handles it.
     }
   }
 
