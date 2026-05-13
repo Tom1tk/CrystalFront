@@ -1038,8 +1038,65 @@ if (command.type === "gather") {
     // Phase 6: Repair & Medic healing
     this.processRepairAndHealing(match);
 
+    // Phase 7: Fog of war — compute visibility per player
+    this.computeVisibility(match);
+
     match.stateTimestamp = Date.now();
     return match;
+  }
+
+  /**
+   * Compute fog-of-war visibility for each player.
+   * Each entity has a vision range; any entity within that range is "visible".
+   * Results stored on match.visibilityData keyed by playerId.
+   */
+  private computeVisibility(match: MatchState): void {
+    const allEntities = Array.from(match.entities.values());
+    const visibility = new Map<PlayerId, { entityIds: Set<EntityId>; nodeIds: Set<string> }>();
+
+    for (const p of match.players) {
+      if (p) {
+        visibility.set(p.playerId, { entityIds: new Set(), nodeIds: new Set() });
+      }
+    }
+
+    for (const [playerId, vis] of visibility) {
+      const myEntities = allEntities.filter(e => e.ownerId === playerId && e.health > 0);
+      for (const src of myEntities) {
+        const vRange = this.getVisionRange(src);
+        const vRangeSq = vRange * vRange;
+        for (const target of allEntities) {
+          if (target.health <= 0) continue;
+          const dx = target.x - src.x;
+          const dy = target.y - src.y;
+          if (dx * dx + dy * dy <= vRangeSq) {
+            vis.entityIds.add(target.id);
+          }
+        }
+        for (const node of match.resourceNodes) {
+          const dx = node.x - src.x;
+          const dy = node.y - src.y;
+          if (dx * dx + dy * dy <= vRangeSq) {
+            vis.nodeIds.add(node.id);
+          }
+        }
+      }
+    }
+
+    match.visibilityData = visibility;
+  }
+
+  /** Get the vision range for an entity based on its type. */
+  private getVisionRange(entity: MatchEntity): number {
+    if (entity.type === "building" && entity.buildingType) {
+      const def = BUILDING_DEFS[entity.buildingType];
+      return def?.visionRange ?? 100;
+    }
+    if (entity.type === "crystal") {
+      return 150; // Crystal vision
+    }
+    const def = UNIT_DEFS[entity.type];
+    return def?.visionRange ?? 100;
   }
 
   subStepMovement(matchId: string): void {

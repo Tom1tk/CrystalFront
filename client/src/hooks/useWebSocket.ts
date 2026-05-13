@@ -54,19 +54,16 @@ export function useWebSocket(): UseWebSocketReturn {
     wsRef.current = ws;
 
     ws.onopen = () => {
-      console.log("[useWebSocket] ws.onopen - connected");
       setConnected(true);
       setError(null);
     };
 
     ws.onerror = () => {
-      console.log("[useWebSocket] ws.onerror");
       setError("Connection error.");
       setTimeout(() => setError(null), 4000);
     };
 
     ws.onclose = (event) => {
-      console.log("[useWebSocket] ws.onclose - code:", event.code, "reason:", event.reason, "wasClean:", event.wasClean);
       setConnected(false);
     };
 
@@ -77,7 +74,6 @@ export function useWebSocket(): UseWebSocketReturn {
           setPlayerId(msg.payload.playerId as string);
         }
         if (msg.type === "lobby_state" && msg.payload?.lobby) {
-          console.log("[useWebSocket] lobby_state received, lobby:", JSON.stringify(msg.payload.lobby));
           setLobbyState(msg.payload.lobby as LobbyState);
         }
         if (msg.type === "error" && msg.payload?.message) {
@@ -114,15 +110,13 @@ export function useWebSocket(): UseWebSocketReturn {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(msg));
     } else {
-      console.warn("[useWebSocket] sendMessage failed - readyState:", wsRef.current?.readyState, "wsRef exists:", !!wsRef.current);
+      // silently fail if not connected
     }
   }, []);
 
   const createLobby = useCallback(
     (username: string) => {
-      console.log("[useWebSocket] createLobby called, username:", username, "ws.readyState:", wsRef.current?.readyState);
       sendMessage({ type: "create_lobby", payload: { username } });
-      console.log("[useWebSocket] createLobby sent");
     },
     [sendMessage]
   );
@@ -172,7 +166,6 @@ export function useWebSocket(): UseWebSocketReturn {
       targetEntityId?: string;
       buildingType?: BuildingType;
     }) => {
-      console.log("[useWebSocket] sendGameCommand:", JSON.stringify(command), "wsReadyState:", wsRef.current?.readyState);
       sendMessage({ type: "game_command", payload: { ...command, tick: Date.now() } });
     },
     [sendMessage]

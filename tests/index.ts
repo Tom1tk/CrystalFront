@@ -951,6 +951,199 @@ console.log("\n--- Debug Spawn Functionality ---");
   engine.stopMatch(match.id);
 }
 
+// ---- Fog of War: Visibility Ranges Defined ----
+console.log("\n--- Fog of War: Visibility Ranges Defined ---");
+{
+  const { UNIT_DEFS, BUILDING_DEFS } = require("../shared/src/constants.js");
+
+  // All unit types have visionRange
+  for (const [type, def] of Object.entries(UNIT_DEFS)) {
+    assert(typeof (def as any).visionRange === "number", `Unit ${type} has visionRange (${(def as any).visionRange})`);
+  }
+
+  // All building types have visionRange
+  for (const [type, def] of Object.entries(BUILDING_DEFS)) {
+    assert(typeof (def as any).visionRange === "number", `Building ${type} has visionRange (${(def as any).visionRange})`);
+  }
+
+  // Actual vision ranges from constants.ts
+  assertEqual(UNIT_DEFS.worker.visionRange, 150, "Worker visionRange is 150");
+  assertEqual(UNIT_DEFS.skirmisher.visionRange, 150, "Skirmisher visionRange is 150");
+  assertEqual(UNIT_DEFS.gunner.visionRange, 180, "Gunner visionRange is 180");
+  assertEqual(UNIT_DEFS.bruiser.visionRange, 130, "Bruiser visionRange is 130");
+  assertEqual(UNIT_DEFS.medic.visionRange, 140, "Medic visionRange is 140");
+
+  // Buildings
+  assertEqual(BUILDING_DEFS.barracks.visionRange, 120, "Barracks visionRange is 120");
+  assertEqual(BUILDING_DEFS.foundry.visionRange, 120, "Foundry visionRange is 120");
+  assertEqual(BUILDING_DEFS.supply_depot.visionRange, 100, "Supply depot visionRange is 100");
+  assertEqual(BUILDING_DEFS.turret.visionRange, 150, "Turret visionRange is 150");
+}
+
+// ---- Fog of War: Basic Visibility Computation ----
+console.log("\n--- Fog of War: Basic Visibility Computation ---");
+{
+  const mgr = new LobbyManager();
+  const host = mgr.createLobby("HostUser");
+  mgr.joinLobby(host.code, "JoinUser");
+  const lobby = mgr.getLobby(host.code)!;
+  const p1 = lobby.players[0]!;
+  const p2 = lobby.players[1]!;
+
+  const engine = new MatchEngine();
+  const players: [PlayerSlot | null, PlayerSlot | null] = [
+    { playerId: p1.id, username: p1.username, color: p1.color, score: p1.score, wsId: "ws1" },
+    { playerId: p2.id, username: p2.username, color: p2.color, score: p2.score, wsId: "ws2" },
+  ];
+  const match = engine.createMatch(host.code, players);
+  engine.startMatch(match.id);
+
+  // Initial tick — visibility data should be computed
+  engine.tick(match.id);
+
+  const visData = match.visibilityData;
+  assert(visData !== undefined, "Visibility data exists after first tick");
+
+  const blueVis = visData!.get(p1.id)!;
+  const redVis = visData!.get(p2.id)!;
+  assert(blueVis !== undefined, "Blue player has visibility data");
+  assert(redVis !== undefined, "Red player has visibility data");
+
+  // Blue player sees own entities
+  const blueEntities = Array.from(match.entities.values()).filter(
+    (e) => e.ownerId === p1.id
+  );
+  for (const e of blueEntities) {
+    assert(blueVis.entityIds.has(e.id), `Blue sees own ${e.type} (${e.id})`);
+  }
+
+  // Blue player sees nearby resource nodes
+  assert(blueVis.nodeIds.size > 0, "Blue player sees at least some resource nodes");
+
+  // Blue player does NOT see distant red entities (they start far apart)
+  const redEntities = Array.from(match.entities.values()).filter(
+    (e) => e.ownerId === p2.id
+  );
+  const redVisibleToBlue = redEntities.filter(e => blueVis.entityIds.has(e.id));
+  assert(redVisibleToBlue.length === 0, "Blue player sees no red entities at game start (too far apart)");
+
+  engine.stopMatch(match.id);
+}
+
+// ---- Fog of War: Entity Within Range Is Visible ----
+console.log("\n--- Fog of War: Entity Within Range Is Visible ---");
+{
+  const mgr = new LobbyManager();
+  const host = mgr.createLobby("HostUser");
+  mgr.joinLobby(host.code, "JoinUser");
+  const lobby = mgr.getLobby(host.code)!;
+  const p1 = lobby.players[0]!;
+  const p2 = lobby.players[1]!;
+
+  const engine = new MatchEngine();
+  const players: [PlayerSlot | null, PlayerSlot | null] = [
+    { playerId: p1.id, username: p1.username, color: p1.color, score: p1.score, wsId: "ws1" },
+    { playerId: p2.id, username: p2.username, color: p2.color, score: p2.score, wsId: "ws2" },
+  ];
+  const match = engine.createMatch(host.code, players);
+  engine.startMatch(match.id);
+
+  // Get a blue worker
+  const blueWorkers = Array.from(match.entities.values()).filter(
+    (e) => e.type === "worker" && e.ownerId === p1.id
+  );
+  const blueWorker = blueWorkers[0];
+
+  // Move a red worker within blue vision range (100)
+  const redWorkers = Array.from(match.entities.values()).filter(
+    (e) => e.type === "worker" && e.ownerId === p2.id
+  );
+  const redWorker = redWorkers[0];
+  redWorker.x = blueWorker.x + 50; // Within 150 vision range
+  redWorker.y = blueWorker.y;
+
+  engine.tick(match.id);
+  const blueVis = match.visibilityData!.get(p1.id)!;
+  assert(blueVis.entityIds.has(redWorker.id), "Blue worker sees red worker within vision range");
+
+  // Move red worker far away (beyond vision)
+  redWorker.x = blueWorker.x + 200;
+  engine.tick(match.id);
+  const blueVis2 = match.visibilityData!.get(p1.id)!;
+  assert(!blueVis2.entityIds.has(redWorker.id), "Blue worker does NOT see red worker beyond vision range");
+
+  engine.stopMatch(match.id);
+}
+
+// ---- Fog of War: Dead Entities Not Visible ----
+console.log("\n--- Fog of War: Dead Entities Not Visible ---");
+{
+  const mgr = new LobbyManager();
+  const host = mgr.createLobby("HostUser");
+  mgr.joinLobby(host.code, "JoinUser");
+  const lobby = mgr.getLobby(host.code)!;
+  const p1 = lobby.players[0]!;
+
+  const engine = new MatchEngine();
+  const players: [PlayerSlot | null, PlayerSlot | null] = [
+    { playerId: p1.id, username: p1.username, color: p1.color, score: p1.score, wsId: "ws1" },
+    null,
+  ];
+  const match = engine.createMatch(host.code, players);
+  engine.startMatch(match.id);
+
+  // Get a blue worker
+  const blueWorkers = Array.from(match.entities.values()).filter(
+    (e) => e.type === "worker" && e.ownerId === p1.id
+  );
+  const aliveWorker = blueWorkers[0];
+  const deadWorker = blueWorkers[1];
+  deadWorker.health = 0;
+
+  engine.tick(match.id);
+  const blueVis = match.visibilityData!.get(p1.id)!;
+  assert(blueVis.entityIds.has(aliveWorker.id), "Alive blue worker is visible to blue player");
+  assert(!blueVis.entityIds.has(deadWorker.id), "Dead blue worker is NOT visible (not a vision source)");
+
+  engine.stopMatch(match.id);
+}
+
+// ---- Fog of War: Crystal Has Extended Vision ----
+console.log("\n--- Fog of War: Crystal Has Extended Vision ---");
+{
+  const mgr = new LobbyManager();
+  const host = mgr.createLobby("HostUser");
+  mgr.joinLobby(host.code, "JoinUser");
+  const lobby = mgr.getLobby(host.code)!;
+  const p1 = lobby.players[0]!;
+  const p2 = lobby.players[1]!;
+
+  const engine = new MatchEngine();
+  const players: [PlayerSlot | null, PlayerSlot | null] = [
+    { playerId: p1.id, username: p1.username, color: p1.color, score: p1.score, wsId: "ws1" },
+    { playerId: p2.id, username: p2.username, color: p2.color, score: p2.score, wsId: "ws2" },
+  ];
+  const match = engine.createMatch(host.code, players);
+  engine.startMatch(match.id);
+
+  // Get blue crystal
+  const blueCrystal = Array.from(match.entities.values()).find(
+    (e) => e.type === "crystal" && e.ownerId === p1.id
+  )!;
+
+  // Create a red entity within crystal vision (150)
+  const redWorker = engine["createEntity"](
+    "worker", p2.id, blueCrystal.x + 140, blueCrystal.y, 100, 10, "#ff6666"
+  );
+  match.entities.set(redWorker.id, redWorker);
+
+  engine.tick(match.id);
+  const blueVis = match.visibilityData!.get(p1.id)!;
+  assert(blueVis.entityIds.has(redWorker.id), "Blue crystal sees red worker at distance 140 (within 150 vision)");
+
+  engine.stopMatch(match.id);
+}
+
 // ---- Server Message Handler Coverage ----
 console.log("\n--- Server Message Handler Coverage ---");
 {

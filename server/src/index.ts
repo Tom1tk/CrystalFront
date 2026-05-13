@@ -205,8 +205,24 @@ function serializeEconomy(economy: [PlayerEconomy | null, PlayerEconomy | null])
  * Build a serialized match state payload from the internal MatchState.
  * stateTimestamp is optional — included for GAME_STATE broadcasts but omitted for MATCH_START.
  */
-function buildMatchStatePayload(match: MatchState, stateTimestamp?: number) {
-  const allEntities = serializeEntities(match.entities);
+/**
+ * Build a serialized match state payload from the internal MatchState.
+ * When playerId is provided, filter entities and resource nodes by fog-of-war visibility.
+ * stateTimestamp is optional — included for GAME_STATE broadcasts but omitted for MATCH_START.
+ */
+function buildMatchStatePayload(match: MatchState, stateTimestamp?: number, playerId?: PlayerId) {
+  let allEntities = serializeEntities(match.entities);
+  let allNodes = serializeResourceNodes(match.resourceNodes);
+
+  // Fog of war: filter by visibility when playerId is provided and visibility data exists
+  if (playerId && match.visibilityData) {
+    const vis = match.visibilityData.get(playerId);
+    if (vis) {
+      allEntities = allEntities.filter(e => vis.entityIds.has(e.id));
+      allNodes = allNodes.filter(n => vis.nodeIds.has(n.id));
+    }
+  }
+
   return {
     id: match.id,
     lobbyCode: match.lobbyCode,
@@ -221,7 +237,7 @@ function buildMatchStatePayload(match: MatchState, stateTimestamp?: number) {
     startedAt: match.startedAt,
     endedAt: match.endedAt,
     economy: serializeEconomy(match.economy),
-    resourceNodes: serializeResourceNodes(match.resourceNodes),
+    resourceNodes: allNodes,
     config: {
       mapWidth: match.config.mapWidth,
       mapHeight: match.config.mapHeight,
@@ -239,14 +255,14 @@ function broadcastGameState(code: string) {
   const match = matchEngine.getMatch(matchId);
   if (!match) return;
 
-  const msg: ServerToClientMsg = {
-    type: SERVER_EVT.GAME_STATE,
-    payload: {
-      match: buildMatchStatePayload(match, Date.now()),
-    },
-  };
   for (const session of playerLobbyMap.values()) {
     if (session.code === code && session.matchId === matchId) {
+      const msg: ServerToClientMsg = {
+        type: SERVER_EVT.GAME_STATE,
+        payload: {
+          match: buildMatchStatePayload(match, Date.now(), session.playerId),
+        },
+      };
       sendWS(session.ws, msg);
     }
   }

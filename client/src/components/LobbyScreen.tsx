@@ -144,6 +144,7 @@ function FctPlayer({
                 fontSize: 10,
                 letterSpacing: "0.28em",
                 color: ready ? FCT.green : FCT.inkDim,
+                ...(ready ? { animation: "fct-ready 1.6s ease-in-out infinite" } : {}),
               }}
             >
               {ready ? "◆ READY" : "◇ NOT READY"}

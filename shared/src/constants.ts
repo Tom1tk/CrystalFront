@@ -32,6 +32,7 @@ export const BUILDING_DEFS: Record<
     damage?: number;
     range?: number;
     attackCooldown?: number;
+    visionRange?: number;
   }
 > = {
   barracks: {
@@ -42,6 +43,7 @@ export const BUILDING_DEFS: Record<
     height: 40,
     color: "#4488cc",
     produces: ["skirmisher", "gunner"],
+    visionRange: 120,
   },
   foundry: {
     cost: 100,
@@ -51,6 +53,7 @@ export const BUILDING_DEFS: Record<
     height: 44,
     color: "#cc6644",
     produces: ["bruiser", "medic"],
+    visionRange: 120,
   },
   supply_depot: {
     cost: 50,
@@ -60,6 +63,7 @@ export const BUILDING_DEFS: Record<
     height: 36,
     color: "#88aa66",
     supplyProvided: 10,
+    visionRange: 100,
   },
   turret: {
     cost: 60,
@@ -71,6 +75,7 @@ export const BUILDING_DEFS: Record<
     damage: 18,
     range: 150,
     attackCooldown: 12,
+    visionRange: 150,
   },
 };
 
@@ -92,6 +97,7 @@ export const UNIT_DEFS: Record<
     color: string;
     attackCooldown: number;
     produces?: string[];
+    visionRange?: number;
   }
 > = {
   worker: {
@@ -105,6 +111,7 @@ export const UNIT_DEFS: Record<
     speed: 2,
     color: "#aabbcc",
     attackCooldown: 20,
+    visionRange: 150,
   },
   skirmisher: {
     cost: 50,
@@ -117,6 +124,7 @@ export const UNIT_DEFS: Record<
     speed: 2.5,
     color: "#44dd88",
     attackCooldown: 10,
+    visionRange: 150,
   },
   gunner: {
     cost: 75,
@@ -129,6 +137,7 @@ export const UNIT_DEFS: Record<
     speed: 1.5,
     color: "#ddaa44",
     attackCooldown: 15,
+    visionRange: 180,
   },
   bruiser: {
     cost: 100,
@@ -141,6 +150,7 @@ export const UNIT_DEFS: Record<
     speed: 1.8,
     color: "#8866cc",
     attackCooldown: 8,
+    visionRange: 130,
   },
   medic: {
     cost: 60,
@@ -153,6 +163,7 @@ export const UNIT_DEFS: Record<
     speed: 2,
     color: "#44ccdd",
     attackCooldown: 25,
+    visionRange: 140,
   },
 };
 

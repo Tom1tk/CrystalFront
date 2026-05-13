@@ -158,6 +158,9 @@ export interface MatchState {
   config: MatchConfig;
   mapWidth: number;
   mapHeight: number;
+  // Fog of war — per-player visibility (set by server before sending)
+  visibleEntityIds?: string[];
+  visibleNodeIds?: string[];
 }
 
 export interface PlayerSlot {
