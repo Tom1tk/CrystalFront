@@ -1268,6 +1268,85 @@ console.log("\n--- Supply System ---");
   assertEqual(match.economy[0]!.maxSupply, STARTING_MAX_SUPPLY, "Reset: blue maxSupply back to 10");
   assertEqual(match.economy[1]!.supply, 3 * WORKER_SUPPLY_COST, "Reset: red supply back to 3");
 
+  // Cross-building queue supply cap enforcement
+  // Setup: 3 units, maxSupply 10, so 7 slots left. Queue 4 from barracks, 3 from foundry = 7 total queued.
+  // Attempt to queue 1 more from foundry should be blocked (would be 8 queued > 7 available).
+  const { BUILDING_DEFS: BD } = require("../shared/src/constants.js");
+
+  // Set phase to playing (resetMatch left it at "spawn")
+  match.phase = "playing";
+
+  // Ensure enough resources for building + training
+  match.economy[0]!.resources = 9999;
+
+  // Get worker IDs for construction
+  const crossWorkers = Array.from(match.entities.values())
+    .filter((e) => e.type === "worker" && e.ownerId === p1.id);
+  assert(crossWorkers.length >= 2, "At least 2 workers available");
+  const crossWorkerId = crossWorkers[0]!.id;
+  assert(!match.entities.get(crossWorkerId)?.buildTargetId, "Worker is not building");
+
+  // Build barracks
+  const crossBarracks = engine.processCommand(match.id, p1.id, {
+    type: "build",
+    buildingType: "barracks",
+    targetX: 500,
+    targetY: 300,
+    workerIds: [crossWorkerId],
+  });
+  assert(crossBarracks.success, `Barracks build: ${crossBarracks.message}`);
+  const crossBarr = Array.from(match.entities.values()).find(
+    (e) => e.type === "building" && e.buildingType === "barracks" && e.ownerId === p1.id
+  )!;
+  crossBarr.constructionProgress = 100;
+  crossBarr.health = BD.barracks.health;
+
+  // Queue 4 skirmishers from barracks (4 supply, each = 1)
+  for (let i = 0; i < 4; i++) {
+    const qr = engine.processCommand(match.id, p1.id, {
+      type: "train_unit",
+      buildingId: crossBarr.id,
+      unitType: "skirmisher",
+    });
+    assert(qr.success, `Barracks queue ${i + 1}/4 skirmisher`);
+  }
+
+  // Build foundry
+  const crossFoundry = engine.processCommand(match.id, p1.id, {
+    type: "build",
+    buildingType: "foundry",
+    entityId: p1.id,
+    targetX: 520,
+    targetY: 120,
+    workerIds: [crossWorkers[1]!.id],
+  });
+  assert(crossFoundry.success, `Foundry build: ${crossFoundry.message}`);
+  const crossFoundryEnt = Array.from(match.entities.values()).find(
+    (e) => e.type === "building" && e.buildingType === "foundry" && e.ownerId === p1.id
+  )!;
+  crossFoundryEnt.constructionProgress = 100;
+  crossFoundryEnt.health = BD.foundry.health;
+
+  // Queue bruisers from foundry (bruiser = 2 supply each)
+  // After barracks: 3 supply (workers) + 4 (skirmishers) = 7/10
+  // 1st bruiser: 7 + 2 = 9/10 ✓
+  // 2nd bruiser: 9 + 2 = 11 > 10 ✗ (blocked — cross-building cap enforced!)
+  const bruiser1 = engine.processCommand(match.id, p1.id, {
+    type: "train_unit",
+    buildingId: crossFoundryEnt.id,
+    unitType: "bruiser",
+  });
+  assert(bruiser1.success, "Foundry queue 1st bruiser (9/10)");
+
+  // 2nd bruiser should be blocked by cross-building supply cap
+  const bruiserOverCap = engine.processCommand(match.id, p1.id, {
+    type: "train_unit",
+    buildingId: crossFoundryEnt.id,
+    unitType: "bruiser",
+  });
+  assert(!bruiserOverCap.success, "Cross-building queue blocked at supply cap");
+  assertEqual(bruiserOverCap.message, "Not enough supply", "Cross-building error is supply");
+
   engine.stopMatch(match.id);
 }
 

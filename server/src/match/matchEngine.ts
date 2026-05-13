@@ -500,8 +500,10 @@ if (command.type === "gather") {
       const economy = match.economy[playerIdx];
       if (!economy) return { success: false, message: "No economy" };
 
-      // Check total queue supply demand (existing queue + new unit)
-      const queuedSupply = (building.productionQueue ?? []).reduce((sum, item) => sum + item.supplyCost, 0);
+      // Check total queue supply demand across ALL production buildings
+      const queuedSupply = Array.from(match.entities.values())
+        .filter((e) => e.ownerId === playerId && e.type === "building")
+        .reduce((sum, b) => sum + (b.productionQueue ?? []).reduce((s, item) => s + item.supplyCost, 0), 0);
       if (economy.supply + queuedSupply + unitDef.supplyCost > economy.maxSupply) {
         return { success: false, message: "Not enough supply" };
       }
