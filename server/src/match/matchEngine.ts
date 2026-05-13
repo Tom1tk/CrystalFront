@@ -26,7 +26,6 @@ import {
 
 const GATHER_RANGE = 60;
 const GATHER_RATE_PER_WORKER = GATHER_RATE_PER_TICK / 3;
-const GATHER_REDRain_THRESHOLD = 10; // Node must reach this before workers resume mining
 import {
   validatePlacement,
   findCrystalByColor,
@@ -1366,9 +1365,9 @@ if (command.type === "gather") {
 
   private processGathering(match: MatchState): void {
     for (const node of match.resourceNodes) {
-      // Skip if no gatherers or node below re-drain threshold
+      // Skip if no gatherers or node fully depleted (remaining < 1)
       if (node.gathererSlots.size === 0) continue;
-      if (node.remaining < GATHER_REDRain_THRESHOLD) continue;
+      if (node.remaining < 1) continue;
 
       const inRangeWorkers: EntityId[] = [];
       for (const workerId of node.gathererSlots) {
