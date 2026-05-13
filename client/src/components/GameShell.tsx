@@ -1426,6 +1426,52 @@ export default function GameShell({
     ctx.fillStyle = "rgba(255, 92, 243, 0.05)";
     ctx.fillRect(mapWidth * 0.8, 0, mapWidth * 0.2, mapHeight);
 
+    // ─── Vision fog overlay (tile-based, drawn BEFORE entities) ─
+    // Tiles outside all vision sources are darkened. Drawn before
+    // entities so player units always render clearly on top.
+    {
+      const myVisionSources = entities.filter(
+        (e) => e.ownerId === player.id && e.health > 0
+      );
+
+      if (myVisionSources.length > 0) {
+        const visionData: { x: number; y: number; rngSq: number }[] = [];
+        for (const src of myVisionSources) {
+          let rng = 100;
+          if (src.type === "crystal") rng = 150;
+          else {
+            const def = UNIT_DEFS[src.type] ?? BUILDING_DEFS[src.buildingType ?? ""] ?? {};
+            rng = (def.visionRange as number) ?? 100;
+          }
+          visionData.push({ x: src.x, y: src.y, rngSq: rng * rng });
+        }
+
+        const TILE = 14;
+        const tSX = Math.floor(cameraX / TILE) * TILE;
+        const tSY = Math.floor(cameraY / TILE) * TILE;
+        const tEX = cameraX + cssW + TILE;
+        const tEY = cameraY + cssH + TILE;
+
+        ctx.globalAlpha = 0.48;
+        ctx.fillStyle = "#050816";
+
+        for (let tx = tSX; tx < tEX; tx += TILE) {
+          for (let ty = tSY; ty < tEY; ty += TILE) {
+            const cx = tx + TILE / 2;
+            const cy = ty + TILE / 2;
+            let visible = false;
+            for (const v of visionData) {
+              const dx = cx - v.x;
+              const dy = cy - v.y;
+              if (dx * dx + dy * dy <= v.rngSq) { visible = true; break; }
+            }
+            if (!visible) ctx.fillRect(tx, ty, TILE, TILE);
+          }
+        }
+        ctx.globalAlpha = 1.0;
+      }
+    }
+
     // Lane lines
     ctx.strokeStyle = "#0f1320";
     ctx.lineWidth = 2;
@@ -1848,60 +1894,6 @@ export default function GameShell({
       ctx.fillRect(hoverPos.x - halfW, hoverPos.y - halfH, halfW * 2, halfH * 2);
     }
 
-    // ─── Vision fog overlay ────────────────────────────────────
-    // Darkens map areas outside current vision. The whole terrain
-    // remains visible — only non-visible areas are tinted darker.
-    const myVisionSources = entities.filter(
-      (e) => e.ownerId === player.id && e.health > 0
-    );
-
-    if (myVisionSources.length > 0) {
-      // Compute maximum vision range for fog margin
-      let maxVision = 100;
-      for (const src of myVisionSources) {
-        let rng = 100;
-        if (src.type === "crystal") { rng = 150; }
-        else {
-          const def = UNIT_DEFS[src.type] ?? BUILDING_DEFS[src.buildingType ?? ""] ?? {};
-          rng = (def.visionRange as number) ?? 100;
-        }
-        maxVision = Math.max(maxVision, rng);
-      }
-
-      // Fog region in world space (viewport + margin)
-      const fLeft = cameraX - maxVision;
-      const fTop = cameraY - maxVision;
-      const fW = cssW + maxVision * 2;
-      const fH = cssH + maxVision * 2;
-
-      // Step 1: fill with semi-transparent dark overlay
-      ctx.fillStyle = "rgba(5, 6, 18, 0.52)";
-      ctx.fillRect(fLeft, fTop, fW, fH);
-
-      // Step 2: cut out vision areas (destination-out erases fog)
-      ctx.globalCompositeOperation = "destination-out";
-      for (const src of myVisionSources) {
-        let vRange = 100;
-        if (src.type === "crystal") {
-          vRange = 150;
-        } else {
-          const def = UNIT_DEFS[src.type] ?? BUILDING_DEFS[src.buildingType ?? ""] ?? {};
-          vRange = (def.visionRange as number) ?? 100;
-        }
-
-        // Hard-edge circle, then gradient fade at outer 30%
-        const innerR = vRange * 0.7;
-        const grad = ctx.createRadialGradient(src.x, src.y, innerR, src.x, src.y, vRange);
-        grad.addColorStop(0, "rgba(0,0,0,1)");
-        grad.addColorStop(1, "rgba(0,0,0,0)");
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.arc(src.x, src.y, vRange, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.globalCompositeOperation = "source-over";
-    }
-
     ctx.restore();
 
     // Minimap
@@ -1921,33 +1913,50 @@ export default function GameShell({
         minimapY
       );
 
-      // Minimap fog overlay
-      if (myVisionSources.length > 0) {
-        // Fill minimap area with semi-transparent dark
-        ctx.fillStyle = "rgba(5, 6, 18, 0.55)";
-        ctx.fillRect(minimapX, minimapY, MINIMAP_WIDTH, MINIMAP_HEIGHT);
-        // Cut out vision circles (scaled to minimap)
-        ctx.globalCompositeOperation = "destination-out";
-        const mapWidth = matchState.mapWidth ?? matchState.config?.mapWidth ?? 6000;
-        const mapHeight = matchState.mapHeight ?? matchState.config?.mapHeight ?? 600;
-        const xScale = MINIMAP_WIDTH / mapWidth;
-        const yScale = MINIMAP_HEIGHT / mapHeight;
-        for (const src of myVisionSources) {
-          let vRange = 100;
-          if (src.type === "crystal") { vRange = 150; }
-          else {
-            const def = UNIT_DEFS[src.type] ?? BUILDING_DEFS[src.buildingType ?? ""] ?? {};
-            vRange = (def.visionRange as number) ?? 100;
+      // Minimap fog overlay (tile-based, screen space)
+      {
+        const mmSources = entities.filter(e => e.ownerId === player.id && e.health > 0);
+        if (mmSources.length > 0) {
+          const mapW = matchState.mapWidth ?? matchState.config?.mapWidth ?? 6000;
+          const xScale = MINIMAP_WIDTH / mapW;
+          const yScale = MINIMAP_HEIGHT / (matchState.mapHeight ?? matchState.config?.mapHeight ?? 600);
+
+          const mmData: { sx: number; sy: number; rngSq: number }[] = [];
+          for (const src of mmSources) {
+            let rng = 100;
+            if (src.type === "crystal") rng = 150;
+            else {
+              const def = UNIT_DEFS[src.type] ?? BUILDING_DEFS[src.buildingType ?? ""] ?? {};
+              rng = (def.visionRange as number) ?? 100;
+            }
+            const rr = rng * xScale;
+            mmData.push({ sx: minimapX + src.x * xScale, sy: minimapY + src.y * yScale, rngSq: rr * rr });
           }
-          const sx = minimapX + src.x * xScale;
-          const sy = minimapY + src.y * yScale;
-          const sr = vRange * xScale;
-          ctx.fillStyle = "#fff";
-          ctx.beginPath();
-          ctx.arc(sx, sy, sr, 0, Math.PI * 2);
-          ctx.fill();
+
+          const MMR = 4;
+          const msx = Math.floor(minimapX / MMR) * MMR;
+          const msy = Math.floor(minimapY / MMR) * MMR;
+          const mex = minimapX + MINIMAP_WIDTH + MMR;
+          const mey = minimapY + MINIMAP_HEIGHT + MMR;
+
+          ctx.globalAlpha = 0.55;
+          ctx.fillStyle = "#050816";
+
+          for (let tx = msx; tx < mex; tx += MMR) {
+            for (let ty = msy; ty < mey; ty += MMR) {
+              const cx = tx + MMR/2;
+              const cy = ty + MMR/2;
+              let visible = false;
+              for (const v of mmData) {
+                const dx = cx - v.sx;
+                const dy = cy - v.sy;
+                if (dx*dx + dy*dy <= v.rngSq) { visible = true; break; }
+              }
+              if (!visible) ctx.fillRect(tx, ty, MMR, MMR);
+            }
+          }
+          ctx.globalAlpha = 1.0;
         }
-        ctx.globalCompositeOperation = "source-over";
       }
     }
 
