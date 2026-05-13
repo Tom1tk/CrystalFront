@@ -1097,7 +1097,7 @@ if (command.type === "gather") {
       return def?.visionRange ?? 100;
     }
     if (entity.type === "crystal") {
-      return 150; // Crystal vision
+      return 225; // Crystal vision
     }
     const def = UNIT_DEFS[entity.type];
     return def?.visionRange ?? 100;

@@ -1438,7 +1438,7 @@ export default function GameShell({
         const visionData: { x: number; y: number; rngSq: number }[] = [];
         for (const src of myVisionSources) {
           let rng = 100;
-          if (src.type === "crystal") rng = 150;
+          if (src.type === "crystal") rng = 225;
           else {
             const def = UNIT_DEFS[src.type] ?? BUILDING_DEFS[src.buildingType ?? ""] ?? {};
             rng = (def.visionRange as number) ?? 100;
@@ -1924,7 +1924,7 @@ export default function GameShell({
           const mmData: { sx: number; sy: number; rngSq: number }[] = [];
           for (const src of mmSources) {
             let rng = 100;
-            if (src.type === "crystal") rng = 150;
+            if (src.type === "crystal") rng = 225;
             else {
               const def = UNIT_DEFS[src.type] ?? BUILDING_DEFS[src.buildingType ?? ""] ?? {};
               rng = (def.visionRange as number) ?? 100;
