@@ -26,7 +26,7 @@ import {
 
 const GATHER_RANGE = 60;
 const GATHER_RATE_PER_WORKER = GATHER_RATE_PER_TICK / 3;
-const GATHER_REDRain_THRESHOLD = 10; // Node must reach this before workers can mine again
+const GATHER_REDRain_THRESHOLD = 10; // Node must reach this before workers resume mining
 import {
   validatePlacement,
   findCrystalByColor,
