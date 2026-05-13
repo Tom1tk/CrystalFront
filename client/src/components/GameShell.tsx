@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Lobby, Player, MatchState, ResourceNodeDisplay, BuildingType, MatchEntity } from "../types";
-import { FCT, FctMark, FctStat, DbgBtn, HEX_CLIP, NOTCH_R } from "../design/facet";
+import { FCT, FctMark, FctStat, FctStyles, DbgBtn, HEX_CLIP, NOTCH_R } from "../design/facet";
 import { UNIT_DEFS, BUILDING_DEFS } from "@crystalfront/shared";
 
 interface GameShellProps {
@@ -335,6 +335,243 @@ function drawGatherLines(
       ctx.restore();
     }
   }
+}
+
+// ─── FACET SILHOUETTE CANVAS DRAWING ──────────────────────────
+// Colours: ice (#7ce8ff) friendly / magenta (#ff5cf3) enemy.
+
+const SIL_FILL_FRIENDLY = "#7ce8ff";
+const SIL_STROKE_FRIENDLY = "rgba(124,232,255,0.85)";
+const SIL_FILL_ENEMY = "#ff5cf3";
+const SIL_STROKE_ENEMY = "rgba(255,140,240,0.85)";
+const SIL_WASH_FRIENDLY = "rgba(124,232,255,0.15)";
+const SIL_WASH_ENEMY = "rgba(255,92,243,0.15)";
+
+function silColors(isMyTeam: boolean) {
+  return {
+    fill: isMyTeam ? SIL_FILL_FRIENDLY : SIL_FILL_ENEMY,
+    stroke: isMyTeam ? SIL_STROKE_FRIENDLY : SIL_STROKE_ENEMY,
+    wash: isMyTeam ? SIL_WASH_FRIENDLY : SIL_WASH_ENEMY,
+    ink: isMyTeam ? "#001321" : "#1a0014",
+  };
+}
+
+function drawCrystal(ctx: CanvasRenderingContext2D, x: number, y: number, isMyTeam: boolean, pulseA: number) {
+  const c = silColors(isMyTeam);
+  ctx.save();
+  ctx.translate(x, y);
+  // outer aura
+  ctx.beginPath();
+  ctx.moveTo(0, -30); ctx.lineTo(22, -10); ctx.lineTo(17, 22); ctx.lineTo(-17, 22); ctx.lineTo(-22, -10); ctx.closePath();
+  ctx.fillStyle = c.wash.replace("0.15", pulseA.toFixed(2));
+  ctx.fill();
+  // main gem body
+  ctx.beginPath();
+  ctx.moveTo(0, -22); ctx.lineTo(18, -8); ctx.lineTo(14, 18); ctx.lineTo(-14, 18); ctx.lineTo(-18, -8); ctx.closePath();
+  ctx.fillStyle = c.fill;
+  ctx.strokeStyle = c.stroke; ctx.lineWidth = 2;
+  ctx.fill(); ctx.stroke();
+  // top highlight facet
+  ctx.beginPath();
+  ctx.moveTo(0, -22); ctx.lineTo(9, -4); ctx.lineTo(-9, -4); ctx.closePath();
+  ctx.fillStyle = "rgba(255,255,255,0.45)"; ctx.fill();
+  // internal facet lines
+  ctx.strokeStyle = c.ink; ctx.lineWidth = 0.8;
+  ctx.globalAlpha = 0.55;
+  ctx.beginPath(); ctx.moveTo(-18, -8); ctx.lineTo(18, -8); ctx.stroke();
+  ctx.globalAlpha = 0.45;
+  ctx.beginPath(); ctx.moveTo(0, -22); ctx.lineTo(0, 18); ctx.stroke();
+  ctx.globalAlpha = 0.4;
+  ctx.beginPath(); ctx.moveTo(-14, 18); ctx.lineTo(0, -4); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(14, 18); ctx.lineTo(0, -4); ctx.stroke();
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+function drawBarracks(ctx: CanvasRenderingContext2D, x: number, y: number, isMyTeam: boolean) {
+  const c = silColors(isMyTeam);
+  ctx.save();
+  ctx.translate(x, y);
+  // main body
+  ctx.fillStyle = c.fill; ctx.strokeStyle = c.stroke; ctx.lineWidth = 2; ctx.globalAlpha = 0.9;
+  ctx.beginPath(); ctx.rect(-20, -14, 40, 34); ctx.fill(); ctx.stroke();
+  ctx.globalAlpha = 1;
+  // crenellations
+  ctx.fillStyle = c.fill;
+  ctx.fillRect(-20, -20, 8, 6);
+  ctx.fillRect(-4, -20, 8, 6);
+  ctx.fillRect(12, -20, 8, 6);
+  // door arch
+  ctx.fillStyle = c.ink; ctx.globalAlpha = 0.7;
+  ctx.beginPath(); ctx.moveTo(-7, 20); ctx.lineTo(-7, 4); ctx.quadraticCurveTo(0, -3, 7, 4); ctx.lineTo(7, 20); ctx.closePath();
+  ctx.fill();
+  // stripe
+  ctx.strokeStyle = c.ink; ctx.lineWidth = 1; ctx.globalAlpha = 0.35;
+  ctx.beginPath(); ctx.moveTo(-20, 2); ctx.lineTo(20, 2); ctx.stroke();
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+function drawFoundry(ctx: CanvasRenderingContext2D, x: number, y: number, isMyTeam: boolean, furnaceAlpha: number) {
+  const c = silColors(isMyTeam);
+  ctx.save();
+  ctx.translate(x, y);
+  // chimney
+  ctx.fillStyle = c.fill; ctx.strokeStyle = c.stroke; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.9;
+  ctx.beginPath(); ctx.rect(8, -22, 8, 14); ctx.fill(); ctx.stroke();
+  // pentagon body
+  ctx.globalAlpha = 0.92;
+  ctx.beginPath(); ctx.moveTo(-22, -6); ctx.lineTo(0, -22); ctx.lineTo(22, -6); ctx.lineTo(22, 22); ctx.lineTo(-22, 22); ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  ctx.globalAlpha = 1;
+  // furnace mouth
+  ctx.beginPath(); ctx.arc(0, 8, 7, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(255,184,107,${(0.7 + 0.3 * furnaceAlpha).toFixed(2)})`;
+  ctx.fill();
+  ctx.beginPath(); ctx.arc(0, 8, 3, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(255,255,255,${(0.55 + 0.2 * furnaceAlpha).toFixed(2)})`;
+  ctx.fill();
+  // ridge line
+  ctx.strokeStyle = c.ink; ctx.lineWidth = 1; ctx.globalAlpha = 0.35;
+  ctx.beginPath(); ctx.moveTo(-22, -6); ctx.lineTo(22, -6); ctx.stroke();
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+function drawDepot(ctx: CanvasRenderingContext2D, x: number, y: number, isMyTeam: boolean) {
+  const c = silColors(isMyTeam);
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = c.fill; ctx.strokeStyle = c.stroke; ctx.lineWidth = 2; ctx.globalAlpha = 0.9;
+  // two stacked containers
+  ctx.beginPath(); ctx.rect(-18, -18, 36, 18); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.rect(-18, 0, 36, 18); ctx.fill(); ctx.stroke();
+  ctx.globalAlpha = 1;
+  // ribbing
+  ctx.strokeStyle = c.ink; ctx.lineWidth = 1; ctx.globalAlpha = 0.5;
+  for (let v = -9; v <= 9; v += 9) {
+    ctx.beginPath(); ctx.moveTo(v, -15); ctx.lineTo(v, -3); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(v, 3); ctx.lineTo(v, 15); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+function drawTurret(ctx: CanvasRenderingContext2D, x: number, y: number, isMyTeam: boolean, angle: number) {
+  const c = silColors(isMyTeam);
+  ctx.save();
+  ctx.translate(x, y);
+  // base footprint
+  ctx.beginPath(); ctx.arc(0, 0, 15, 0, Math.PI * 2);
+  ctx.fillStyle = c.wash; ctx.strokeStyle = c.stroke; ctx.lineWidth = 2;
+  ctx.fill(); ctx.stroke();
+  // turret head + barrel
+  ctx.save();
+  ctx.rotate((angle * Math.PI) / 180);
+  ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI * 2);
+  ctx.fillStyle = c.fill; ctx.strokeStyle = c.stroke; ctx.lineWidth = 1;
+  ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.rect(-2, -22, 4, 14);
+  ctx.fillStyle = c.fill; ctx.strokeStyle = c.stroke; ctx.lineWidth = 1;
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = c.ink;
+  ctx.fillRect(-3, -24, 6, 3);
+  ctx.restore();
+  ctx.restore();
+}
+
+function drawWorker(ctx: CanvasRenderingContext2D, x: number, y: number, isMyTeam: boolean, selected: boolean) {
+  const c = silColors(isMyTeam);
+  ctx.save();
+  ctx.translate(x, y);
+  if (selected) {
+    ctx.beginPath(); ctx.arc(0, 0, 13, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(255,255,68,0.7)"; ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+  ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2);
+  ctx.fillStyle = c.fill; ctx.strokeStyle = c.stroke; ctx.lineWidth = 2;
+  ctx.fill(); ctx.stroke();
+  // tool wedge
+  ctx.beginPath(); ctx.moveTo(-4, -6); ctx.lineTo(4, -2); ctx.lineTo(-4, 2); ctx.closePath();
+  ctx.fillStyle = c.ink; ctx.globalAlpha = 0.7; ctx.fill(); ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+function drawSkirmisher(ctx: CanvasRenderingContext2D, x: number, y: number, isMyTeam: boolean, selected: boolean, facing: string) {
+  const c = silColors(isMyTeam);
+  ctx.save();
+  ctx.translate(x, y);
+  if (selected) {
+    ctx.beginPath(); ctx.arc(0, 0, 15, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(255,255,68,0.7)"; ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+  if (facing === "l") ctx.scale(-1, 1);
+  ctx.beginPath(); ctx.moveTo(11, 0); ctx.lineTo(-7, 9); ctx.lineTo(-7, -9); ctx.closePath();
+  ctx.fillStyle = c.fill; ctx.strokeStyle = c.stroke; ctx.lineWidth = 2;
+  ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
+
+function drawGunner(ctx: CanvasRenderingContext2D, x: number, y: number, isMyTeam: boolean, selected: boolean, facing: string) {
+  const c = silColors(isMyTeam);
+  ctx.save();
+  ctx.translate(x, y);
+  if (selected) {
+    ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(255,255,68,0.7)"; ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+  if (facing === "l") ctx.scale(-1, 1);
+  ctx.beginPath(); ctx.rect(-9, -7, 14, 14);
+  ctx.fillStyle = c.fill; ctx.strokeStyle = c.stroke; ctx.lineWidth = 2;
+  ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.rect(5, -2, 6, 4);
+  ctx.fillStyle = c.fill; ctx.strokeStyle = c.stroke; ctx.lineWidth = 1;
+  ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
+
+function drawBruiser(ctx: CanvasRenderingContext2D, x: number, y: number, isMyTeam: boolean, selected: boolean) {
+  const c = silColors(isMyTeam);
+  ctx.save();
+  ctx.translate(x, y);
+  if (selected) {
+    ctx.beginPath(); ctx.arc(0, 0, 17, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(255,255,68,0.7)"; ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+  // outer octagon
+  ctx.beginPath();
+  ctx.moveTo(-14, -5); ctx.lineTo(-8, -12); ctx.lineTo(8, -12); ctx.lineTo(14, -5);
+  ctx.lineTo(14, 5); ctx.lineTo(8, 12); ctx.lineTo(-8, 12); ctx.lineTo(-14, 5); ctx.closePath();
+  ctx.fillStyle = c.fill; ctx.strokeStyle = c.stroke; ctx.lineWidth = 2;
+  ctx.fill(); ctx.stroke();
+  // inner octagon
+  ctx.beginPath();
+  ctx.moveTo(-6, -3); ctx.lineTo(-3, -6); ctx.lineTo(3, -6); ctx.lineTo(6, -3);
+  ctx.lineTo(6, 3); ctx.lineTo(3, 6); ctx.lineTo(-3, 6); ctx.lineTo(-6, 3); ctx.closePath();
+  ctx.fillStyle = c.ink; ctx.globalAlpha = 0.35; ctx.fill(); ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+function drawMedic(ctx: CanvasRenderingContext2D, x: number, y: number, isMyTeam: boolean, selected: boolean) {
+  const c = silColors(isMyTeam);
+  ctx.save();
+  ctx.translate(x, y);
+  if (selected) {
+    ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(255,255,68,0.7)"; ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+  ctx.beginPath(); ctx.arc(0, 0, 11, 0, Math.PI * 2);
+  ctx.fillStyle = c.fill; ctx.strokeStyle = c.stroke; ctx.lineWidth = 2;
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = c.ink;
+  ctx.fillRect(-2, -7, 4, 14);
+  ctx.fillRect(-7, -2, 14, 4);
+  ctx.restore();
 }
 
 export default function GameShell({
@@ -1500,7 +1737,8 @@ export default function GameShell({
       if (node.x < cameraX - node.radius * 2 || node.x > cameraX + cssW + node.radius * 2) continue;
       ctx.beginPath();
       ctx.arc(node.x, node.y, node.radius + 6, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(204, 170, 68, 0.15)";
+      const nodePulseA = 0.08 + 0.07 * Math.sin(Date.now() / 2000);
+      ctx.fillStyle = `rgba(204, 170, 68, ${nodePulseA.toFixed(3)})`;
       ctx.fill();
       ctx.beginPath();
       ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
@@ -1537,75 +1775,62 @@ export default function GameShell({
       const localIsBuilding = entity.type === "building" || entity.type === "crystal";
 
       if (localIsBuilding) {
-        const w = entity.radius * 2;
-        const h = entity.radius * 2;
-        const bx = entity.x - w / 2;
-        const by = entity.y - h / 2;
-
-        ctx.fillStyle = "rgba(0,0,0,0.4)";
-        ctx.fillRect(bx + 2, by + 2, w, h);
-        const color = entity.buildingType ? BUILDING_COLORS[entity.buildingType] : entity.color;
-
-        // Dark background for building body
-        ctx.fillStyle = "rgba(20,20,20,0.6)";
-        ctx.fillRect(bx, by, w, h);
-
-        // Health fill from bottom to top
         const bHealthPct = entity.health / entity.maxHealth;
-        const bFillH = h * bHealthPct;
         const bFillColor = getTeamColor(entity.ownerId);
-        ctx.fillStyle = bFillColor;
-        ctx.fillRect(bx, by + h - bFillH, w, bFillH);
+        const bW = entity.radius * 2;
+        const bH = entity.radius * 2;
+        const bBX = entity.x - bW / 2;
+        const bBY = entity.y - bH / 2;
 
-        // Overlay team color at 40% opacity
-        ctx.fillStyle = color.replace(")", ",0.4)").replace("rgb", "rgba");
-        ctx.fillRect(bx, by, w, h);
-
-        if (entity.constructionProgress < 100) {
-          ctx.fillStyle = "rgba(0,0,0,0.5)";
-          ctx.fillRect(bx, by, w, h);
-          const progW = w * (entity.constructionProgress / 100);
-          ctx.fillStyle = color;
-          ctx.fillRect(bx, by, progW, h);
+        // Draw FACET silhouette based on building type
+        if (entity.type === "crystal") {
+          const pulseA = 0.08 + 0.07 * Math.sin(Date.now() / 2000);
+          drawCrystal(ctx, entity.x, entity.y, localIsMyTeam, pulseA);
+        } else if (entity.buildingType === "barracks") {
+          drawBarracks(ctx, entity.x, entity.y, localIsMyTeam);
+        } else if (entity.buildingType === "foundry") {
+          const furnaceAlpha = Math.sin(Date.now() / 900);
+          drawFoundry(ctx, entity.x, entity.y, localIsMyTeam, furnaceAlpha);
+        } else if (entity.buildingType === "supply_depot") {
+          drawDepot(ctx, entity.x, entity.y, localIsMyTeam);
+        } else if (entity.buildingType === "turret") {
+          drawTurret(ctx, entity.x, entity.y, localIsMyTeam, localIsMyTeam ? 90 : 270);
         }
 
+        // Construction progress dark overlay
+        if (entity.constructionProgress < 100) {
+          ctx.fillStyle = "rgba(0,0,0,0.5)";
+          ctx.fillRect(bBX, bBY, bW, bH);
+          const progW = bW * (entity.constructionProgress / 100);
+          ctx.fillStyle = bFillColor;
+          ctx.fillRect(bBX, bBY, progW, bH);
+        }
+
+        // Repair overlay
         if (entity.repairTargetId && entity.health < entity.maxHealth) {
           const repairPct = (entity.repairProgress ?? 0) / Math.max(1, entity.maxHealth - entity.health);
           ctx.fillStyle = "rgba(68, 204, 68, 0.4)";
-          ctx.fillRect(bx, by, w * repairPct, h);
+          ctx.fillRect(bBX, bBY, bW * repairPct, bH);
         }
 
-        if (localIsSelected) {
-          ctx.strokeStyle = "#ffff44";
-          ctx.lineWidth = 2;
-          ctx.strokeRect(bx - 3, by - 3, w + 6, h + 6);
-        } else if (entity.autoAttackEnabled) {
+        // Auto-attack dash border
+        if (entity.autoAttackEnabled && !localIsSelected) {
           ctx.strokeStyle = "rgba(255,100,100,0.5)";
           ctx.lineWidth = 1.5;
           ctx.setLineDash([3, 3]);
-          ctx.strokeRect(bx - 3, by - 3, w + 6, h + 6);
+          ctx.strokeRect(bBX - 3, bBY - 3, bW + 6, bH + 6);
           ctx.setLineDash([]);
         }
 
-        ctx.strokeStyle = localIsMyTeam ? "rgba(124,232,255,0.6)" : "rgba(255,92,243,0.6)";
-        ctx.lineWidth = 2;
-        ctx.strokeRect(bx, by, w, h);
-
-        ctx.fillStyle = "#ffffff";
-        ctx.font = "bold 9px monospace";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        const label = entity.type === "crystal" ? "HQ" : (entity.buildingType ? BUILDING_LABELS[entity.buildingType] : "??");
-        ctx.fillText(label, entity.x, entity.y - 4);
-
+        // Construction progress bar
         if (entity.constructionProgress < 100) {
-          const barWidth = w;
+          const barWidth = bW;
           const barHeight = 4;
-          const barY = by - 8;
+          const barY = bBY - 8;
           ctx.fillStyle = "#333";
-          ctx.fillRect(bx, barY, barWidth, barHeight);
+          ctx.fillRect(bBX, barY, barWidth, barHeight);
           ctx.fillStyle = "#44cc44";
-          ctx.fillRect(bx, barY, barWidth * (entity.constructionProgress / 100), barHeight);
+          ctx.fillRect(bBX, barY, barWidth * (entity.constructionProgress / 100), barHeight);
           const workerCount = entity.buildWorkerIds?.length ?? 0;
           if (workerCount > 0) {
             ctx.fillStyle = "#aaa";
@@ -1615,66 +1840,55 @@ export default function GameShell({
           }
         }
 
+        // Health bar below building
         if (entity.health < entity.maxHealth) {
-          const barWidth = w;
-          const barHeight = 4;
-          const barY = by + h + 4;
-          const healthPct = entity.health / entity.maxHealth;
           ctx.fillStyle = "#333";
-          ctx.fillRect(bx, barY, barWidth, barHeight);
-          ctx.fillStyle = getTeamColor(entity.ownerId);
-          ctx.fillRect(bx, barY, barWidth * healthPct, barHeight);
+          ctx.fillRect(bBX, bBY + bH + 4, bW, 4);
+          ctx.fillStyle = bFillColor;
+          ctx.fillRect(bBX, bBY + bH + 4, bW * bHealthPct, 4);
         }
 
+        // Production queue bar
         if (entity.productionQueue.length > 0) {
           const firstItem = entity.productionQueue[0];
-          const queueBarWidth = w;
-          const queueBarHeight = 4;
-          const queueBarY = by + h + 10;
+          const queueBarY = bBY + bH + 10;
           ctx.fillStyle = "#333";
-          ctx.fillRect(bx, queueBarY, queueBarWidth, queueBarHeight);
+          ctx.fillRect(bBX, queueBarY, bW, 4);
           const prodPct = 1 - firstItem.remainingTicks / firstItem.buildTime;
           ctx.fillStyle = "#7ce8ff";
-          ctx.fillRect(bx, queueBarY, queueBarWidth * prodPct, queueBarHeight);
+          ctx.fillRect(bBX, queueBarY, bW * prodPct, 4);
           ctx.fillStyle = "#aaa";
           ctx.font = "8px monospace";
           ctx.textAlign = "center";
           ctx.fillText(`${firstItem.unitType}: ${Math.ceil(firstItem.remainingTicks / 10)}s`, entity.x, queueBarY + 12);
         }
       } else {
-        ctx.beginPath();
-        ctx.arc(entity.x + 2, entity.y + 2, entity.radius, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(0,0,0,0.4)";
-        ctx.fill();
+        // Determine facing (skirmisher/gunner)
+        let facing = "r";
+        if (entity.attackTargetId && entities) {
+          const target = entities.find((e) => e.id === entity.attackTargetId);
+          if (target && target.x < entity.x) facing = "l";
+        } else if (entity.moveTarget !== undefined && entity.moveTarget.x < entity.x) {
+          facing = "l";
+        }
 
-        // Dark background fill (empty/void area)
-        ctx.beginPath();
-        ctx.arc(entity.x, entity.y, entity.radius, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(20,20,20,0.6)";
-        ctx.fill();
+        const isUnitSelected = localIsSelected || selectedEntityIdsRef.current.has(entity.id);
 
-        // Health fill from bottom to top
-        const healthPct = entity.health / entity.maxHealth;
-        const fillR = entity.radius;
-        const fillBottom = entity.y + fillR;
-        const fillHeight = fillR * 2 * healthPct;
-        const fillTop = fillBottom - fillHeight;
-        const fillColor = getTeamColor(entity.ownerId);
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(entity.x, entity.y, entity.radius, 0, Math.PI * 2);
-        ctx.clip();
-        ctx.fillStyle = fillColor;
-        ctx.fillRect(entity.x - fillR, fillTop, fillR * 2, fillHeight);
-        ctx.restore();
+        // Draw FACET silhouette based on unit type
+        if (entity.type === "worker") {
+          drawWorker(ctx, entity.x, entity.y, localIsMyTeam, isUnitSelected);
+        } else if (entity.type === "skirmisher") {
+          drawSkirmisher(ctx, entity.x, entity.y, localIsMyTeam, isUnitSelected, facing);
+        } else if (entity.type === "gunner") {
+          drawGunner(ctx, entity.x, entity.y, localIsMyTeam, isUnitSelected, facing);
+        } else if (entity.type === "bruiser") {
+          drawBruiser(ctx, entity.x, entity.y, localIsMyTeam, isUnitSelected);
+        } else if (entity.type === "medic") {
+          drawMedic(ctx, entity.x, entity.y, localIsMyTeam, isUnitSelected);
+        }
 
-        if (localIsSelected || selectedEntityIdsRef.current.has(entity.id)) {
-          ctx.beginPath();
-          ctx.arc(entity.x, entity.y, entity.radius + 4, 0, Math.PI * 2);
-          ctx.strokeStyle = "#ffff44";
-          ctx.lineWidth = 2;
-          ctx.stroke();
-        } else if (entity.autoAttackEnabled) {
+        // Auto-attack enabled dash border
+        if (entity.autoAttackEnabled && !isUnitSelected) {
           ctx.beginPath();
           ctx.arc(entity.x, entity.y, entity.radius + 3, 0, Math.PI * 2);
           ctx.strokeStyle = "rgba(255,100,100,0.5)";
@@ -1684,36 +1898,17 @@ export default function GameShell({
           ctx.setLineDash([]);
         }
 
-        ctx.beginPath();
-        ctx.arc(entity.x, entity.y, entity.radius, 0, Math.PI * 2);
-        ctx.strokeStyle = localIsMyTeam ? "rgba(124,232,255,0.6)" : "rgba(255,92,243,0.6)";
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        // Team color indicator on top of health fill
-        ctx.beginPath();
-        ctx.arc(entity.x, entity.y - entity.radius * 0.35, 2, 0, Math.PI * 2);
-        ctx.fillStyle = entity.color;
-        ctx.fill();
-
+        // Health bar above unit
         if (entity.health < entity.maxHealth) {
           const barWidth = entity.radius * 2;
-          const barHeight = 4;
           const barX = entity.x - entity.radius;
           const barY = entity.y - entity.radius - 8;
           const healthPct = entity.health / entity.maxHealth;
           ctx.fillStyle = "#333";
-          ctx.fillRect(barX, barY, barWidth, barHeight);
+          ctx.fillRect(barX, barY, barWidth, 4);
           ctx.fillStyle = getTeamColor(entity.ownerId);
-          ctx.fillRect(barX, barY, barWidth * healthPct, barHeight);
+          ctx.fillRect(barX, barY, barWidth * healthPct, 4);
         }
-
-        ctx.fillStyle = "#ffffff";
-        ctx.font = "bold 10px monospace";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        const label = entity.type === "crystal" ? "C" : entity.type === "worker" ? "W" : entity.type === "resource_node" ? "R" : entity.type === "skirmisher" ? "S" : entity.type === "gunner" ? "G" : entity.type === "bruiser" ? "B" : entity.type === "medic" ? "M" : "?";
-        ctx.fillText(label, entity.x, entity.y);
       }
     }
 
@@ -2005,6 +2200,7 @@ export default function GameShell({
 
   return (
     <div style={styles.container}>
+      <FctStyles />
       <div ref={containerRef} style={styles.gameContainer}>
         <canvas
           ref={canvasRef}
