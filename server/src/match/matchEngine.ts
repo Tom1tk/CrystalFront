@@ -1062,6 +1062,10 @@ if (command.type === "gather") {
 
     for (const [playerId, vis] of visibility) {
       const myEntities = allEntities.filter(e => e.ownerId === playerId && e.health > 0);
+      // Every player always sees their own living entities (safety guarantee)
+      for (const mine of myEntities) {
+        vis.entityIds.add(mine.id);
+      }
       for (const src of myEntities) {
         const vRange = this.getVisionRange(src);
         const vRangeSq = vRange * vRange;
