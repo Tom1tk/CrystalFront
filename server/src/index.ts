@@ -61,7 +61,7 @@ matchEngine.setMatchEndCallback((matchId: string, winner: string) => {
   }
 });
 
-const playerLobbyMap = new Map<string, { playerId: string; code: string; ws: WebSocket; matchId?: string }>();
+const playerLobbyMap = new Map<string, { playerId: string; code: string; ws: WebSocket; matchId?: string; isBot?: boolean }>();
 const lobbyMatchMap = new Map<string, string>();
 const matchLobbyMap = new Map<string, string>(); // matchId -> lobbyCode reverse lookup
 
@@ -256,7 +256,7 @@ function broadcastGameState(code: string) {
   if (!match) return;
 
   for (const session of playerLobbyMap.values()) {
-    if (session.code === code && session.matchId === matchId) {
+    if (session.code === code && session.matchId === matchId && !session.isBot) {
       const msg: ServerToClientMsg = {
         type: SERVER_EVT.GAME_STATE,
         payload: {
@@ -399,6 +399,7 @@ wss.on("connection", (ws) => {
           playerId: botPlayer.id,
           code,
           ws: ws, // reuse player's WS for bot's messages so game state reaches them
+          isBot: true,
         });
         
         // Mark both ready
