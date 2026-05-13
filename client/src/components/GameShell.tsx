@@ -492,9 +492,19 @@ function drawWorker(ctx: CanvasRenderingContext2D, x: number, y: number, isMyTea
   ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2);
   ctx.fillStyle = c.fill; ctx.strokeStyle = c.stroke; ctx.lineWidth = 2;
   ctx.fill(); ctx.stroke();
-  // tool wedge
-  ctx.beginPath(); ctx.moveTo(-4, -6); ctx.lineTo(4, -2); ctx.lineTo(-4, 2); ctx.closePath();
-  ctx.fillStyle = c.ink; ctx.globalAlpha = 0.7; ctx.fill(); ctx.globalAlpha = 1;
+  // drill — downward facing
+  ctx.fillStyle = c.ink; ctx.globalAlpha = 0.75;
+  // drill bit head
+  ctx.fillRect(-3, -1, 6, 3);
+  // drill shaft
+  ctx.fillRect(-2, 2, 4, 6);
+  // drill tip triangle
+  ctx.beginPath(); ctx.moveTo(-2.5, 8); ctx.lineTo(0, 10); ctx.lineTo(2.5, 8); ctx.closePath();
+  ctx.fill();
+  // shaft highlight
+  ctx.fillStyle = "rgba(255,255,255,0.2)";
+  ctx.fillRect(-1, 2, 2, 3);
+  ctx.globalAlpha = 1;
   ctx.restore();
 }
 
@@ -1795,6 +1805,14 @@ export default function GameShell({
           drawDepot(ctx, entity.x, entity.y, localIsMyTeam);
         } else if (entity.buildingType === "turret") {
           drawTurret(ctx, entity.x, entity.y, localIsMyTeam, localIsMyTeam ? 90 : 270);
+        }
+
+        // Selected glow — slow breathing pulse
+        if (localIsSelected) {
+          const glowAlpha = 0.35 + 0.5 * Math.sin(Date.now() / 1500);
+          ctx.strokeStyle = `rgba(255,255,68,${glowAlpha.toFixed(2)})`;
+          ctx.lineWidth = 2.5;
+          ctx.strokeRect(bBX - 4, bBY - 4, bW + 8, bH + 8);
         }
 
         // Construction progress dark overlay
