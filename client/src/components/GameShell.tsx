@@ -1717,30 +1717,33 @@ export default function GameShell({
       }
     }
 
-    // Rally point markers + dotted lines — only visible when the connected building is selected
+    // Rally point markers — always visible for own buildings
     for (const entity of entities) {
-      if (entity.rallyPoint && selectedEntityIds.has(entity.id)) {
+      if (entity.rallyPoint && entity.ownerId === player.id) {
         const rx = entity.rallyPoint.x;
         const ry = entity.rallyPoint.y;
+        const isSelected = selectedEntityIds.has(entity.id);
 
-        // Dotted line from building to rally point
-        ctx.save();
-        ctx.beginPath();
-        ctx.setLineDash([6, 4]);
-        ctx.moveTo(entity.x, entity.y);
-        ctx.lineTo(rx, ry);
-        ctx.strokeStyle = "rgba(255, 180, 50, 0.5)";
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        ctx.restore();
+        // Dotted line from building to rally point — only when selected
+        if (isSelected) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.setLineDash([6, 4]);
+          ctx.moveTo(entity.x, entity.y);
+          ctx.lineTo(rx, ry);
+          ctx.strokeStyle = "rgba(255, 180, 50, 0.5)";
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          ctx.restore();
+        }
 
-        // Rally point marker - orange diamond
+        // Rally point marker - orange diamond (always visible)
         ctx.save();
         ctx.translate(rx, ry);
         ctx.rotate(Math.PI / 4);
         ctx.beginPath();
         ctx.rect(-5, -5, 10, 10);
-        ctx.fillStyle = "rgba(255, 180, 50, 0.8)";
+        ctx.fillStyle = isSelected ? "rgba(255, 180, 50, 0.8)" : "rgba(255, 180, 50, 0.4)";
         ctx.fill();
         ctx.strokeStyle = "rgba(255, 220, 100, 0.9)";
         ctx.lineWidth = 1.5;
