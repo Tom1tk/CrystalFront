@@ -1061,7 +1061,11 @@ if (command.type === "gather") {
     }
 
     for (const [playerId, vis] of visibility) {
-      const myEntities = allEntities.filter(e => e.ownerId === playerId && e.health > 0);
+      const myEntities = allEntities.filter(
+        (e) =>
+          e.ownerId === playerId &&
+          (e.health > 0 || (e.type === "building" && e.constructionProgress < 100))
+      );
       // Every player always sees their own living entities (safety guarantee)
       for (const mine of myEntities) {
         vis.entityIds.add(mine.id);

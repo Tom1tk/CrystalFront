@@ -62,7 +62,7 @@ export const BUILDING_DEFS: Record<
     width: 36,
     height: 36,
     color: "#88aa66",
-    supplyProvided: 10,
+    supplyProvided: 3,
     visionRange: 150,
   },
   turret: {
