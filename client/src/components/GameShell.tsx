@@ -482,6 +482,7 @@ export default function GameShell({
 
   // Death particle system
   const prevEntityIdsRef = useRef<Set<string>>(new Set());
+  const prevEntityHealthRef = useRef<Map<string, number>>(new Map());
   const particlesRef = useRef<Array<{
     x: number; y: number; vx: number; vy: number;
     life: number; maxLife: number; color: string; size: number
@@ -1242,6 +1243,8 @@ export default function GameShell({
       const prevIds = prevEntityIdsRef.current;
       for (const prevId of prevIds) {
         if (!currentIds.has(prevId)) {
+          const prevHealth = prevEntityHealthRef.current.get(prevId);
+          if (prevHealth === undefined || prevHealth > 0) continue; // left vision, not dead
           const prevPos = prevEntitiesRef.current.get(prevId);
           const deadEntity = ms.entities.find((e: MatchEntity) => e.id === prevId);
           const isCrystal = deadEntity?.type === "crystal";
@@ -1299,6 +1302,7 @@ export default function GameShell({
 
         entities.forEach((e: MatchEntity) => {
           prevEntitiesRef.current.set(e.id, { x: e.x, y: e.y });
+          prevEntityHealthRef.current.set(e.id, e.health);
         });
 
         prevTimestampRef.current = Date.now();
@@ -1314,6 +1318,7 @@ export default function GameShell({
         // First frame or no previous state — just use current positions
         entities.forEach((e: MatchEntity) => {
           prevEntitiesRef.current.set(e.id, { x: e.x, y: e.y });
+          prevEntityHealthRef.current.set(e.id, e.health);
         });
         oldPositionsRef.current = new Map(prevEntitiesRef.current);
         prevTimestampRef.current = Date.now();
@@ -1843,6 +1848,60 @@ export default function GameShell({
       ctx.fillRect(hoverPos.x - halfW, hoverPos.y - halfH, halfW * 2, halfH * 2);
     }
 
+    // ─── Vision fog overlay ────────────────────────────────────
+    // Darkens map areas outside current vision. The whole terrain
+    // remains visible — only non-visible areas are tinted darker.
+    const myVisionSources = entities.filter(
+      (e) => e.ownerId === player.id && e.health > 0
+    );
+
+    if (myVisionSources.length > 0) {
+      // Compute maximum vision range for fog margin
+      let maxVision = 100;
+      for (const src of myVisionSources) {
+        let rng = 100;
+        if (src.type === "crystal") { rng = 150; }
+        else {
+          const def = UNIT_DEFS[src.type] ?? BUILDING_DEFS[src.buildingType ?? ""] ?? {};
+          rng = (def.visionRange as number) ?? 100;
+        }
+        maxVision = Math.max(maxVision, rng);
+      }
+
+      // Fog region in world space (viewport + margin)
+      const fLeft = cameraX - maxVision;
+      const fTop = cameraY - maxVision;
+      const fW = cssW + maxVision * 2;
+      const fH = cssH + maxVision * 2;
+
+      // Step 1: fill with semi-transparent dark overlay
+      ctx.fillStyle = "rgba(5, 6, 18, 0.52)";
+      ctx.fillRect(fLeft, fTop, fW, fH);
+
+      // Step 2: cut out vision areas (destination-out erases fog)
+      ctx.globalCompositeOperation = "destination-out";
+      for (const src of myVisionSources) {
+        let vRange = 100;
+        if (src.type === "crystal") {
+          vRange = 150;
+        } else {
+          const def = UNIT_DEFS[src.type] ?? BUILDING_DEFS[src.buildingType ?? ""] ?? {};
+          vRange = (def.visionRange as number) ?? 100;
+        }
+
+        // Hard-edge circle, then gradient fade at outer 30%
+        const innerR = vRange * 0.7;
+        const grad = ctx.createRadialGradient(src.x, src.y, innerR, src.x, src.y, vRange);
+        grad.addColorStop(0, "rgba(0,0,0,1)");
+        grad.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(src.x, src.y, vRange, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalCompositeOperation = "source-over";
+    }
+
     ctx.restore();
 
     // Minimap
@@ -1861,6 +1920,35 @@ export default function GameShell({
         minimapX,
         minimapY
       );
+
+      // Minimap fog overlay
+      if (myVisionSources.length > 0) {
+        // Fill minimap area with semi-transparent dark
+        ctx.fillStyle = "rgba(5, 6, 18, 0.55)";
+        ctx.fillRect(minimapX, minimapY, MINIMAP_WIDTH, MINIMAP_HEIGHT);
+        // Cut out vision circles (scaled to minimap)
+        ctx.globalCompositeOperation = "destination-out";
+        const mapWidth = matchState.mapWidth ?? matchState.config?.mapWidth ?? 6000;
+        const mapHeight = matchState.mapHeight ?? matchState.config?.mapHeight ?? 600;
+        const xScale = MINIMAP_WIDTH / mapWidth;
+        const yScale = MINIMAP_HEIGHT / mapHeight;
+        for (const src of myVisionSources) {
+          let vRange = 100;
+          if (src.type === "crystal") { vRange = 150; }
+          else {
+            const def = UNIT_DEFS[src.type] ?? BUILDING_DEFS[src.buildingType ?? ""] ?? {};
+            vRange = (def.visionRange as number) ?? 100;
+          }
+          const sx = minimapX + src.x * xScale;
+          const sy = minimapY + src.y * yScale;
+          const sr = vRange * xScale;
+          ctx.fillStyle = "#fff";
+          ctx.beginPath();
+          ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalCompositeOperation = "source-over";
+      }
     }
 
     ctx.restore();
