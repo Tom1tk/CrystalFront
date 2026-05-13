@@ -1843,63 +1843,6 @@ export default function GameShell({
       ctx.fillRect(hoverPos.x - halfW, hoverPos.y - halfH, halfW * 2, halfH * 2);
     }
 
-    // Fog of war overlay — dark overlay with vision circles revealed.
-    // Uses destination-out compositing (removes fog where vision sources see).
-    // Each vision source creates a radial hole: 70% full-visibility radius,
-    // smooth fade from 70% to 100% to avoid hard edges.
-    {
-      const myVisionEntities = entities.filter(
-        (e) => e.ownerId === player.id && e.health > 0
-      );
-
-      if (myVisionEntities.length === 0) {
-        // No vision sources — cover everything in fog
-        ctx.fillStyle = "rgba(8, 8, 24, 0.92)";
-        ctx.fillRect(cameraX, cameraY, cssW, cssH);
-      } else {
-        // Determine max vision range
-        let maxVision = 100;
-        for (const ent of myVisionEntities) {
-          const def = UNIT_DEFS[ent.type] ?? BUILDING_DEFS[ent.buildingType ?? ""] ?? {};
-          maxVision = Math.max(maxVision, (def.visionRange as number) ?? 100);
-          if (ent.type === "crystal") maxVision = Math.max(maxVision, 150);
-        }
-
-        // Extend fog margin beyond viewport for entities near edges
-        const fogLeft = cameraX - maxVision;
-        const fogTop = cameraY - maxVision;
-        const fogW = cssW + maxVision * 2;
-        const fogH = cssH + maxVision * 2;
-
-        // Step 1: Fill fog area with dark overlay
-        ctx.fillStyle = "rgba(8, 8, 24, 0.82)";
-        ctx.fillRect(fogLeft, fogTop, fogW, fogH);
-
-        // Step 2: Cut out vision holes (destination-out erases fog)
-        ctx.globalCompositeOperation = "destination-out";
-        for (const ent of myVisionEntities) {
-          let vRange = 100;
-          if (ent.type === "crystal") {
-            vRange = 150;
-          } else {
-            const def = UNIT_DEFS[ent.type] ?? BUILDING_DEFS[ent.buildingType ?? ""] ?? {};
-            vRange = (def.visionRange as number) ?? 100;
-          }
-
-          // Solid cut out from center to 60%, then gradient fade to edge
-          const innerR = vRange * 0.6;
-          const grad = ctx.createRadialGradient(ent.x, ent.y, innerR, ent.x, ent.y, vRange);
-          grad.addColorStop(0, "rgba(0,0,0,1)");
-          grad.addColorStop(1, "rgba(0,0,0,0)");
-          ctx.fillStyle = grad;
-          ctx.beginPath();
-          ctx.arc(ent.x, ent.y, vRange, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        ctx.globalCompositeOperation = "source-over";
-      }
-    }
-
     ctx.restore();
 
     // Minimap
