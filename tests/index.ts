@@ -967,17 +967,17 @@ console.log("\n--- Fog of War: Visibility Ranges Defined ---");
   }
 
   // Actual vision ranges from constants.ts
-  assertEqual(UNIT_DEFS.worker.visionRange, 150, "Worker visionRange is 150");
-  assertEqual(UNIT_DEFS.skirmisher.visionRange, 150, "Skirmisher visionRange is 150");
-  assertEqual(UNIT_DEFS.gunner.visionRange, 180, "Gunner visionRange is 180");
-  assertEqual(UNIT_DEFS.bruiser.visionRange, 130, "Bruiser visionRange is 130");
-  assertEqual(UNIT_DEFS.medic.visionRange, 140, "Medic visionRange is 140");
+  assertEqual(UNIT_DEFS.worker.visionRange, 225, "Worker visionRange is 225");
+  assertEqual(UNIT_DEFS.skirmisher.visionRange, 300, "Skirmisher visionRange is 300");
+  assertEqual(UNIT_DEFS.gunner.visionRange, 270, "Gunner visionRange is 270");
+  assertEqual(UNIT_DEFS.bruiser.visionRange, 195, "Bruiser visionRange is 195");
+  assertEqual(UNIT_DEFS.medic.visionRange, 210, "Medic visionRange is 210");
 
   // Buildings
-  assertEqual(BUILDING_DEFS.barracks.visionRange, 120, "Barracks visionRange is 120");
-  assertEqual(BUILDING_DEFS.foundry.visionRange, 120, "Foundry visionRange is 120");
-  assertEqual(BUILDING_DEFS.supply_depot.visionRange, 100, "Supply depot visionRange is 100");
-  assertEqual(BUILDING_DEFS.turret.visionRange, 150, "Turret visionRange is 150");
+  assertEqual(BUILDING_DEFS.barracks.visionRange, 180, "Barracks visionRange is 180");
+  assertEqual(BUILDING_DEFS.foundry.visionRange, 180, "Foundry visionRange is 180");
+  assertEqual(BUILDING_DEFS.supply_depot.visionRange, 150, "Supply depot visionRange is 150");
+  assertEqual(BUILDING_DEFS.turret.visionRange, 225, "Turret visionRange is 225");
 }
 
 // ---- Fog of War: Basic Visibility Computation ----
@@ -1054,20 +1054,20 @@ console.log("\n--- Fog of War: Entity Within Range Is Visible ---");
   );
   const blueWorker = blueWorkers[0];
 
-  // Move a red worker within blue vision range (100)
   const redWorkers = Array.from(match.entities.values()).filter(
-    (e) => e.type === "worker" && e.ownerId === p2.id
+    (e: any) => e.type === "worker" && e.ownerId === p2.id
   );
   const redWorker = redWorkers[0];
-  redWorker.x = blueWorker.x + 50; // Within 150 vision range
+  // Move a red worker within blue worker vision range (225)
+  redWorker.x = blueWorker.x + 200; // Within 225 vision range
   redWorker.y = blueWorker.y;
 
   engine.tick(match.id);
   const blueVis = match.visibilityData!.get(p1.id)!;
   assert(blueVis.entityIds.has(redWorker.id), "Blue worker sees red worker within vision range");
 
-  // Move red worker far away (beyond vision)
-  redWorker.x = blueWorker.x + 200;
+  // Move red worker far away (beyond all vision)
+  redWorker.x = blueWorker.x + 400;
   engine.tick(match.id);
   const blueVis2 = match.visibilityData!.get(p1.id)!;
   assert(!blueVis2.entityIds.has(redWorker.id), "Blue worker does NOT see red worker beyond vision range");
@@ -1094,7 +1094,7 @@ console.log("\n--- Fog of War: Dead Entities Not Visible ---");
 
   // Get a blue worker
   const blueWorkers = Array.from(match.entities.values()).filter(
-    (e) => e.type === "worker" && e.ownerId === p1.id
+    (e: any) => e.type === "worker" && e.ownerId === p1.id
   );
   const aliveWorker = blueWorkers[0];
   const deadWorker = blueWorkers[1];
@@ -1131,9 +1131,9 @@ console.log("\n--- Fog of War: Crystal Has Extended Vision ---");
     (e) => e.type === "crystal" && e.ownerId === p1.id
   )!;
 
-  // Create a red entity within crystal vision (150)
+  // Create a red entity within crystal vision (225)
   const redWorker = engine["createEntity"](
-    "worker", p2.id, blueCrystal.x + 140, blueCrystal.y, 100, 10, "#ff6666"
+    "worker", p2.id, blueCrystal.x + 200, blueCrystal.y, 100, 10, "#ff6666"
   );
   match.entities.set(redWorker.id, redWorker);
 
