@@ -26,6 +26,7 @@ import {
 
 const GATHER_RANGE = 60;
 const GATHER_RATE_PER_WORKER = GATHER_RATE_PER_TICK / 3;
+const GATHER_REDRain_THRESHOLD = 10; // Node must reach this before workers can mine again
 import {
   validatePlacement,
   findCrystalByColor,
@@ -1365,7 +1366,9 @@ if (command.type === "gather") {
 
   private processGathering(match: MatchState): void {
     for (const node of match.resourceNodes) {
-      if (node.remaining <= 0 || node.gathererSlots.size === 0) continue;
+      // Skip if no gatherers or node below re-drain threshold
+      if (node.gathererSlots.size === 0) continue;
+      if (node.remaining < GATHER_REDRain_THRESHOLD) continue;
 
       const inRangeWorkers: EntityId[] = [];
       for (const workerId of node.gathererSlots) {
@@ -1424,20 +1427,15 @@ if (command.type === "gather") {
       }
 
       if (node.remaining <= 0) {
-        // Don't clear gatherers — they stay assigned for passive re-drain
+        // Workers stay assigned — they'll re-drain once node hits threshold
       }
     }
 
-    // Passive refresh: slowly replenish nodes; re-drain when workers are assigned
+    // Passive refresh: all nodes slowly replenish regardless of assignment
     for (const node of match.resourceNodes) {
       if (node.remaining < node.capacity) {
         node.remaining = Math.min(node.capacity, node.remaining + 0.1);
       }
-
-      // If workers are still assigned and node has re-accumulated enough,
-      // they should start gathering again (handled automatically above since
-      // gathererSlots isn't cleared — workers just need to be in range).
-      // No extra logic needed here; the gather loop above handles it.
     }
   }
 
