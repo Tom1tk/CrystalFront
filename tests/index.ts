@@ -1144,6 +1144,133 @@ console.log("\n--- Fog of War: Crystal Has Extended Vision ---");
   engine.stopMatch(match.id);
 }
 
+// ---- Supply System ----
+console.log("\n--- Supply System ---");
+{
+  const { STARTING_MAX_SUPPLY, WORKER_SUPPLY_COST } = require("../shared/src/constants.js");
+
+  const mgr = new LobbyManager();
+  const host = mgr.createLobby("HostUser");
+  mgr.joinLobby(host.code, "JoinUser");
+  const lobby = mgr.getLobby(host.code)!;
+  const p1 = lobby.players[0]!;
+  const p2 = lobby.players[1]!;
+
+  const engine = new MatchEngine();
+  const players: [PlayerSlot | null, PlayerSlot | null] = [
+    { playerId: p1.id, username: p1.username, color: p1.color, score: p1.score, wsId: "ws1" },
+    { playerId: p2.id, username: p2.username, color: p2.color, score: p2.score, wsId: "ws2" },
+  ];
+  const match = engine.createMatch(host.code, players);
+
+  // Initial supply: 3 workers * 1 = 3 per player
+  assertEqual(match.economy[0]!.supply, 3 * WORKER_SUPPLY_COST, "Blue starts with supply = 3 (3 workers)");
+  assertEqual(match.economy[1]!.supply, 3 * WORKER_SUPPLY_COST, "Red starts with supply = 3 (3 workers)");
+  assertEqual(match.economy[0]!.maxSupply, STARTING_MAX_SUPPLY, "Blue starts with maxSupply = 10");
+  assertEqual(match.economy[1]!.maxSupply, STARTING_MAX_SUPPLY, "Red starts with maxSupply = 10");
+
+  engine.startMatch(match.id);
+
+  // Train a worker — should increase supply
+  const blueCrystal = Array.from(match.entities.values()).find(
+    (e) => e.type === "crystal" && e.ownerId === p1.id
+  )!;
+  const trainResult = engine.processCommand(match.id, p1.id, {
+    type: "train_worker",
+    entityId: blueCrystal.id,
+  });
+  assert(trainResult.success, "Train worker succeeds at supply 3/10");
+  assertEqual(match.economy[0]!.supply, 4 * WORKER_SUPPLY_COST, "Blue supply is 4 after training worker");
+
+  // Unit spawn from production queue increments supply
+  // Train a skirmisher from barracks
+  // First build a barracks
+  const { BUILDING_DEFS } = require("../shared/src/constants.js");
+  const barracksDef = BUILDING_DEFS.barracks;
+  const blueWorkers = Array.from(match.entities.values()).filter(
+    (e) => e.type === "worker" && e.ownerId === p1.id
+  );
+  const buildResult = engine.processCommand(match.id, p1.id, {
+    type: "build",
+    buildingType: "barracks",
+    targetX: 300,
+    targetY: 300,
+    workerIds: [blueWorkers[0].id],
+  });
+  if (buildResult.success) {
+    const barracks = Array.from(match.entities.values()).find(
+      (e) => e.type === "building" && e.buildingType === "barracks" && e.ownerId === p1.id
+    )!;
+    // Fast complete the barracks
+    barracks.constructionProgress = 100;
+
+    // Queue a skirmisher
+    const trainUnitResult = engine.processCommand(match.id, p1.id, {
+      type: "train_unit",
+      entityId: barracks.id,
+      unitType: "skirmisher",
+    });
+    assert(trainUnitResult.success, "Queue skirmisher succeeds");
+    // Supply NOT incremented yet (unit not spawned)
+    assertEqual(match.economy[0]!.supply, 4 * WORKER_SUPPLY_COST, "Supply unchanged while unit in queue");
+
+    // Tick until skirmisher spawns
+    for (let i = 0; i < 100; i++) {
+      engine.tick(match.id);
+      if (barracks.productionQueue.length === 0) break;
+    }
+    // Supply incremented after spawn
+    const skirmisherCost = require("../shared/src/constants.js").UNIT_DEFS.skirmisher.supplyCost;
+    assertEqual(
+      match.economy[0]!.supply,
+      (4 + skirmisherCost) * WORKER_SUPPLY_COST,
+      "Supply increased after skirmisher spawns from queue"
+    );
+  }
+
+  // Supply cap blocks training when at limit
+  // Set supply to near cap to test, ensure enough resources
+  match.economy[0]!.supply = STARTING_MAX_SUPPLY - 1;
+  match.economy[0]!.resources = 999;
+  const trainAtCap = engine.processCommand(match.id, p1.id, {
+    type: "train_worker",
+    entityId: blueCrystal.id,
+  });
+  assert(trainAtCap.success, "Train worker succeeds at supply 9/10");
+  assertEqual(match.economy[0]!.supply, STARTING_MAX_SUPPLY, "Supply is now 10/10");
+
+  // At cap — should fail
+  const trainOverCap = engine.processCommand(match.id, p1.id, {
+    type: "train_worker",
+    entityId: blueCrystal.id,
+  });
+  assert(!trainOverCap.success, "Train worker blocked at supply 10/10");
+  assert(trainOverCap.message === "Not enough supply", "Error message is 'Not enough supply'");
+
+  // Supply depot increases maxSupply
+  match.economy[0]!.supply = 5; // reset
+  const depotProvided = BUILDING_DEFS.supply_depot.supplyProvided;
+  const oldMax = match.economy[0]!.maxSupply;
+  match.economy[0]!.maxSupply += depotProvided;
+  assertEqual(match.economy[0]!.maxSupply, oldMax + depotProvided, "Supply depot adds " + depotProvided + " to maxSupply");
+
+  // Depot destruction reduces maxSupply
+  match.economy[0]!.maxSupply -= depotProvided;
+  assertEqual(match.economy[0]!.maxSupply, oldMax, "Destroyed depot removes " + depotProvided + " from maxSupply");
+
+  // Reset match preserves supply accounting
+  const resetPlayers: [PlayerSlot | null, PlayerSlot | null] = [
+    { playerId: p1.id, username: p1.username, color: p1.color, score: p1.score, wsId: "ws1" },
+    { playerId: p2.id, username: p2.username, color: p2.color, score: p2.score, wsId: "ws2" },
+  ];
+  engine.resetMatch(match.id, resetPlayers);
+  assertEqual(match.economy[0]!.supply, 3 * WORKER_SUPPLY_COST, "Reset: blue supply back to 3");
+  assertEqual(match.economy[0]!.maxSupply, STARTING_MAX_SUPPLY, "Reset: blue maxSupply back to 10");
+  assertEqual(match.economy[1]!.supply, 3 * WORKER_SUPPLY_COST, "Reset: red supply back to 3");
+
+  engine.stopMatch(match.id);
+}
+
 // ---- Server Message Handler Coverage ----
 console.log("\n--- Server Message Handler Coverage ---");
 {
