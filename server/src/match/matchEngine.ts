@@ -172,14 +172,14 @@ export class MatchEngine {
       players[0]
         ? {
             resources: config.startingResources,
-            supply: 0,
+            supply: 3 * config.workerSupplyCost, // 3 starting workers
             maxSupply: config.startingMaxSupply,
           }
         : null,
       players[1]
         ? {
             resources: config.startingResources,
-            supply: 0,
+            supply: 3 * config.workerSupplyCost, // 3 starting workers
             maxSupply: config.startingMaxSupply,
           }
         : null,
@@ -1515,6 +1515,11 @@ private processConstruction(match: MatchState): void {
                  unit.moveTarget = { ...entity.rallyPoint };
                }
                match.entities.set(unit.id, unit);
+               // Increment supply for the spawned unit
+               const spawnPIdx = match.players.findIndex((p) => p?.playerId === entity.ownerId);
+               if (spawnPIdx >= 0 && match.economy[spawnPIdx]) {
+                 match.economy[spawnPIdx]!.supply += item.supplyCost;
+               }
                entity.productionQueue.shift();
              }
            }
@@ -1781,14 +1786,14 @@ private processConstruction(match: MatchState): void {
       players[0]
         ? {
             resources: config.startingResources,
-            supply: 0,
+            supply: 3 * config.workerSupplyCost, // 3 starting workers
             maxSupply: config.startingMaxSupply,
           }
         : null,
       players[1]
         ? {
             resources: config.startingResources,
-            supply: 0,
+            supply: 3 * config.workerSupplyCost, // 3 starting workers
             maxSupply: config.startingMaxSupply,
           }
         : null,
