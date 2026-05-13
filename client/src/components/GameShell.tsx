@@ -492,18 +492,19 @@ function drawWorker(ctx: CanvasRenderingContext2D, x: number, y: number, isMyTea
   ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2);
   ctx.fillStyle = c.fill; ctx.strokeStyle = c.stroke; ctx.lineWidth = 2;
   ctx.fill(); ctx.stroke();
-  // drill — downward facing
+  // conical cartoon drill — centered, downward-pointing
   ctx.fillStyle = c.ink; ctx.globalAlpha = 0.75;
-  // drill bit head
-  ctx.fillRect(-3, -1, 6, 3);
-  // drill shaft
-  ctx.fillRect(-2, 2, 4, 6);
-  // drill tip triangle
-  ctx.beginPath(); ctx.moveTo(-2.5, 8); ctx.lineTo(0, 10); ctx.lineTo(2.5, 8); ctx.closePath();
+  // cone body
+  ctx.beginPath(); ctx.moveTo(-5, -3); ctx.lineTo(0, 8); ctx.lineTo(5, -3); ctx.closePath();
   ctx.fill();
-  // shaft highlight
+  // drill ridges (horizontal bands)
   ctx.fillStyle = "rgba(255,255,255,0.2)";
-  ctx.fillRect(-1, 2, 2, 3);
+  ctx.fillRect(-3, 0, 6, 1.5);
+  ctx.fillRect(-1.5, 3, 3, 1.5);
+  // cone tip highlight
+  ctx.fillStyle = "rgba(255,255,255,0.35)";
+  ctx.beginPath(); ctx.moveTo(0, 8); ctx.lineTo(-1, 4); ctx.lineTo(0, 4); ctx.closePath();
+  ctx.fill();
   ctx.globalAlpha = 1;
   ctx.restore();
 }
