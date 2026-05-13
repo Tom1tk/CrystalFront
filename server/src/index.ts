@@ -348,7 +348,7 @@ wss.on("connection", (ws) => {
             const matchStartMsg: ServerToClientMsg = {
               type: SERVER_EVT.MATCH_START,
               payload: {
-                match: buildMatchStatePayload(match),
+                match: buildMatchStatePayload(match, undefined, result.player.id),
               },
             };
             sendWS(ws, matchStartMsg);
@@ -434,7 +434,7 @@ wss.on("connection", (ws) => {
           const matchStartMsg: ServerToClientMsg = {
             type: SERVER_EVT.MATCH_START,
             payload: {
-              match: buildMatchStatePayload(match),
+              match: buildMatchStatePayload(match, undefined, playerId),
             },
           };
           sendWS(ws, matchStartMsg);
@@ -487,15 +487,15 @@ wss.on("connection", (ws) => {
           // Also record in reverse map for broadcast callback
           matchLobbyMap.set(match.id, session.code);
 
-          // Notify both players of match start
-          const matchStartMsg: ServerToClientMsg = {
-            type: SERVER_EVT.MATCH_START,
-            payload: {
-              match: buildMatchStatePayload(match),
-            },
-          };
+          // Notify both players of match start (per-player filtered)
           for (const s of playerLobbyMap.values()) {
             if (s.code === session.code) {
+              const matchStartMsg: ServerToClientMsg = {
+                type: SERVER_EVT.MATCH_START,
+                payload: {
+                  match: buildMatchStatePayload(match, undefined, s.playerId),
+                },
+              };
               sendWS(s.ws, matchStartMsg);
             }
           }
