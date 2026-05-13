@@ -67,6 +67,8 @@ export interface MatchState {
   config: MatchConfig;
   mapWidth: number;
   mapHeight: number;
+  // Fog of war — computed per tick, keyed by playerId
+  visibilityData?: Map<PlayerId, { entityIds: Set<EntityId>; nodeIds: Set<string> }>;
 }
 
 export interface MatchEntity {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Lobby, Player, MatchState, ResourceNodeDisplay, BuildingType, MatchEntity } from "../types";
 import { FCT, FctMark, FctStat, DbgBtn, HEX_CLIP, NOTCH_R } from "../design/facet";
+import { UNIT_DEFS, BUILDING_DEFS } from "@crystalfront/shared";
 
 interface GameShellProps {
   lobby: Lobby;
@@ -32,10 +33,10 @@ const EDGE_SCROLL_THRESHOLD = 50;
 const EDGE_SCROLL_SPEED = 3;
 
 const BUILDING_COLORS: Record<BuildingType, string> = {
-  barracks: "#4488cc",
-  foundry: "#cc6644",
-  supply_depot: "#88aa66",
-  turret: "#aa8844",
+  barracks: "#3aa8c8",
+  foundry: "#ff5cf3",
+  supply_depot: "#7cffb0",
+  turret: "#ffb86b",
 };
 
 const BUILDING_LABELS: Record<BuildingType, string> = {
@@ -90,7 +91,7 @@ function drawMinimap(
   const xScale = mmW / mapWidth;
   const yScale = mmH / mapHeight;
 
-  ctx.fillStyle = "rgba(0, 0, 20, 0.85)";
+  ctx.fillStyle = "rgba(0, 0, 12, 0.88)";
   ctx.fillRect(minimapX, minimapY, mmW, mmH);
 
   ctx.strokeStyle = "rgba(100, 100, 200, 0.4)";
@@ -110,7 +111,7 @@ function drawMinimap(
     const ex = minimapX + entity.x * xScale;
     const ey = minimapY + (entity.y / mapHeight) * mmH;
     const color = entity.type === "crystal"
-      ? (entity.ownerId === undefined ? "#888" : playerColor === "blue" ? "#4488ff" : "#ff4444")
+      ? (entity.ownerId === undefined ? "#888" : playerColor === "blue" ? "#7ce8ff" : "#ff5cf3")
       : entity.color;
     ctx.fillStyle = color;
     ctx.fillRect(ex - 1, ey - 1, 2, 2);
@@ -683,7 +684,6 @@ export default function GameShell({
         }
 
         // Start drag origin for box-select
-        console.log("[box-select] mousedown at", { screenX, screenY });
         setIsDragging(true);
         setDragStart({ x: screenX, y: screenY });
         return;
@@ -1108,9 +1108,7 @@ export default function GameShell({
         }
 
         // Box-select if dragged more than 10px
-        console.log("[box-select] mouseup at", { screenX, screenY, dx, dy, dragStart });
         if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
-          console.log("[box-select] drag distance > 10, doing box-select");
           const x1 = Math.min(dragStart.x, screenX);
           const y1 = Math.min(dragStart.y, screenY);
           const x2 = Math.max(dragStart.x, screenX);
@@ -1121,19 +1119,15 @@ export default function GameShell({
           const worldX2 = x2 + cameraXRef.current;
           const worldY2 = y2 + cameraYRef.current;
 
-          console.log("[box-select] world bounds", { worldX1, worldY1, worldX2, worldY2 });
-
           const boxSelected = new Set<string>();
           for (const entity of matchState?.entities ?? []) {
             if (entity.ownerId !== player.id) continue;
             if (entity.type === "crystal" || entity.type === "building") continue;
             if (entity.x >= worldX1 && entity.x <= worldX2 && entity.y >= worldY1 && entity.y <= worldY2) {
               boxSelected.add(entity.id);
-              console.log("[box-select] included entity", entity.id, entity.type, "at", entity.x, entity.y);
             }
           }
 
-          console.log("[box-select] selected count:", boxSelected.size);
           setSelectedEntityIds(boxSelected);
           setSelectedEntityId(null);
         }
@@ -1253,7 +1247,7 @@ export default function GameShell({
           const isCrystal = deadEntity?.type === "crystal";
           const px = prevPos?.x ?? (deadEntity?.x ?? 0);
           const py = prevPos?.y ?? (deadEntity?.y ?? 0);
-          const color = isCrystal ? "#4488ff" : "#ff6633";
+          const color = isCrystal ? "#7ce8ff" : "#ff5cf3";
           for (let i = 0; i < 10; i++) {
             const angle = Math.random() * Math.PI * 2;
             const speed = 1 + Math.random() * 2;
@@ -1390,7 +1384,7 @@ export default function GameShell({
     ctx.save();
     ctx.scale(dpr, dpr);
 
-    ctx.fillStyle = "#0a0a1a";
+    ctx.fillStyle = "#05060a";
     ctx.fillRect(0, 0, cssW, cssH);
 
     const cameraX = cameraXRef.current;
@@ -1400,7 +1394,7 @@ export default function GameShell({
 
     const getTeamColor = (ownerId: string) => {
       const pIdx = matchState.players.findIndex((p) => p?.playerId === ownerId);
-      return pIdx === 0 ? "#4488ff" : "#ff4444";
+      return pIdx === 0 ? "#7ce8ff" : "#ff5cf3";
     };
 
     const laneTop = mapHeight * 0.2;
@@ -1412,23 +1406,23 @@ export default function GameShell({
     ctx.translate(-cameraX, -cameraY);
 
     // Lane background
-    ctx.fillStyle = "#111122";
+    ctx.fillStyle = "#0a0c14";
     ctx.fillRect(0, laneTop, mapWidth, laneBottom - laneTop);
 
     // Combat zone
     const combatLeft = mapWidth * 0.25;
     const combatRight = mapWidth * 0.75;
-    ctx.fillStyle = "#151530";
+    ctx.fillStyle = "#0d1020";
     ctx.fillRect(combatLeft, combatZoneTop, combatRight - combatLeft, combatZoneBottom - combatZoneTop);
 
     // Build zones
-    ctx.fillStyle = "rgba(68, 136, 255, 0.05)";
+    ctx.fillStyle = "rgba(124, 232, 255, 0.05)";
     ctx.fillRect(0, 0, mapWidth * 0.2, mapHeight);
-    ctx.fillStyle = "rgba(255, 68, 68, 0.05)";
+    ctx.fillStyle = "rgba(255, 92, 243, 0.05)";
     ctx.fillRect(mapWidth * 0.8, 0, mapWidth * 0.2, mapHeight);
 
     // Lane lines
-    ctx.strokeStyle = "#222244";
+    ctx.strokeStyle = "#0f1320";
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(0, laneTop);
@@ -1441,7 +1435,7 @@ export default function GameShell({
 
     // Center dashed line
     const midX = mapWidth / 2;
-    ctx.strokeStyle = "#1a1a3a";
+    ctx.strokeStyle = "#1a1f3a";
     ctx.lineWidth = 1;
     ctx.setLineDash([8, 8]);
     ctx.beginPath();
@@ -1542,7 +1536,7 @@ export default function GameShell({
           ctx.setLineDash([]);
         }
 
-        ctx.strokeStyle = localIsMyTeam ? "rgba(100,150,255,0.6)" : "rgba(255,100,100,0.6)";
+        ctx.strokeStyle = localIsMyTeam ? "rgba(124,232,255,0.6)" : "rgba(255,92,243,0.6)";
         ctx.lineWidth = 2;
         ctx.strokeRect(bx, by, w, h);
 
@@ -1589,7 +1583,7 @@ export default function GameShell({
           ctx.fillStyle = "#333";
           ctx.fillRect(bx, queueBarY, queueBarWidth, queueBarHeight);
           const prodPct = 1 - firstItem.remainingTicks / firstItem.buildTime;
-          ctx.fillStyle = "#88aaff";
+          ctx.fillStyle = "#7ce8ff";
           ctx.fillRect(bx, queueBarY, queueBarWidth * prodPct, queueBarHeight);
           ctx.fillStyle = "#aaa";
           ctx.font = "8px monospace";
@@ -1641,7 +1635,7 @@ export default function GameShell({
 
         ctx.beginPath();
         ctx.arc(entity.x, entity.y, entity.radius, 0, Math.PI * 2);
-        ctx.strokeStyle = localIsMyTeam ? "rgba(100,150,255,0.6)" : "rgba(255,100,100,0.6)";
+        ctx.strokeStyle = localIsMyTeam ? "rgba(124,232,255,0.6)" : "rgba(255,92,243,0.6)";
         ctx.lineWidth = 2;
         ctx.stroke();
 
@@ -1847,6 +1841,62 @@ export default function GameShell({
       const color = BUILDING_COLORS[selectedBuildingType];
       ctx.fillStyle = valid ? `${color}66` : "rgba(204,68,68,0.3)";
       ctx.fillRect(hoverPos.x - halfW, hoverPos.y - halfH, halfW * 2, halfH * 2);
+    }
+
+    // Fog of war overlay — dark overlay with vision circles cut out
+    {
+      const myVisionEntities = entities.filter(
+        (e) => e.ownerId === player.id && e.health > 0
+      );
+
+      // Determine max vision range for sizing
+      let maxVision = 100;
+      for (const ent of myVisionEntities) {
+        const def = UNIT_DEFS[ent.type] ?? BUILDING_DEFS[ent.buildingType ?? ""] ?? {};
+        maxVision = Math.max(maxVision, (def.visionRange as number) ?? 100);
+        if (ent.type === "crystal") maxVision = Math.max(maxVision, 150);
+      }
+
+      // Compute viewport bounds in world space
+      const vpLeft = cameraX;
+      const vpTop = cameraY;
+      const vpRight = cameraX + cssW + maxVision * 2;
+      const vpBottom = cameraY + cssH + maxVision * 2;
+
+      // Draw fog overlay using a clipping region: viewport + margin
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(vpLeft, vpTop, cssW + maxVision * 2, cssH + maxVision * 2);
+      ctx.clip();
+
+      // Dark fog fill over viewport
+      ctx.fillStyle = "rgba(8, 8, 24, 0.85)";
+      ctx.fillRect(vpLeft, vpTop, cssW + maxVision * 2, cssH + maxVision * 2);
+
+      // Cut out vision circles
+      ctx.globalCompositeOperation = "destination-out";
+      for (const ent of myVisionEntities) {
+        let vRange = 100;
+        if (ent.type === "crystal") {
+          vRange = 150;
+        } else {
+          const def = UNIT_DEFS[ent.type] ?? BUILDING_DEFS[ent.buildingType ?? ""] ?? {};
+          vRange = (def.visionRange as number) ?? 100;
+        }
+
+        // Gradient fade at vision edge
+        const grad = ctx.createRadialGradient(ent.x, ent.y, vRange * 0.5, ent.x, ent.y, vRange);
+        grad.addColorStop(0, "rgba(0,0,0,1)");
+        grad.addColorStop(0.7, "rgba(0,0,0,1)");
+        grad.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(ent.x, ent.y, vRange, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.globalCompositeOperation = "source-over";
+      ctx.restore();
     }
 
     ctx.restore();

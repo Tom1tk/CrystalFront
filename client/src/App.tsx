@@ -16,10 +16,8 @@ function useScreenFlow() {
 
   // Transition to lobby when lobby data arrives (using ref to avoid unstable ws dependency)
   useEffect(() => {
-    console.log("[App] lobbyState change:", !!ws.lobbyState, "hasLobbyStateRef:", hasLobbyStateRef.current, "screen:", screen);
     if (ws.lobbyState && !hasLobbyStateRef.current) {
       hasLobbyStateRef.current = true;
-      console.log("[App] transitioning to lobby");
       setScreen("lobby");
     }
   }, [ws.lobbyState]);
@@ -50,10 +48,8 @@ function useScreenFlow() {
 
   const handleHost = useCallback(
     (name: string) => {
-      console.log("[App] handleHost called, name:", name, "ws.connected:", ws.connected);
       ws.createLobby(name);
       setIsHost(true);
-      console.log("[App] setIsHost(true) called");
     },
     [ws]
   );
@@ -108,7 +104,6 @@ function useScreenFlow() {
 
   const handleGameCommand = useCallback(
     (command: { type: string; entityId?: string; targetX?: number; targetY?: number; targetEntityId?: string; buildingType?: string }) => {
-      console.log("[App] handleGameCommand:", JSON.stringify(command), "playerId:", ws.playerId);
       ws.sendGameCommand(command as never);
     },
     [ws]

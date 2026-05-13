@@ -33,8 +33,58 @@ export const HEX_CLIP = "polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(10
 export const NOTCH_R = "polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%)";
 export const NOTCH_L = "polygon(0 0, 100% 0, 100% 100%, 18px 100%, 0 calc(100% - 18px))";
 
+// ─── ANIMATION CSS INJECTION ────────────────────────────────
+// Injects keyframes + utility classes once per FctFrame mount.
+// Classes: fct-glow (stat counters), fct-breathe (friendly auras),
+//   fct-furnace (foundry hearth), fct-ready (ready badge pulse),
+//   fct-vp (minimap viewport scan), fct-svg-pulse / fct-svg-pulse-fast.
+// fct-flicker / fct-shimmer-c / fct-shimmer-m are reserved for
+// the wordmark/headlines via the Refract flicker prop (disabled).
+export function FctStyles() {
+  return (
+    <style>{`
+@keyframes fct-flicker {
+  0%, 6%, 11%, 38%, 43%, 70%, 71.4%, 73%, 100% { opacity: 1; filter: brightness(1); }
+  8%, 10%      { opacity: 0.72; filter: brightness(0.82); }
+  40%          { opacity: 0.58; filter: brightness(0.7); }
+  70.6%, 71%   { opacity: 0.42; filter: brightness(0.6); }
+  72%          { opacity: 0.86; filter: brightness(0.9); }
+}
+@keyframes fct-shimmer-c {
+  0%, 100% { transform: translate(-1.5px, 0); opacity: 0.85; }
+  50%      { transform: translate(-3px,   0); opacity: 1;    }
+}
+@keyframes fct-shimmer-m {
+  0%, 100% { transform: translate(1.5px, 0); opacity: 0.85; }
+  50%      { transform: translate(3px,   0); opacity: 1;    }
+}
+@keyframes fct-breathe { 0%, 100% { opacity: 0.45; } 50% { opacity: 0.95; } }
+@keyframes fct-furnace { 0%, 100% { opacity: 0.7;  } 50% { opacity: 1;    } }
+@keyframes fct-glow {
+  0%, 100% { text-shadow: 0 0 6px  rgba(124,232,255,0);    }
+  50%      { text-shadow: 0 0 14px rgba(124,232,255,0.42); }
+}
+@keyframes fct-vp {
+  0%, 100% { box-shadow: 0 0 6px  rgba(124,232,255,0.30), inset 0 0 4px rgba(124,232,255,0.15); }
+  50%      { box-shadow: 0 0 14px rgba(124,232,255,0.62), inset 0 0 8px rgba(124,232,255,0.38); }
+}
+@keyframes fct-ready { 0%, 100% { opacity: 0.75; } 50% { opacity: 1; } }
+@keyframes fct-svg-pulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+.fct-glow   { animation: fct-glow   4s   ease-in-out infinite; }
+.fct-breathe{ animation: fct-breathe 4s   ease-in-out infinite; }
+.fct-furnace{ animation: fct-furnace 1.8s ease-in-out infinite; }
+.fct-ready  { animation: fct-ready  1.6s ease-in-out infinite; }
+.fct-vp     { animation: fct-vp     3.2s ease-in-out infinite; }
+.fct-svg-pulse     { animation: fct-svg-pulse 4s   ease-in-out infinite; }
+.fct-svg-pulse-fast{ animation: fct-svg-pulse 2.4s ease-in-out infinite; }
+`}</style>
+  );
+}
+
 // ─── REFRACT EFFECT ──────────────────────────────────────────
-// Chromatic-split headline: cyan left / magenta right offset
+// Chromatic-split headline: cyan left / magenta right offset.
+// `flicker` adds slow brightness wobble (NOT applied — reserved
+// for wordmark/headlines per user preference).
 export function Refract({
   children,
   accent = false,
@@ -138,6 +188,7 @@ export function FctFrame({
         ...style,
       }}
     >
+      <FctStyles />
       <div
         style={{
           position: "absolute",
@@ -337,6 +388,7 @@ export function FctStat({
           letterSpacing: "-0.01em",
           color: tint || FCT.ink,
           fontWeight: 700,
+          animation: "fct-glow 4s ease-in-out infinite",
         }}
       >
         {value}
@@ -371,5 +423,77 @@ export function DbgBtn({
     >
       {children}
     </button>
+  );
+}
+
+// ─── TEAM COLOR HELPERS ─────────────────────────────────────
+// Maps 'me'/'enemy' owner to the FACET ice/magenta palette.
+export const teamFill = (owner: string) =>
+  owner === "me" ? FCT.ice : FCT.red;
+export const teamStroke = (owner: string) =>
+  owner === "me" ? "rgba(124,232,255,0.85)" : "rgba(255,140,240,0.85)";
+export const teamWash = (owner: string) =>
+  owner === "me" ? "rgba(124,232,255,0.18)" : "rgba(255,92,243,0.18)";
+
+// ─── SELECTION HALO ─────────────────────────────────────────
+// Yellow pulse ring around selected entities (SVG-safe).
+export function Halo({ r }: { r: number }) {
+  return (
+    <circle
+      r={r}
+      fill="none"
+      stroke="#ffff44"
+      strokeWidth="2"
+      style={{ animation: "fct-svg-pulse 2.4s ease-in-out infinite" }}
+    />
+  );
+}
+
+// ─── UNIT/BUILDING SILHOUETTES (SVG reference) ──────────────
+// These match the Sh* components from the FACET direction design.
+// They are exported for potential future SVG-based rendering
+// but serve primarily as the design specification for unit shapes.
+// Current rendering is on Canvas 2D (see GameShell drawEntity).
+
+export function ShCrystal({
+  x,
+  y,
+  owner = "me",
+}: {
+  x: number;
+  y: number;
+  owner?: string;
+}) {
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <polygon
+        points="0,-30 22,-10 17,22 -17,22 -22,-10"
+        fill={teamWash(owner)}
+        style={{ animation: "fct-svg-pulse 4s ease-in-out infinite" }}
+      />
+      <polygon
+        points="0,-22 18,-8 14,18 -14,18 -18,-8"
+        fill={teamFill(owner)}
+        stroke={teamStroke(owner)}
+        strokeWidth="2"
+      />
+      <polygon points="0,-22 9,-4 -9,-4" fill="rgba(255,255,255,0.45)" />
+      <line
+        x1="-18" y1="-8" x2="18" y2="-8"
+        stroke="#001321" strokeOpacity="0.55" strokeWidth="0.8"
+      />
+      <line
+        x1="0" y1="-22" x2="0" y2="18"
+        stroke="#001321" strokeOpacity="0.45" strokeWidth="0.8"
+      />
+      <line
+        x1="-14" y1="18" x2="0" y2="-4"
+        stroke="#001321" strokeOpacity="0.4" strokeWidth="0.6"
+      />
+      <line
+        x1="14" y1="18" x2="0" y2="-4"
+        stroke="#001321" strokeOpacity="0.4" strokeWidth="0.6"
+      />
+    </g>
   );
 }

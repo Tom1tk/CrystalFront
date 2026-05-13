@@ -17,7 +17,6 @@ export default function MainMenu({ onHost, onJoin, onSoloTest }: MainMenuProps) 
   const [showSettings, setShowSettings] = useState(false);
 
   const handleHost = () => {
-    console.log("[MainMenu] handleHost called, username:", username);
     setError("");
     if (!username.trim()) {
       setError("Enter a username to continue.");
@@ -27,9 +26,7 @@ export default function MainMenu({ onHost, onJoin, onSoloTest }: MainMenuProps) 
       setError("Username too long.");
       return;
     }
-    console.log("[MainMenu] calling onHost with:", username.trim());
     onHost(username.trim());
-    console.log("[MainMenu] onHost returned");
   };
 
   const handleJoinSubmit = () => {
