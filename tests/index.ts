@@ -1453,8 +1453,9 @@ console.log("\n--- Legal Actions + Mask ---");
 // ---- Expand Macro Actions — every legal action produces valid commands ----
 console.log("\n--- Expand Macro Actions ---");
 {
-  // Use a high-resource config so resource depletion doesn't interfere
-  const richConfig = { ...DEFAULT_CONFIG, startingResources: 50000 };
+  // Use a rich but sub-threshold starting balance (4800 < passiveWinThreshold=5000)
+  // so builds don't starve and the passive win doesn't fire during the test.
+  const richConfig = { ...DEFAULT_CONFIG, startingResources: 4800 };
   const engine = new MatchEngine();
   const blueId = "test-blue2";
   const redId  = "test-red2";
@@ -1517,6 +1518,7 @@ console.log("\n--- Observation ---");
   const obs = buildObservation(match, blueId);
   assert(obs.playerId === blueId, "Observation has correct playerId");
   assert(obs.global.ownCrystalHealthFrac === 1, "Crystal starts at full health");
+  assert(obs.global.ownResourcesWinFrac >= 0, "Resources win fraction >= 0");
   assert(obs.global.ownLifetimeResourcesFrac >= 0, "Lifetime resources fraction >= 0");
   assert(obs.entities.length > 0, "Observation contains own entities");
   assert(obs.entities.every(e => [1, -1].includes(e.owner)), "Entity owner is 1 or -1");
@@ -1535,13 +1537,13 @@ console.log("\n--- Passive Win Condition ---");
   const match = engine.createMatch("pw-test", players, DEFAULT_CONFIG, 1);
   engine.startMatch(match.id);
 
-  // Manually set lifetime resources just below threshold for blue
-  match.economy[0]!.lifetimeResources = ECONOMY.passiveWinThreshold - 1;
+  // Set held resources just below threshold for blue
+  match.economy[0]!.resources = ECONOMY.passiveWinThreshold - 1;
   engine.tick(match.id);
   assert(match.phase === "playing", "Match still playing before threshold");
 
-  // Push over threshold
-  match.economy[0]!.lifetimeResources = ECONOMY.passiveWinThreshold;
+  // Push over threshold (held bank reaches threshold)
+  match.economy[0]!.resources = ECONOMY.passiveWinThreshold;
   engine.tick(match.id);
   assert(match.phase === "ended", "Match ends when passive win threshold reached");
   assert(match.result?.winner === blueId, "Blue wins the passive win");

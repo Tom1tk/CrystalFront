@@ -1036,10 +1036,10 @@ if (command.type === "gather") {
     // Phase 3: Gathering
     this.processGathering(match);
 
-    // Phase 3.5: Passive win — first player to accumulate enough lifetime resources wins
+    // Phase 3.5: Passive win — first player to hold enough resources at once wins
     for (let i = 0; i < 2; i++) {
       const eco = match.economy[i];
-      if (eco && eco.lifetimeResources >= ECONOMY.passiveWinThreshold) {
+      if (eco && eco.resources >= ECONOMY.passiveWinThreshold) {
         const winner = match.players[i]?.playerId;
         if (winner) {
           match.phase = "ended";

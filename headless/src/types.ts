@@ -11,7 +11,9 @@ export interface GlobalFeatures {
   scoreDiff: number;               // own score - opp score
   ownCrystalHealthFrac: number;    // own crystal hp / max hp
   oppCrystalHealthFrac: number;    // opp crystal hp / max hp (0 if not visible)
-  ownLifetimeResourcesFrac: number; // lifetime gathered / passiveWinThreshold
+  ownResourcesWinFrac: number;     // current held resources / passiveWinThreshold ∈ [0,1]
+  oppResourcesWinFrac: number;     // (0 if not visible)
+  ownLifetimeResourcesFrac: number; // lifetime gathered / (passiveWinThreshold*2) — for reward signal
   oppLifetimeResourcesFrac: number; // (0 if unknown)
 }
 
