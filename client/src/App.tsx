@@ -11,6 +11,7 @@ import { FCT } from "./design/facet";
 function useScreenFlow() {
   const [screen, setScreen] = useState<Screen>("menu");
   const [isHost, setIsHost] = useState(false);
+  const [replayTotalTicks, setReplayTotalTicks] = useState<number | undefined>(undefined);
   const hasLobbyStateRef = useRef(false);
 
   const ws = useWebSocket();
@@ -92,7 +93,8 @@ function useScreenFlow() {
   }, []);
 
   const handleWatchReplay = useCallback(
-    (replayId: string) => {
+    (replayId: string, totalTicks: number) => {
+      setReplayTotalTicks(totalTicks);
       ws.startReplay(replayId);
     },
     [ws]
@@ -183,6 +185,7 @@ function useScreenFlow() {
     handleWatchReplay,
     handleStopReplay,
     handleBackFromReplays,
+    replayTotalTicks,
     handleLeave,
     handleRematch,
     handleExit,
@@ -208,6 +211,7 @@ export default function App() {
     handleWatchReplay,
     handleStopReplay,
     handleBackFromReplays,
+    replayTotalTicks,
     handleLeave,
     handleRematch,
     handleExit,
@@ -240,7 +244,7 @@ export default function App() {
           onClearError={ws.clearError}
           isReplay
           onStopReplay={handleStopReplay}
-          replayTotalTicks={matchState.tick}
+          replayTotalTicks={replayTotalTicks}
         />
       )}
       {screen === "lobby" && lobby && player && (
