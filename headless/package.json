@@ -1,0 +1,12 @@
+{
+  "name": "@crystalfront/headless",
+  "version": "0.1.39-ML",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "match": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@crystalfront/shared": "*"
+  }
+}
