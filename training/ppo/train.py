@@ -68,7 +68,7 @@ class Config:
     # Experiment identity
     exp_name:  str = "crystalfront_ppo"
     seed:      int = 1
-    device:    str = "cpu"   # "cpu" or "cuda" (ROCm: set HIP_VISIBLE_DEVICES and use "cuda")
+    device:    str = "cuda"  # "cuda" uses ROCm on AMD; fall back to "cpu" if no GPU
 
     # Environment
     num_envs:           int = 4           # parallel Node simulators
