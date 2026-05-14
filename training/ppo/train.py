@@ -422,9 +422,8 @@ def train(cfg: Config) -> None:
         advantages_2d = np.zeros_like(rewards_2d)
         last_gae      = np.zeros(E)
         for t in reversed(range(T)):
-            next_val  = next_values if t == T - 1 else values_2d[t + 1]
-            next_done = dones_2d[t] if t == T - 1 else dones_2d[t]
-            delta = rewards_2d[t] + cfg.gamma * next_val * (1.0 - next_done) - values_2d[t]
+            next_val = next_values if t == T - 1 else values_2d[t + 1]
+            delta = rewards_2d[t] + cfg.gamma * next_val * (1.0 - dones_2d[t]) - values_2d[t]
             last_gae = delta + cfg.gamma * cfg.gae_lambda * (1.0 - dones_2d[t]) * last_gae
             advantages_2d[t] = last_gae
         returns_2d = advantages_2d + values_2d

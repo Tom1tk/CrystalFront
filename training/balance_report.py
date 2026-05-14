@@ -31,6 +31,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -78,9 +79,50 @@ class MatchOutcome:
     red_build_order: list[str]
 
 
+def _parse_replay(path: str, blue_id: str, red_id: str) -> tuple[dict, dict, list, list]:
+    """Parse unit counts and build orders from a replay JSON file. Returns (blue_units, red_units, blue_bo, red_bo)."""
+    try:
+        with open(path) as f:
+            raw = json.load(f)
+    except Exception:
+        return {}, {}, [], []
+
+    cmd_log = raw.get("commandLog", [])
+    blue_units: dict[str, int] = {}
+    red_units: dict[str, int] = {}
+    blue_bo: list[str] = []
+    red_bo: list[str] = []
+
+    for entry in cmd_log:
+        cmd = entry.get("command", {})
+        is_blue = entry.get("playerId") == blue_id
+        is_red  = entry.get("playerId") == red_id
+
+        if cmd.get("type") == "train_unit" and isinstance(cmd.get("unitType"), str):
+            if is_blue:
+                blue_units[cmd["unitType"]] = blue_units.get(cmd["unitType"], 0) + 1
+            elif is_red:
+                red_units[cmd["unitType"]] = red_units.get(cmd["unitType"], 0) + 1
+
+        if cmd.get("type") == "train_worker":
+            if is_blue:
+                blue_units["worker"] = blue_units.get("worker", 0) + 1
+            elif is_red:
+                red_units["worker"] = red_units.get("worker", 0) + 1
+
+        if cmd.get("type") == "build" and isinstance(cmd.get("buildingType"), str):
+            if is_blue and len(blue_bo) < 6:
+                blue_bo.append(cmd["buildingType"])
+            elif is_red and len(red_bo) < 6:
+                red_bo.append(cmd["buildingType"])
+
+    return blue_units, red_units, blue_bo, red_bo
+
+
 def run_one_match(blue: str, red: str, seed: int | None = None) -> MatchOutcome:
-    """Run a single headless match and parse the result from CLI output."""
-    cmd = [TSX_BIN, CLI_SCRIPT, "--blue", blue, "--red", red, "--no-save"]
+    """Run a single headless match and parse the result from CLI output + replay file."""
+    tmp = tempfile.mktemp(suffix=".json", prefix="balance_")
+    cmd = [TSX_BIN, CLI_SCRIPT, "--blue", blue, "--red", red, "--output", tmp]
     if seed is not None:
         cmd.extend(["--seed", str(seed)])
 
@@ -92,10 +134,9 @@ def run_one_match(blue: str, red: str, seed: int | None = None) -> MatchOutcome:
         cwd=str(REPO_ROOT),
     )
     stdout = proc.stdout
-    stderr = proc.stderr
 
-    # Parse CLI output
-    # Format: "Result:  rush (blue) wins" or "Result:  draw"
+    # Parse summary from stdout
+    # Format: "Result:  rush (blue) wins" / "Result:  draw wins"
     #          "Ticks:   1966 (XXms wall-clock)"
     winner: str | None = None
     win_type: str | None = None
@@ -118,9 +159,28 @@ def run_one_match(blue: str, red: str, seed: int | None = None) -> MatchOutcome:
             except (ValueError, IndexError):
                 pass
 
-    # Extract unit/build info from the replay that CLI saves
-    # (We can't parse it from stdout — the CLI just prints summary)
-    # Run a quick Python parse of the replay file instead
+    # Parse replay file for win_type, unit composition, and build orders
+    blue_units: dict[str, int] = {}
+    red_units: dict[str, int] = {}
+    blue_bo: list[str] = []
+    red_bo: list[str] = []
+    if os.path.exists(tmp):
+        try:
+            with open(tmp) as f:
+                raw = json.load(f)
+            outcome = raw.get("outcome", {})
+            if outcome.get("winType"):
+                win_type = outcome["winType"]
+            blue_id = raw.get("bluePlayerId", "headless-blue")
+            red_id  = raw.get("redPlayerId",  "headless-red")
+            blue_units, red_units, blue_bo, red_bo = _parse_replay(tmp, blue_id, red_id)
+        except Exception:
+            pass
+        finally:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
 
     return MatchOutcome(
         blue=blue,
@@ -130,10 +190,10 @@ def run_one_match(blue: str, red: str, seed: int | None = None) -> MatchOutcome:
         ticks=ticks,
         seed=seed or 0,
         duration_ms=0,
-        blue_units={},
-        red_units={},
-        blue_build_order=[],
-        red_build_order=[],
+        blue_units=blue_units,
+        red_units=red_units,
+        blue_build_order=blue_bo,
+        red_build_order=red_bo,
     )
 
 
@@ -182,8 +242,6 @@ def generate_report(results: list[MatchOutcome]) -> dict:
     """Aggregate match results into a balance report."""
     # Win-rate matrix:  (blue, red) → (wins, total)
     matrix: dict[str, dict[str, dict]] = {}
-    # Duration matrix:  (blue, red) → avg ticks
-    durations: dict[str, dict[str, float]] = defaultdict(dict)
     # Build order distributions:  bot → { build_seq → count }
     build_orders: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     # Flags
@@ -200,9 +258,6 @@ def generate_report(results: list[MatchOutcome]) -> dict:
         matrix[r.blue][r.red]["total"] += 1
         if r.winner == "blue":
             matrix[r.blue][r.red]["wins"] += 1
-
-        # Duration (only completed games)
-        durations[r.blue][r.red] = r.ticks
 
         # Build orders: first 3 buildings → key
         bo_key = ",".join(r.blue_build_order[:3]) if r.blue_build_order else "none"
