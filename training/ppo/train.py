@@ -58,6 +58,7 @@ from training.env.crystalfront_env import (
     MAX_ENTITIES, MAX_NODES, ACTION_SPACE_SIZE,
 )
 from training.ppo.policy import CrystalFrontAgent
+from training.ppo.league import LeagueManager, SCRIPTED_BOTS
 
 
 # ── config ────────────────────────────────────────────────────────────────────
@@ -107,6 +108,12 @@ class Config:
     log_dir:        str = "runs"
     checkpoint_dir: str = "checkpoints"
     save_interval:  int = 50              # save checkpoint every N policy updates
+
+    # Phase 4 — league training (PFSP opponent sampling)
+    league:               bool  = False   # enable league mode
+    league_pfsp_temp:     float = 0.5     # PFSP temperature: higher = focus on hard opponents
+    league_add_interval:  int   = 100     # add current policy as opponent every N updates (0=off)
+    league_state:         str   = ""      # path to league state JSON (auto-generated if blank)
 
     @property
     def batch_size(self) -> int:
@@ -226,7 +233,8 @@ def train(cfg: Config) -> None:
     set_seed(cfg.seed)
     device = torch.device(cfg.device)
 
-    run_name = f"{cfg.exp_name}__{cfg.opponent}__{cfg.seed}__{int(time.time())}"
+    opp_label = "league" if cfg.league else cfg.opponent
+    run_name = f"{cfg.exp_name}__{opp_label}__{cfg.seed}__{int(time.time())}"
     log_path  = Path(cfg.log_dir) / run_name
     ckpt_path = Path(cfg.checkpoint_dir) / run_name
     ckpt_path.mkdir(parents=True, exist_ok=True)
@@ -234,11 +242,37 @@ def train(cfg: Config) -> None:
     writer = SummaryWriter(str(log_path))
     writer.add_text("config", str(cfg))
     print(f"\nCrystalFront PPO training")
-    print(f"  Opponent:   {cfg.opponent}")
+    if cfg.league:
+        print(f"  Mode:       LEAGUE (PFSP, temp={cfg.league_pfsp_temp})")
+    else:
+        print(f"  Opponent:   {cfg.opponent}")
     print(f"  Envs:       {cfg.num_envs}")
     print(f"  Batch size: {cfg.batch_size}  (steps={cfg.num_steps} × envs={cfg.num_envs})")
     print(f"  Device:     {device}")
     print(f"  Run name:   {run_name}\n")
+
+    # ── league ─────────────────────────────────────────────────────────────────
+    league: LeagueManager | None = None
+    league_state_path: str = ""
+    if cfg.league:
+        league_state_path = cfg.league_state
+        if not league_state_path:
+            league_state_path = str(ckpt_path / "league_state.json")
+        elif not os.path.isabs(league_state_path):
+            league_state_path = str(Path(league_state_path).resolve())
+
+        league = LeagueManager(
+            num_envs=cfg.num_envs,
+            pfsp_temperature=cfg.league_pfsp_temp,
+            add_interval=cfg.league_add_interval,
+            results_dir=cfg.log_dir,
+        )
+        # Resume from previous league state if it exists
+        if os.path.exists(league_state_path):
+            print(f"  Resuming league state from {league_state_path}")
+            league.load_state(league_state_path)
+        print(f"  League opponents: {list(league.state.opponents.keys())}")
+        print(f"  League state will be saved to: {league_state_path}")
 
     # ── environments ─────────────────────────────────────────────────────────
     envs = [
@@ -263,8 +297,13 @@ def train(cfg: Config) -> None:
     # ── initial reset ─────────────────────────────────────────────────────────
     obs_list: list[dict]   = []
     info_list: list[dict]  = []
-    for env in envs:
-        obs, info = env.reset(seed=cfg.seed)
+    for i, env in enumerate(envs):
+        opts = {}
+        if league is not None:
+            # Sample initial opponent for this env
+            opp = league.assign_env_opponent(i)
+            opts["opponent"] = opp
+        obs, info = env.reset(seed=cfg.seed, options=opts if opts else None)
         obs_list.append(obs)
         info_list.append(info)
 
@@ -327,8 +366,14 @@ def train(cfg: Config) -> None:
                     completed_episodes += 1
                     window_episodes    += 1
                     winner = info.get("winner")
-                    if winner == "headless-blue":
+                    won = winner == "headless-blue"
+                    if won:
                         wins_last_window += 1
+
+                    # League: record per-opponent result
+                    if league is not None:
+                        opp = league.get_env_opponent(i)
+                        league.record_result(opp, won)
 
                     writer.add_scalar("charts/episode_reward", episode_rewards[i], global_step)
                     writer.add_scalar("charts/episode_length", episode_lengths[i], global_step)
@@ -346,7 +391,13 @@ def train(cfg: Config) -> None:
 
                     episode_rewards[i] = 0.0
                     episode_lengths[i] = 0
-                    obs_next, info = env.reset()
+
+                    # Reset this env — sample a new opponent if in league mode
+                    opts = {}
+                    if league is not None:
+                        opp = league.assign_env_opponent(i)
+                        opts["opponent"] = opp
+                    obs_next, info = env.reset(options=opts if opts else None)
 
                 next_obs_list.append(obs_next)
                 next_info_list.append(info)
@@ -462,6 +513,24 @@ def train(cfg: Config) -> None:
                 "config":       cfg,
             }, path)
             print(f"  [checkpoint] saved → {path}")
+
+        # ── league step ───────────────────────────────────────────────────────
+        if league is not None:
+            # Register the latest checkpoint with the league
+            latest_ckpt = str(ckpt_path / f"update_{update:06d}.pt")
+            league.step_update(update, latest_ckpt)
+            # Save league state
+            league.save_state(league_state_path)
+            # Log win-rate matrix to TensorBoard
+            matrix = league.get_win_rate_matrix()
+            for opp_name, stats in matrix.items():
+                writer.add_scalar(f"league/win_rate_{opp_name}", stats["win_rate"], global_step)
+            # Also write matrix as text (viewable in TensorBoard text tab)
+            matrix_text = "\n".join(
+                f"  {n:30s}  {s['win_rate']:.3f}  ({s['wins']}/{s['total']})  [{s['type']}]"
+                for n, s in sorted(matrix.items())
+            )
+            writer.add_text("league/win_rate_matrix", f"update {update}\n{matrix_text}", global_step)
 
     # ── final save ───────────────────────────────────────────────────────────
     final_path = ckpt_path / "final.pt"

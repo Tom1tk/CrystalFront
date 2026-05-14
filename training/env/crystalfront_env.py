@@ -75,6 +75,7 @@ class CrystalFrontEnv(gym.Env):
         self._proc: subprocess.Popen | None = None
         self._episode_count = 0
         self._last_legal_mask = np.ones(ACTION_SPACE_SIZE, dtype=bool)
+        self._current_opponent = opponent  # may change per reset in league mode
 
     # ── lifecycle ─────────────────────────────────────────────────────────────
 
@@ -122,13 +123,24 @@ class CrystalFrontEnv(gym.Env):
     def reset(self, seed: int | None = None, options: dict | None = None):
         super().reset(seed=seed)
         self._ensure_proc()
+
+        # Allow per-reset opponent override (Phase 4 league training).
+        # options["opponent"] takes precedence over self.opponent.
+        opponent = self.opponent
+        if options is not None and "opponent" in options:
+            opponent = options["opponent"]
+
         self._episode_count += 1
         rng_seed = int(seed) if seed is not None else int(np.random.randint(0, 2**31))
         do_save = (
             self.save_replay_every > 0
             and self._episode_count % self.save_replay_every == 0
         )
-        self._send({"type": "reset", "seed": rng_seed, "opponent": self.opponent, "save_replay": do_save})
+        self._send({"type": "reset", "seed": rng_seed, "opponent": opponent, "save_replay": do_save})
+
+
+        # Store the active opponent so callers can inspect it.
+        self._current_opponent = opponent
         msg = self._recv()
         assert msg["type"] == "ready", f"Expected 'ready', got {msg['type']}"
         obs = self._parse_obs(msg["obs"])
