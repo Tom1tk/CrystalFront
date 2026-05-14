@@ -5,6 +5,11 @@ import { DEFAULT_CONFIG } from "../server/src/match/types.js";
 import type { MatchEntity, PlayerSlot, ResourceNode } from "../server/src/match/types.js";
 import type { Player, LobbyCode } from "../shared/src/index.js";
 import { CLIENT_MSG, SERVER_EVT, WS_EVENT } from "../shared/src/messages.js";
+import { ALL_ACTIONS, ACTION_SPACE_SIZE, actionToIndex, indexToAction, legalMask } from "../headless/src/actionIndex.js";
+import { getLegalActions } from "../headless/src/legalActions.js";
+import { expandMacroAction } from "../headless/src/actionSpace.js";
+import { buildObservation } from "../headless/src/observation.js";
+import { ECONOMY } from "../shared/src/gameBalance.js";
 
 let passed = 0;
 let failed = 0;
@@ -1388,6 +1393,159 @@ console.log("\n--- Determinism: Same seed produces identical state ---");
 
   const run3 = runAndHash(SEED + 1);
   assert(run1 !== run3, "Different seeds produce different states");
+}
+
+// ---- Action Index ----
+console.log("\n--- Action Index ---");
+{
+  assert(ACTION_SPACE_SIZE === 73, `Action space has 73 actions (got ${ACTION_SPACE_SIZE})`);
+
+  // Every action round-trips through index
+  let allRoundTrip = true;
+  for (let i = 0; i < ALL_ACTIONS.length; i++) {
+    const action = ALL_ACTIONS[i];
+    const idx = actionToIndex(action);
+    if (idx !== i) { allRoundTrip = false; break; }
+    const back = indexToAction(idx);
+    // Re-index the recovered action
+    if (actionToIndex(back) !== i) { allRoundTrip = false; break; }
+  }
+  assert(allRoundTrip, "All actions round-trip: action → index → action → same index");
+
+  // No duplicate indices
+  const indices = ALL_ACTIONS.map((_, i) => i);
+  assert(new Set(indices).size === ALL_ACTIONS.length, "No duplicate indices");
+
+  // indexToAction throws on out-of-range
+  let threw = false;
+  try { indexToAction(ACTION_SPACE_SIZE); } catch { threw = true; }
+  assert(threw, "indexToAction throws on out-of-range index");
+}
+
+// ---- Legal Actions + Mask ----
+console.log("\n--- Legal Actions + Mask ---");
+{
+  const engine = new MatchEngine();
+  const blueId = "test-blue";
+  const redId  = "test-red";
+  const players: [PlayerSlot | null, PlayerSlot | null] = [
+    { playerId: blueId, username: "Blue", color: "blue", score: 0 },
+    { playerId: redId,  username: "Red",  color: "red",  score: 0 },
+  ];
+  const match = engine.createMatch("test", players, DEFAULT_CONFIG, 42);
+  engine.startMatch(match.id);
+
+  const legal = getLegalActions(match, blueId);
+  assert(legal.length > 0, "Legal actions non-empty at match start");
+  assert(legal[0].type === "noop", "noop always legal");
+
+  // Every legal action has a valid index
+  const invalidIdx = legal.filter(a => actionToIndex(a) < 0);
+  assert(invalidIdx.length === 0, `All legal actions have valid indices (found ${invalidIdx.length} unknown)`);
+
+  // Mask covers all legal actions
+  const mask = legalMask(legal);
+  assert(mask.length === ACTION_SPACE_SIZE, "Mask length equals action space size");
+  const legalCount = mask.filter(Boolean).length;
+  assert(legalCount === legal.length, "Mask true-count equals legal action count");
+}
+
+// ---- Expand Macro Actions — every legal action produces valid commands ----
+console.log("\n--- Expand Macro Actions ---");
+{
+  // Use a high-resource config so resource depletion doesn't interfere
+  const richConfig = { ...DEFAULT_CONFIG, startingResources: 50000 };
+  const engine = new MatchEngine();
+  const blueId = "test-blue2";
+  const redId  = "test-red2";
+  const players: [PlayerSlot | null, PlayerSlot | null] = [
+    { playerId: blueId, username: "Blue", color: "blue", score: 0 },
+    { playerId: redId,  username: "Red",  color: "red",  score: 0 },
+  ];
+  const match = engine.createMatch("test2", players, richConfig, 99);
+  engine.startMatch(match.id);
+  for (let i = 0; i < 50; i++) engine.tick(match.id);
+
+  // Test that each action TYPE can succeed somewhere in its legal variants.
+  // Collect actions by category, then for each category try all variants and
+  // pass if AT LEAST ONE variant produces a successful command.
+  const legal = getLegalActions(match, blueId);
+  const byCategory = new Map<string, typeof legal>();
+  for (const action of legal) {
+    if (action.type === "noop") continue;
+    const key = action.type === "build"     ? `build_${action.buildingType}` :
+                action.type === "train_unit" ? `train_${action.unitType}` :
+                action.type;
+    if (!byCategory.has(key)) byCategory.set(key, []);
+    byCategory.get(key)!.push(action);
+  }
+
+  let failedCategories = 0;
+  for (const [key, variants] of byCategory) {
+    let anySucceeded = false;
+    for (const action of variants) {
+      const cmds = expandMacroAction(action, match, blueId);
+      if (cmds.length === 0) continue;
+      for (const cmd of cmds) {
+        const r = engine.processCommand(match.id, blueId, cmd as Parameters<MatchEngine["processCommand"]>[2]);
+        if (r.success) { anySucceeded = true; break; }
+      }
+      if (anySucceeded) break;
+    }
+    if (!anySucceeded && variants.some(v => expandMacroAction(v, match, blueId).length > 0)) {
+      failedCategories++;
+      console.error(`    category with no successful variant: ${key}`);
+    }
+  }
+  assert(failedCategories === 0, `Each action category has at least one valid position (${failedCategories} categories failed)`);
+}
+
+// ---- Observation ----
+console.log("\n--- Observation ---");
+{
+  const engine = new MatchEngine();
+  const blueId = "obs-blue";
+  const redId  = "obs-red";
+  const players: [PlayerSlot | null, PlayerSlot | null] = [
+    { playerId: blueId, username: "Blue", color: "blue", score: 0 },
+    { playerId: redId,  username: "Red",  color: "red",  score: 0 },
+  ];
+  const match = engine.createMatch("obs-test", players, DEFAULT_CONFIG, 7);
+  engine.startMatch(match.id);
+  for (let i = 0; i < 10; i++) engine.tick(match.id);
+
+  const obs = buildObservation(match, blueId);
+  assert(obs.playerId === blueId, "Observation has correct playerId");
+  assert(obs.global.ownCrystalHealthFrac === 1, "Crystal starts at full health");
+  assert(obs.global.ownLifetimeResourcesFrac >= 0, "Lifetime resources fraction >= 0");
+  assert(obs.entities.length > 0, "Observation contains own entities");
+  assert(obs.entities.every(e => [1, -1].includes(e.owner)), "Entity owner is 1 or -1");
+}
+
+// ---- Passive Win Condition ----
+console.log("\n--- Passive Win Condition ---");
+{
+  const engine = new MatchEngine();
+  const blueId = "pw-blue";
+  const redId  = "pw-red";
+  const players: [PlayerSlot | null, PlayerSlot | null] = [
+    { playerId: blueId, username: "Blue", color: "blue", score: 0 },
+    { playerId: redId,  username: "Red",  color: "red",  score: 0 },
+  ];
+  const match = engine.createMatch("pw-test", players, DEFAULT_CONFIG, 1);
+  engine.startMatch(match.id);
+
+  // Manually set lifetime resources just below threshold for blue
+  match.economy[0]!.lifetimeResources = ECONOMY.passiveWinThreshold - 1;
+  engine.tick(match.id);
+  assert(match.phase === "playing", "Match still playing before threshold");
+
+  // Push over threshold
+  match.economy[0]!.lifetimeResources = ECONOMY.passiveWinThreshold;
+  engine.tick(match.id);
+  assert(match.phase === "ended", "Match ends when passive win threshold reached");
+  assert(match.result?.winner === blueId, "Blue wins the passive win");
+  assert(match.result?.winType === "resource", "Win type is 'resource'");
 }
 
 console.log(`\n${"=".repeat(40)}`);

@@ -31,6 +31,7 @@ export function buildReplayPayload(
     redPlayerId: "headless-red",
     outcome: {
       winner: result.winner,
+      winType: result.winType,
       ticks: result.ticks,
     },
     commandLog: result.commandLog,

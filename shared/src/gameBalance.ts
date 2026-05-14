@@ -179,6 +179,7 @@ export const ECONOMY = {
   startingMaxSupply: 10,
   workerTrainCost: 25,
   workerSupplyCost: 1,
+  passiveWinThreshold: 10000,  // lifetime resources accumulated = win
 } as const;
 
 // ====================================================================

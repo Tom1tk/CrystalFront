@@ -62,11 +62,13 @@ export function runMatch(
   }
 
   const winner = match.result?.winner ?? null;
+  const winType = winner ? (match.result?.winType ?? "combat") : "timeout";
   const blueEntities = [...match.entities.values()].filter(e => e.ownerId === blueId).length;
   const redEntities  = [...match.entities.values()].filter(e => e.ownerId === redId).length;
 
   return {
     winner,
+    winType,
     ticks: match.tick,
     durationMs: Date.now() - startMs,
     commandLog: match.commandLog,

@@ -3,12 +3,16 @@ import type { MatchState } from "../../server/src/match/types.js";
 // ---- Observation ----
 
 export interface GlobalFeatures {
-  ownResources: number;       // normalised /1000
-  ownSupply: number;          // fraction of maxSupply
-  ownMaxSupply: number;       // absolute
-  oppVisibleSupply: number;   // fraction (last seen, 0 if unknown)
-  tick: number;               // normalised /6000
-  scoreDiff: number;          // own score - opp score
+  ownResources: number;            // normalised /1000
+  ownSupply: number;               // fraction of maxSupply
+  ownMaxSupply: number;            // absolute
+  oppVisibleSupply: number;        // fraction (last seen, 0 if unknown)
+  tick: number;                    // normalised /6000
+  scoreDiff: number;               // own score - opp score
+  ownCrystalHealthFrac: number;    // own crystal hp / max hp
+  oppCrystalHealthFrac: number;    // opp crystal hp / max hp (0 if not visible)
+  ownLifetimeResourcesFrac: number; // lifetime gathered / passiveWinThreshold
+  oppLifetimeResourcesFrac: number; // (0 if unknown)
 }
 
 export interface EntityFeature {
@@ -83,7 +87,8 @@ export interface Agent {
 // ---- Match result ----
 
 export interface MatchResult {
-  winner: string | null;  // null = max-ticks draw
+  winner: string | null;            // null = max-ticks draw
+  winType: "combat" | "resource" | "timeout" | null;
   ticks: number;
   durationMs: number;
   commandLog: Array<{ tick: number; playerId: string; command: Record<string, unknown> }>;
