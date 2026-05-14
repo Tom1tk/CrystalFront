@@ -3,3 +3,5 @@ dist/
 *.local
 .env
 replays/
+training/__pycache__/
+training/**/__pycache__/
