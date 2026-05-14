@@ -1,4 +1,11 @@
 import type { EntityId, MatchId, PlayerId, PlayerColor } from "@crystalfront/shared";
+import {
+  ECONOMY,
+  GATHERING,
+  MAP,
+  ENTITY,
+  SIMULATION,
+} from "@crystalfront/shared";
 
 export type MatchPhase = "spawn" | "playing" | "ended";
 
@@ -172,20 +179,20 @@ export interface MatchConfig {
 }
 
 export const DEFAULT_CONFIG: MatchConfig = {
-  tickIntervalMs: 100,
-  mapWidth: 6000,
-  mapHeight: 600,
-  crystalHealth: 1000,
-  crystalRadius: 30,
-  workerHealth: 100,
-  workerRadius: 10,
-  placeholderHealth: 500,
-  placeholderRadius: 15,
-  startingResources: 50,
-  startingMaxSupply: 10,
-  workerTrainCost: 25,
-  workerSupplyCost: 1,
-  gatherRatePerTick: 1,
-  viewportWidth: 960,
-  viewportHeight: 540,
+  tickIntervalMs: SIMULATION.tickIntervalMs,
+  mapWidth: MAP.width,
+  mapHeight: MAP.height,
+  crystalHealth: ENTITY.crystal.health,
+  crystalRadius: ENTITY.crystal.radius,
+  workerHealth: ENTITY.worker.health,
+  workerRadius: ENTITY.worker.radius,
+  placeholderHealth: ENTITY.placeholder.health,
+  placeholderRadius: ENTITY.placeholder.radius,
+  startingResources: ECONOMY.startingResources,
+  startingMaxSupply: ECONOMY.startingMaxSupply,
+  workerTrainCost: ECONOMY.workerTrainCost,
+  workerSupplyCost: ECONOMY.workerSupplyCost,
+  gatherRatePerTick: GATHERING.ratePerTick,
+  viewportWidth: MAP.viewportWidth,
+  viewportHeight: MAP.viewportHeight,
 };

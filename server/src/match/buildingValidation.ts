@@ -6,13 +6,14 @@ import {
   BUILDING_MIN_SPACING,
   CRYSTAL_NO_BUILD_RADIUS,
 } from "@crystalfront/shared";
+import { PLACEMENT } from "@crystalfront/shared";
 
 export interface PlacementResult {
   valid: boolean;
   reason?: string;
 }
 
-const CENTER_EXCLUSION_HALF_WIDTH = 200;
+const CENTER_EXCLUSION_HALF_WIDTH = PLACEMENT.centerExclusionHalfWidth;
 
 export function validatePlacement(
   x: number,
