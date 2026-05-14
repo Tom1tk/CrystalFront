@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 import { LobbyManager } from "./lobby/lobbyManager.js";
 import { MatchEngine } from "./match/matchEngine.js";
 import { LiveMatchRunner } from "./match/liveMatchRunner.js";
+import { BotPlayer } from "./match/botPlayer.js";
+import { IdleBot, RushBot, TurtleBot, MacroBot } from "../../headless/src/bots/index.js";
 import type { MatchEntity, MatchState, PlayerSlot, ResourceNode, PlayerEconomy } from "./match/types.js";
 import {
   CLIENT_MSG,
@@ -36,7 +38,13 @@ const PORT = parseInt(process.env.PORT || "3777", 10);
 
 const lobbyManager = new LobbyManager();
 const matchEngine = new MatchEngine();
+
+// Per-match bot players (for Solo Test mode)
+const botPlayers = new Map<string, BotPlayer>();
+
 const liveRunner = new LiveMatchRunner(matchEngine, (matchId: string) => {
+  // Step the bot (if any) before broadcasting so the bot's commands are included
+  botPlayers.get(matchId)?.tick();
   const code = matchLobbyMap.get(matchId);
   if (code) {
     broadcastGameState(code);
@@ -45,6 +53,7 @@ const liveRunner = new LiveMatchRunner(matchEngine, (matchId: string) => {
 
 matchEngine.setMatchEndCallback((matchId: string, winner: string) => {
   liveRunner.stop(matchId);
+  botPlayers.delete(matchId);
   const code = matchLobbyMap.get(matchId);
   if (code) {
     broadcastMatchEnd(code, winner);
@@ -376,7 +385,8 @@ wss.on("connection", (ws) => {
       }
 
     case CLIENT_MSG.START_SOLO_TEST: {
-        // Create a solo test lobby with a bot opponent
+        // Create a solo test lobby with a scripted bot opponent
+        const difficulty = (msg.payload as { username: string; difficulty?: string }).difficulty ?? "medium";
         const { code, player } = lobbyManager.createLobby(msg.payload.username);
         
         playerId = player.id;
@@ -424,7 +434,15 @@ wss.on("connection", (ws) => {
           matchEngine.startMatch(match.id);
           liveRunner.start(match.id);
           matchLobbyMap.set(match.id, code);
-          
+
+          // Create the in-process scripted bot
+          const botAgent = difficulty === "easy" ? new IdleBot()
+            : difficulty === "hard" ? new MacroBot()
+            : new RushBot();
+          const bot = new BotPlayer(botAgent, botPlayer.id, match.id, matchEngine);
+          bot.init();
+          botPlayers.set(match.id, bot);
+
           // Update player sessions with matchId
           for (const p of lobby.players) {
             if (p) {
@@ -432,7 +450,7 @@ wss.on("connection", (ws) => {
               if (s) s.matchId = match.id;
             }
           }
-          
+
           const matchStartMsg: ServerToClientMsg = {
             type: SERVER_EVT.MATCH_START,
             payload: {

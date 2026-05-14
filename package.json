@@ -1,6 +1,6 @@
 {
   "name": "crystalfront-rts",
-  "version": "0.1.38",
+  "version": "0.1.39-ML",
   "private": true,
   "description": "A multiplayer browser RTS prototype",
   "scripts": {
@@ -18,7 +18,8 @@
   "workspaces": [
     "client",
     "server",
-    "shared"
+    "shared",
+    "headless"
   ],
   "devDependencies": {
     "typescript": "^5.7.0",

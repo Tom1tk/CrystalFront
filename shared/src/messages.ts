@@ -50,7 +50,7 @@ export type ClientToServerMsg =
   | { type: typeof CLIENT_MSG.USERNAME; payload: { username: string } }
   | { type: typeof CLIENT_MSG.GAME_COMMAND; payload: ClientCommand }
   | { type: typeof CLIENT_MSG.MATCH_START }
-  | { type: typeof CLIENT_MSG.START_SOLO_TEST; payload: { username: string } };
+  | { type: typeof CLIENT_MSG.START_SOLO_TEST; payload: { username: string; difficulty?: "easy" | "medium" | "hard" } };
 
 export type ServerToClientMsg =
   | { type: typeof SERVER_EVT.CONNECTED; payload: { playerId: PlayerId } }
