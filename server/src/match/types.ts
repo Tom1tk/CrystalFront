@@ -22,6 +22,7 @@ export interface PlayerEconomy {
   resources: number;
   supply: number;
   maxSupply: number;
+  lifetimeResources: number;  // total ever gathered — used for passive win condition
 }
 
 export interface ResourceNode {
@@ -68,7 +69,7 @@ export interface MatchState {
   players: [PlayerSlot | null, PlayerSlot | null];
   entities: Map<EntityId, MatchEntity>;
   attackLog: AttackEvent[];
-  result: { winner: PlayerId } | null;
+  result: { winner: PlayerId; winType?: "combat" | "resource" } | null;
   startedAt: number;
   endedAt: number | null;
   economy: [PlayerEconomy | null, PlayerEconomy | null];

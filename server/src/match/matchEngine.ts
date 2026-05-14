@@ -28,6 +28,7 @@ import {
   NODES,
   SIMULATION,
   HEALING,
+  ECONOMY,
 } from "@crystalfront/shared";
 
 const GATHER_RANGE = GATHERING.range;
@@ -191,6 +192,7 @@ export class MatchEngine {
             resources: config.startingResources,
             supply: 3 * config.workerSupplyCost, // 3 starting workers
             maxSupply: config.startingMaxSupply,
+            lifetimeResources: 0,
           }
         : null,
       players[1]
@@ -198,6 +200,7 @@ export class MatchEngine {
             resources: config.startingResources,
             supply: 3 * config.workerSupplyCost, // 3 starting workers
             maxSupply: config.startingMaxSupply,
+            lifetimeResources: 0,
           }
         : null,
     ];
@@ -1033,6 +1036,21 @@ if (command.type === "gather") {
     // Phase 3: Gathering
     this.processGathering(match);
 
+    // Phase 3.5: Passive win — first player to accumulate enough lifetime resources wins
+    for (let i = 0; i < 2; i++) {
+      const eco = match.economy[i];
+      if (eco && eco.lifetimeResources >= ECONOMY.passiveWinThreshold) {
+        const winner = match.players[i]?.playerId;
+        if (winner) {
+          match.phase = "ended";
+          match.result = { winner, winType: "resource" };
+          match.endedAt = Date.now();
+          if (this.matchEndCallback) this.matchEndCallback(match.id, winner);
+          return match;
+        }
+      }
+    }
+
     // Phase 4: Construction & production
     this.processConstruction(match);
 
@@ -1419,6 +1437,7 @@ if (command.type === "gather") {
           const playerIdx = match.players.findIndex((p) => p?.playerId === ownerId);
           if (playerIdx >= 0 && match.economy[playerIdx]) {
             match.economy[playerIdx]!.resources += capped;
+            match.economy[playerIdx]!.lifetimeResources += capped;
             distributed += capped;
           }
         }
@@ -1810,6 +1829,7 @@ private processConstruction(match: MatchState): void {
             resources: config.startingResources,
             supply: 3 * config.workerSupplyCost, // 3 starting workers
             maxSupply: config.startingMaxSupply,
+            lifetimeResources: 0,
           }
         : null,
       players[1]
@@ -1817,6 +1837,7 @@ private processConstruction(match: MatchState): void {
             resources: config.startingResources,
             supply: 3 * config.workerSupplyCost, // 3 starting workers
             maxSupply: config.startingMaxSupply,
+            lifetimeResources: 0,
           }
         : null,
     ];
