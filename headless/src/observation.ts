@@ -37,10 +37,12 @@ export function buildObservation(match: MatchState, playerId: string): PlayerObs
     : undefined;
   const crystalMaxHp = ENTITY.crystal.health;
 
-  // Lifetime resources for passive win tracking
+  const threshold = ECONOMY.passiveWinThreshold;
+  const ownHeldRaw = economy?.resources ?? 0;
+  const oppHeldRaw = canSeeOpp ? (oppEconomy?.resources ?? 0) : 0;
+  // Lifetime resources for reward signal (mining rate)
   const ownLifetime = economy?.lifetimeResources ?? 0;
   const oppLifetime = canSeeOpp ? (oppEconomy?.lifetimeResources ?? 0) : 0;
-  const threshold = ECONOMY.passiveWinThreshold;
 
   const global: GlobalFeatures = {
     ownResources,
@@ -51,8 +53,10 @@ export function buildObservation(match: MatchState, playerId: string): PlayerObs
     scoreDiff: (match.players[playerIdx]?.score ?? 0) - (match.players[oppIdx]?.score ?? 0),
     ownCrystalHealthFrac: ownCrystal ? ownCrystal.health / crystalMaxHp : 0,
     oppCrystalHealthFrac: oppCrystal ? oppCrystal.health / crystalMaxHp : 0,
-    ownLifetimeResourcesFrac: Math.min(ownLifetime / threshold, 1),
-    oppLifetimeResourcesFrac: Math.min(oppLifetime / threshold, 1),
+    ownResourcesWinFrac: Math.min(ownHeldRaw / threshold, 1),
+    oppResourcesWinFrac: Math.min(oppHeldRaw / threshold, 1),
+    ownLifetimeResourcesFrac: Math.min(ownLifetime / (threshold * 2), 1),
+    oppLifetimeResourcesFrac: Math.min(oppLifetime / (threshold * 2), 1),
   };
 
   // Entity features — only visible entities
