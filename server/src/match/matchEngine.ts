@@ -23,9 +23,16 @@ import {
   HEAL_RATE_PER_TICK,
   GATHER_RATE_PER_TICK,
 } from "@crystalfront/shared";
+import {
+  GATHERING,
+  NODES,
+  SIMULATION,
+  PLACEMENT,
+  HEALING,
+} from "@crystalfront/shared";
 
-const GATHER_RANGE = 60;
-const GATHER_RATE_PER_WORKER = GATHER_RATE_PER_TICK / 3;
+const GATHER_RANGE = GATHERING.range;
+const GATHER_RATE_PER_WORKER = GATHERING.ratePerTick / GATHERING.perWorkerDivisor;
 import {
   validatePlacement,
   findCrystalByColor,
@@ -1017,7 +1024,7 @@ if (command.type === "gather") {
 
     match.tick++;
     const currentTick = match.tick;
-    match.attackLog = match.attackLog.filter(evt => currentTick - evt.tick < 15);
+    match.attackLog = match.attackLog.filter(evt => currentTick - evt.tick < SIMULATION.attackLogRetention);
 
     // Phase 1: Movement
     this.processMovement(match, 100);
@@ -1103,10 +1110,10 @@ if (command.type === "gather") {
       return def?.visionRange ?? 100;
     }
     if (entity.type === "crystal") {
-      return 225; // Crystal vision
+      return SIMULATION.crystalVisionRange;
     }
     const def = UNIT_DEFS[entity.type];
-    return def?.visionRange ?? 100;
+    return def?.visionRange ?? SIMULATION.defaultVisionRange;
   }
 
   subStepMovement(matchId: string): void {
@@ -1133,7 +1140,7 @@ if (command.type === "gather") {
 
   private processMovement(match: MatchState, subStepMs: number = 100): void {
     const entities = Array.from(match.entities.values());
-    const arrivalThreshold = 1;
+    const arrivalThreshold = SIMULATION.arrivalThreshold;
     const stepsPerTick = (100 / subStepMs) || 1;
 
     for (const entity of entities) {
@@ -1172,7 +1179,7 @@ if (command.type === "gather") {
     const mobile = entities.filter(
       (e) => e.type !== "crystal" && e.type !== "building"
     );
-    const cellSize = 50;
+    const cellSize = SIMULATION.spatialCellSize;
     for (let pass = 0; pass < 2; pass++) {
       const grid = this.buildSpatialGrid(mobile, cellSize);
       const checked = new Set<string>();
@@ -1433,7 +1440,7 @@ if (command.type === "gather") {
     // Passive refresh: all nodes slowly replenish regardless of assignment
     for (const node of match.resourceNodes) {
       if (node.remaining < node.capacity) {
-        node.remaining = Math.min(node.capacity, node.remaining + 0.1);
+        node.remaining = Math.min(node.capacity, node.remaining + NODES.regenPerTick);
       }
     }
   }
@@ -1549,8 +1556,8 @@ private processConstruction(match: MatchState): void {
           const playerIdx = match.players.findIndex((p) => p?.playerId === entity.ownerId);
           if (playerIdx >= 0 && match.economy[playerIdx]) {
             const economy = match.economy[playerIdx]!;
-            const hpToRestore = 2;
-            const cost = hpToRestore * 0.5;
+            const hpToRestore = HEALING.repairHpPerTick;
+            const cost = hpToRestore * HEALING.repairCostPerHp;
 
             if (economy.resources >= cost) {
               economy.resources -= cost;
@@ -1900,7 +1907,7 @@ private processConstruction(match: MatchState): void {
     const parentRadius = parent.type === "building" || parent.type === "crystal"
       ? parent.radius
       : parent.radius;
-    const gap = 4;
+    const gap = SIMULATION.spawnGap;
     const spawnDist = parentRadius + childRadius + gap;
     const angle = Math.random() * Math.PI * 2;
     return {
@@ -1914,7 +1921,7 @@ private processConstruction(match: MatchState): void {
     if (!match) return;
 
     let subStepCount = 0;
-    const subStepMs = 20;
+    const subStepMs = SIMULATION.subStepMs;
     const fullTickMs = match.tickIntervalMs || 100;
 
     const interval = setInterval(() => {

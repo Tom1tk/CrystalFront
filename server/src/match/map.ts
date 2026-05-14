@@ -1,4 +1,5 @@
 import type { MatchConfig } from "./types.js";
+import { MAP, SPAWN, SAFE_NODE_OFFSETS, CONTESTED_NODE_OFFSETS, BUILD_ZONES, NODES } from "@crystalfront/shared";
 
 export interface SpawnPosition {
   x: number;
@@ -62,67 +63,68 @@ export function mirrorBlueToRed(map: MapLayout): void {
 }
 
 export function createMap(config: MatchConfig): MapLayout {
-  const { mapWidth, mapHeight } = config;
+  const mapWidth = config.mapWidth;
+  const mapHeight = config.mapHeight;
   const midY = mapHeight / 2;
   const midX = mapWidth / 2;
 
   // Spawn positions (near crystals)
-  const blueSpawn: SpawnPosition = { x: 160, y: midY };
-  const redSpawn: SpawnPosition = { x: mapWidth - 160, y: midY };
+  const blueSpawn: SpawnPosition = { x: SPAWN.blueCrystal.x, y: midY };
+  const redSpawn: SpawnPosition = { x: mapWidth - SPAWN.redCrystal.offset, y: midY };
 
   // Crystal positions (far ends of each side)
-  const blueCrystal: SpawnPosition = { x: 100, y: midY };
-  const redCrystal: SpawnPosition = { x: mapWidth - 100, y: midY };
+  const blueCrystal: SpawnPosition = { x: SPAWN.blueCrystal.x - 0, y: midY };
+  const redCrystal: SpawnPosition = { x: mapWidth - SPAWN.redCrystal.offset - 0, y: midY };
 
   // Worker spawn positions near each crystal
-  const blueWorkers: SpawnPosition[] = [
-    { x: 160, y: midY - 50 },
-    { x: 160, y: midY + 50 },
-    { x: 200, y: midY },
-  ];
+  const blueWorkers: SpawnPosition[] = SPAWN.blueWorkers.map((w) => ({
+    x: w.x,
+    y: midY + w.yOff,
+  }));
 
-  const redWorkers: SpawnPosition[] = [
-    { x: mapWidth - 160, y: midY - 50 },
-    { x: mapWidth - 160, y: midY + 50 },
-    { x: mapWidth - 200, y: midY },
-  ];
+  const redWorkers: SpawnPosition[] = SPAWN.redWorkerXOffsets.map((ox, i) => ({
+    x: mapWidth - ox,
+    y: midY + SPAWN.redWorkerYOffsets[i],
+  }));
 
-  // Safe resource nodes near each base (4 per side) - spread in a fan pattern
-  const blueSafeNodes: ResourceNodeLayout[] = [
-    { x: 230, y: midY - 200, radius: 18, capacity: 100, type: "safe" },
-    { x: 280, y: midY - 100, radius: 18, capacity: 100, type: "safe" },
-    { x: 230, y: midY + 100, radius: 18, capacity: 100, type: "safe" },
-    { x: 280, y: midY + 200, radius: 18, capacity: 100, type: "safe" },
-  ];
+  // Safe resource nodes near each base (4 per side) — edit SAFE_NODE_OFFSETS in gameBalance.ts
+  const blueSafeNodes: ResourceNodeLayout[] = SAFE_NODE_OFFSETS.map((n: { dx: number; dy: number; radius: number }) => ({
+    x: n.dx,
+    y: midY + n.dy,
+    radius: n.radius,
+    capacity: NODES.safeCapacity,
+    type: "safe",
+  }));
 
-  const redSafeNodes: ResourceNodeLayout[] = [
-    { x: mapWidth - 230, y: midY - 200, radius: 18, capacity: 100, type: "safe" },
-    { x: mapWidth - 280, y: midY - 100, radius: 18, capacity: 100, type: "safe" },
-    { x: mapWidth - 230, y: midY + 100, radius: 18, capacity: 100, type: "safe" },
-    { x: mapWidth - 280, y: midY + 200, radius: 18, capacity: 100, type: "safe" },
-  ];
+  const redSafeNodes: ResourceNodeLayout[] = SAFE_NODE_OFFSETS.map((n: { dx: number; dy: number; radius: number }) => ({
+    x: mapWidth - n.dx,
+    y: midY + n.dy,
+    radius: n.radius,
+    capacity: NODES.safeCapacity,
+    type: "safe",
+  }));
 
-  // Contested resource nodes - spread in a wider diamond pattern across the middle
-  const contestedNodes: ResourceNodeLayout[] = [
-    { x: midX - 350, y: midY - 120, radius: 22, capacity: 100, type: "contested" },
-    { x: midX - 180, y: midY - 60, radius: 22, capacity: 100, type: "contested" },
-    { x: midX, y: midY, radius: 22, capacity: 100, type: "contested" },
-    { x: midX + 180, y: midY + 60, radius: 22, capacity: 100, type: "contested" },
-    { x: midX + 350, y: midY + 120, radius: 22, capacity: 100, type: "contested" },
-  ];
+  // Contested resource nodes — edit CONTESTED_NODE_OFFSETS in gameBalance.ts
+  const contestedNodes: ResourceNodeLayout[] = CONTESTED_NODE_OFFSETS.map((n: { dx: number; dy: number; radius: number }) => ({
+    x: midX + n.dx,
+    y: midY + n.dy,
+    radius: n.radius,
+    capacity: NODES.contestedCapacity,
+    type: "contested",
+  }));
 
-  // Build zones (per-player areas near base, 20% of map width each)
+  // Build zones (per-player areas near base) — edit BUILD_ZONES in gameBalance.ts
   const blueBuildZone: BuildZone = {
     playerId: "blue",
     x1: 0,
     y1: 0,
-    x2: mapWidth * 0.2,
+    x2: mapWidth * BUILD_ZONES.blueEndPct,
     y2: mapHeight,
   };
 
   const redBuildZone: BuildZone = {
     playerId: "red",
-    x1: mapWidth * 0.8,
+    x1: mapWidth * BUILD_ZONES.redStartPct,
     y1: 0,
     x2: mapWidth,
     y2: mapHeight,
