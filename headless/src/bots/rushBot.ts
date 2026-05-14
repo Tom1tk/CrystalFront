@@ -26,10 +26,13 @@ export class RushBot implements Agent {
     const actions: MacroAction[] = [];
     const { global, entities, tick } = obs;
 
-    // Always keep workers gathering
+    // Always keep workers gathering — safe nodes first, then contest the middle
     if (tick - this.lastAssignTick >= 40) {
-      const assign = legal.find(a => a.type === "assign_workers" && a.nodeChoice === "nearest_safe");
-      if (assign) { actions.push(assign); this.lastAssignTick = tick; }
+      const assignSafe = legal.find(a => a.type === "assign_workers" && a.nodeChoice === "nearest_safe");
+      if (assignSafe) actions.push(assignSafe);
+      const assignContest = legal.find(a => a.type === "assign_workers" && a.nodeChoice === "nearest_contested");
+      if (assignContest) actions.push(assignContest);
+      this.lastAssignTick = tick;
     }
 
     const ownWorkers = entities.filter(e => e.owner === 1 && e.typeIndex === 1).length;

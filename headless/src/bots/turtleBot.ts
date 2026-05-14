@@ -9,6 +9,7 @@ export class TurtleBot implements Agent {
   private playerId = "";
   private lastAssignTick = -50;
   private lastBuildTick = -80;
+  private lastPushTick = -50;
   private depotCount = 0;
   private turretCount = 0;
 
@@ -16,6 +17,7 @@ export class TurtleBot implements Agent {
     this.playerId = playerId;
     this.lastAssignTick = -50;
     this.lastBuildTick = -80;
+    this.lastPushTick = -50;
     this.depotCount = 0;
     this.turretCount = 0;
   }
@@ -24,10 +26,13 @@ export class TurtleBot implements Agent {
     const actions: MacroAction[] = [];
     const { global, entities, tick } = obs;
 
-    // Gather constantly
+    // Gather from both node types — contested income is essential with new balance
     if (tick - this.lastAssignTick >= 40) {
-      const assign = legal.find(a => a.type === "assign_workers" && a.nodeChoice === "nearest_safe");
-      if (assign) { actions.push(assign); this.lastAssignTick = tick; }
+      const assignSafe = legal.find(a => a.type === "assign_workers" && a.nodeChoice === "nearest_safe");
+      if (assignSafe) actions.push(assignSafe);
+      const assignContest = legal.find(a => a.type === "assign_workers" && a.nodeChoice === "nearest_contested");
+      if (assignContest) actions.push(assignContest);
+      this.lastAssignTick = tick;
     }
 
     // Count own structures
@@ -37,9 +42,9 @@ export class TurtleBot implements Agent {
 
     const resources = global.ownResources * 1000;
 
-    if (tick - this.lastBuildTick >= 80) {
-      // Priority: supply depot → barracks → turrets
-      if (this.depotCount < 2 && resources >= 50) {
+    if (tick - this.lastBuildTick >= 60) {
+      // Priority: 1 depot (supply headroom) → barracks (units) → turrets (defense) → 2nd depot
+      if (this.depotCount === 0 && resources >= 50) {
         const build = legal.find(a =>
           a.type === "build" && a.buildingType === "supply_depot" && a.xZone === "near_crystal"
         );
@@ -66,13 +71,21 @@ export class TurtleBot implements Agent {
       if (trainGunner) actions.push(trainGunner);
     }
 
-    // Counterattack only when army is strong
+    // Counterattack — hold midfield at 3, commit to enemy crystal at 6
+    // Cooldown prevents cancelling attacks every tick (move command clears attackTargetId)
     const gunners = entities.filter(e => e.owner === 1 && e.typeIndex === 3).length;
-    if (gunners >= 6) {
-      const push = legal.find(a =>
-        a.type === "attack_move" && a.group === "gunners" && a.targetZone === "midfield"
-      );
-      if (push) actions.push(push);
+    if (tick - this.lastPushTick >= 40) {
+      if (gunners >= 6) {
+        const push = legal.find(a =>
+          a.type === "attack_move" && a.group === "gunners" && a.targetZone === "enemy_crystal"
+        );
+        if (push) { actions.push(push); this.lastPushTick = tick; }
+      } else if (gunners >= 3) {
+        const hold = legal.find(a =>
+          a.type === "attack_move" && a.group === "gunners" && a.targetZone === "midfield"
+        );
+        if (hold) { actions.push(hold); this.lastPushTick = tick; }
+      }
     }
 
     return actions;

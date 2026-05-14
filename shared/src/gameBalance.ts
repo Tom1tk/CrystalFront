@@ -187,8 +187,8 @@ export const ECONOMY = {
 // ====================================================================
 
 export const NODES = {
-  contestedCapacity: 100,
-  safeCapacity: 300,
+  contestedCapacity: 300,
+  safeCapacity: 100,
   maxGathererSlots: 3,
   regenPerTick: 0.1,        // passive refill rate (resources per tick)
 } as const;
