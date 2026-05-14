@@ -64,7 +64,7 @@ python training/ppo/train.py --help
 
 ```bash
 # In a second terminal
-tensorboard --logdir runs/ --bind_all
+tensorboard --logdir /root/CrystalFront/runs --bind_all
 # Then open http://localhost:6006
 ```
 
