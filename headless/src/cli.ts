@@ -27,6 +27,8 @@ export function buildReplayPayload(
     seed: result.seed,
     blue,
     red,
+    bluePlayerId: "headless-blue",
+    redPlayerId: "headless-red",
     outcome: {
       winner: result.winner,
       ticks: result.ticks,
