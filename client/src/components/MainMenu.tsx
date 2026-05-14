@@ -7,9 +7,10 @@ interface MainMenuProps {
   onHost: (username: string) => void;
   onJoin: (code: string, username: string) => void;
   onSoloTest: (username: string) => void;
+  onReplays: () => void;
 }
 
-export default function MainMenu({ onHost, onJoin, onSoloTest }: MainMenuProps) {
+export default function MainMenu({ onHost, onJoin, onSoloTest, onReplays }: MainMenuProps) {
   const [username, setUsername] = useState("");
   const [lobbyCode, setLobbyCode] = useState("");
   const [error, setError] = useState("");
@@ -249,6 +250,13 @@ export default function MainMenu({ onHost, onJoin, onSoloTest }: MainMenuProps) 
               }}
             >
               ▷ Settings
+            </FctBtn>
+            <FctBtn
+              full
+              sub="VIEW REPLAYS"
+              onClick={onReplays}
+            >
+              ▶ Bot Replays
             </FctBtn>
           </div>
 

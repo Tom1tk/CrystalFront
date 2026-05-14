@@ -1,5 +1,5 @@
 import { ENTITY_TYPES } from "./types.js";
-import { MAP } from "../../shared/src/gameBalance.js";
+import { MAP } from "@crystalfront/shared";
 export function buildObservation(match, playerId) {
     const playerIdx = match.players.findIndex(p => p?.playerId === playerId);
     const oppIdx = playerIdx === 0 ? 1 : 0;

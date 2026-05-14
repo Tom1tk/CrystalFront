@@ -12,7 +12,7 @@ import type {
 
 export type { Lobby, Player, LobbyState, BuildingType, UnitType, ProductionQueueItem, AttackEvent, PlayerSlot, CameraState };
 
-export type Screen = "menu" | "lobby" | "game" | "matchEnd";
+export type Screen = "menu" | "lobby" | "game" | "matchEnd" | "replays" | "watching_replay";
 
 export interface WSMessage {
   type: string;

@@ -8,6 +8,7 @@ import { MatchEngine } from "./match/matchEngine.js";
 import { LiveMatchRunner } from "./match/liveMatchRunner.js";
 import { BotPlayer } from "./match/botPlayer.js";
 import { IdleBot, RushBot, TurtleBot, MacroBot } from "../../headless/src/bots/index.js";
+import { ReplayRunner, listReplays, getReplay, ensureReplaysDir } from "./match/replayRunner.js";
 import type { MatchEntity, MatchState, PlayerSlot, ResourceNode, PlayerEconomy } from "./match/types.js";
 import {
   CLIENT_MSG,
@@ -36,8 +37,14 @@ const wss = new WebSocketServer({ server: httpServer, maxPayload: 1024 * 1024 })
 
 const PORT = parseInt(process.env.PORT || "3777", 10);
 
+ensureReplaysDir();
+
 const lobbyManager = new LobbyManager();
 const matchEngine = new MatchEngine();
+const replayRunner = new ReplayRunner();
+
+// Track which WS connection is watching which replay matchId
+const replayWatchers = new Map<WebSocket, string>();
 
 // Per-match bot players (for Solo Test mode)
 const botPlayers = new Map<string, BotPlayer>();
@@ -809,6 +816,33 @@ wss.on("connection", (ws) => {
         break;
       }
 
+      case CLIENT_MSG.START_REPLAY: {
+        const { replayId } = msg.payload;
+        const replay = getReplay(replayId);
+        if (!replay) {
+          sendWS(ws, { type: SERVER_EVT.ERROR, payload: { message: "Replay not found." } });
+          return;
+        }
+        // Stop any existing replay this client is watching
+        const existingMatchId = replayWatchers.get(ws);
+        if (existingMatchId) replayRunner.stop(existingMatchId);
+
+        const matchId = replayRunner.start(replay, ws, (mid) => {
+          replayWatchers.delete(ws);
+        });
+        replayWatchers.set(ws, matchId);
+        break;
+      }
+
+      case CLIENT_MSG.STOP_REPLAY: {
+        const watchingMatchId = replayWatchers.get(ws);
+        if (watchingMatchId) {
+          replayRunner.stop(watchingMatchId);
+          replayWatchers.delete(ws);
+        }
+        break;
+      }
+
       default: {
         sendWS(ws, { type: SERVER_EVT.ERROR, payload: { message: "Unknown message type." } });
         break;
@@ -817,6 +851,13 @@ wss.on("connection", (ws) => {
   });
 
   ws.on("close", () => {
+    // Clean up any replay this client was watching
+    const watchingMatchId = replayWatchers.get(ws);
+    if (watchingMatchId) {
+      replayRunner.stop(watchingMatchId);
+      replayWatchers.delete(ws);
+    }
+
     if (playerId) {
       const session = playerLobbyMap.get(playerId);
       if (session) {
@@ -914,6 +955,16 @@ app.get("/api/lobbies", (_req: Request, res: Response) => {
 
 app.get("/api/matches", (_req: Request, res: Response) => {
   res.json({ matches: matchEngine.getAllMatches() });
+});
+
+app.get("/api/replays", (_req: Request, res: Response) => {
+  res.json({ replays: listReplays() });
+});
+
+app.get("/api/replays/:id", (req: Request, res: Response) => {
+  const replay = getReplay(req.params.id);
+  if (!replay) { res.status(404).json({ error: "Not found" }); return; }
+  res.json(replay);
 });
 
 // Serve built client in production

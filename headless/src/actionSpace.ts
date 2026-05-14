@@ -1,6 +1,6 @@
 import type { MacroAction } from "./types.js";
 import type { MatchState, MatchEntity } from "../../server/src/match/types.js";
-import { MAP, BUILD_ZONES, UNIT_DEFS, BUILDING_DEFS } from "../../shared/src/gameBalance.js";
+import { MAP, BUILD_ZONES, UNIT_DEFS, BUILDING_DEFS } from "@crystalfront/shared";
 
 /**
  * Expand a MacroAction into the raw engine commands it represents.

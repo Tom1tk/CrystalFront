@@ -15,6 +15,9 @@ export const WS_EVENT = {
   MATCH_START: "match_start",
   GAME_STATE: "game_state",
   GAME_COMMAND: "game_command",
+  START_REPLAY: "start_replay",
+  STOP_REPLAY: "stop_replay",
+  REPLAY_END: "replay_end",
 } as const;
 
 export const CLIENT_MSG = {
@@ -28,6 +31,8 @@ export const CLIENT_MSG = {
   GAME_COMMAND: "game_command",
   MATCH_START: "match_start",
   START_SOLO_TEST: "start_solo_test",
+  START_REPLAY: "start_replay",
+  STOP_REPLAY: "stop_replay",
 } as const;
 
 export const SERVER_EVT = {
@@ -38,6 +43,7 @@ export const SERVER_EVT = {
   HOST_DISCONNECT: "host_disconnect",
   MATCH_START: "match_start",
   GAME_STATE: "game_state",
+  REPLAY_END: "replay_end",
 } as const;
 
 export type ClientToServerMsg =
@@ -50,7 +56,9 @@ export type ClientToServerMsg =
   | { type: typeof CLIENT_MSG.USERNAME; payload: { username: string } }
   | { type: typeof CLIENT_MSG.GAME_COMMAND; payload: ClientCommand }
   | { type: typeof CLIENT_MSG.MATCH_START }
-  | { type: typeof CLIENT_MSG.START_SOLO_TEST; payload: { username: string; difficulty?: "easy" | "medium" | "hard" } };
+  | { type: typeof CLIENT_MSG.START_SOLO_TEST; payload: { username: string; difficulty?: "easy" | "medium" | "hard" } }
+  | { type: typeof CLIENT_MSG.START_REPLAY; payload: { replayId: string } }
+  | { type: typeof CLIENT_MSG.STOP_REPLAY };
 
 export type ServerToClientMsg =
   | { type: typeof SERVER_EVT.CONNECTED; payload: { playerId: PlayerId } }
@@ -59,4 +67,5 @@ export type ServerToClientMsg =
   | { type: typeof SERVER_EVT.MATCH_END; payload: { winner: PlayerId } }
   | { type: typeof SERVER_EVT.HOST_DISCONNECT; payload: { message: string } }
   | { type: typeof SERVER_EVT.MATCH_START; payload: { match: MatchState } }
-  | { type: typeof SERVER_EVT.GAME_STATE; payload: { match: MatchState } };
+  | { type: typeof SERVER_EVT.GAME_STATE; payload: { match: MatchState } }
+  | { type: typeof SERVER_EVT.REPLAY_END; payload: { ticks: number; winner: string | null } };

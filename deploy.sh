@@ -4,18 +4,18 @@
 set -e
 export PATH="/root/.local/bin:$PATH"
 
-echo "=== 1/4  Build ==="
+echo "=== 1/3  Build (shared + client) ==="
 cd /root/CrystalFront
-npm run build
+npm run build:shared
+npm run build:client
 
-echo "=== 2/4  Test ==="
+echo "=== 2/3  Test ==="
 npm run test
 
-echo "=== 3/4  Restart ==="
+echo "=== 3/3  Restart + Verify ==="
 systemctl restart crystalfront-rts
-sleep 1
+sleep 2
 
-echo "=== 4/4  Verify ==="
 systemctl is-active crystalfront-rts
 curl -s -o /dev/null -w "HTTP %{http_code}\n" http://localhost:3777/
 grep -o 'index-[^"]*\.js' client/dist/index.html

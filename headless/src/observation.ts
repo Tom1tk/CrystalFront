@@ -1,7 +1,7 @@
 import type { MatchState } from "../../server/src/match/types.js";
 import type { PlayerObservation, GlobalFeatures, EntityFeature, NodeFeature } from "./types.js";
 import { ENTITY_TYPES } from "./types.js";
-import { MAP } from "../../shared/src/gameBalance.js";
+import { MAP } from "@crystalfront/shared";
 
 export function buildObservation(match: MatchState, playerId: string): PlayerObservation {
   const playerIdx = match.players.findIndex(p => p?.playerId === playerId);

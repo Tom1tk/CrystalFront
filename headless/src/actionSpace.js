@@ -1,4 +1,4 @@
-import { MAP, BUILD_ZONES, UNIT_DEFS, BUILDING_DEFS } from "../../shared/src/gameBalance.js";
+import { MAP, BUILD_ZONES, UNIT_DEFS, BUILDING_DEFS } from "@crystalfront/shared";
 /**
  * Expand a MacroAction into the raw engine commands it represents.
  * Returns an array of command objects accepted by MatchEngine.processCommand.
@@ -47,12 +47,21 @@ export function expandMacroAction(action, match, playerId) {
             if (group.length === 0)
                 return [];
             const target = resolveTargetZone(action.targetZone ?? "midfield", playerColor, match);
-            return group.map(e => ({
-                type: "move",
-                entityId: e.id,
-                targetX: target.x + (Math.random() * 60 - 30),
-                targetY: target.y + (Math.random() * 60 - 30),
-            }));
+            const cmds = [];
+            // Enable auto-attack on any unit that doesn't have it on yet
+            const needAutoAttack = group.filter(e => !e.autoAttackEnabled).map(e => e.id);
+            if (needAutoAttack.length > 0) {
+                cmds.push({ type: "toggle_auto_attack", entityIds: needAutoAttack });
+            }
+            for (const e of group) {
+                cmds.push({
+                    type: "move",
+                    entityId: e.id,
+                    targetX: target.x,
+                    targetY: target.y,
+                });
+            }
+            return cmds;
         }
         case "retreat": {
             const group = getUnitGroup(match, playerId, action.group ?? "all_combat");
@@ -166,11 +175,7 @@ function chooseBuildPosition(color, xZone, yZone, match) {
     };
     const x = xBands[xZone ?? "mid_base"] ?? (zoneStart + zoneWidth * 0.5);
     const y = yBands[yZone ?? "middle"] ?? mapH * 0.5;
-    // Add small jitter to avoid exact overlaps
-    return {
-        x: x + (Math.random() * 40 - 20),
-        y: y + (Math.random() * 40 - 20),
-    };
+    return { x, y };
 }
 function resolveTargetZone(zone, playerColor, match) {
     const isBlue = playerColor === "blue";
