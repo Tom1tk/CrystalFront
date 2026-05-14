@@ -64,7 +64,7 @@ python training/ppo/train.py --help
 
 ```bash
 # In a second terminal
-tensorboard --logdir runs/
+tensorboard --logdir runs/ --bind_all
 # Then open http://localhost:6006
 ```
 
