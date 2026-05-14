@@ -794,6 +794,10 @@ export default function GameShell({
 
     if (myCrystal) {
       cameraXRef.current = Math.max(0, Math.min(myCrystal.x - viewW / 2, mapWidth - viewW));
+    } else if (isReplay) {
+      // Observer view: center on map, guarded against 0-width container at mount time
+      const w = viewW > 0 ? viewW : 960;
+      cameraXRef.current = Math.max(0, Math.min(mapWidth / 2 - w / 2, mapWidth - w));
     } else if (myIdx === 0) {
       cameraXRef.current = 0;
     } else {

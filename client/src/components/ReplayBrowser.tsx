@@ -14,7 +14,7 @@ interface ReplayMeta {
 
 interface ReplayBrowserProps {
   onBack: () => void;
-  onWatch: (replayId: string) => void;
+  onWatch: (replayId: string, totalTicks: number) => void;
 }
 
 function formatDuration(secs: number): string {
@@ -140,7 +140,7 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
                     <FctBtn
                       primary
                       style={{ padding: "4px 12px", fontSize: 10 }}
-                      onClick={() => onWatch(r.id)}
+                      onClick={() => onWatch(r.id, r.outcome.ticks)}
                     >
                       ▶ Watch
                     </FctBtn>
