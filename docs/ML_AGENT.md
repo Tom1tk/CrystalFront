@@ -689,7 +689,7 @@ python3 training/test_env.py
 python3 training/ppo/train.py --opponent idle --num_envs 4 --total_timesteps 500000
 
 # Monitor in TensorBoard (run in a second terminal)
-tensorboard --logdir runs/
+tensorboard --logdir runs/ --bind_all
 ```
 
 ### Recommended training progression
@@ -711,7 +711,7 @@ Move to the next stage once win rate stays above the target for at least 200k co
 python3 training/ppo/train.py --league --num_envs 8 --total_timesteps 10000000
 
 # Monitor per-opponent win rates in TensorBoard
-tensorboard --logdir runs/
+tensorboard --logdir runs/ --bind_all
 # Watch: league/win_rate_idle, league/win_rate_rush, league/win_rate_turtle, league/win_rate_macro
 
 # Resume from a previous league state

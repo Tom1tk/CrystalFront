@@ -15,7 +15,7 @@ Usage examples:
   python training/ppo/train.py --opponent macro --num_envs 8 --total_timesteps 5000000
 
   # Monitor in TensorBoard (run in a second terminal):
-  tensorboard --logdir runs/
+  tensorboard --logdir runs/ --bind_all
 
 Key hyperparameter guidance:
   num_envs      — increase to use more CPU cores (each env = 1 Node subprocess)
