@@ -12,10 +12,20 @@ export interface ReplayMeta {
   seed: number;
   blue: string;
   red: string;
-  outcome: { winner: string | null; ticks: number };
+  outcome: { winner: string | null; winType?: string | null; ticks: number };
   durationSecs: number;
   version: string;
   timestamp: number;
+  // Phase 5 — enriched metadata extracted from commandLog
+  winType?: string | null;
+  blueUnits?: Record<string, number>;     // e.g. { skirmisher: 5, worker: 4 }
+  redUnits?: Record<string, number>;
+  blueBuildings?: Record<string, number>; // e.g. { barracks: 1, turret: 2 }
+  redBuildings?: Record<string, number>;
+  buildOrderBlue?: string[];              // first 6 buildings built, in order
+  buildOrderRed?: string[];
+  firstCombatTick?: number;               // first tick any combat unit was trained
+  flags?: string[];                       // auto-flag: "fast", "lopsided", "resource_win"
 }
 
 export interface ReplayFile extends ReplayMeta {
@@ -26,6 +36,111 @@ export function ensureReplaysDir(): void {
   if (!existsSync(REPLAYS_DIR)) mkdirSync(REPLAYS_DIR, { recursive: true });
 }
 
+/**
+ * ── Phase 5 ── Analyse a replay's commandLog and extract enriched metadata.
+ *
+ * Build orders, unit composition, and first-combat-tick are derived from
+ * the append-only command log.  This runs fast — just a single pass over
+ * the command array.
+ */
+interface EnrichedMetadata {
+  winType: string | null;
+  blueUnits: Record<string, number>;
+  redUnits: Record<string, number>;
+  blueBuildings: Record<string, number>;
+  redBuildings: Record<string, number>;
+  buildOrderBlue: string[];
+  buildOrderRed: string[];
+  firstCombatTick: number | null;
+  flags: string[];
+}
+
+const UNIT_TYPES = ["skirmisher", "gunner", "bruiser", "medic", "worker"];
+const BUILDING_TYPES = ["barracks", "foundry", "supply_depot", "turret"];
+
+const FLAG_FAST_TICKS    = 600;   // games ending before this get "fast" flag
+const FLAG_LOPSIDED_MIN  = 6;     // unit-count disparity >= this gets "lopsided"
+
+function analyzeReplay(raw: Record<string, unknown>): EnrichedMetadata {
+  const cmdLog = (raw.commandLog ?? []) as Array<{
+    tick: number;
+    playerId: string;
+    command: Record<string, unknown>;
+  }>;
+
+  const blueId = (raw.bluePlayerId as string) ?? "headless-blue";
+  const redId  = (raw.redPlayerId  as string) ?? "headless-red";
+
+  const blueUnits: Record<string, number> = {};
+  const redUnits: Record<string, number> = {};
+  const blueBuildings: Record<string, number> = {};
+  const redBuildings: Record<string, number> = {};
+  const buildOrderBlue: string[] = [];
+  const buildOrderRed: string[]   = [];
+  let firstCombatTick: number | null = null;
+
+  for (const entry of cmdLog) {
+    const cmd = entry.command;
+    const isBlue = entry.playerId === blueId;
+    const isRed  = entry.playerId === redId;
+
+    // Unit training
+    if (cmd.type === "train_unit" && typeof cmd.unitType === "string") {
+      if (isBlue) {
+        blueUnits[cmd.unitType] = (blueUnits[cmd.unitType] ?? 0) + 1;
+      } else if (isRed) {
+        redUnits[cmd.unitType] = (redUnits[cmd.unitType] ?? 0) + 1;
+      }
+      // First combat unit trained
+      if (firstCombatTick === null && UNIT_TYPES.slice(0, 4).includes(cmd.unitType)) {
+        firstCombatTick = entry.tick;
+      }
+    }
+
+    // Worker training
+    if (cmd.type === "train_worker") {
+      if (isBlue) blueUnits["worker"] = (blueUnits["worker"] ?? 0) + 1;
+      else if (isRed) redUnits["worker"] = (redUnits["worker"] ?? 0) + 1;
+    }
+
+    // Building construction
+    if (cmd.type === "build" && typeof cmd.buildingType === "string") {
+      if (isBlue) {
+        blueBuildings[cmd.buildingType] = (blueBuildings[cmd.buildingType] ?? 0) + 1;
+        if (buildOrderBlue.length < 6) buildOrderBlue.push(cmd.buildingType);
+      } else if (isRed) {
+        redBuildings[cmd.buildingType] = (redBuildings[cmd.buildingType] ?? 0) + 1;
+        if (buildOrderRed.length < 6) buildOrderRed.push(cmd.buildingType);
+      }
+    }
+  }
+
+  // Win type
+  const outcome = raw.outcome as Record<string, unknown> | undefined;
+  const winType = (outcome?.winType as string) ?? null;
+
+  // Auto-flagging
+  const ticks = (outcome?.ticks as number) ?? 0;
+  const flags: string[] = [];
+  if (ticks > 0 && ticks <= FLAG_FAST_TICKS) flags.push("fast");
+
+  const blueTotal = Object.values(blueUnits).reduce((a, b) => a + b, 0);
+  const redTotal  = Object.values(redUnits).reduce((a, b) => a + b, 0);
+  if (Math.abs(blueTotal - redTotal) >= FLAG_LOPSIDED_MIN) {
+    flags.push("lopsided");
+  }
+  if (winType === "resource") flags.push("resource_win");
+
+  return {
+    winType,
+    blueUnits, redUnits,
+    blueBuildings, redBuildings,
+    buildOrderBlue, buildOrderRed,
+    firstCombatTick,
+    flags,
+  };
+}
+
 export function listReplays(): ReplayMeta[] {
   ensureReplaysDir();
   const files = readdirSync(REPLAYS_DIR).filter(f => f.endsWith(".json"));
@@ -34,15 +149,30 @@ export function listReplays(): ReplayMeta[] {
   for (const file of files) {
     try {
       const raw = JSON.parse(readFileSync(join(REPLAYS_DIR, file), "utf8"));
+      const enriched = analyzeReplay(raw);
+      const outcome = raw.outcome ?? { winner: null, ticks: 0 };
       metas.push({
         id: file.replace(/\.json$/, ""),
         seed: raw.seed,
         blue: raw.blue ?? "?",
         red: raw.red ?? "?",
-        outcome: raw.outcome ?? { winner: null, ticks: 0 },
-        durationSecs: ((raw.outcome?.ticks ?? 0) * SIMULATION.tickIntervalMs) / 1000,
+        outcome: {
+          winner: outcome.winner ?? null,
+          winType: outcome.winType ?? null,
+          ticks: outcome.ticks ?? 0,
+        },
+        durationSecs: ((outcome.ticks ?? 0) * SIMULATION.tickIntervalMs) / 1000,
         version: raw.version ?? "?",
         timestamp: raw.timestamp ?? 0,
+        winType: enriched.winType,
+        blueUnits: enriched.blueUnits,
+        redUnits: enriched.redUnits,
+        blueBuildings: enriched.blueBuildings,
+        redBuildings: enriched.redBuildings,
+        buildOrderBlue: enriched.buildOrderBlue,
+        buildOrderRed: enriched.buildOrderRed,
+        firstCombatTick: enriched.firstCombatTick ?? undefined,
+        flags: enriched.flags,
       });
     } catch {
       // skip corrupt files
