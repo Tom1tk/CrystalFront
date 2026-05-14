@@ -87,8 +87,9 @@ export class ReplayRunner {
     ws: WebSocket,
     onEnd: (matchId: string) => void
   ): string {
-    const blueId = "replay-blue";
-    const redId  = "replay-red";
+    // Use the original player IDs so entity ownership checks in processCommand pass.
+    const blueId = (replay as { bluePlayerId?: string }).bluePlayerId ?? "headless-blue";
+    const redId  = (replay as { redPlayerId?: string }).redPlayerId  ?? "headless-red";
 
     const players: [import("./types.js").PlayerSlot | null, import("./types.js").PlayerSlot | null] = [
       { playerId: blueId, username: replay.blue, color: "blue", score: 0 },
