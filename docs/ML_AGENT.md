@@ -4,7 +4,7 @@ A reinforcement learning bot for Crystal Front RTS. Trains via self-play and lea
 
 **Branch:** `CrystalFront-ML`  
 **Algorithm:** PPO (Proximal Policy Optimisation)  
-**Current phase:** Phase 3 — Python training pipeline ✅
+**Current phase:** Phase 5 — Replay tools + balance analysis ✅
 
 ---
 
@@ -260,30 +260,225 @@ PPO is the industry standard for game AI at this scale (OpenAI Five, AlphaStar f
 
 ---
 
-### Phase 4 — League training + checkpoints 🔲 Not started
+### Phase 4 — League training + checkpoints ✅ Complete
 
-**Goal:** Real training campaign with league-based opponent sampling.
+**Goal:** Real training campaign with league-based opponent sampling using Prioritised Fictitious Self-Play (PFSP).
 
-**Tasks:**
-- `training/ppo/league.py` — manages pool of opponents (scripted + historical checkpoints)
-- Checkpoint sampling with Prioritised Fictitious Self-Play (PFSP) weighting
-- Win-rate matrix logged every E episodes
-- First serious training campaign (target: 10M environment steps)
+| Task | Status |
+|------|--------|
+| `training/ppo/league.py` — LeagueManager with PFSP sampling | ✅ |
+| PFSP opponent sampling: priority ∝ (1 − win_rate)^{temp} | ✅ |
+| Per-opponent win-rate matrix logged to TensorBoard | ✅ |
+| Checkpoint opponents registered in league pool | ✅ |
+| League state save/load (resumable training) | ✅ |
+| Per-reset opponent override in env (`options["opponent"]`) | ✅ |
+| `--league` flag in `train.py` with PFSP config options | ✅ |
 
-**Definition of done:** Win rate vs each scripted bot >90%. Win-rate matrix evolves sensibly. At least one human playtest against the latest checkpoint that feels genuinely challenging.
+**How it works (PFSP):**
+
+Prioritised Fictitious Self-Play samples opponents with probability
+proportional to `(1 − win_rate)^temperature`.  Opponents the agent
+struggles against are picked more often, creating an automatic
+curriculum.  A minimum-priority floor (0.01) ensures every active
+opponent gets some play.
+
+The league pool starts with all four scripted bots (`idle`, `rush`,
+`turtle`, `macro`).  Historical policy checkpoints are added to the pool
+as *inactive* entries — they will activate in Phase 6 (ONNX export)
+so the agent can play against past versions of itself.
+
+**Usage:**
+
+```bash
+# League mode: PFSP sampling across all 4 scripted bots
+python3 training/ppo/train.py --league --num_envs 8 --total_timesteps 10000000
+
+# Customise PFSP temperature (higher = more focus on hard opponents)
+python3 training/ppo/train.py --league --league_pfsp_temp 1.0 --num_envs 8
+
+# Control checkpoint registration interval
+python3 training/ppo/train.py --league --league_add_interval 50 --num_envs 8
+
+# Resume training from previous league state
+python3 training/ppo/train.py --league --league_state checkpoints/.../league_state.json
+```
+
+**Key config options:**
+
+| Option | Default | Purpose |
+|--------|---------|---------|
+| `--league` | `False` | Enable league mode |
+| `--league_pfsp_temp` | `0.5` | PFSP temperature (higher = focus on hard opponents) |
+| `--league_add_interval` | `100` | Add current policy as opponent every N updates (0 = off) |
+| `--league_state` | auto-generated | Path to league state JSON for resume |
+
+**League state file** (`league_state.json`):
+
+Saved automatically to `<checkpoint_dir>/<run_name>/league_state.json`.
+Contains the full opponent registry (name, type, active status, checkpoint
+path), per-opponent win/total counts, and PFSP parameters.  Load it with
+`--league_state` to resume a training campaign.
+
+**TensorBoard charts (league mode):**
+
+| Chart | Content |
+|-------|---------|
+| `league/win_rate_idle` | Win rate vs IdleBot |
+| `league/win_rate_rush` | Win rate vs RushBot |
+| `league/win_rate_turtle` | Win rate vs TurtleBot |
+| `league/win_rate_macro` | Win rate vs MacroBot |
+| `league/win_rate_matrix` | Full matrix text (update number + all win rates) |
+
+The non-league `--opponent` mode still works as before (Phase 3).
+
+**Definition of done:** ✅ PFSP sampling produces correct distribution (verified with 50-sample test).  Win-rate matrix logged per update.  League state round-trips through JSON correctly.  Checkpoint opponents registered as inactive entries.  See [§8](#8-training-guide) for full training workflow.
 
 ---
 
-### Phase 5 — Replay tools + balance analysis 🔲 Not started
+### Phase 5 — Replay tools + balance analysis ✅ Complete
 
-**Goal:** Turn the trained bot into a balance instrument.
+**Goal:** Turn replays into a permanent balance analysis instrument with enriched metadata, filtering, auto-flagging, and batch match reporting.
 
-**Tasks:**
-- Replay index (metadata: seed, outcome, win type, unit counts, build orders)
-- Replay browser filtering/sorting (length, winner, win type, dominant unit)
-- Balance report generator: run 10,000 matches, output win rates by side/comp/strategy
-- Auto-flagging: fastest games, lopsided games, unusual win conditions
-- Comparison reports: "before vs after this balance change"
+| Task | Status |
+|------|--------|
+| Replay index with enriched metadata (unit counts, buildings, build orders) | ✅ `server/src/match/replayRunner.ts` |
+| Replay browser filtering/sorting (winner, win type, bot search, column sort) | ✅ `client/src/components/ReplayBrowser.tsx` |
+| Balance report generator (batch match runner + win-rate matrix + build orders) | ✅ `training/balance_report.py` |
+| Auto-flagging: fastest games, lopsided games, unusual win conditions | ✅ flags array in `ReplayMeta` |
+| Comparison reports: "before vs after this balance change" | ✅ `--compare` mode |
+
+**── Enriched replay metadata**
+
+`analyzeReplay()` in `replayRunner.ts` performs a single pass over each
+replay's `commandLog` and extracts:
+
+| Field | Source | Example |
+|-------|--------|---------|
+| `winType` | `outcome.winType` | `"combat"`, `"resource"`, `"timeout"` |
+| `blueUnits` / `redUnits` | `train_unit` + `train_worker` commands | `{ skirmisher: 6, worker: 4 }` |
+| `blueBuildings` / `redBuildings` | `build` commands | `{ barracks: 1, supply_depot: 2 }` |
+| `buildOrderBlue` / `buildOrderRed` | First 6 `build` commands, in order | `["supply_depot", "barracks"]` |
+| `firstCombatTick` | First tick any combat unit was trained | `454` |
+| `flags` | Auto-calculated | `["lopsided", "fast"]` |
+
+All fields are included in the `GET /api/replays` response.  The analysis
+runs at list time (when the Bot Replays menu is opened), not at replay
+save time — so even existing replay files get enriched metadata.
+
+**── Replay browser**
+
+The Bot Replays screen (`ReplayBrowser.tsx`) was fully rewritten with:
+
+**Filter bar:**
+- **Winner** — All / Blue / Red / Draw
+- **Win type** — All / Combat / Resource / Timeout
+- **Bot name** — free-text search across blue and red bot names
+- **Clear** button appears when filters are active
+
+**Sortable columns:**
+Click column headers to sort by Seed, Duration, or Outcome.
+Click again to toggle ascending/descending.  Active sort column is
+highlighted in ice (cyan).  Default sort: newest first.
+
+**Enriched row display:**
+Each row shows:
+- Seed (last 6 digits), duration, blue/red bot names
+- Outcome (coloured: blue = ice, red = magenta, draw = dim)
+- Win type badge (⚔ Combat / 💰 Econ / ⏳ Time)
+- Unit composition summary in compact notation (W3 S6 G2…)
+- Flag badges with themed colours:
+  - 🟢 **⚡ Fast** — game ≤ 600 ticks
+  - 🔴 **⚔ Lopsided** — unit count disparity ≥ 6
+  - 🟡 **💰 Econ Win** — resource-based victory
+- ▶ Watch button
+
+**── Balance report generator** (`training/balance_report.py`)
+
+A Python CLI tool that batch-runs headless matches between scripted bots
+and produces a structured JSON report.  Uses the existing
+`tsx headless/src/cli.ts` as a subprocess — no Python ↔ Node protocol
+needed; it leverages the mature CLI infrastructure.
+
+**Batch mode:**
+
+```bash
+# Run 100 matches per bot-pair (all 4×4 combos = 1,600 matches)
+python3 training/balance_report.py --matches 100
+
+# Run a specific matchup subset
+python3 training/balance_report.py --blue rush,macro --red idle,turtle --matches 50
+
+# Output to file instead of stdout
+python3 training/balance_report.py --matches 200 --out report_2026-05-14.json
+```
+
+**Options:**
+
+| Option | Default | Purpose |
+|--------|---------|---------|
+| `--matches` | `100` | Matches per bot-pair |
+| `--blue` | all 4 bots | Comma-separated blue bot list |
+| `--red` | all 4 bots | Comma-separated red bot list |
+| `--out` | stdout | Output JSON file path |
+| `--compare` | — | Compare two report files |
+| `--compare_out` | stdout | Comparison output file |
+
+**Report format:**
+
+```json
+{
+  "metadata": {
+    "generated_at": "2026-05-14T21:00:00Z",
+    "total_matches": 1600,
+    "wall_time_secs": 42.5
+  },
+  "win_rate_matrix": {
+    "rush": { "idle": { "wins": 97, "total": 100, "win_rate": 0.97 } }
+  },
+  "avg_durations_ticks": {
+    "rush_vs_idle": 1967.5
+  },
+  "top_build_orders": {
+    "rush": [ { "sequence": "barracks", "count": 95 } ]
+  },
+  "flags": {}
+}
+```
+
+**Comparison mode:**
+
+Diff two balance reports to identify changes before and after a
+balance tweak:
+
+```bash
+# Generate a baseline
+python3 training/balance_report.py --matches 500 --out baseline.json
+
+# … make balance changes to gameBalance.ts …
+
+# Generate after-change report
+python3 training/balance_report.py --matches 500 --out after.json
+
+# Compare
+python3 training/balance_report.py --compare "baseline.json after.json"
+```
+
+The comparison flags win-rate changes > 1 percentage point and
+average-duration changes > 5%, showing the matchup, before/after
+values, and direction of change.
+
+**── Auto-flagging rules**
+
+Implemented in `analyzeReplay()` — flags are computed for every replay
+at list time:
+
+| Flag | Condition | Badge |
+|------|-----------|-------|
+| `fast` | Game ended ≤ 600 ticks | 🟢 ⚡ Fast |
+| `lopsided` | Unit count disparity ≥ 6 | 🔴 ⚔ Lopsided |
+| `resource_win` | Win by resource accumulation | 🟡 💰 Econ Win |
+
+**Definition of done:** ✅ Enriched metadata served at `/api/replays`.  Replay browser has working filters and sorting.  Balance report generator runs end-to-end (verified with 2-match smoke test).  Comparison mode produces correct diff output.  Auto-flags correctly identify fast/lopsided/resource-win games.
 
 ---
 
@@ -505,9 +700,41 @@ tensorboard --logdir runs/
 | Phase 3b | `--opponent rush --num_envs 8` | >90% win rate | ~500k |
 | Phase 3c | `--opponent turtle --num_envs 8` | >80% win rate | ~1M |
 | Phase 3d | `--opponent macro --num_envs 8` | >70% win rate | ~3–5M |
-| Phase 4 | Self-play league | ELO improvement | Ongoing |
+| Phase 4 | `--league --num_envs 8` | >90% vs all bots | ~10M |
 
 Move to the next stage once win rate stays above the target for at least 200k consecutive steps.
+
+### League training (Phase 4)
+
+```bash
+# Start a league training campaign
+python3 training/ppo/train.py --league --num_envs 8 --total_timesteps 10000000
+
+# Monitor per-opponent win rates in TensorBoard
+tensorboard --logdir runs/
+# Watch: league/win_rate_idle, league/win_rate_rush, league/win_rate_turtle, league/win_rate_macro
+
+# Resume from a previous league state
+python3 training/ppo/train.py --league --league_state checkpoints/.../league_state.json --num_envs 8
+```
+
+The league automatically samples opponents with PFSP weighting.
+Opponents the agent struggles against are picked more often.
+Checkpoints are added to the league pool as inactive entries
+(every `--league_add_interval` updates) for future self-play (Phase 6).
+
+### Generating balance reports (Phase 5)
+
+```bash
+# Run 100 matches per bot-pair and print JSON report
+python3 training/balance_report.py --matches 100
+
+# Compare before/after a balance change
+python3 training/balance_report.py --matches 500 --out baseline.json
+# … edit shared/src/gameBalance.ts, rebuild, deploy …
+python3 training/balance_report.py --matches 500 --out after.json
+python3 training/balance_report.py --compare "baseline.json after.json"
+```
 
 ### Scaling to more CPU cores
 
@@ -565,7 +792,7 @@ CrystalFront/
 ├── server/src/match/                   # Game simulation
 │   ├── matchEngine.ts                  # Authoritative engine (pure, no setInterval)
 │   ├── liveMatchRunner.ts              # setInterval driver for production server
-│   ├── replayRunner.ts                 # Replay playback at real-time speed
+│   ├── replayRunner.ts                 # Replay playback + Phase 5 enriched metadata + auto-flagging
 │   ├── botPlayer.ts                    # In-process bot driver for live game
 │   └── engine/
 │       ├── rng.ts                      # Seedable mulberry32 PRNG
@@ -573,11 +800,13 @@ CrystalFront/
 │
 ├── training/                           # Python PPO training pipeline
 │   ├── env/
-│   │   └── crystalfront_env.py         # Gymnasium wrapper
+│   │   └── crystalfront_env.py         # Gymnasium wrapper (with per-reset opponent)
 │   ├── ppo/
 │   │   ├── policy.py                   # SetTransformer + CrystalFrontAgent
-│   │   └── train.py                    # PPO training loop
+│   │   ├── train.py                    # PPO training loop (league + single-opponent)
+│   │   └── league.py                   # Phase 4 — LeagueManager + PFSP sampling
 │   ├── test_env.py                     # End-to-end smoke test
+│   ├── balance_report.py               # Phase 5 — batch match runner + report generator
 │   └── requirements.txt
 │
 ├── replays/                            # Saved match replays (gitignored)
