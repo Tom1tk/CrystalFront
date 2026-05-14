@@ -34,7 +34,8 @@ export function expandMacroAction(
 
     case "build": {
       if (!action.buildingType) return [];
-      const workers = getIdleWorkers(match, playerId, 1);
+      // Any worker not mid-construction can be redirected; engine clears gatheringNodeId
+      const workers = getAvailableBuilders(match, playerId, 1);
       if (workers.length === 0) return [];
       const pos = chooseBuildPosition(playerColor, action.xZone ?? "mid_base", action.yZone ?? "middle", match);
       if (!pos) return [];
@@ -130,6 +131,15 @@ function getIdleWorkers(match: MatchState, playerId: string, min = 0): MatchEnti
     if (!e.buildTargetId && !e.gatheringNodeId && !e.attackTargetId) {
       workers.push(e);
     }
+  }
+  return workers;
+}
+
+function getAvailableBuilders(match: MatchState, playerId: string, min = 0): MatchEntity[] {
+  const workers: MatchEntity[] = [];
+  for (const e of match.entities.values()) {
+    if (e.type !== "worker" || e.ownerId !== playerId) continue;
+    if (!e.buildTargetId) workers.push(e);  // gathering workers OK; engine clears it on build
   }
   return workers;
 }
