@@ -1,4 +1,4 @@
-import { BUILDING_DEFS, UNIT_DEFS, ECONOMY } from "../../shared/src/gameBalance.js";
+import { BUILDING_DEFS, UNIT_DEFS, ECONOMY } from "@crystalfront/shared";
 /**
  * Returns the set of macro-actions that are currently legal for the given player.
  * "Legal" means the action is structurally possible (enough resources, supply,

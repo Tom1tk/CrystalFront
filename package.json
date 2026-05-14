@@ -7,7 +7,7 @@
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "tsx watch server/src/index.ts",
     "dev:client": "npm -w client run dev",
-    "build": "npm run build:shared && npm run build:client && npm run build:server",
+    "build": "npm run build:shared && npm run build:client",
     "build:shared": "npm -w shared run build",
     "build:client": "npm -w client run build",
     "build:server": "tsc -p server/tsconfig.json",

@@ -1,7 +1,6 @@
 import type { MatchEngine } from "./matchEngine.js";
 import type { MatchState } from "./types.js";
 
-// Import from headless package — relative path since workspaces symlink it
 import type { Agent } from "../../../headless/src/types.js";
 import { buildObservation } from "../../../headless/src/observation.js";
 import { getLegalActions } from "../../../headless/src/legalActions.js";

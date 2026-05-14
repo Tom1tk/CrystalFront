@@ -16,10 +16,13 @@ interface UseWebSocketReturn {
   lobbyState: LobbyState | null;
   matchState: MatchState | null;
   matchEnd: { winner: string } | null;
+  replayEnd: { ticks: number; winner: string | null } | null;
   resourceNodes: ResourceNodeDisplay[];
   createLobby: (username: string) => void;
   joinLobby: (code: string, username: string) => void;
   startSoloTest: (username: string) => void;
+  startReplay: (replayId: string) => void;
+  stopReplay: () => void;
   toggleReady: () => void;
   leaveLobby: () => void;
   debugWin: (winner: "player1" | "player2" | "self") => void;
@@ -36,6 +39,7 @@ interface UseWebSocketReturn {
   connected: boolean;
   clearMatchEnd: () => void;
   clearMatchState: () => void;
+  clearReplayEnd: () => void;
   clearError: () => void;
 }
 
@@ -45,6 +49,7 @@ export function useWebSocket(): UseWebSocketReturn {
   const [lobbyState, setLobbyState] = useState<LobbyState | null>(null);
   const [matchState, setMatchState] = useState<MatchState | null>(null);
   const [matchEnd, setMatchEnd] = useState<{ winner: string } | null>(null);
+  const [replayEnd, setReplayEnd] = useState<{ ticks: number; winner: string | null } | null>(null);
   const [resourceNodes, setResourceNodes] = useState<ResourceNodeDisplay[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
@@ -96,6 +101,11 @@ export function useWebSocket(): UseWebSocketReturn {
           setMatchState(ms);
           setResourceNodes(ms.resourceNodes ?? []);
         }
+        if (msg.type === "replay_end") {
+          setReplayEnd(msg.payload as { ticks: number; winner: string | null });
+          setMatchState(null);
+          setResourceNodes([]);
+        }
       } catch {
         // ignore parse errors
       }
@@ -134,6 +144,17 @@ export function useWebSocket(): UseWebSocketReturn {
     },
     [sendMessage]
   );
+
+  const startReplay = useCallback(
+    (replayId: string) => {
+      sendMessage({ type: "start_replay", payload: { replayId } });
+    },
+    [sendMessage]
+  );
+
+  const stopReplay = useCallback(() => {
+    sendMessage({ type: "stop_replay" });
+  }, [sendMessage]);
 
   const toggleReady = useCallback(() => {
     sendMessage({ type: "ready_toggle" });
@@ -175,6 +196,10 @@ export function useWebSocket(): UseWebSocketReturn {
     setMatchEnd(null);
   }, []);
 
+  const clearReplayEnd = useCallback(() => {
+    setReplayEnd(null);
+  }, []);
+
   const clearMatchState = useCallback(() => {
     setMatchState(null);
     setResourceNodes([]);
@@ -189,10 +214,13 @@ export function useWebSocket(): UseWebSocketReturn {
     lobbyState,
     matchState,
     matchEnd,
+    replayEnd,
     resourceNodes,
     createLobby,
     joinLobby,
     startSoloTest,
+    startReplay,
+    stopReplay,
     toggleReady,
     leaveLobby,
     debugWin,
@@ -202,6 +230,7 @@ export function useWebSocket(): UseWebSocketReturn {
     connected,
     clearMatchEnd,
     clearMatchState,
+    clearReplayEnd,
     clearError,
   };
 }

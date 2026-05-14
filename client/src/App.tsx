@@ -4,6 +4,7 @@ import MainMenu from "./components/MainMenu";
 import LobbyScreen from "./components/LobbyScreen";
 import GameShell from "./components/GameShell";
 import MatchEndScreen from "./components/MatchEndScreen";
+import ReplayBrowser from "./components/ReplayBrowser";
 import type { Screen, Player } from "./types";
 import { FCT } from "./design/facet";
 
@@ -46,6 +47,21 @@ function useScreenFlow() {
     }
   }, [ws.matchEnd]);
 
+  // Transition to watching_replay when replay starts
+  useEffect(() => {
+    if (ws.matchState && screen === "replays") {
+      setScreen("watching_replay");
+    }
+  }, [ws.matchState, screen]);
+
+  // Return to replay browser when replay ends
+  useEffect(() => {
+    if (ws.replayEnd) {
+      ws.clearReplayEnd();
+      setScreen("replays");
+    }
+  }, [ws.replayEnd]);
+
   const handleHost = useCallback(
     (name: string) => {
       ws.createLobby(name);
@@ -69,6 +85,27 @@ function useScreenFlow() {
     },
     [ws]
   );
+
+  const handleOpenReplays = useCallback(() => {
+    setScreen("replays");
+  }, []);
+
+  const handleWatchReplay = useCallback(
+    (replayId: string) => {
+      ws.startReplay(replayId);
+    },
+    [ws]
+  );
+
+  const handleStopReplay = useCallback(() => {
+    ws.stopReplay();
+    ws.clearMatchState();
+    setScreen("replays");
+  }, [ws]);
+
+  const handleBackFromReplays = useCallback(() => {
+    setScreen("menu");
+  }, []);
 
   const handleLeave = useCallback(() => {
     ws.leaveLobby();
@@ -131,6 +168,7 @@ function useScreenFlow() {
 
   return {
     screen,
+    setScreen,
     isHost,
     ws,
     matchState: ws.matchState,
@@ -140,6 +178,10 @@ function useScreenFlow() {
     handleHost,
     handleJoin,
     handleSoloTest,
+    handleOpenReplays,
+    handleWatchReplay,
+    handleStopReplay,
+    handleBackFromReplays,
     handleLeave,
     handleRematch,
     handleExit,
@@ -161,6 +203,10 @@ export default function App() {
     handleHost,
     handleJoin,
     handleSoloTest,
+    handleOpenReplays,
+    handleWatchReplay,
+    handleStopReplay,
+    handleBackFromReplays,
     handleLeave,
     handleRematch,
     handleExit,
@@ -175,7 +221,26 @@ export default function App() {
   return (
     <div style={styles.container}>
       {screen === "menu" && (
-        <MainMenu onHost={handleHost} onJoin={handleJoin} onSoloTest={handleSoloTest} />
+        <MainMenu onHost={handleHost} onJoin={handleJoin} onSoloTest={handleSoloTest} onReplays={handleOpenReplays} />
+      )}
+      {screen === "replays" && (
+        <ReplayBrowser onBack={handleBackFromReplays} onWatch={handleWatchReplay} />
+      )}
+      {screen === "watching_replay" && matchState && (
+        <GameShell
+          lobby={{ code: "REPLAY", players: [null, null], status: "match", hostId: "" }}
+          player={{ id: "__observer__", username: "Replay", color: "blue", ready: false, score: 0 }}
+          matchState={matchState}
+          resourceNodes={ws.resourceNodes}
+          onDebugWin={handleDebugWin}
+          onDebugSpawn={handleDebugSpawn}
+          onGameCommand={handleGameCommand}
+          error={ws.error}
+          onClearError={ws.clearError}
+          isReplay
+          onStopReplay={handleStopReplay}
+          replayTotalTicks={matchState.tick}
+        />
       )}
       {screen === "lobby" && lobby && player && (
         <LobbyScreen

@@ -4,8 +4,8 @@ import { FCT, FctMark, FctStat, FctStyles, DbgBtn, HEX_CLIP, NOTCH_R } from "../
 import { UNIT_DEFS, BUILDING_DEFS } from "@crystalfront/shared";
 
 interface GameShellProps {
-  lobby: Lobby;
-  player: Player;
+  lobby: Lobby | null;
+  player: Player | null;
   matchState: MatchState | null;
   resourceNodes: ResourceNodeDisplay[];
   onDebugWin: (winner: "player1" | "player2") => void;
@@ -23,6 +23,9 @@ interface GameShellProps {
   }) => void;
   error: string | null;
   onClearError: () => void;
+  isReplay?: boolean;
+  onStopReplay?: () => void;
+  replayTotalTicks?: number;
 }
 
 const CANVAS_WIDTH = 960;
@@ -595,7 +598,15 @@ export default function GameShell({
   onGameCommand,
   error,
   onClearError,
+  isReplay = false,
+  onStopReplay,
+  replayTotalTicks,
 }: GameShellProps) {
+  // Callers always provide player (even replay passes a synthetic observer object).
+  // The null type on the prop exists so replay can pass `null`-ish defaults,
+  // but we normalise here to avoid TS18047 errors throughout.
+  const safePlayer = player ?? { id: "__observer__", username: "Replay", color: "blue" as const, ready: false, score: 0 };
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
@@ -654,25 +665,25 @@ export default function GameShell({
       .filter((e): e is MatchEntity => e != null);
 
     const crystalSelected = selectedEntities.some(
-      (e) => e.type === "crystal" && e.ownerId === player.id
+      (e) => e.type === "crystal" && e.ownerId === safePlayer.id
     );
     const barracksSelected = selectedEntities.some(
-      (e) => e.type === "building" && e.buildingType === "barracks" && e.ownerId === player.id
+      (e) => e.type === "building" && e.buildingType === "barracks" && e.ownerId === safePlayer.id
     );
     const foundrySelected = selectedEntities.some(
-      (e) => e.type === "building" && e.buildingType === "foundry" && e.ownerId === player.id
+      (e) => e.type === "building" && e.buildingType === "foundry" && e.ownerId === safePlayer.id
     );
     const hasWorkers = selectedEntities.some(
-      (e) => e.type === "worker" && e.ownerId === player.id
+      (e) => e.type === "worker" && e.ownerId === safePlayer.id
     );
     const hasCombatUnits = selectedEntities.some(
-      (e) => e.type !== "building" && e.type !== "crystal" && e.type !== "worker" && e.ownerId === player.id
+      (e) => e.type !== "building" && e.type !== "crystal" && e.type !== "worker" && e.ownerId === safePlayer.id
     );
 
     // Workers → building hotkeys (QWER), non-worker units → combat hotkeys (ASDF)
     // Rally point (F) available when any production building is selected
     const hasProductionBuilding = selectedEntities.some(
-      (e) => e.type === "building" && (e.buildingType === "barracks" || e.buildingType === "foundry") && e.ownerId === player.id
+      (e) => e.type === "building" && (e.buildingType === "barracks" || e.buildingType === "foundry") && e.ownerId === safePlayer.id
     );
 
     if (hasWorkers) {
@@ -698,7 +709,7 @@ export default function GameShell({
       { key: "d", action: hasCombatUnits ? "retreat" : "none", label: hasCombatUnits ? "Retreat" : "", icon: hasCombatUnits ? "↩️" : "" },
       { key: "f", action: hasProductionBuilding ? "set_rally" : "none", label: hasProductionBuilding ? "Rally" : "", icon: hasProductionBuilding ? "🚩" : "" },
     ];
-  }, [selectedEntityIds, matchState, player.id]);
+  }, [selectedEntityIds, matchState, safePlayer.id]);
 
   const [showHotkeyMenu, setShowHotkeyMenu] = useState(true);
   const [hotkeyFlash, setHotkeyFlash] = useState<string | null>(null);
@@ -725,7 +736,7 @@ export default function GameShell({
   const isDraggingRef = useRef(isDragging);
   const dragStartRef = useRef<{ x: number; y: number } | null>(dragStart);
   const debugSpawnModeRef = useRef<string | null>(null);
-  const playerRef = useRef(player);
+  const playerRef = useRef(safePlayer);
   const minimapDraggingRef = useRef(false);
 
   // Death particle system
@@ -749,8 +760,8 @@ export default function GameShell({
   });
 
   const isMyEntity = useCallback(
-    (entity: { ownerId: string }) => entity.ownerId === player.id,
-    [player.id]
+    (entity: { ownerId: string }) => entity.ownerId === safePlayer.id,
+    [safePlayer.id]
   );
 
   const myEntities = matchState?.entities.filter(isMyEntity) ?? [];
@@ -778,8 +789,8 @@ export default function GameShell({
     const mapWidth = matchState.mapWidth ?? matchState.config?.mapWidth ?? 6000;
     const mapHeight = matchState.mapHeight ?? matchState.config?.mapHeight ?? 600;
 
-    const myIdx = matchState.players.findIndex((p) => p?.playerId === player.id);
-    const myCrystal = matchState.entities.find((e) => e.type === "crystal" && e.ownerId === player.id);
+    const myIdx = matchState.players.findIndex((p) => p?.playerId === safePlayer.id);
+    const myCrystal = matchState.entities.find((e) => e.type === "crystal" && e.ownerId === safePlayer.id);
 
     if (myCrystal) {
       cameraXRef.current = Math.max(0, Math.min(myCrystal.x - viewW / 2, mapWidth - viewW));
@@ -793,7 +804,7 @@ export default function GameShell({
     // this pushes the map down, centering it visually with equal space above and below.
     cameraYRef.current = (mapHeight - viewH) / 2;
 
-  }, [matchState, player.id]);
+  }, [matchState, safePlayer.id]);
 
   // Resize handler with DPR support
   useEffect(() => {
@@ -993,7 +1004,7 @@ export default function GameShell({
           if (selEntity.type === "crystal" || selEntity.type === "building") continue;
 
           // Attack enemy unit/building
-          if (clickedEntity && clickedEntity.ownerId !== player.id) {
+          if (clickedEntity && clickedEntity.ownerId !== safePlayer.id) {
             onGameCommand({
               type: "attack",
               entityId: sid,
@@ -1003,7 +1014,7 @@ export default function GameShell({
           }
 
           // Medic heal friendly unit
-          if (selEntity.type === "medic" && clickedEntity && clickedEntity.ownerId === player.id &&
+          if (selEntity.type === "medic" && clickedEntity && clickedEntity.ownerId === safePlayer.id &&
               clickedEntity.type !== "crystal" && clickedEntity.type !== "building") {
             onGameCommand({
               type: "heal",
@@ -1015,7 +1026,7 @@ export default function GameShell({
 
           // Worker build friendly building under construction
           if (selEntity.type === "worker" && clickedEntity &&
-              clickedEntity.type === "building" && clickedEntity.ownerId === player.id &&
+              clickedEntity.type === "building" && clickedEntity.ownerId === safePlayer.id &&
               clickedEntity.constructionProgress !== undefined &&
               clickedEntity.constructionProgress < 100) {
             onGameCommand({
@@ -1028,7 +1039,7 @@ export default function GameShell({
 
           // Worker repair friendly building
           if (selEntity.type === "worker" && clickedEntity &&
-              clickedEntity.type === "building" && clickedEntity.ownerId === player.id &&
+              clickedEntity.type === "building" && clickedEntity.ownerId === safePlayer.id &&
               clickedEntity.health < clickedEntity.maxHealth) {
             onGameCommand({
               type: "repair",
@@ -1058,7 +1069,7 @@ export default function GameShell({
         }
       }
     },
-    [myEntities, selectedEntityId, selectedEntityIds, resourceNodes, onGameCommand, buildMode, selectedBuildingType, myCrystal, matchState, handleMinimapClick, player.id, rallyMode, debugDragMode, debugDraggingNodeId, debugSpawnMode]
+    [myEntities, selectedEntityId, selectedEntityIds, resourceNodes, onGameCommand, buildMode, selectedBuildingType, myCrystal, matchState, handleMinimapClick, safePlayer.id, rallyMode, debugDragMode, debugDraggingNodeId, debugSpawnMode]
   );
 
   const handleContextMenu = useCallback(
@@ -1132,7 +1143,7 @@ export default function GameShell({
         const targetId = selectedEntityId ?? selectedIds[0] ?? null;
         if (targetId && matchState) {
           const entity = matchState.entities.find((ent) => ent.id === targetId);
-          if (entity && (entity.type === "building" || entity.type === "crystal") && entity.ownerId === player.id) {
+          if (entity && (entity.type === "building" || entity.type === "crystal") && entity.ownerId === safePlayer.id) {
             setRallyMode({ buildingId: entity.id });
             return;
           }
@@ -1159,7 +1170,7 @@ export default function GameShell({
         const movableUnitIds = selectedIds.filter(
           (id) => {
             const ent = entities.find((e) => e.id === id);
-            return ent && ent.type !== "building" && ent.type !== "crystal" && ent.ownerId === player.id;
+            return ent && ent.type !== "building" && ent.type !== "crystal" && ent.ownerId === safePlayer.id;
           }
         );
 
@@ -1168,7 +1179,7 @@ export default function GameShell({
             // Train worker from selected crystal
             const crystal = selectedIds
               .map((id) => entities.find((ent) => ent.id === id))
-              .filter((ent): ent is MatchEntity => ent != null && ent.type === "crystal" && ent.ownerId === player.id);
+              .filter((ent): ent is MatchEntity => ent != null && ent.type === "crystal" && ent.ownerId === safePlayer.id);
             if (crystal.length > 0) {
               onGameCommand({ type: "train_worker", entityId: crystal[0].id });
             }
@@ -1184,11 +1195,11 @@ export default function GameShell({
             if (unitType === "skirmisher" || unitType === "gunner") {
               building = selectedIds
                 .map((id) => entities.find((ent) => ent.id === id))
-                .find((ent): ent is MatchEntity => ent != null && ent.type === "building" && ent.buildingType === "barracks" && ent.ownerId === player.id);
+                .find((ent): ent is MatchEntity => ent != null && ent.type === "building" && ent.buildingType === "barracks" && ent.ownerId === safePlayer.id);
             } else {
               building = selectedIds
                 .map((id) => entities.find((ent) => ent.id === id))
-                .find((ent): ent is MatchEntity => ent != null && ent.type === "building" && ent.buildingType === "foundry" && ent.ownerId === player.id);
+                .find((ent): ent is MatchEntity => ent != null && ent.type === "building" && ent.buildingType === "foundry" && ent.ownerId === safePlayer.id);
             }
             if (building) {
               onGameCommand({
@@ -1243,7 +1254,7 @@ export default function GameShell({
             // Enter rally point placement mode for selected production building
             if (selectedEntityId) {
               const entity = entities.find((ent) => ent.id === selectedEntityId);
-              if (entity && (entity.type === "building" || entity.type === "crystal") && entity.ownerId === player.id) {
+              if (entity && (entity.type === "building" || entity.type === "crystal") && entity.ownerId === safePlayer.id) {
                 setRallyMode({ buildingId: entity.id });
               }
             }
@@ -1262,7 +1273,7 @@ export default function GameShell({
               // Workers repair nearest damaged friendly building
               for (const wid of workers) {
                 const damagedBuildings = entities.filter(
-                  (ent) => ent.type === "building" && ent.ownerId === player.id && ent.health < ent.maxHealth
+                  (ent) => ent.type === "building" && ent.ownerId === safePlayer.id && ent.health < ent.maxHealth
                 );
                 if (damagedBuildings.length > 0) {
                   const worker = entities.find((ent) => ent.id === wid);
@@ -1283,7 +1294,7 @@ export default function GameShell({
               // Medics heal nearest damaged friendly unit
               for (const mid of medics) {
                 const damagedUnits = entities.filter(
-                  (ent) => ent.type !== "building" && ent.type !== "crystal" && ent.ownerId === player.id && ent.health < ent.maxHealth
+                  (ent) => ent.type !== "building" && ent.type !== "crystal" && ent.ownerId === safePlayer.id && ent.health < ent.maxHealth
                 );
                 if (damagedUnits.length > 0) {
                   const medic = entities.find((ent) => ent.id === mid);
@@ -1308,7 +1319,7 @@ export default function GameShell({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [rallyMode, selectedEntityId, selectedEntityIds, matchState, player.id, hotkeys]);
+  }, [rallyMode, selectedEntityId, selectedEntityIds, matchState, safePlayer.id, hotkeys]);
 
   const handleMouseUp = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -1370,7 +1381,7 @@ export default function GameShell({
 
           const boxSelected = new Set<string>();
           for (const entity of matchState?.entities ?? []) {
-            if (entity.ownerId !== player.id) continue;
+            if (entity.ownerId !== safePlayer.id) continue;
             if (entity.type === "crystal" || entity.type === "building") continue;
             if (entity.x >= worldX1 && entity.x <= worldX2 && entity.y >= worldY1 && entity.y <= worldY2) {
               boxSelected.add(entity.id);
@@ -1412,7 +1423,7 @@ export default function GameShell({
       setIsDragging(false);
       setDragStart(null);
     },
-    [isDragging, dragStart, matchState, player.id]
+    [isDragging, dragStart, matchState, safePlayer.id]
   );
 
   const handleTrainWorker = useCallback(() => {
@@ -1632,7 +1643,7 @@ export default function GameShell({
     const dpr = dprRef.current;
     const cssW = canvas.clientWidth;
     const cssH = canvas.clientHeight;
-    const myCrystal = entities.find((e) => e.type === "crystal" && e.ownerId === player.id);
+    const myCrystal = entities.find((e) => e.type === "crystal" && e.ownerId === safePlayer.id);
 
     ctx.save();
     ctx.scale(dpr, dpr);
@@ -1679,7 +1690,7 @@ export default function GameShell({
     // entities so player units always render clearly on top.
     {
       const myVisionSources = entities.filter(
-        (e) => e.ownerId === player.id && e.health > 0
+        (e) => e.ownerId === safePlayer.id && e.health > 0
       );
 
       if (myVisionSources.length > 0) {
@@ -1781,7 +1792,7 @@ export default function GameShell({
     for (const entity of entities) {
       const hitRadius = entity.type === "building" || entity.type === "crystal" ? 22 : entity.radius;
       if (entity.x < cameraX - hitRadius * 2 || entity.x > cameraX + cssW + hitRadius * 2) continue;
-      const localIsMyTeam = entity.ownerId === player.id;
+      const localIsMyTeam = entity.ownerId === safePlayer.id;
       const localIsSelected = entity.id === selectedEntityId;
       const localIsBuilding = entity.type === "building" || entity.type === "crystal";
 
@@ -1933,7 +1944,7 @@ export default function GameShell({
 
     // Rally point markers — always visible for own buildings
     for (const entity of entities) {
-      if (entity.rallyPoint && entity.ownerId === player.id) {
+      if (entity.rallyPoint && entity.ownerId === safePlayer.id) {
         const rx = entity.rallyPoint.x;
         const ry = entity.rallyPoint.y;
         const isSelected = selectedEntityIds.has(entity.id);
@@ -2092,7 +2103,7 @@ export default function GameShell({
       const halfH = size.h / 2;
       const midX = mapWidth / 2;
       const centerExclusion = 200;
-      const isBlue = player.color === "blue";
+      const isBlue = safePlayer.color === "blue";
       const inPlayerHalf = isBlue ? hoverPos.x < midX : hoverPos.x > midX;
       const notInCenter = isBlue ? hoverPos.x <= midX - centerExclusion : hoverPos.x >= midX + centerExclusion;
       const valid = inPlayerHalf && notInCenter;
@@ -2125,14 +2136,14 @@ export default function GameShell({
         cssW,
         resourceNodes,
         entities,
-        player.color,
+        safePlayer.color,
         minimapX,
         minimapY
       );
 
       // Minimap fog overlay (tile-based, screen space)
       {
-        const mmSources = entities.filter(e => e.ownerId === player.id && e.health > 0);
+        const mmSources = entities.filter(e => e.ownerId === safePlayer.id && e.health > 0);
         if (mmSources.length > 0) {
           const mapW = matchState.mapWidth ?? matchState.config?.mapWidth ?? 6000;
           const xScale = MINIMAP_WIDTH / mapW;
@@ -2182,20 +2193,21 @@ export default function GameShell({
 
 
 
-  const opponent = lobby.players.find((p) => p?.id !== player.id);
+  const safeLobby = lobby ?? { code: "REPLAY", players: [null, null] as [null, null], status: "match" as const, hostId: "" };
+  const opponent = safeLobby.players.find((p) => p?.id !== safePlayer.id);
   const opponentColor = opponent?.color === "blue" ? "#4488ff" : "#ff4444";
-  const myColor = player.color === "blue" ? "#4488ff" : "#ff4444";
+  const myColor = safePlayer.color === "blue" ? "#4488ff" : "#ff4444";
 
   const myEconomy = (() => {
     if (!matchState) return null;
-    const myIdx = matchState.players.findIndex((p) => p?.playerId === player.id);
+    const myIdx = matchState.players.findIndex((p) => p?.playerId === safePlayer.id);
     if (myIdx < 0) return null;
     return matchState.economy[myIdx] ?? null;
   })();
 
   const opponentEconomy = (() => {
     if (!matchState) return null;
-    const myIdx = matchState.players.findIndex((p) => p?.playerId === player.id);
+    const myIdx = matchState.players.findIndex((p) => p?.playerId === safePlayer.id);
     if (myIdx < 0) return null;
     const oppIdx = myIdx === 0 ? 1 : 0;
     return matchState.economy[oppIdx] ?? null;
@@ -2223,9 +2235,9 @@ export default function GameShell({
       <div ref={containerRef} style={styles.gameContainer}>
         <canvas
           ref={canvasRef}
-          onMouseDown={handleMouseDown}
-          onMouseUp={handleMouseUp}
-          onContextMenu={handleContextMenu}
+          onMouseDown={isReplay ? undefined : handleMouseDown}
+          onMouseUp={isReplay ? undefined : handleMouseUp}
+          onContextMenu={isReplay ? undefined : handleContextMenu}
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
           style={styles.canvas}
@@ -2259,10 +2271,10 @@ export default function GameShell({
               <FctMark size={28} />
               <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
                 <span style={{ fontFamily: FCT.display, fontSize: 18, color: myColor === "#4488ff" ? FCT.ice : FCT.red, letterSpacing: "0.04em", fontWeight: 700 }}>
-                  {player.username}
+                  {safePlayer.username}
                 </span>
                 <span style={{ fontFamily: FCT.display, fontSize: 22, color: myColor === "#4488ff" ? FCT.ice : FCT.red, fontWeight: 700 }}>
-                  {player.score}
+                  {safePlayer.score}
                 </span>
               </div>
             </div>
@@ -2292,7 +2304,7 @@ export default function GameShell({
                   ? `Selected ${selectedEntityIds.size} units`
                   : selectedEntityId
                     ? selectedEntity?.type === "crystal"
-                      ? selectedEntity?.ownerId === player.id
+                      ? selectedEntity?.ownerId === safePlayer.id
                         ? `HQ · HP: ${Math.floor(selectedEntity.health)}/${selectedEntity.maxHealth} · Q: Worker`
                         : "Enemy HQ"
                       : selectedEntity?.type === "building"
@@ -2301,7 +2313,7 @@ export default function GameShell({
                           : selectedEntity?.productionQueue.length > 0
                             ? ` · ${selectedEntity.productionQueue[0]?.unitType}: ${Math.ceil((selectedEntity.productionQueue[0]?.remainingTicks ?? 0) / 10)}s`
                             : ""}`
-                        : selectedEntity?.ownerId === player.id
+                        : selectedEntity?.ownerId === safePlayer.id
                           ? `${selectedEntity.type} · HP: ${Math.floor(selectedEntity.health)}/${selectedEntity.maxHealth}${selectedEntity.autoAttackEnabled ? " · AA:ON" : ""}`
                           : `Enemy ${selectedEntity?.type}`
                     : "Click ground to move · click node to gather · click enemy to attack"}
@@ -2312,7 +2324,7 @@ export default function GameShell({
           {showHotkeyMenu && (
             <div style={styles.hotkeyMenu}>
               {/* Selection info strip */}
-              {selectedEntityId && selectedEntity && selectedEntity.ownerId === player.id && (
+              {selectedEntityId && selectedEntity && selectedEntity.ownerId === safePlayer.id && (
                 <div style={styles.selectionInfo}>
                   <span style={styles.selectionInfoName}>
                     {selectedEntity.type === "crystal" ? "HQ" : selectedEntity.type === "building" ? (selectedEntity.buildingType ?? "Building") : selectedEntity.type}
@@ -2385,7 +2397,7 @@ export default function GameShell({
                   style={styles.debugButton}
                   onClick={() =>
                     onDebugWin(
-                      player.id === lobby.players[0]?.id ? "player1" : "player2"
+                      safePlayer.id === safeLobby.players[0]?.id ? "player1" : "player2"
                     )
                   }
                 >
@@ -2395,7 +2407,7 @@ export default function GameShell({
                   style={styles.debugButton}
                   onClick={() =>
                     onDebugWin(
-                      player.id === lobby.players[0]?.id ? "player2" : "player1"
+                      safePlayer.id === safeLobby.players[0]?.id ? "player2" : "player1"
                     )
                   }
                 >
@@ -2489,6 +2501,53 @@ export default function GameShell({
           </div>
         )}
       </div>
+
+      {/* ── Replay overlay ───────────────────────────────────── */}
+      {isReplay && (
+        <div style={{
+          position: "fixed",
+          top: 10,
+          right: 10,
+          zIndex: 100,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+        }}>
+          <div style={{
+            background: "rgba(5,6,10,0.85)",
+            border: `1px solid ${FCT.amber}`,
+            padding: "6px 14px",
+            fontFamily: FCT.mono,
+            fontSize: 9,
+            letterSpacing: "0.28em",
+            color: FCT.amber,
+            clipPath: "polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)",
+          }}>
+            ▶ REPLAY
+            {replayTotalTicks !== undefined && matchState && (
+              <span style={{ marginLeft: 10, color: FCT.inkDim }}>
+                {matchState.tick} / {replayTotalTicks} ticks
+              </span>
+            )}
+          </div>
+          <button
+            onClick={onStopReplay}
+            style={{
+              background: "rgba(5,6,10,0.85)",
+              border: `1px solid ${FCT.lineHi}`,
+              padding: "6px 12px",
+              fontFamily: FCT.mono,
+              fontSize: 9,
+              letterSpacing: "0.22em",
+              color: FCT.inkDim,
+              cursor: "pointer",
+              clipPath: "polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)",
+            }}
+          >
+            ✕ Stop
+          </button>
+        </div>
+      )}
     </div>
   );
 }
