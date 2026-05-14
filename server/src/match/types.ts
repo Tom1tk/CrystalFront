@@ -6,6 +6,8 @@ import {
   ENTITY,
   SIMULATION,
 } from "@crystalfront/shared";
+import type { Rng } from "./engine/rng.js";
+import type { IdGen } from "./engine/idGen.js";
 
 export type MatchPhase = "spawn" | "playing" | "ended";
 
@@ -76,6 +78,12 @@ export interface MatchState {
   mapHeight: number;
   // Fog of war — computed per tick, keyed by playerId
   visibilityData?: Map<PlayerId, { entityIds: Set<EntityId>; nodeIds: Set<string> }>;
+  // Determinism — seedable RNG and monotonic ID generator
+  rng: Rng;
+  idGen: IdGen;
+  seed: number;
+  // Replay — append-only log of every successful command
+  commandLog: Array<{ tick: number; playerId: string; command: Record<string, unknown> }>;
 }
 
 export interface MatchEntity {
@@ -128,36 +136,7 @@ export interface CommandEntry {
   workerIds?: string[];
 }
 
-export interface BuildingDefinition {
-  cost: number;
-  buildTime: number;
-  health: number;
-  width: number;
-  height: number;
-  color: string;
-  supplyProvided?: number;
-  produces?: string[];
-  damage?: number;
-  range?: number;
-  attackCooldown?: number;
-}
-
-export interface UnitDefinition {
-  cost: number;
-  supplyCost: number;
-  buildTime: number;
-  health: number;
-  radius: number;
-  damage: number;
-  range: number;
-  speed: number;
-  color: string;
-  attackCooldown: number;
-}
-
-// Constants imported from @crystalfront/shared:
-// BUILDING_DEFS, UNIT_DEFS, REPAIR_COST_PER_HP, REPAIR_RATE_PER_TICK,
-// BUILDING_MIN_SPACING, CRYSTAL_NO_BUILD_RADIUS, COUNTER_MULTIPLIERS, HEAL_RATE_PER_TICK
+// BuildingDef and UnitDef are defined in @crystalfront/shared gameBalance.ts — use those.
 
 export interface MatchConfig {
   tickIntervalMs: number;

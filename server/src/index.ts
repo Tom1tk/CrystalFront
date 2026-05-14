@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { LobbyManager } from "./lobby/lobbyManager.js";
 import { MatchEngine } from "./match/matchEngine.js";
+import { LiveMatchRunner } from "./match/liveMatchRunner.js";
 import type { MatchEntity, MatchState, PlayerSlot, ResourceNode, PlayerEconomy } from "./match/types.js";
 import {
   CLIENT_MSG,
@@ -35,8 +36,7 @@ const PORT = parseInt(process.env.PORT || "3777", 10);
 
 const lobbyManager = new LobbyManager();
 const matchEngine = new MatchEngine();
-
-matchEngine.setBroadcastCallback((matchId: string) => {
+const liveRunner = new LiveMatchRunner(matchEngine, (matchId: string) => {
   const code = matchLobbyMap.get(matchId);
   if (code) {
     broadcastGameState(code);
@@ -44,6 +44,7 @@ matchEngine.setBroadcastCallback((matchId: string) => {
 });
 
 matchEngine.setMatchEndCallback((matchId: string, winner: string) => {
+  liveRunner.stop(matchId);
   const code = matchLobbyMap.get(matchId);
   if (code) {
     broadcastMatchEnd(code, winner);
@@ -421,6 +422,7 @@ wss.on("connection", (ws) => {
           const match = matchEngine.createMatch(code, players);
           lobbyMatchMap.set(code, match.id);
           matchEngine.startMatch(match.id);
+          liveRunner.start(match.id);
           matchLobbyMap.set(match.id, code);
           
           // Update player sessions with matchId
@@ -475,6 +477,7 @@ wss.on("connection", (ws) => {
 
           // Start the match immediately
           matchEngine.startMatch(match.id);
+          liveRunner.start(match.id);
 
           // Update player sessions with matchId
           for (const p of result.lobby.players) {
@@ -525,6 +528,7 @@ wss.on("connection", (ws) => {
           sendWS(ws, { type: SERVER_EVT.ERROR, payload: { message: "Match could not be started." } });
           return;
         }
+        liveRunner.start(matchId);
 
         const matchStartMsg: ServerToClientMsg = {
           type: SERVER_EVT.MATCH_START,
@@ -627,6 +631,7 @@ wss.on("connection", (ws) => {
           if (match && match.phase === "playing") {
             const otherPlayer = match.players.find((p) => p?.playerId !== leavePlayerId);
             if (otherPlayer) {
+              liveRunner.stop(session.matchId);
               matchEngine.endMatch(session.matchId, otherPlayer.playerId);
 
               // Record the win in lobby manager
@@ -713,6 +718,7 @@ wss.on("connection", (ws) => {
         if (session.matchId) {
           const match = matchEngine.getMatch(session.matchId);
           if (match && match.phase === "playing") {
+            liveRunner.stop(session.matchId);
             matchEngine.endMatch(session.matchId, winnerId);
             lobbyManager.resetReadyStates(session.code);
             lobbyMatchMap.delete(session.code);
@@ -810,6 +816,7 @@ wss.on("connection", (ws) => {
               }
 
               // End the match
+              liveRunner.stop(session.matchId);
               matchEngine.endMatch(session.matchId, otherPlayer.playerId);
 
               // Notify the other player
@@ -906,4 +913,4 @@ httpServer.listen(PORT, "0.0.0.0", () => {
   console.log(`CrystalFront RTS server running on http://0.0.0.0:${PORT}`);
 });
 
-export { app, httpServer, lobbyManager, matchEngine };
+export { app, httpServer, lobbyManager, matchEngine, liveRunner };
