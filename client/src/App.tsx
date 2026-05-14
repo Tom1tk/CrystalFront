@@ -26,8 +26,9 @@ function useScreenFlow() {
   // Transition to game when match starts, back to matchEnd when ended
   useEffect(() => {
     if (screen === "matchEnd") return;
-    // Don't override menu transitions
     if (screen === "menu") return;
+    if (screen === "replays") return;
+    if (screen === "watching_replay") return;
     // Transition to game when match starts
     if (ws.matchState && ws.matchState.phase === "playing") {
       setScreen("game");
@@ -47,9 +48,9 @@ function useScreenFlow() {
     }
   }, [ws.matchEnd]);
 
-  // Transition to watching_replay when replay starts
+  // Transition to watching_replay when replay starts (MATCH_START from replay runner)
   useEffect(() => {
-    if (ws.matchState && screen === "replays") {
+    if (ws.matchState && ws.matchState.phase === "playing" && screen === "replays") {
       setScreen("watching_replay");
     }
   }, [ws.matchState, screen]);
