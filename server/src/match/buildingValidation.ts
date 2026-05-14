@@ -1,12 +1,11 @@
-import type { MatchEntity, BuildingType, ResourceNode, PlayerSlot, BuildingDefinition } from "./types.js";
+import type { MatchEntity, BuildingType, ResourceNode, PlayerSlot } from "./types.js";
+import type { BuildingDef as BuildingDefinition } from "@crystalfront/shared";
 import type { EntityId } from "@crystalfront/shared";
 import type { BuildZone, LaneCorridor } from "./map.js";
 import {
   BUILDING_DEFS,
-  BUILDING_MIN_SPACING,
-  CRYSTAL_NO_BUILD_RADIUS,
+  PLACEMENT,
 } from "@crystalfront/shared";
-import { PLACEMENT } from "@crystalfront/shared";
 
 export interface PlacementResult {
   valid: boolean;
@@ -89,7 +88,7 @@ export function validatePlacement(
     const dx = x - entity.x;
     const dy = y - entity.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist < BUILDING_MIN_SPACING) {
+    if (dist < PLACEMENT.minSpacing) {
       return { valid: false, reason: "Too close to another building" };
     }
   }
@@ -100,7 +99,7 @@ export function validatePlacement(
     const dx = x - crystal.x;
     const dy = y - crystal.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist < CRYSTAL_NO_BUILD_RADIUS) {
+    if (dist < PLACEMENT.crystalNoBuildRadius) {
       return { valid: false, reason: "Too close to your Crystal" };
     }
   }

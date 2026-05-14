@@ -435,7 +435,6 @@ console.log("\n--- Combat: Move Command (Incremental Movement) ---");
   }
   assert(arrived, "Worker arrived at destination");
 
-  engine.stopMatch(match.id);
 }
 
 // ---- Combat: Attack Command ----
@@ -495,7 +494,6 @@ console.log("\n--- Combat: Attack Command ---");
   });
   assert(!blueAttackBlue.success, "Cannot attack friendly units");
 
-  engine.stopMatch(match.id);
 }
 
 // ---- Combat: Counter Damage Multipliers ----
@@ -518,10 +516,10 @@ console.log("\n--- Combat: Counter Damage Multipliers ---");
 
   // Create a skirmisher for blue and a gunner for red
   // Skirmisher beats gunner (2x damage)
-  const skirmisher = engine["createEntity"](
+  const skirmisher = engine["createEntity"](match.idGen,
     "skirmisher", p1.id, 3000, 300, 120, 12, "#44dd88"
   );
-  const gunner = engine["createEntity"](
+  const gunner = engine["createEntity"](match.idGen,
     "gunner", p2.id, 3000, 300, 80, 11, "#ddaa44"
   );
   match.entities.set(skirmisher.id, skirmisher);
@@ -538,7 +536,6 @@ console.log("\n--- Combat: Counter Damage Multipliers ---");
   const expectedDamage = Math.round(baseSkirmisherDamage * 2.0);
   assert(gunnerAfter.health === 80 - expectedDamage, `Gunner took ${expectedDamage} damage (2x counter)`);
 
-  engine.stopMatch(match.id);
 }
 
 // ---- Combat: Auto-Attack in Range ----
@@ -560,10 +557,10 @@ console.log("\n--- Combat: Auto-Attack in Range ---");
   engine.startMatch(match.id);
 
   // Create a skirmisher for blue and a worker for red, within range
-  const skirmisher = engine["createEntity"](
+  const skirmisher = engine["createEntity"](match.idGen,
     "skirmisher", p1.id, 3000, 300, 120, 12, "#44dd88"
   );
-  const enemyWorker = engine["createEntity"](
+  const enemyWorker = engine["createEntity"](match.idGen,
     "worker", p2.id, 3000, 300, 100, 10, "#ff6666"
   );
   match.entities.set(skirmisher.id, skirmisher);
@@ -579,7 +576,6 @@ console.log("\n--- Combat: Auto-Attack in Range ---");
   const skirmAfter = match.entities.get(skirmisher.id)!;
   assert(skirmAfter.attackTargetId === enemyWorker.id, "Skirmisher auto-acquired enemy in range when auto-attack enabled");
 
-  engine.stopMatch(match.id);
 }
 
 // ---- Combat: Medic Follow-Heal ----
@@ -600,11 +596,11 @@ console.log("\n--- Combat: Medic Follow-Heal ---");
   engine.startMatch(match.id);
 
   // Create a medic and a bruiser for blue (bruiser maxHealth=250 from UNIT_DEFS)
-  const bruiser = engine["createEntity"](
+  const bruiser = engine["createEntity"](match.idGen,
     "bruiser", p1.id, 3000, 300, 200, 14, "#8866cc"
   );
   bruiser.maxHealth = 250; // UNIT_DEFS.bruiser.health
-  const medic = engine["createEntity"](
+  const medic = engine["createEntity"](match.idGen,
     "medic", p1.id, 3000, 300, 90, 11, "#44ccdd"
   );
   match.entities.set(bruiser.id, bruiser);
@@ -633,7 +629,6 @@ console.log("\n--- Combat: Medic Follow-Heal ---");
   const medicAfter = match.entities.get(medic.id)!;
   assert(medicAfter.moveTarget !== undefined, "Medic moves toward heal target when out of range");
 
-  engine.stopMatch(match.id);
 }
 
 // ---- Combat: Worker Repair ----
@@ -660,7 +655,7 @@ console.log("\n--- Combat: Worker Repair ---");
   const worker = blueWorkers[0];
 
   // Create a damaged barracks for blue
-  const barracks = engine["createEntity"](
+  const barracks = engine["createEntity"](match.idGen,
     "building", p1.id, 200, 300, 500, 20, "#4488cc", "barracks"
   );
   barracks.constructionProgress = 100;
@@ -682,7 +677,6 @@ console.log("\n--- Combat: Worker Repair ---");
   const barracksAfter = match.entities.get(barracks.id)!;
   assert(barracksAfter.health > 300, "Building health increased from repair");
 
-  engine.stopMatch(match.id);
 }
 
 // ---- Combat: Turret Auto-Attack ----
@@ -704,7 +698,7 @@ console.log("\n--- Combat: Turret Auto-Attack ---");
   engine.startMatch(match.id);
 
   // Create a turret for blue
-  const turret = engine["createEntity"](
+  const turret = engine["createEntity"](match.idGen,
     "building", p1.id, 3000, 300, 400, 15, "#aa8844", "turret"
   );
   turret.constructionProgress = 100;
@@ -713,7 +707,7 @@ console.log("\n--- Combat: Turret Auto-Attack ---");
   match.entities.set(turret.id, turret);
 
   // Create an enemy worker within range
-  const enemyWorker = engine["createEntity"](
+  const enemyWorker = engine["createEntity"](match.idGen,
     "worker", p2.id, 3100, 300, 100, 10, "#ff6666"
   );
   match.entities.set(enemyWorker.id, enemyWorker);
@@ -727,7 +721,6 @@ console.log("\n--- Combat: Turret Auto-Attack ---");
   const workerAfter = match.entities.get(enemyWorker.id)!;
   assert(workerAfter.health < 100, "Enemy worker took turret damage");
 
-  engine.stopMatch(match.id);
 }
 
 // ---- Combat: Crystal Destruction Ends Match ----
@@ -755,7 +748,7 @@ console.log("\n--- Combat: Crystal Destruction Ends Match ---");
   const redCrystal = crystals.find((c) => c.ownerId === p2.id)!;
 
   // Create a powerful skirmisher near the red crystal
-  const skirmisher = engine["createEntity"](
+  const skirmisher = engine["createEntity"](match.idGen,
     "skirmisher", p1.id, redCrystal.x - 10, redCrystal.y, 120, 12, "#44dd88"
   );
   match.entities.set(skirmisher.id, skirmisher);
@@ -777,7 +770,6 @@ console.log("\n--- Combat: Crystal Destruction Ends Match ---");
   assert(finalMatch!.phase === "ended", "Match ended when crystal was destroyed");
   assert(finalMatch!.result!.winner === p1.id, "Blue player wins when red crystal is destroyed");
 
-  engine.stopMatch(match.id);
 }
 
 // ---- Combat: Rematch Reset After Combat ----
@@ -799,7 +791,7 @@ console.log("\n--- Combat: Rematch Reset After Combat ---");
   engine.startMatch(match.id);
 
   // Create a skirmisher and set some combat state
-  const skirmisher = engine["createEntity"](
+  const skirmisher = engine["createEntity"](match.idGen,
     "skirmisher", p1.id, 3000, 300, 120, 12, "#44dd88"
   );
   skirmisher.attackTargetId = "some-target";
@@ -828,7 +820,6 @@ console.log("\n--- Combat: Rematch Reset After Combat ---");
     assert(w.attackCooldown === 0, "New worker has reset attack cooldown");
   }
 
-  engine.stopMatch(match.id);
 }
 
 // ---- Soft Collision ----
@@ -849,10 +840,10 @@ console.log("\n--- Soft Collision ---");
   engine.startMatch(match.id);
 
   // Create two workers very close together (overlapping)
-  const w1 = engine["createEntity"](
+  const w1 = engine["createEntity"](match.idGen,
     "worker", p1.id, 3000, 300, 100, 10, "#6699ff"
   );
-  const w2 = engine["createEntity"](
+  const w2 = engine["createEntity"](match.idGen,
     "worker", p1.id, 3005, 300, 100, 10, "#6699ff"
   );
   match.entities.set(w1.id, w1);
@@ -869,7 +860,6 @@ console.log("\n--- Soft Collision ---");
   const dx = Math.abs(w1After.x - w2After.x);
   assert(dx >= w1After.radius + w2After.radius - 1, "Soft collision pushes overlapping units apart");
 
-  engine.stopMatch(match.id);
 }
 // ---- Message Type Constants Consistency ----
 console.log("\n--- Message Type Constants Consistency ---");
@@ -948,13 +938,12 @@ console.log("\n--- Debug Spawn Functionality ---");
   const invalidBuildingResult = engine.debugSpawn(match.id, p1.id, "building", 500, 500, "nonexistent" as any);
   assert(!invalidBuildingResult.success, "Debug spawn with invalid building type fails");
 
-  engine.stopMatch(match.id);
 }
 
 // ---- Fog of War: Visibility Ranges Defined ----
 console.log("\n--- Fog of War: Visibility Ranges Defined ---");
 {
-  const { UNIT_DEFS, BUILDING_DEFS } = require("../shared/src/constants.js");
+  const { UNIT_DEFS, BUILDING_DEFS } = require("../shared/src/gameBalance.js");
 
   // All unit types have visionRange
   for (const [type, def] of Object.entries(UNIT_DEFS)) {
@@ -1027,7 +1016,6 @@ console.log("\n--- Fog of War: Basic Visibility Computation ---");
   const redVisibleToBlue = redEntities.filter(e => blueVis.entityIds.has(e.id));
   assert(redVisibleToBlue.length === 0, "Blue player sees no red entities at game start (too far apart)");
 
-  engine.stopMatch(match.id);
 }
 
 // ---- Fog of War: Entity Within Range Is Visible ----
@@ -1072,7 +1060,6 @@ console.log("\n--- Fog of War: Entity Within Range Is Visible ---");
   const blueVis2 = match.visibilityData!.get(p1.id)!;
   assert(!blueVis2.entityIds.has(redWorker.id), "Blue worker does NOT see red worker beyond vision range");
 
-  engine.stopMatch(match.id);
 }
 
 // ---- Fog of War: Dead Entities Not Visible ----
@@ -1105,7 +1092,6 @@ console.log("\n--- Fog of War: Dead Entities Not Visible ---");
   assert(blueVis.entityIds.has(aliveWorker.id), "Alive blue worker is visible to blue player");
   assert(!blueVis.entityIds.has(deadWorker.id), "Dead blue worker is NOT visible (not a vision source)");
 
-  engine.stopMatch(match.id);
 }
 
 // ---- Fog of War: Crystal Has Extended Vision ----
@@ -1132,7 +1118,7 @@ console.log("\n--- Fog of War: Crystal Has Extended Vision ---");
   )!;
 
   // Create a red entity within crystal vision (225)
-  const redWorker = engine["createEntity"](
+  const redWorker = engine["createEntity"](match.idGen,
     "worker", p2.id, blueCrystal.x + 200, blueCrystal.y, 100, 10, "#ff6666"
   );
   match.entities.set(redWorker.id, redWorker);
@@ -1141,13 +1127,14 @@ console.log("\n--- Fog of War: Crystal Has Extended Vision ---");
   const blueVis = match.visibilityData!.get(p1.id)!;
   assert(blueVis.entityIds.has(redWorker.id), "Blue crystal sees red worker at distance 140 (within 150 vision)");
 
-  engine.stopMatch(match.id);
 }
 
 // ---- Supply System ----
 console.log("\n--- Supply System ---");
 {
-  const { STARTING_MAX_SUPPLY, WORKER_SUPPLY_COST } = require("../shared/src/constants.js");
+  const { ECONOMY } = require("../shared/src/gameBalance.js");
+  const STARTING_MAX_SUPPLY = ECONOMY.startingMaxSupply;
+  const WORKER_SUPPLY_COST = ECONOMY.workerSupplyCost;
 
   const mgr = new LobbyManager();
   const host = mgr.createLobby("HostUser");
@@ -1185,7 +1172,7 @@ console.log("\n--- Supply System ---");
   // Unit spawn from production queue increments supply
   // Train a skirmisher from barracks
   // First build a barracks
-  const { BUILDING_DEFS } = require("../shared/src/constants.js");
+  const { BUILDING_DEFS } = require("../shared/src/gameBalance.js");
   const barracksDef = BUILDING_DEFS.barracks;
   const blueWorkers = Array.from(match.entities.values()).filter(
     (e) => e.type === "worker" && e.ownerId === p1.id
@@ -1271,7 +1258,7 @@ console.log("\n--- Supply System ---");
   // Cross-building queue supply cap enforcement
   // Setup: 3 units, maxSupply 10, so 7 slots left. Queue 4 from barracks, 3 from foundry = 7 total queued.
   // Attempt to queue 1 more from foundry should be blocked (would be 8 queued > 7 available).
-  const { BUILDING_DEFS: BD } = require("../shared/src/constants.js");
+  const { BUILDING_DEFS: BD } = require("../shared/src/gameBalance.js");
 
   // Set phase to playing (resetMatch left it at "spawn")
   match.phase = "playing";
@@ -1347,7 +1334,6 @@ console.log("\n--- Supply System ---");
   assert(!bruiserOverCap.success, "Cross-building queue blocked at supply cap");
   assertEqual(bruiserOverCap.message, "Not enough supply", "Cross-building error is supply");
 
-  engine.stopMatch(match.id);
 }
 
 // ---- Server Message Handler Coverage ----
@@ -1361,6 +1347,47 @@ console.log("\n--- Server Message Handler Coverage ---");
     const hasCase = serverSrc.includes(`CLIENT_MSG.${key}`);
     assert(hasCase, `Server switch handles CLIENT_MSG.${key} ("${value}")`);
   }
+}
+
+// ---- Determinism: Same seed produces identical state ----
+console.log("\n--- Determinism: Same seed produces identical state ---");
+{
+  const mgr2 = new LobbyManager();
+  const h1 = mgr2.createLobby("Alice");
+  mgr2.joinLobby(h1.code, "Bob");
+  const lobby2 = mgr2.getLobby(h1.code)!;
+  const p1 = lobby2.players[0]!;
+  const p2 = lobby2.players[1]!;
+  const slots: [PlayerSlot | null, PlayerSlot | null] = [
+    { playerId: p1.id, username: p1.username, color: p1.color, score: 0 },
+    { playerId: p2.id, username: p2.username, color: p2.color, score: 0 },
+  ];
+
+  function runAndHash(seed: number): string {
+    const eng = new MatchEngine();
+    const m = eng.createMatch("test", slots, DEFAULT_CONFIG, seed);
+    eng.startMatch(m.id);
+    // Issue train_worker commands early to trigger spawnOutside (the one randomness site)
+    const crystal = Array.from(m.entities.values()).find(e => e.type === "crystal" && e.ownerId === p1.id)!;
+    m.economy[0]!.resources = 9999;
+    for (let i = 0; i < 5; i++) {
+      eng.processCommand(m.id, p1.id, { type: "train_worker", entityId: crystal.id });
+    }
+    for (let i = 0; i < 500; i++) eng.tick(m.id);
+    // Build a stable hash from entity positions + health
+    const entities = Array.from(m.entities.values())
+      .sort((a, b) => a.id.localeCompare(b.id));
+    return entities.map(e => `${e.id}:${e.x.toFixed(2)},${e.y.toFixed(2)},${e.health}`).join("|");
+  }
+
+  const SEED = 0xdeadbeef;
+  const run1 = runAndHash(SEED);
+  const run2 = runAndHash(SEED);
+  assert(run1 === run2, "Two runs with the same seed produce identical state after 500 ticks");
+  assert(run1.length > 0, "State hash is non-empty");
+
+  const run3 = runAndHash(SEED + 1);
+  assert(run1 !== run3, "Different seeds produce different states");
 }
 
 console.log(`\n${"=".repeat(40)}`);

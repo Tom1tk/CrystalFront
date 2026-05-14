@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { MatchEngine } from "./matchEngine.js";
-import { UNIT_DEFS, COUNTER_MULTIPLIERS, HEAL_RATE_PER_TICK, BUILDING_DEFS, REPAIR_COST_PER_HP } from "@crystalfront/shared";
+import { UNIT_DEFS, COUNTER_MULTIPLIERS, HEALING, BUILDING_DEFS } from "@crystalfront/shared";
 import type { MatchState, MatchEntity } from "./types.js";
 
 function findEntity(match: MatchState, type: string, ownerId?: string): MatchEntity | undefined {
@@ -377,7 +377,7 @@ describe("Combat System", () => {
 
       engine.tick(match.id);
 
-      expect(allyWorker.health).toBe(50 + HEAL_RATE_PER_TICK);
+      expect(allyWorker.health).toBe(50 + HEALING.healRatePerTick);
     });
 
     it("medic does not heal unit at full health", () => {
@@ -537,7 +537,7 @@ describe("Combat System", () => {
       );
       expect(healEvent).toBeDefined();
       expect(healEvent!.isHeal).toBe(true);
-      expect(healEvent!.damage).toBe(HEAL_RATE_PER_TICK);
+      expect(healEvent!.damage).toBe(HEALING.healRatePerTick);
     });
 
     it("old attack log events are pruned after 15 ticks", () => {
@@ -1683,7 +1683,7 @@ describe("Match Lifecycle", () => {
     match.phase = "playing";
 
     const extra = engine["createEntity"](
-      "skirmisher", "p1", 3000, 300, 120, 12, "#44dd88"
+      match.idGen, "skirmisher", "p1", 3000, 300, 120, 12, "#44dd88"
     );
     match.entities.set(extra.id, extra);
 

@@ -237,12 +237,13 @@ export const SAFE_NODE_OFFSETS = [
 ] as const;
 
 // ── Contested node offsets from map center ───────────────────────
+// Nodes at ±dx share the same dy so the map is horizontally symmetric.
 export const CONTESTED_NODE_OFFSETS = [
   { dx: -350, dy: -120, radius: 22 },
   { dx: -180, dy: -60,  radius: 22 },
   { dx: 0,    dy: 0,    radius: 22 },
-  { dx: 180,  dy: 60,   radius: 22 },
-  { dx: 350,  dy: 120,  radius: 22 },
+  { dx: 180,  dy: -60,  radius: 22 },
+  { dx: 350,  dy: -120, radius: 22 },
 ] as const;
 
 // ── Build zones (fraction of map width) ──────────────────────────
@@ -323,30 +324,4 @@ export const USERNAME_MIN_LENGTH = 1;
 export const USERNAME_MAX_LENGTH = 20;
 export const USERNAME_REGEX = /^[a-zA-Z0-9_-]+$/;
 
-// ====================================================================
-//  LEGACY ALIASES (keep for backwards compat — all point to gameBalance)
-// ====================================================================
-
-export const STARTING_RESOURCES = ECONOMY.startingResources;
-export const STARTING_MAX_SUPPLY = ECONOMY.startingMaxSupply;
-export const WORKER_SUPPLY_COST = ECONOMY.workerSupplyCost;
-export const WORKER_TRAIN_COST = ECONOMY.workerTrainCost;
-export const GATHER_RATE_PER_TICK = GATHERING.ratePerTick;
-export const NODE_CAPACITY = NODES.contestedCapacity;
-export const SAFE_NODE_CAPACITY = NODES.safeCapacity;
-export const NODE_MAX_GATHERER_SLOTS = NODES.maxGathererSlots;
-
-export const REPAIR_COST_PER_HP = HEALING.repairCostPerHp;
-export const REPAIR_RATE_PER_TICK = HEALING.repairHpPerTick;
-export const HEAL_RATE_PER_TICK = HEALING.healRatePerTick;
-
-export const BUILDING_MIN_SPACING = PLACEMENT.minSpacing;
-export const BUILDING_PLACEMENT_MIN_SPACING = PLACEMENT.minSpacing;
-export const CRYSTAL_NO_BUILD_RADIUS = PLACEMENT.crystalNoBuildRadius;
-
-export const WORLD_WIDTH = MAP.width;
-export const WORLD_HEIGHT = MAP.height;
-export const VIEWPORT_WIDTH = MAP.viewportWidth;
-export const VIEWPORT_HEIGHT = MAP.viewportHeight;
-export const EDGE_SCROLL_THRESHOLD = 50;
-export const EDGE_SCROLL_SPEED = 3;
+// Use the named exports above directly (ECONOMY, GATHERING, NODES, HEALING, PLACEMENT, MAP).

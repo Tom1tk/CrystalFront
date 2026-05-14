@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import pathLib from "node:path";
 import type { PlayerId, PlayerColor, EntityId } from "@crystalfront/shared";
+import { Rng } from "./engine/rng.js";
+import { IdGen } from "./engine/idGen.js";
 import type {
   MatchState,
   MatchEntity,
@@ -20,14 +22,11 @@ import {
   BUILDING_DEFS,
   UNIT_DEFS,
   COUNTER_MULTIPLIERS,
-  HEAL_RATE_PER_TICK,
-  GATHER_RATE_PER_TICK,
 } from "@crystalfront/shared";
 import {
   GATHERING,
   NODES,
   SIMULATION,
-  PLACEMENT,
   HEALING,
 } from "@crystalfront/shared";
 
@@ -41,7 +40,6 @@ import {
 
 export class MatchEngine {
   private matches = new Map<string, MatchState>();
-  private intervals = new Map<string, NodeJS.Timeout>();
   private broadcastCallback: ((matchId: string) => void) | null = null;
   private matchEndCallback: ((matchId: string, winner: PlayerId) => void) | null = null;
 
@@ -56,14 +54,19 @@ export class MatchEngine {
   createMatch(
     lobbyCode: string,
     players: [PlayerSlot | null, PlayerSlot | null],
-    config: MatchConfig = DEFAULT_CONFIG
+    config: MatchConfig = DEFAULT_CONFIG,
+    seed?: number
   ): MatchState {
     const id = randomUUID();
+    const resolvedSeed = seed ?? (Date.now() & 0xffffffff);
+    const rng = new Rng(resolvedSeed);
+    const idGen = new IdGen();
     const map = createMap(config);
     const entities = new Map<EntityId, MatchEntity>();
 
     // Create crystals
     const blueCrystal = this.createEntity(
+      idGen,
       "crystal",
       players[0]?.playerId ?? "",
       map.blueCrystal.x,
@@ -73,6 +76,7 @@ export class MatchEngine {
       players[0]?.color === "blue" ? "#4488ff" : "#888888"
     );
     const redCrystal = this.createEntity(
+      idGen,
       "crystal",
       players[1]?.playerId ?? "",
       map.redCrystal.x,
@@ -88,6 +92,7 @@ export class MatchEngine {
     // Create workers
     const blueWorkers = [
       this.createEntity(
+        idGen,
         "worker",
         players[0]?.playerId ?? "",
         map.blueWorkers[0].x,
@@ -97,6 +102,7 @@ export class MatchEngine {
         players[0]?.color === "blue" ? "#6699ff" : "#888888"
       ),
       this.createEntity(
+        idGen,
         "worker",
         players[0]?.playerId ?? "",
         map.blueWorkers[1].x,
@@ -106,6 +112,7 @@ export class MatchEngine {
         players[0]?.color === "blue" ? "#6699ff" : "#888888"
       ),
       this.createEntity(
+        idGen,
         "worker",
         players[0]?.playerId ?? "",
         map.blueWorkers[2].x,
@@ -118,6 +125,7 @@ export class MatchEngine {
 
     const redWorkers = [
       this.createEntity(
+        idGen,
         "worker",
         players[1]?.playerId ?? "",
         map.redWorkers[0].x,
@@ -127,6 +135,7 @@ export class MatchEngine {
         players[1]?.color === "red" ? "#ff6666" : "#888888"
       ),
       this.createEntity(
+        idGen,
         "worker",
         players[1]?.playerId ?? "",
         map.redWorkers[1].x,
@@ -136,6 +145,7 @@ export class MatchEngine {
         players[1]?.color === "red" ? "#ff6666" : "#888888"
       ),
       this.createEntity(
+        idGen,
         "worker",
         players[1]?.playerId ?? "",
         map.redWorkers[2].x,
@@ -160,7 +170,7 @@ export class MatchEngine {
 
     for (const layout of allNodeLayouts) {
       const node: ResourceNode = {
-         id: randomUUID(),
+         id: idGen.next(),
          x: layout.x,
          y: layout.y,
          radius: layout.radius,
@@ -209,6 +219,10 @@ export class MatchEngine {
       config,
       mapWidth: config.mapWidth,
       mapHeight: config.mapHeight,
+      rng,
+      idGen,
+      seed: resolvedSeed,
+      commandLog: [],
     };
 
     this.matches.set(id, match);
@@ -221,23 +235,13 @@ export class MatchEngine {
     if (match.phase !== "spawn") return null;
 
     match.phase = "playing";
-    this.startTickLoop(matchId);
     return match;
-  }
-
-  stopMatch(matchId: string): void {
-    const interval = this.intervals.get(matchId);
-    if (interval) {
-      clearInterval(interval);
-      this.intervals.delete(matchId);
-    }
   }
 
   endMatch(matchId: string, winner: PlayerId): MatchState | null {
     const match = this.matches.get(matchId);
     if (!match) return null;
 
-    this.stopTickLoop(matchId);
     match.phase = "ended";
     match.result = { winner };
     match.endedAt = Date.now();
@@ -285,6 +289,7 @@ export class MatchEngine {
       }
       const def = BUILDING_DEFS[buildingType];
       const building = this.createEntity(
+        match.idGen,
         "building",
         playerId,
         x,
@@ -306,6 +311,7 @@ export class MatchEngine {
       return { success: false, message: "Invalid unit type" };
     }
     const unit = this.createEntity(
+      match.idGen,
       entityType,
       playerId,
       x,
@@ -357,16 +363,18 @@ export class MatchEngine {
     if (match.phase !== "playing") return { success: false };
 
     const config = match.config;
+    const ok = (): { success: true } => {
+      match.commandLog.push({ tick: match.tick, playerId, command: command as Record<string, unknown> });
+      return { success: true };
+    };
 
     if (command.type === "deselect") {
-      return { success: true };
+      return ok();
     }
 
 if (command.type === "move") {
-       const entity = Array.from(match.entities.values()).find(
-         (e) => e.id === command.entityId && e.ownerId === playerId
-       );
-       if (!entity) return { success: false, message: "Entity not found" };
+       const entity = command.entityId ? match.entities.get(command.entityId) : undefined;
+       if (!entity || entity.ownerId !== playerId) return { success: false, message: "Entity not found" };
 
        // Only movable units can move
        if (entity.type === "crystal" || entity.type === "building") {
@@ -401,14 +409,12 @@ if (command.type === "move") {
          entity.buildTargetId = undefined;
        }
 
-       return { success: true };
+       return ok();
      }
 
 if (command.type === "gather") {
-       const worker = Array.from(match.entities.values()).find(
-         (e) => e.id === command.entityId && e.type === "worker" && e.ownerId === playerId
-       );
-       if (!worker) return { success: false, message: "Worker not found" };
+       const worker = command.entityId ? match.entities.get(command.entityId) : undefined;
+       if (!worker || worker.type !== "worker" || worker.ownerId !== playerId) return { success: false, message: "Worker not found" };
 
        // Remove from previous node if gathering elsewhere
        if (worker.gatheringNodeId) {
@@ -437,14 +443,12 @@ if (command.type === "gather") {
 
        worker.gatheringNodeId = targetNode.id;
        targetNode.gathererSlots.add(worker.id);
-       return { success: true };
+       return ok();
      }
 
     if (command.type === "train_worker") {
-      const crystal = Array.from(match.entities.values()).find(
-        (e) => e.id === command.entityId && e.type === "crystal" && e.ownerId === playerId
-      );
-      if (!crystal) return { success: false, message: "Crystal not found" };
+      const crystal = command.entityId ? match.entities.get(command.entityId) : undefined;
+      if (!crystal || crystal.type !== "crystal" || crystal.ownerId !== playerId) return { success: false, message: "Crystal not found" };
 
       const playerIdx = match.players.findIndex((p) => p?.playerId === playerId);
       if (playerIdx < 0) return { success: false, message: "Player not found" };
@@ -459,8 +463,9 @@ if (command.type === "gather") {
         return { success: false, message: "Not enough supply" };
       }
 
-      const spawn = this.spawnOutside(crystal, config.workerRadius);
+      const spawn = this.spawnOutside(match.rng, crystal, config.workerRadius);
       const newWorker = this.createEntity(
+        match.idGen,
         "worker",
         playerId,
         spawn.x,
@@ -474,7 +479,7 @@ if (command.type === "gather") {
       economy.resources -= config.workerTrainCost;
       economy.supply += config.workerSupplyCost;
 
-      return { success: true };
+      return ok();
     }
 
     if (command.type === "train_unit") {
@@ -530,14 +535,12 @@ if (command.type === "gather") {
         remainingTicks: unitDef.buildTime,
       });
 
-      return { success: true };
+      return ok();
     }
 
     if (command.type === "cancel_queue") {
-      const building = Array.from(match.entities.values()).find(
-        (e) => e.id === command.entityId && e.type === "building" && e.ownerId === playerId
-      );
-      if (!building) return { success: false, message: "Building not found" };
+      const building = command.entityId ? match.entities.get(command.entityId) : undefined;
+      if (!building || building.type !== "building" || building.ownerId !== playerId) return { success: false, message: "Building not found" };
 
       const queueIndex = command.targetX ?? 0;
       if (!building.productionQueue || building.productionQueue.length === 0) {
@@ -554,7 +557,7 @@ if (command.type === "gather") {
       }
 
       building.productionQueue.splice(queueIndex, 1);
-      return { success: true };
+      return ok();
     }
 
    if (command.type === "build") {
@@ -627,7 +630,7 @@ if (command.type === "gather") {
         // Create building entity
         const buildingRadius = Math.max(def.width, def.height) / 2;
        const building: MatchEntity = {
-         id: randomUUID(),
+         id: match.idGen.next(),
          type: "building",
          ownerId: playerId,
          x: targetX,
@@ -668,7 +671,7 @@ if (command.type === "gather") {
          }
        }
 
-    return { success: true };
+    return ok();
     }
 
     if (command.type === "assign_build") {
@@ -718,7 +721,7 @@ if (command.type === "gather") {
       worker.buildTargetId = building.id;
       worker.moveTarget = { x: building.x, y: building.y };
 
-      return { success: true };
+      return ok();
     }
 
     if (command.type === "repair") {
@@ -761,7 +764,7 @@ if (command.type === "gather") {
       // Set repair target on building
       building.repairTargetId = workerId;
 
-      return { success: true };
+      return ok();
     }
 
     if (command.type === "attack") {
@@ -771,10 +774,8 @@ if (command.type === "gather") {
         return { success: false, message: "Missing entity or target ID" };
       }
 
-      const entity = Array.from(match.entities.values()).find(
-        (e) => e.id === entityId && e.ownerId === playerId
-      );
-      if (!entity) return { success: false, message: "Entity not found" };
+      const entity = match.entities.get(entityId);
+      if (!entity || entity.ownerId !== playerId) return { success: false, message: "Entity not found" };
 
       const target = match.entities.get(targetId);
       if (!target) return { success: false, message: "Target not found" };
@@ -804,7 +805,7 @@ if (command.type === "gather") {
          entity.buildTargetId = undefined;
        }
 
-       return { success: true };
+       return ok();
      }
 
      if (command.type === "heal") {
@@ -830,7 +831,7 @@ if (command.type === "gather") {
       medic.healTargetId = targetId;
       medic.attackTargetId = undefined;
 
-      return { success: true };
+      return ok();
     }
 
     if (command.type === "set_rally") {
@@ -855,7 +856,7 @@ if (command.type === "gather") {
         entity.rallyPoint = undefined;
       }
 
-      return { success: true };
+      return ok();
     }
 
     // --- toggle_auto_attack: toggle auto-attack mode on selected unit(s) ---
@@ -865,14 +866,12 @@ if (command.type === "gather") {
         return { success: false, message: "No entities specified" };
       }
       for (const eid of entityIds) {
-        const entity = Array.from(match.entities.values()).find(
-          (e) => e.id === eid && e.ownerId === playerId
-        );
-        if (!entity) continue;
+        const entity = match.entities.get(eid);
+        if (!entity || entity.ownerId !== playerId) continue;
         if (entity.type === "building") continue;
         entity.autoAttackEnabled = !entity.autoAttackEnabled;
       }
-      return { success: true };
+      return ok();
     }
 
     // --- retreat: path unit(s) toward own crystal ---
@@ -889,10 +888,8 @@ if (command.type === "gather") {
         return { success: false, message: "Player crystal not found" };
       }
       for (const eid of entityIds) {
-        const entity = Array.from(match.entities.values()).find(
-          (e) => e.id === eid && e.ownerId === playerId
-        );
-        if (!entity) continue;
+        const entity = match.entities.get(eid);
+        if (!entity || entity.ownerId !== playerId) continue;
         if (entity.type === "building") continue;
         // Cancel all modes
         entity.moveTarget = { x: crystal.x, y: crystal.y };
@@ -914,7 +911,7 @@ if (command.type === "gather") {
           entity.buildTargetId = undefined;
         }
       }
-      return { success: true };
+      return ok();
     }
 
     // --- stop: halt all movement and clear targets ---
@@ -924,17 +921,15 @@ if (command.type === "gather") {
         return { success: false, message: "No entities specified" };
       }
       for (const eid of entityIds) {
-        const entity = Array.from(match.entities.values()).find(
-          (e) => e.id === eid && e.ownerId === playerId
-        );
-        if (!entity) continue;
+        const entity = match.entities.get(eid);
+        if (!entity || entity.ownerId !== playerId) continue;
         if (entity.type === "building") continue;
         entity.moveTarget = undefined;
         entity.attackTargetId = undefined;
         entity.autoAttackEnabled = false;
         entity.healTargetId = undefined;
       }
-      return { success: true };
+      return ok();
     }
 
     if (command.type === "debug_move_node") {
@@ -1515,8 +1510,9 @@ private processConstruction(match: MatchState): void {
            if (item.remainingTicks <= 0) {
              const unitDef = UNIT_DEFS[item.unitType];
              if (unitDef) {
-               const spawn = this.spawnOutside(entity, unitDef.radius);
+               const spawn = this.spawnOutside(match.rng, entity, unitDef.radius);
                const unit = this.createEntity(
+                 match.idGen,
                  item.unitType,
                  entity.ownerId,
                  spawn.x,
@@ -1590,10 +1586,10 @@ private processConstruction(match: MatchState): void {
         if (d <= healRange + target.radius && target.health < target.maxHealth) {
           const healed = Math.min(
             target.maxHealth,
-            target.health + HEAL_RATE_PER_TICK
+            target.health + HEALING.healRatePerTick
           );
           target.health = healed;
-          match.attackLog.push({ attackerId: entity.id, targetId: target.id, damage: HEAL_RATE_PER_TICK, tick: match.tick, isHeal: true });
+          match.attackLog.push({ attackerId: entity.id, targetId: target.id, damage: HEALING.healRatePerTick, tick: match.tick, isHeal: true });
         }
       }
     }
@@ -1673,11 +1669,14 @@ private processConstruction(match: MatchState): void {
     players: [PlayerSlot | null, PlayerSlot | null],
     config: MatchConfig = DEFAULT_CONFIG
   ): MatchState | null {
-    this.stopTickLoop(matchId);
-
     const match = this.matches.get(matchId);
     if (!match) return null;
 
+    const newSeed = (Date.now() & 0xffffffff);
+    match.seed = newSeed;
+    match.rng = new Rng(newSeed);
+    match.idGen = new IdGen();
+    match.commandLog = [];
     match.phase = "spawn";
     match.tick = 0;
     match.players = players;
@@ -1689,6 +1688,7 @@ private processConstruction(match: MatchState): void {
     // Respawn entities
     const map = createMap(config);
     const blueCrystal = this.createEntity(
+      match.idGen,
       "crystal",
       players[0]?.playerId ?? "",
       map.blueCrystal.x,
@@ -1698,6 +1698,7 @@ private processConstruction(match: MatchState): void {
       players[0]?.color === "blue" ? "#4488ff" : "#888888"
     );
     const redCrystal = this.createEntity(
+      match.idGen,
       "crystal",
       players[1]?.playerId ?? "",
       map.redCrystal.x,
@@ -1711,6 +1712,7 @@ private processConstruction(match: MatchState): void {
 
     const blueWorkers = [
       this.createEntity(
+        match.idGen,
         "worker",
         players[0]?.playerId ?? "",
         map.blueWorkers[0].x,
@@ -1720,6 +1722,7 @@ private processConstruction(match: MatchState): void {
         players[0]?.color === "blue" ? "#6699ff" : "#888888"
       ),
       this.createEntity(
+        match.idGen,
         "worker",
         players[0]?.playerId ?? "",
         map.blueWorkers[1].x,
@@ -1729,6 +1732,7 @@ private processConstruction(match: MatchState): void {
         players[0]?.color === "blue" ? "#6699ff" : "#888888"
       ),
       this.createEntity(
+        match.idGen,
         "worker",
         players[0]?.playerId ?? "",
         map.blueWorkers[2].x,
@@ -1741,6 +1745,7 @@ private processConstruction(match: MatchState): void {
 
     const redWorkers = [
       this.createEntity(
+        match.idGen,
         "worker",
         players[1]?.playerId ?? "",
         map.redWorkers[0].x,
@@ -1750,6 +1755,7 @@ private processConstruction(match: MatchState): void {
         players[1]?.color === "red" ? "#ff6666" : "#888888"
       ),
       this.createEntity(
+        match.idGen,
         "worker",
         players[1]?.playerId ?? "",
         map.redWorkers[1].x,
@@ -1759,6 +1765,7 @@ private processConstruction(match: MatchState): void {
         players[1]?.color === "red" ? "#ff6666" : "#888888"
       ),
       this.createEntity(
+        match.idGen,
         "worker",
         players[1]?.playerId ?? "",
         map.redWorkers[2].x,
@@ -1782,7 +1789,7 @@ private processConstruction(match: MatchState): void {
 
     for (const layout of allNodeLayouts) {
      const node: ResourceNode = {
-         id: randomUUID(),
+         id: match.idGen.next(),
          x: layout.x,
          y: layout.y,
          radius: layout.radius,
@@ -1818,7 +1825,6 @@ private processConstruction(match: MatchState): void {
   }
 
   destroyMatch(matchId: string): void {
-    this.stopTickLoop(matchId);
     this.matches.delete(matchId);
   }
 
@@ -1832,6 +1838,7 @@ private processConstruction(match: MatchState): void {
   }
 
   private createEntity(
+    idGen: IdGen,
     type: "crystal" | "worker" | "placeholder" | "resource_node" | "building" | "skirmisher" | "gunner" | "bruiser" | "medic",
     ownerId: PlayerId,
     x: number,
@@ -1846,7 +1853,7 @@ private processConstruction(match: MatchState): void {
     if (type === "building" && buildingType) {
       const def = BUILDING_DEFS[buildingType];
       return {
-        id: randomUUID(),
+        id: idGen.next(),
         type,
         ownerId,
         x,
@@ -1873,7 +1880,7 @@ private processConstruction(match: MatchState): void {
     }
 
     return {
-      id: randomUUID(),
+      id: idGen.next(),
       type,
       ownerId,
       x,
@@ -1903,54 +1910,14 @@ private processConstruction(match: MatchState): void {
    * Compute a spawn position just outside the parent entity so the new unit
    * doesn't overlap the building/crystal and can be selected immediately.
    */
-  private spawnOutside(parent: MatchEntity, childRadius: number): { x: number; y: number } {
-    const parentRadius = parent.type === "building" || parent.type === "crystal"
-      ? parent.radius
-      : parent.radius;
+  private spawnOutside(rng: Rng, parent: MatchEntity, childRadius: number): { x: number; y: number } {
     const gap = SIMULATION.spawnGap;
-    const spawnDist = parentRadius + childRadius + gap;
-    const angle = Math.random() * Math.PI * 2;
+    const spawnDist = parent.radius + childRadius + gap;
+    const angle = rng.random() * Math.PI * 2;
     return {
       x: parent.x + Math.cos(angle) * spawnDist,
       y: parent.y + Math.sin(angle) * spawnDist,
     };
   }
 
-  private startTickLoop(matchId: string): void {
-    const match = this.matches.get(matchId);
-    if (!match) return;
-
-    let subStepCount = 0;
-    const subStepMs = SIMULATION.subStepMs;
-    const fullTickMs = match.tickIntervalMs || 100;
-
-    const interval = setInterval(() => {
-      const m = this.matches.get(matchId);
-      if (!m || m.phase !== "playing") {
-        clearInterval(interval);
-        this.intervals.delete(matchId);
-        return;
-      }
-
-      subStepCount++;
-      if (subStepCount % (fullTickMs / subStepMs) === 0) {
-        this.tick(matchId);
-        if (this.broadcastCallback) {
-          this.broadcastCallback(matchId);
-        }
-      } else {
-        this.subStepMovement(matchId);
-      }
-    }, subStepMs);
-
-    this.intervals.set(matchId, interval);
-  }
-
-  private stopTickLoop(matchId: string): void {
-    const interval = this.intervals.get(matchId);
-    if (interval) {
-      clearInterval(interval);
-      this.intervals.delete(matchId);
-    }
-  }
 }
