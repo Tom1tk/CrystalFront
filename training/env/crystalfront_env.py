@@ -20,6 +20,7 @@ zero out illegal logits before sampling.
 import json
 import os
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
@@ -63,15 +64,19 @@ class CrystalFrontEnv(gym.Env):
     })
     action_space = gym.spaces.Discrete(ACTION_SPACE_SIZE)
 
-    def __init__(self, opponent: str = "macro", save_replay_every: int = 0):
+    def __init__(self, opponent: str = "macro", save_replay_every: int = 0,
+                 startup_delay: float = 0.0):
         """
         Args:
             opponent:          scripted bot to play against
             save_replay_every: save a replay every N episodes (0 = never)
+            startup_delay:     seconds to wait before spawning the subprocess
+                               (stagger env startups to avoid simultaneous tsx spikes)
         """
         super().__init__()
         self.opponent = opponent
         self.save_replay_every = save_replay_every
+        self._startup_delay = startup_delay
         self._proc: subprocess.Popen | None = None
         self._episode_count = 0
         self._last_legal_mask = np.ones(ACTION_SPACE_SIZE, dtype=bool)
@@ -82,6 +87,9 @@ class CrystalFrontEnv(gym.Env):
     def _ensure_proc(self) -> None:
         if self._proc is not None and self._proc.poll() is None:
             return
+        if self._startup_delay > 0:
+            time.sleep(self._startup_delay)
+            self._startup_delay = 0.0  # only delay once
         self._proc = subprocess.Popen(
             [TSX_BIN, RUNNER],
             stdin=subprocess.PIPE,
