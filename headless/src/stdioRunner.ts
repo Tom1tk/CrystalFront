@@ -53,8 +53,12 @@ const MAX_TICKS      = 6000;
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
+let currentOpponentName = "macro";
+
 function makeBot(name?: string): Agent {
-  switch ((name ?? "macro").toLowerCase()) {
+  const key = (name ?? "macro").toLowerCase();
+  currentOpponentName = key;
+  switch (key) {
     case "idle":   return new IdleBot();
     case "rush":   return new RushBot();
     case "turtle": return new TurtleBot();
@@ -204,7 +208,7 @@ function handleStep(actionIdx: number): void {
         version:      GAME_VERSION,
         seed:         match.seed,
         blue:         "ppo_agent",
-        red:          redBot?.constructor.name ?? "bot",
+        red:          currentOpponentName,
         bluePlayerId: BLUE_ID,
         redPlayerId:  RED_ID,
         outcome:      { winner, winType, ticks: match.tick },
