@@ -9,7 +9,7 @@ import { writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runMatch } from "./runMatch.js";
-import { IdleBot, RushBot, TurtleBot, MacroBot } from "./bots/index.js";
+import { IdleBot, RushBot, TurtleBot, MacroBot, HeavyBot } from "./bots/index.js";
 import type { Agent } from "./types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -73,8 +73,9 @@ function makeBot(name: string): Agent {
     case "rush":   return new RushBot();
     case "turtle": return new TurtleBot();
     case "macro":  return new MacroBot();
+    case "heavy":  return new HeavyBot();
     default:
-      console.error(`Unknown bot: "${name}". Options: idle, rush, turtle, macro`);
+      console.error(`Unknown bot: "${name}". Options: idle, rush, turtle, macro, heavy`);
       process.exit(1);
   }
 }

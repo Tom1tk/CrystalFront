@@ -1447,7 +1447,7 @@ if (command.type === "gather") {
       }
 
       if (node.remaining <= 0) {
-        // Workers stay assigned — they'll re-drain once node hits threshold
+        // Workers stay assigned — they harvest regen as it refills
       }
     }
 
@@ -1869,7 +1869,7 @@ private processConstruction(match: MatchState): void {
     color: string,
     buildingType?: BuildingType
   ): MatchEntity {
-    const autoAttackEnabled = false; // Units start with auto-attack off; player toggles via hotkey
+    const autoAttackEnabled = ["skirmisher", "gunner", "bruiser", "medic"].includes(type);
 
     if (type === "building" && buildingType) {
       const def = BUILDING_DEFS[buildingType];

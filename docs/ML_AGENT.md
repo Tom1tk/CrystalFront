@@ -4,7 +4,7 @@ A reinforcement learning bot for Crystal Front RTS. Trains via self-play and lea
 
 **Branch:** `CrystalFront-ML`  
 **Algorithm:** PPO (Proximal Policy Optimisation)  
-**Current phase:** Phase 5 — Replay tools + balance analysis ✅
+**Current phase:** Phase 5+ — Bot overhaul + reward calibration ✅
 
 ---
 
@@ -208,14 +208,15 @@ PPO is the industry standard for game AI at this scale (OpenAI Five, AlphaStar f
 | Legal-action enumerator | ✅ `headless/src/legalActions.ts` |
 | `IdleBot` — gathers only | ✅ |
 | `RushBot` — early barracks, mass skirmisher | ✅ |
-| `TurtleBot` — supply depots + turrets + gunners | ✅ |
-| `MacroBot` — economy expansion + mixed army | ✅ |
+| `TurtleBot` — turrets + resource accumulation win | ✅ |
+| `MacroBot` — economy expansion + gunner/bruiser/medic army | ✅ |
+| `HeavyBot` — slow bruiser/medic/gunner army, steamrolls late | ✅ |
 | CLI: `tsx headless/src/cli.ts --blue rush --red idle` | ✅ |
 | Replay save format (seed + commandLog) | ✅ |
 | Replay browser UI (Bot Replays menu) | ✅ |
 | Replay viewer (real-time playback in client) | ✅ |
 | `BotPlayer` in live game (START_SOLO_TEST) | ✅ |
-| Passive win condition (hold ≥5000 resources = win) | ✅ |
+| Passive win condition (hold ≥2500 resources = win) | ✅ |
 
 **Definition of done:** ✅ CLI runs a match in <5 seconds. All 4 scripted bots play full matches without crashing. Replays save to disk and play back in the browser. "vs Bot" works in the live UI.
 
@@ -482,6 +483,58 @@ at list time:
 
 ---
 
+### Phase 5+ — Bot overhaul + reward calibration ✅ Complete
+
+**Goal:** Make scripted opponents realistic, varied, and strategically distinct — improving training data quality and the live-game experience simultaneously.
+
+| Task | Status |
+|------|--------|
+| Engine: combat units spawn with `autoAttackEnabled = true` | ✅ |
+| Engine: build positions jitter to avoid same-coordinate overlaps | ✅ |
+| Reward: resource win terminal = ±10 (matched combat win) | ✅ |
+| Reward: fix army advantage formula (was multiplying two raw values) | ✅ |
+| Reward: add unit kill signal (+0.1 per enemy supply point lost) | ✅ |
+| Balance: contested nodes 300 cap (was 100), safe nodes 100 cap (was 300) | ✅ |
+| Balance: passive win threshold 2500 resources, regen 0.2/tick | ✅ |
+| `TurtleBot` redesign: resource-accumulation strategy, turrets only, no combat | ✅ |
+| `MacroBot` redesign: gunners from barracks, per-group retreat at 30% health | ✅ |
+| `MacroBot`: adaptive barracks y-zone when building is destroyed | ✅ |
+| `MacroBot`: depot built only when near supply cap, not proactively | ✅ |
+| `RushBot`: randomised barracks y-zone per game | ✅ |
+| `RushBot`: depot only when at supply cap and want more units | ✅ |
+| `HeavyBot`: new bot — foundry-first, bruiser/medic/gunner, pushes at 8+ units | ✅ |
+| All bots: turret y-zones rotate by count (top/middle/bottom spread) | ✅ |
+| All bots: turret zone shifts when a turret is destroyed (adaptive defence) | ✅ |
+| `HeavyBot` + `MacroBot`: retreat when avg heavy unit health < 35%/30% | ✅ |
+| `training/ppo/league.py`: `heavy` bot added to league pool | ✅ |
+| Replay browser: minimap click + drag during replay | ✅ |
+| Replay browser: font sizes increased to match rest of UI | ✅ |
+
+**Scripted bot overview:**
+
+| Bot | Strategy | Win condition | Pushes at | Retreats |
+|-----|----------|--------------|-----------|---------|
+| Idle | Safe node gathering only | Combat (rarely) | Never | No |
+| Rush | Fast barracks → skirmisher flood | Combat | 3+ skirmishers | No |
+| Turtle | 7 workers, 3 turrets, accumulate resources | **Resource** (2500 held) | Never | No |
+| Macro | Economy + gunners/bruisers/medics | Combat | 4+ units | Yes (30% avg health) |
+| Heavy | Slow foundry build → 8+ bruisers/medics/gunners | Combat | 8+ units | Yes (35% avg heavy health) |
+
+**Observed matchup results (seed 42):**
+
+| Blue → Red | rush | macro | turtle |
+|------------|------|-------|--------|
+| **rush** | red wins (1947t) | rush wins (1985t) | rush wins (2089t) |
+| **macro** | draw (6000t) | draw (6000t) | turtle wins (4164t) |
+| **turtle** | turtle wins (4331t) | turtle wins (4662t) | blue wins (3202t) |
+| **heavy** | rush wins (1937t) | draw (6000t) | turtle wins (3190t) |
+
+Rush dominates early-game; turtle dominates late-game via resource win; macro draws against rush (balanced standoff); heavy needs more time than the match allows in close matchups.
+
+**Definition of done:** ✅ All 5 bots produce decisive outcomes against idle. Turtle wins by resource accumulation (~3100 ticks). Heavy wins vs idle (~4600 ticks). Auto-attack fires by default on all combat units. Build positions no longer overlap. 385 tests passing.
+
+---
+
 ### Phase 6 — Production bot integration 🔲 Not started
 
 **Goal:** Trained policy ships in the live game as a player option.
@@ -631,7 +684,8 @@ Rewards are computed in `headless/src/stdioRunner.ts` by comparing consecutive o
 | Damage dealt to enemy crystal | `+0.001 × damage` | Only when enemy crystal was visible last tick |
 | Damage taken to own crystal | `−0.001 × damage` | Always applied |
 | Resources mined this tick | `+0.0001 × amount` | Via lifetime resources delta |
-| Army supply advantage | `+0.0005 × (ownArmy − oppVisibleArmy)` | Encourages building a larger visible force |
+| Army supply advantage | `+0.0005 × (ownSupply − oppVisibleSupply)` | Raw supply difference; encourages a larger visible force |
+| Unit kill signal | `+0.1 × oppSupplyDelta` | Enemy visible supply dropped → units died; only when visible |
 | Time penalty | `−0.00005` per tick | Discourages stalling |
 
 Per-tick magnitudes are intentionally small (order 10⁻⁴ to 10⁻³) — terminal rewards dominate the signal.
@@ -640,19 +694,17 @@ Per-tick magnitudes are intentionally small (order 10⁻⁴ to 10⁻³) — term
 
 | Outcome | Reward |
 |---------|--------|
-| Win — crystal destruction | `+10.0` |
-| Loss — crystal destruction | `−10.0` |
-| Win — resource accumulation | `+5.0` |
-| Loss — resource accumulation | `−5.0` |
+| Win (any win condition) | `+10.0` |
+| Loss (any win condition) | `−10.0` |
 | Draw (6000 ticks elapsed) | `0.0` |
 
-Combat win is weighted higher than resource win to encourage military play alongside economic development, rather than pure turtling.
+Both win types carry equal weight — the agent is not steered toward combat-only or resource-only strategies by the reward itself.
 
 ### 7.3 Win conditions
 
 There are two ways to win:
 - **Combat win:** destroy the enemy crystal
-- **Resource win:** hold ≥ 5,000 resources at the same time (defined in `ECONOMY.passiveWinThreshold`)
+- **Resource win:** hold ≥ 2,500 resources simultaneously (defined in `ECONOMY.passiveWinThreshold`)
 
 The resource win threshold is intentionally tunable. It creates a second strategic pathway — aggressive players push for the crystal; economic players turtle and stockpile.
 

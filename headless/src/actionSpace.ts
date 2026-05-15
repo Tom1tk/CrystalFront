@@ -185,10 +185,29 @@ function chooseBuildPosition(
     bottom: mapH * 0.8,
   };
 
-  const x = xBands[xZone ?? "mid_base"] ?? (zoneStart + zoneWidth * 0.5);
-  const y = yBands[yZone ?? "middle"] ?? mapH * 0.5;
+  const baseX = xBands[xZone ?? "mid_base"] ?? (zoneStart + zoneWidth * 0.5);
+  const baseY = yBands[yZone ?? "middle"] ?? mapH * 0.5;
 
-  return { x, y };
+  // Jitter position if the zone coordinate is blocked by an existing building.
+  // Step in 80-pixel increments (roughly one building width) up to 5 attempts.
+  const STEP = 80;
+  const existingBuildings = [...match.entities.values()].filter(e => e.type === "building");
+
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const dx = (attempt % 3) * STEP * (attempt % 2 === 0 ? 1 : -1);
+    const dy = Math.floor(attempt / 3) * STEP * (attempt < 4 ? 1 : -1);
+    const cx = Math.max(zoneStart + 40, Math.min(zoneEnd - 40, baseX + dx));
+    const cy = Math.max(40, Math.min(mapH - 40, baseY + dy));
+
+    const blocked = existingBuildings.some(b => {
+      const d = Math.sqrt((b.x - cx) ** 2 + (b.y - cy) ** 2);
+      return d < b.radius + 50; // 50px clearance
+    });
+
+    if (!blocked) return { x: cx, y: cy };
+  }
+
+  return { x: baseX, y: baseY }; // fallback — engine will reject if still blocked
 }
 
 function resolveTargetZone(

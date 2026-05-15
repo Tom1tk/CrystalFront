@@ -34,7 +34,7 @@ import { buildObservation } from "./observation.js";
 import { getLegalActions } from "./legalActions.js";
 import { expandMacroAction } from "./actionSpace.js";
 import { indexToAction, legalMask as buildLegalMask } from "./actionIndex.js";
-import { IdleBot, RushBot, TurtleBot, MacroBot } from "./bots/index.js";
+import { IdleBot, RushBot, TurtleBot, MacroBot, HeavyBot } from "./bots/index.js";
 import { ECONOMY } from "@crystalfront/shared";
 import type { Agent, PlayerObservation } from "./types.js";
 
@@ -55,6 +55,7 @@ function makeBot(name?: string): Agent {
     case "rush":   return new RushBot();
     case "turtle": return new TurtleBot();
     case "macro":  return new MacroBot();
+    case "heavy":  return new HeavyBot();
     default:       return new MacroBot();
   }
 }
@@ -85,21 +86,19 @@ function computeReward(
   const miningDelta = curr.global.ownLifetimeResourcesFrac - prev.global.ownLifetimeResourcesFrac;
   if (miningDelta > 0) r += 0.0001 * miningDelta * (ECONOMY.passiveWinThreshold * 2);
 
-  // Army supply advantage (positive = we have more visible army)
-  const ownArmy = curr.global.ownSupply * curr.global.ownMaxSupply;
-  const oppArmy = curr.global.oppVisibleSupply * curr.global.ownMaxSupply;
-  r += 0.0005 * (ownArmy - oppArmy);
+  // Army supply advantage: raw supply difference (workers included, but consistent)
+  r += 0.0005 * (curr.global.ownSupply - curr.global.oppVisibleSupply);
 
-  // Time penalty — discourages stalling
+  // Unit kill signal: opponent visible supply dropped → enemy units died
+  const oppSupplyDelta = prev.global.oppVisibleSupply - curr.global.oppVisibleSupply;
+  if (oppSupplyDelta > 0) r += 0.1 * oppSupplyDelta;
+
+  // Time penalty — mild stall discouragement
   r -= 0.00005;
 
-  // Terminal rewards (dominate the signal)
+  // Terminal rewards — resource win equals combat win; both win types equally valuable
   if (done && winner !== null) {
-    if (winner === BLUE_ID) {
-      r += winType === "combat" ? 10.0 : 5.0;
-    } else {
-      r -= winType === "combat" ? 10.0 : 5.0;
-    }
+    r += winner === BLUE_ID ? 10.0 : -10.0;
   }
 
   return r;

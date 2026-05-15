@@ -2,90 +2,81 @@ import type { Agent, PlayerObservation, MacroAction } from "../types.js";
 import type { MatchState } from "../../../server/src/match/types.js";
 
 /**
- * TurtleBot — builds supply depots and turrets, trains gunners, plays defensively.
- * Tests whether offensive strategies can break a fortified position.
+ * TurtleBot — resource-accumulation strategy targeting the passive win condition
+ * (hold ≥5000 resources simultaneously).
+ *
+ * Design:
+ *   - Train workers aggressively (up to 7) for maximum income
+ *   - Build turrets to deter attackers; no barracks, no combat units
+ *   - Gather from all nodes; pull back to safe when enemy army is visible
+ *   - Stop all spending when close to the resource win threshold (>85%)
+ *   - Turret y-zones rotate naturally by count; shift base on destruction
  */
 export class TurtleBot implements Agent {
   private playerId = "";
   private lastAssignTick = -50;
-  private lastBuildTick = -80;
-  private lastPushTick = -50;
-  private depotCount = 0;
-  private turretCount = 0;
+  private lastBuildTick  = -60;
+
+  private turretYZones: MacroAction["yZone"][] = ["top", "bottom", "middle"];
+  private turretBaseZone = 0;  // increments when a turret is destroyed
+  private prevTurretCount = 0;
 
   init(playerId: string, _match: MatchState): void {
-    this.playerId = playerId;
+    this.playerId       = playerId;
     this.lastAssignTick = -50;
-    this.lastBuildTick = -80;
-    this.lastPushTick = -50;
-    this.depotCount = 0;
-    this.turretCount = 0;
+    this.lastBuildTick  = -60;
+    this.prevTurretCount = 0;
+    this.turretBaseZone = Math.floor(Math.random() * 3); // vary starting position
   }
 
   step(obs: PlayerObservation, legal: MacroAction[]): MacroAction[] {
     const actions: MacroAction[] = [];
     const { global, entities, tick } = obs;
 
-    // Gather from both node types — contested income is essential with new balance
+    const ownResourcesWinFrac = global.ownResourcesWinFrac ?? 0;
+    const nearGoal  = ownResourcesWinFrac > 0.85;
+    const ownWorkers = entities.filter(e => e.owner === 1 && e.typeIndex === 1).length;
+    const turretCount = entities.filter(e => e.owner === 1 && e.typeIndex === 9 && e.constructionFrac >= 1).length;
+    const oppArmy   = global.oppVisibleSupply ?? 0;
+
+    // Detect turret destroyed → shift base zone so next replacement lands elsewhere
+    if (turretCount < this.prevTurretCount) {
+      this.turretBaseZone = (this.turretBaseZone + 1) % this.turretYZones.length;
+    }
+    this.prevTurretCount = turretCount;
+
+    // ── Gathering ──────────────────────────────────────────────────────────
     if (tick - this.lastAssignTick >= 40) {
-      const assignSafe = legal.find(a => a.type === "assign_workers" && a.nodeChoice === "nearest_safe");
-      if (assignSafe) actions.push(assignSafe);
-      const assignContest = legal.find(a => a.type === "assign_workers" && a.nodeChoice === "nearest_contested");
-      if (assignContest) actions.push(assignContest);
+      if (oppArmy >= 3) {
+        const safe = legal.find(a => a.type === "assign_workers" && a.nodeChoice === "nearest_safe");
+        if (safe) actions.push(safe);
+      } else {
+        const safe = legal.find(a => a.type === "assign_workers" && a.nodeChoice === "nearest_safe");
+        if (safe) actions.push(safe);
+        const contested = legal.find(a => a.type === "assign_workers" && a.nodeChoice === "nearest_contested");
+        if (contested) actions.push(contested);
+      }
       this.lastAssignTick = tick;
     }
 
-    // Count own structures
-    this.depotCount  = entities.filter(e => e.owner === 1 && e.typeIndex === 8 && e.constructionFrac >= 1).length;
-    this.turretCount = entities.filter(e => e.owner === 1 && e.typeIndex === 9 && e.constructionFrac >= 1).length;
-    const hasBarracks = entities.some(e => e.owner === 1 && e.typeIndex === 6 && e.constructionFrac >= 1);
+    // ── Stop spending when close to goal ───────────────────────────────────
+    if (nearGoal) return actions;
 
-    const resources = global.ownResources * 1000;
-
-    if (tick - this.lastBuildTick >= 60) {
-      // Priority: 1 depot (supply headroom) → barracks (units) → turrets (defense) → 2nd depot
-      if (this.depotCount === 0 && resources >= 50) {
-        const build = legal.find(a =>
-          a.type === "build" && a.buildingType === "supply_depot" && a.xZone === "near_crystal"
-        );
-        if (build) { actions.push(build); this.lastBuildTick = tick; }
-      } else if (!hasBarracks && resources >= 75) {
-        const build = legal.find(a =>
-          a.type === "build" && a.buildingType === "barracks" && a.xZone === "mid_base"
-        );
-        if (build) { actions.push(build); this.lastBuildTick = tick; }
-      } else if (this.turretCount < 3 && resources >= 60) {
-        const yZones: MacroAction["yZone"][] = ["top", "bottom", "middle"];
-        const yZone = yZones[this.turretCount % 3];
-        const build = legal.find(a =>
-          a.type === "build" && a.buildingType === "turret" &&
-          a.xZone === "forward" && a.yZone === yZone
-        );
-        if (build) { actions.push(build); this.lastBuildTick = tick; }
-      }
+    // ── Train workers (primary economy lever) ──────────────────────────────
+    if (ownWorkers < 7 && legal.some(a => a.type === "train_worker")) {
+      actions.push({ type: "train_worker" });
     }
 
-    // Train gunners when barracks is up
-    if (hasBarracks) {
-      const trainGunner = legal.find(a => a.type === "train_unit" && a.unitType === "gunner");
-      if (trainGunner) actions.push(trainGunner);
-    }
-
-    // Counterattack — hold midfield at 3, commit to enemy crystal at 6
-    // Cooldown prevents cancelling attacks every tick (move command clears attackTargetId)
-    const gunners = entities.filter(e => e.owner === 1 && e.typeIndex === 3).length;
-    if (tick - this.lastPushTick >= 40) {
-      if (gunners >= 6) {
-        const push = legal.find(a =>
-          a.type === "attack_move" && a.group === "gunners" && a.targetZone === "enemy_crystal"
-        );
-        if (push) { actions.push(push); this.lastPushTick = tick; }
-      } else if (gunners >= 3) {
-        const hold = legal.find(a =>
-          a.type === "attack_move" && a.group === "gunners" && a.targetZone === "midfield"
-        );
-        if (hold) { actions.push(hold); this.lastPushTick = tick; }
-      }
+    // ── Build turrets for defence ──────────────────────────────────────────
+    if (tick - this.lastBuildTick >= 60 && turretCount < 3) {
+      // Cycle y-zone by count so each turret lands at a different position
+      const zoneIdx = (this.turretBaseZone + turretCount) % this.turretYZones.length;
+      const yZone   = this.turretYZones[zoneIdx];
+      const build = legal.find(a =>
+        a.type === "build" && a.buildingType === "turret" &&
+        a.xZone === "forward" && a.yZone === yZone
+      );
+      if (build) { actions.push(build); this.lastBuildTick = tick; }
     }
 
     return actions;
