@@ -2239,7 +2239,7 @@ export default function GameShell({
       <div ref={containerRef} style={styles.gameContainer}>
         <canvas
           ref={canvasRef}
-          onMouseDown={isReplay ? undefined : handleMouseDown}
+          onMouseDown={isReplay ? (e) => handleMinimapClick(e) : handleMouseDown}
           onMouseUp={isReplay ? undefined : handleMouseUp}
           onContextMenu={isReplay ? undefined : handleContextMenu}
           onMouseMove={handleMouseMove}
