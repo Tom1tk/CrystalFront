@@ -58,10 +58,11 @@ function winTypeBadge(wt: string | null | undefined): { text: string; color: str
 
 function flagBadge(flag: string): { text: string; color: string } {
   switch (flag) {
-    case "fast":         return { text: "⚡ Fast", color: FCT.green };
+    case "fast":         return { text: "⚡ Fast",     color: FCT.green };
     case "lopsided":     return { text: "⚔ Lopsided", color: FCT.red };
     case "resource_win": return { text: "💰 Econ Win", color: FCT.amber };
-    default:             return { text: flag, color: FCT.inkFaint };
+    case "scrappy":      return { text: "💀 Scrappy",  color: "#cc44ff" };
+    default:             return { text: flag,           color: FCT.inkFaint };
   }
 }
 
