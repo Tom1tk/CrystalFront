@@ -26,6 +26,8 @@ interface GameShellProps {
   isReplay?: boolean;
   onStopReplay?: () => void;
   replayTotalTicks?: number;
+  replayVersion?: string;
+  gameVersion?: string;
 }
 
 const CANVAS_WIDTH = 960;
@@ -601,6 +603,8 @@ export default function GameShell({
   isReplay = false,
   onStopReplay,
   replayTotalTicks,
+  replayVersion,
+  gameVersion,
 }: GameShellProps) {
   // Callers always provide player (even replay passes a synthetic observer object).
   // The null type on the prop exists so replay can pass `null`-ish defaults,
@@ -2514,9 +2518,28 @@ export default function GameShell({
           right: 10,
           zIndex: 100,
           display: "flex",
-          alignItems: "center",
-          gap: 8,
+          flexDirection: "column",
+          alignItems: "flex-end",
+          gap: 6,
         }}>
+          {/* Version mismatch warning */}
+          {replayVersion && gameVersion && replayVersion !== gameVersion && (
+            <div style={{
+              background: "rgba(20,8,8,0.95)",
+              border: `1px solid ${FCT.red}`,
+              padding: "6px 14px",
+              fontFamily: FCT.mono,
+              fontSize: 9,
+              letterSpacing: "0.18em",
+              color: FCT.red,
+              maxWidth: 340,
+              lineHeight: 1.5,
+            }}>
+              ⚠ VERSION MISMATCH — recorded on {replayVersion}, running {gameVersion}.
+              Balance values differ; playback will not be accurate.
+            </div>
+          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{
             background: "rgba(5,6,10,0.85)",
             border: `1px solid ${FCT.amber}`,
@@ -2550,6 +2573,7 @@ export default function GameShell({
           >
             ✕ Stop
           </button>
+          </div>
         </div>
       )}
     </div>

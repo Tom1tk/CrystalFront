@@ -25,7 +25,7 @@ interface ReplayMeta {
 
 interface ReplayBrowserProps {
   onBack: () => void;
-  onWatch: (replayId: string, totalTicks: number) => void;
+  onWatch: (replayId: string, totalTicks: number, version?: string) => void;
 }
 
 // ── constants ─────────────────────────────────────────────────────────────────
@@ -405,7 +405,7 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
                   </span>
                   <div style={{ textAlign: "right" }}>
                     <FctBtn primary style={{ padding: "3px 10px", fontSize: 11 }}
-                      onClick={() => onWatch(r.id, r.outcome.ticks)}>▶</FctBtn>
+                      onClick={() => onWatch(r.id, r.outcome.ticks, r.version)}>▶</FctBtn>
                   </div>
                 </div>
               );
