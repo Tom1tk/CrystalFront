@@ -44,8 +44,8 @@ export class MacroBot implements Agent {
 
     // Phase transitions
     if (this.phase === "expand" && hasBarracks && hasFoundry) this.phase = "tech";
-    if (this.phase === "tech"   && armySize >= 4)             this.phase = "army";
-    if (this.phase === "army"   && armySize >= 8)             this.phase = "push";
+    if (this.phase === "tech"   && armySize >= 3)             this.phase = "army";
+    if (this.phase === "army"   && armySize >= 5)             this.phase = "push";
 
     // Build queue — on a cooldown to avoid hammering idle workers
     if (tick - this.lastBuildTick >= 60) {
@@ -104,14 +104,17 @@ export class MacroBot implements Agent {
       }
     }
 
-    // Set rally to midfield
-    if (tick % 200 === 0) {
+    // Set rally to midfield once in army/push phase so new units flow forward
+    if ((this.phase === "army" || this.phase === "push") && tick % 200 === 0) {
       const rally = legal.find(a => a.type === "set_rally" && a.targetZone === "midfield");
       if (rally) actions.push(rally);
     }
 
-    // Push
-    if (this.phase === "push" && tick - this.lastPushTick >= 40) {
+    // Drip attack: push with any available army — don't wait for a full force
+    // "push" phase attacks every 40 ticks; "army" phase uses 80-tick intervals
+    // so early skirmishes don't cancel attacks too often before the army is full
+    const pushInterval = this.phase === "push" ? 40 : 80;
+    if (armySize >= 2 && tick - this.lastPushTick >= pushInterval) {
       const push = legal.find(a =>
         a.type === "attack_move" && a.group === "all_combat" && a.targetZone === "enemy_crystal"
       );
