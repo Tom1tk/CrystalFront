@@ -6,6 +6,12 @@ export interface GlobalFeatures {
     oppVisibleSupply: number;
     tick: number;
     scoreDiff: number;
+    ownCrystalHealthFrac: number;
+    oppCrystalHealthFrac: number;
+    ownResourcesWinFrac: number;
+    oppResourcesWinFrac: number;
+    ownLifetimeResourcesFrac: number;
+    oppLifetimeResourcesFrac: number;
 }
 export interface EntityFeature {
     id: string;
@@ -56,6 +62,7 @@ export interface Agent {
 }
 export interface MatchResult {
     winner: string | null;
+    winType: "combat" | "resource" | "timeout" | null;
     ticks: number;
     durationMs: number;
     commandLog: Array<{

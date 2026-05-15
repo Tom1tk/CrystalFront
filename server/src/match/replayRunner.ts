@@ -212,8 +212,19 @@ export function getReplay(id: string): ReplayFile | null {
  * Streams a replay to a single WebSocket observer at real-time speed.
  * The observer receives MATCH_START then GAME_STATE each tick (full/unfiltered state).
  */
+interface ReplaySession {
+  interval: NodeJS.Timeout | null;
+  subStepCount: number;
+  stepsPerTick: number;
+  subStepMs: number;
+  cmdsByTick: Map<number, Array<{ playerId: string; command: Record<string, unknown> }>>;
+  totalTicks: number;
+  ws: WebSocket;
+  onEnd: (matchId: string) => void;
+}
+
 export class ReplayRunner {
-  private intervals = new Map<string, NodeJS.Timeout>();
+  private sessions = new Map<string, ReplaySession>();
   private engine = new MatchEngine();
 
   start(
@@ -221,7 +232,6 @@ export class ReplayRunner {
     ws: WebSocket,
     onEnd: (matchId: string) => void
   ): string {
-    // Use the original player IDs so entity ownership checks in processCommand pass.
     const blueId = (replay as { bluePlayerId?: string }).bluePlayerId ?? "headless-blue";
     const redId  = (replay as { redPlayerId?: string }).redPlayerId  ?? "headless-red";
 
@@ -230,9 +240,7 @@ export class ReplayRunner {
       { playerId: redId,  username: replay.red,  color: "red",  score: 0 },
     ];
 
-    // Look up the balance for this replay's version; fall back to current defaults
     const snap = getBalanceForVersion((replay as { version?: string }).version ?? "");
-
     const replayConfig = snap ? {
       ...DEFAULT_CONFIG,
       workerTrainCost:      snap.workerCost,
@@ -245,83 +253,90 @@ export class ReplayRunner {
     const match = this.engine.createMatch("replay", players, replayConfig, replay.seed);
     this.engine.startMatch(match.id);
 
-    // Group commandLog by tick for fast lookup
     const cmdsByTick = new Map<number, Array<{ playerId: string; command: Record<string, unknown> }>>();
     for (const entry of replay.commandLog) {
       if (!cmdsByTick.has(entry.tick)) cmdsByTick.set(entry.tick, []);
       cmdsByTick.get(entry.tick)!.push({ playerId: entry.playerId, command: entry.command });
     }
 
-    const totalTicks = replay.outcome.ticks;
+    send(ws, { type: "match_start", payload: { match: serializeMatch(match) } });
 
-    // Send MATCH_START immediately
-    send(ws, {
-      type: "match_start",
-      payload: { match: serializeMatch(match) },
-    });
-
-    let subStepCount = 0;
     const subStepMs = SIMULATION.subStepMs;
-    const fullTickMs = 100;
-    const stepsPerTick = fullTickMs / subStepMs;
+    const stepsPerTick = 100 / subStepMs;
 
-    const interval = setInterval(() => {
-      const m = this.engine.getMatch(match.id);
-      if (!m || m.phase !== "playing") {
-        this._finish(match.id, interval, ws, m?.tick ?? 0, m?.result?.winner ?? null, onEnd);
-        return;
-      }
+    const session: ReplaySession = {
+      interval: null,
+      subStepCount: 0,
+      stepsPerTick,
+      subStepMs,
+      cmdsByTick,
+      totalTicks: replay.outcome.ticks,
+      ws,
+      onEnd,
+    };
+    this.sessions.set(match.id, session);
+    this._startInterval(match.id, 1);
 
-      subStepCount++;
-      if (subStepCount % stepsPerTick === 0) {
-        // Apply commands for this tick
-        const cmds = cmdsByTick.get(m.tick) ?? [];
-        for (const { playerId, command } of cmds) {
-          this.engine.processCommand(match.id, playerId, command as Parameters<MatchEngine["processCommand"]>[2]);
-        }
-
-        this.engine.tick(match.id);
-
-        send(ws, {
-          type: "game_state",
-          payload: { match: serializeMatch(this.engine.getMatch(match.id) ?? m), isReplay: true },
-        });
-
-        // End when we've replayed all recorded ticks
-        if (m.tick >= totalTicks) {
-          this._finish(match.id, interval, ws, m.tick, m.result?.winner ?? null, onEnd);
-        }
-      } else {
-        this.engine.subStepMovement(match.id);
-      }
-    }, subStepMs);
-
-    this.intervals.set(match.id, interval);
     return match.id;
   }
 
+  /** Adjust playback speed. mult=0 pauses; 1/2/4 play at that multiple of real-time. */
+  setSpeed(matchId: string, mult: number): void {
+    const session = this.sessions.get(matchId);
+    if (!session) return;
+    if (session.interval) { clearInterval(session.interval); session.interval = null; }
+    if (mult > 0) this._startInterval(matchId, mult);
+  }
+
   stop(matchId: string): void {
-    const interval = this.intervals.get(matchId);
-    if (interval) {
-      clearInterval(interval);
-      this.intervals.delete(matchId);
-    }
+    const session = this.sessions.get(matchId);
+    if (!session) return;
+    if (session.interval) clearInterval(session.interval);
+    this.sessions.delete(matchId);
     this.engine.destroyMatch(matchId);
   }
 
-  private _finish(
-    matchId: string,
-    interval: NodeJS.Timeout,
-    ws: WebSocket,
-    ticks: number,
-    winner: string | null,
-    onEnd: (matchId: string) => void
-  ): void {
-    clearInterval(interval);
-    this.intervals.delete(matchId);
-    send(ws, { type: "replay_end", payload: { ticks, winner } });
+  private _startInterval(matchId: string, mult: number): void {
+    const session = this.sessions.get(matchId);
+    if (!session) return;
+    const delayMs = Math.max(1, session.subStepMs / mult);
+    session.interval = setInterval(() => this._tick(matchId), delayMs);
+  }
+
+  private _tick(matchId: string): void {
+    const session = this.sessions.get(matchId);
+    if (!session) return;
+    const m = this.engine.getMatch(matchId);
+    if (!m || m.phase !== "playing") {
+      this._finish(matchId);
+      return;
+    }
+    session.subStepCount++;
+    if (session.subStepCount % session.stepsPerTick === 0) {
+      const cmds = session.cmdsByTick.get(m.tick) ?? [];
+      for (const { playerId, command } of cmds) {
+        this.engine.processCommand(matchId, playerId, command as Parameters<MatchEngine["processCommand"]>[2]);
+      }
+      this.engine.tick(matchId);
+      send(session.ws, {
+        type: "game_state",
+        payload: { match: serializeMatch(this.engine.getMatch(matchId) ?? m), isReplay: true },
+      });
+      if (m.tick >= session.totalTicks) this._finish(matchId);
+    } else {
+      this.engine.subStepMovement(matchId);
+    }
+  }
+
+  private _finish(matchId: string): void {
+    const session = this.sessions.get(matchId);
+    if (!session) return;
+    if (session.interval) clearInterval(session.interval);
+    const m = this.engine.getMatch(matchId);
+    send(session.ws, { type: "replay_end", payload: { ticks: m?.tick ?? 0, winner: m?.result?.winner ?? null } });
     this.engine.destroyMatch(matchId);
-    onEnd(matchId);
+    this.sessions.delete(matchId);
+    session.onEnd(matchId);
   }
 }
 

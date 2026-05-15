@@ -849,6 +849,15 @@ wss.on("connection", (ws) => {
         break;
       }
 
+      case CLIENT_MSG.REPLAY_SPEED: {
+        const speedMatchId = replayWatchers.get(ws);
+        if (speedMatchId) {
+          const mult = Number(msg.payload?.speed ?? 1);
+          replayRunner.setSpeed(speedMatchId, mult);
+        }
+        break;
+      }
+
       default: {
         sendWS(ws, { type: SERVER_EVT.ERROR, payload: { message: "Unknown message type." } });
         break;

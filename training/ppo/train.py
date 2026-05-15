@@ -410,11 +410,11 @@ def train(cfg: Config) -> None:
                         opp = league.get_env_opponent(i)
                         league.record_result(opp, won)
 
-                    writer.add_scalar("charts/episode_reward", episode_rewards[i], global_step)
-                    writer.add_scalar("charts/episode_length", episode_lengths[i], global_step)
+                    writer.add_scalar("game/episode_reward", episode_rewards[i], global_step)
+                    writer.add_scalar("game/episode_length_ticks", episode_lengths[i], global_step)
                     if window_episodes >= WIN_WINDOW:
                         win_rate = wins_last_window / window_episodes
-                        writer.add_scalar("charts/win_rate", win_rate, global_step)
+                        writer.add_scalar("game/win_rate", win_rate, global_step)
                         print(
                             f"  update={update:5d} | step={global_step:8d} | "
                             f"win_rate={win_rate:.2f} ({wins_last_window}/{window_episodes}) | "
@@ -538,13 +538,13 @@ def train(cfg: Config) -> None:
 
         # ── logging ───────────────────────────────────────────────────────────
         sps = int(global_step / (time.time() - start_time))
-        writer.add_scalar("charts/learning_rate",       optimizer.param_groups[0]["lr"],            global_step)
-        writer.add_scalar("charts/sps",                 sps,                                        global_step)
-        writer.add_scalar("losses/policy_loss",         pg_loss.item(),                             global_step)
-        writer.add_scalar("losses/value_loss",          v_loss.item(),                              global_step)
-        writer.add_scalar("losses/entropy",             entropy_loss.item(),                        global_step)
-        writer.add_scalar("losses/clip_frac",           np.mean(clip_fracs),                        global_step)
-        writer.add_scalar("losses/approx_kl",           ((ratio - 1) - log_ratio).mean().item(),    global_step)
+        writer.add_scalar("training/learning_rate",      optimizer.param_groups[0]["lr"],            global_step)
+        writer.add_scalar("training/steps_per_second",  sps,                                        global_step)
+        writer.add_scalar("ppo/policy_gradient_loss",   pg_loss.item(),                             global_step)
+        writer.add_scalar("ppo/value_function_loss",    v_loss.item(),                              global_step)
+        writer.add_scalar("ppo/entropy_bonus",          entropy_loss.item(),                        global_step)
+        writer.add_scalar("ppo/clip_fraction",          np.mean(clip_fracs),                        global_step)
+        writer.add_scalar("ppo/approx_kl_divergence",   ((ratio - 1) - log_ratio).mean().item(),    global_step)
 
         # ── checkpoint ────────────────────────────────────────────────────────
         if update % cfg.save_interval == 0:
@@ -568,7 +568,7 @@ def train(cfg: Config) -> None:
             # Log win-rate matrix to TensorBoard
             matrix = league.get_win_rate_matrix()
             for opp_name, stats in matrix.items():
-                writer.add_scalar(f"league/win_rate_{opp_name}", stats["win_rate"], global_step)
+                writer.add_scalar(f"league/win_vs_{opp_name}", stats["win_rate"], global_step)
             # Also write matrix as text (viewable in TensorBoard text tab)
             matrix_text = "\n".join(
                 f"  {n:30s}  {s['win_rate']:.3f}  ({s['wins']}/{s['total']})  [{s['type']}]"

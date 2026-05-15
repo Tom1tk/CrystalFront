@@ -153,9 +153,14 @@ function computeReward(
   // Time penalty — mild stall discouragement
   r -= 0.00005;
 
-  // Terminal rewards — resource win equals combat win; both win types equally valuable
-  if (done && winner !== null) {
-    r += winner === BLUE_ID ? 10.0 : -10.0;
+  // Terminal rewards
+  if (done) {
+    if (winner !== null) {
+      r += winner === BLUE_ID ? 10.0 : -10.0;
+    } else {
+      // Timeout draw — treated identically to a loss. The agent must engage or die trying.
+      r -= 10.0;
+    }
   }
 
   return r;

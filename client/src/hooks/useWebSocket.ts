@@ -23,6 +23,7 @@ interface UseWebSocketReturn {
   startSoloTest: (username: string) => void;
   startReplay: (replayId: string) => void;
   stopReplay: () => void;
+  setReplaySpeed: (speed: number) => void;
   toggleReady: () => void;
   leaveLobby: () => void;
   debugWin: (winner: "player1" | "player2" | "self") => void;
@@ -156,6 +157,10 @@ export function useWebSocket(): UseWebSocketReturn {
     sendMessage({ type: "stop_replay" });
   }, [sendMessage]);
 
+  const setReplaySpeed = useCallback((speed: number) => {
+    sendMessage({ type: "replay_speed", payload: { speed } });
+  }, [sendMessage]);
+
   const toggleReady = useCallback(() => {
     sendMessage({ type: "ready_toggle" });
   }, [sendMessage]);
@@ -221,6 +226,7 @@ export function useWebSocket(): UseWebSocketReturn {
     startSoloTest,
     startReplay,
     stopReplay,
+    setReplaySpeed,
     toggleReady,
     leaveLobby,
     debugWin,
