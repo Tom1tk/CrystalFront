@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { FCT, FctFrame, FctPanel, FctBtn, HEX_CLIP } from "../design/facet";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { FCT, FctFrame, FctPanel, HEX_CLIP, FctBtn } from "../design/facet";
 
 // ── types ────────────────────────────────────────────────────────────────────
 
@@ -12,7 +12,6 @@ interface ReplayMeta {
   durationSecs: number;
   version: string;
   timestamp: number;
-  // Phase 5 — enriched metadata
   winType?: string | null;
   blueUnits?: Record<string, number>;
   redUnits?: Record<string, number>;
@@ -29,11 +28,28 @@ interface ReplayBrowserProps {
   onWatch: (replayId: string, totalTicks: number) => void;
 }
 
-// ── sort ─────────────────────────────────────────────────────────────────────
+// ── constants ────────────────────────────────────────────────────────────────
 
+const STARRED_KEY = "crystalfront_starred_replays";
+const LIMIT_OPTIONS = [10, 30, 50, 100] as const;
 type SortField = "timestamp" | "seed" | "ticks" | "winner";
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+// ── localStorage helpers ──────────────────────────────────────────────────────
+
+function loadStarred(): Set<string> {
+  try {
+    const raw = localStorage.getItem(STARRED_KEY);
+    return new Set(raw ? JSON.parse(raw) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveStarred(s: Set<string>): void {
+  try { localStorage.setItem(STARRED_KEY, JSON.stringify([...s])); } catch { /* ignore */ }
+}
+
+// ── helpers ───────────────────────────────────────────────────────────────────
 
 function formatDuration(secs: number): string {
   const m = Math.floor(secs / 60);
@@ -50,9 +66,9 @@ function outcomeLabel(meta: ReplayMeta): { text: string; color: string } {
 
 function winTypeBadge(wt: string | null | undefined): { text: string; color: string } {
   if (!wt) return { text: "—", color: FCT.inkFaint };
-  if (wt === "combat") return { text: "⚔ Combat", color: FCT.red };
-  if (wt === "resource") return { text: "💰 Econ", color: FCT.amber };
-  if (wt === "timeout") return { text: "⏳ Time", color: FCT.inkDim };
+  if (wt === "combat")   return { text: "⚔ Combat",  color: FCT.red };
+  if (wt === "resource") return { text: "💰 Econ",   color: FCT.amber };
+  if (wt === "timeout")  return { text: "⏳ Time",   color: FCT.inkDim };
   return { text: wt, color: FCT.inkFaint };
 }
 
@@ -77,81 +93,93 @@ function unitsSummary(units: Record<string, number> | undefined): string {
   return parts.join(" ") || "—";
 }
 
-// ── component ────────────────────────────────────────────────────────────────
+// ── component ─────────────────────────────────────────────────────────────────
 
 export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
   const [replays, setReplays] = useState<ReplayMeta[]>([]);
+  const [total, setTotal]     = useState(0);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError]     = useState<string | null>(null);
+  const [limit, setLimit]     = useState<number>(50);
+  const [starred, setStarred] = useState<Set<string>>(() => loadStarred());
 
   // Filters
-  const [filterWinner, setFilterWinner] = useState<string>("all");
-  const [filterWinType, setFilterWinType] = useState<string>("all");
-  const [filterBot, setFilterBot] = useState<string>("");
+  const [filterWinner,  setFilterWinner]  = useState("all");
+  const [filterWinType, setFilterWinType] = useState("all");
+  const [filterBot,     setFilterBot]     = useState("");
+  const [filterStarred, setFilterStarred] = useState(false);
 
   // Sort
   const [sortField, setSortField] = useState<SortField>("timestamp");
-  const [sortAsc, setSortAsc] = useState(false);
+  const [sortAsc,   setSortAsc]   = useState(false);
 
+  // Fetch when limit changes
   useEffect(() => {
-    fetch("/api/replays")
+    const fetchLimit = filterStarred ? 1000 : limit;
+    setLoading(true);
+    fetch(`/api/replays?limit=${fetchLimit}`)
       .then(r => r.json())
-      .then(d => { setReplays(d.replays ?? []); setLoading(false); })
+      .then(d => {
+        setReplays(d.replays ?? []);
+        setTotal(d.total ?? (d.replays ?? []).length);
+        setLoading(false);
+      })
       .catch(() => { setError("Could not load replays."); setLoading(false); });
+  }, [limit, filterStarred]);
+
+  const toggleStar = useCallback((id: string) => {
+    setStarred(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      saveStarred(next);
+      return next;
+    });
   }, []);
 
   const filtered = useMemo(() => {
     let list = [...replays];
 
-    // Filter by winner
-    if (filterWinner === "blue") {
-      list = list.filter(r => r.outcome.winner?.includes("blue"));
-    } else if (filterWinner === "red") {
-      list = list.filter(r => r.outcome.winner?.includes("red"));
-    } else if (filterWinner === "draw") {
-      list = list.filter(r => !r.outcome.winner);
-    }
+    if (filterStarred) list = list.filter(r => starred.has(r.id));
+    if (filterWinner === "blue") list = list.filter(r => r.outcome.winner?.includes("blue"));
+    else if (filterWinner === "red")  list = list.filter(r => r.outcome.winner?.includes("red"));
+    else if (filterWinner === "draw") list = list.filter(r => !r.outcome.winner);
 
-    // Filter by win type
     if (filterWinType !== "all") {
       list = list.filter(r => (r.winType ?? r.outcome.winType) === filterWinType);
     }
-
-    // Filter by bot name
     if (filterBot.trim()) {
       const q = filterBot.trim().toLowerCase();
       list = list.filter(r => r.blue.toLowerCase().includes(q) || r.red.toLowerCase().includes(q));
     }
 
-    // Sort
     list.sort((a, b) => {
       let va: number, vb: number;
       switch (sortField) {
-        case "seed":
-          va = a.seed; vb = b.seed; break;
-        case "ticks":
-          va = a.outcome.ticks; vb = b.outcome.ticks; break;
+        case "seed":    va = a.seed;          vb = b.seed; break;
+        case "ticks":   va = a.outcome.ticks; vb = b.outcome.ticks; break;
         case "winner":
           va = a.outcome.winner?.includes("blue") ? 1 : a.outcome.winner?.includes("red") ? 2 : 0;
           vb = b.outcome.winner?.includes("blue") ? 1 : b.outcome.winner?.includes("red") ? 2 : 0;
           break;
-        default: // timestamp
-          va = a.timestamp; vb = b.timestamp; break;
+        default: va = a.timestamp; vb = b.timestamp; break;
       }
       return sortAsc ? va - vb : vb - va;
     });
 
     return list;
-  }, [replays, filterWinner, filterWinType, filterBot, sortField, sortAsc]);
+  }, [replays, filterWinner, filterWinType, filterBot, filterStarred, starred, sortField, sortAsc]);
 
   function toggleSort(field: SortField) {
     if (sortField === field) setSortAsc(!sortAsc);
     else { setSortField(field); setSortAsc(false); }
   }
   function sortArrow(field: SortField): string {
-    if (sortField !== field) return "";
-    return sortAsc ? " ▴" : " ▾";
+    return sortField === field ? (sortAsc ? " ▴" : " ▾") : "";
   }
+
+  const hasFilters = filterWinner !== "all" || filterWinType !== "all" || filterBot.trim() || filterStarred;
+
+  const COLS = "30px 80px 60px 100px 100px 130px 80px 90px 1fr 60px 60px";
 
   return (
     <FctFrame top="BOT REPLAYS">
@@ -159,88 +187,93 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
         position: "absolute", top: 36, left: 0, right: 0, bottom: 0,
         padding: 20, display: "flex", flexDirection: "column", gap: 12,
       }}>
-        {/* Header row */}
+
+        {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{
-            fontFamily: FCT.mono, fontSize: 11, color: FCT.inkDim, letterSpacing: "0.28em",
-          }}>
-            ▰ HEADLESS MATCH REPLAYS · {filtered.length} / {replays.length} SHOWN
+          <div style={{ fontFamily: FCT.mono, fontSize: 11, color: FCT.inkDim, letterSpacing: "0.28em" }}>
+            ▰ HEADLESS MATCH REPLAYS · {filtered.length} shown / {total} total
           </div>
-          <FctBtn sub="ESC" onClick={onBack} style={{ padding: "6px 18px" }}>
-            ← Back
-          </FctBtn>
+          <FctBtn sub="ESC" onClick={onBack} style={{ padding: "6px 18px" }}>← Back</FctBtn>
         </div>
 
-        {/* ── Filter bar ──────────────────────────────────────────────────── */}
+        {/* Filter bar */}
         <div style={{
           display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap",
           fontFamily: FCT.mono, fontSize: 11, color: FCT.inkFaint,
         }}>
-          {/* Winner filter */}
-          <span>Winner:</span>
-          <select
-            value={filterWinner}
-            onChange={e => setFilterWinner(e.target.value)}
-            style={selectStyle}
+          {/* Starred toggle */}
+          <button
+            onClick={() => setFilterStarred(v => !v)}
+            style={{
+              background: filterStarred ? FCT.amber + "22" : "transparent",
+              color: filterStarred ? FCT.amber : FCT.inkFaint,
+              border: `1px solid ${filterStarred ? FCT.amber : FCT.lineHi}`,
+              borderRadius: 4, padding: "4px 10px",
+              fontFamily: FCT.mono, fontSize: 11, cursor: "pointer",
+            }}
           >
+            {filterStarred ? "★ Starred" : "☆ Starred"}
+          </button>
+
+          <span>Winner:</span>
+          <select value={filterWinner} onChange={e => setFilterWinner(e.target.value)} style={selectStyle}>
             <option value="all">All</option>
             <option value="blue">Blue</option>
             <option value="red">Red</option>
             <option value="draw">Draw</option>
           </select>
 
-          {/* Win type filter */}
-          <span>Win type:</span>
-          <select
-            value={filterWinType}
-            onChange={e => setFilterWinType(e.target.value)}
-            style={selectStyle}
-          >
+          <span>Type:</span>
+          <select value={filterWinType} onChange={e => setFilterWinType(e.target.value)} style={selectStyle}>
             <option value="all">All</option>
             <option value="combat">Combat</option>
             <option value="resource">Resource</option>
             <option value="timeout">Timeout</option>
           </select>
 
-          {/* Bot search */}
           <span>Bot:</span>
           <input
-            type="text"
-            placeholder="idle, rush, macro…"
-            value={filterBot}
-            onChange={e => setFilterBot(e.target.value)}
-            style={{ ...inputStyle, width: 120 }}
+            type="text" placeholder="idle, rush, ppo…"
+            value={filterBot} onChange={e => setFilterBot(e.target.value)}
+            style={{ ...selectStyle, width: 110 }}
           />
 
-          {filtered.length < replays.length && (
+          <span>Show:</span>
+          <select
+            value={limit}
+            onChange={e => setLimit(Number(e.target.value))}
+            style={selectStyle}
+          >
+            {LIMIT_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+
+          {hasFilters && (
             <FctBtn style={{ padding: "3px 10px", fontSize: 10 }}
-              onClick={() => { setFilterWinner("all"); setFilterWinType("all"); setFilterBot(""); }}>
+              onClick={() => { setFilterWinner("all"); setFilterWinType("all"); setFilterBot(""); setFilterStarred(false); }}>
               Clear
             </FctBtn>
           )}
         </div>
 
-        {/* ── Table ───────────────────────────────────────────────────────── */}
+        {/* Table */}
         <FctPanel clip={HEX_CLIP} style={{ flex: 1, overflow: "hidden", padding: 0 }}>
           {/* Column headers */}
           <div style={{
-            display: "grid",
-            gridTemplateColumns: "80px 60px 100px 100px 130px 80px 90px 1fr",
-            padding: "8px 14px",
-            borderBottom: `1px solid ${FCT.lineHi}`,
-            fontFamily: FCT.mono,
-            fontSize: 10,
-            color: FCT.inkFaint,
-            letterSpacing: "0.26em",
+            display: "grid", gridTemplateColumns: COLS,
+            padding: "8px 14px", borderBottom: `1px solid ${FCT.lineHi}`,
+            fontFamily: FCT.mono, fontSize: 10, color: FCT.inkFaint, letterSpacing: "0.26em",
           }}>
-            <SortHeader label="SEED"    field="seed"      {...{sortField, sortAsc, toggleSort, sortArrow}} />
-            <SortHeader label="DUR"     field="ticks"     {...{sortField, sortAsc, toggleSort, sortArrow}} />
+            <span title="Star to mark interesting replays">☆</span>
+            <SortHeader label="SEED"    field="seed"   {...{sortField, sortAsc, toggleSort, sortArrow}} />
+            <SortHeader label="DUR"     field="ticks"  {...{sortField, sortAsc, toggleSort, sortArrow}} />
             <span>BLUE</span>
             <span>RED</span>
-            <SortHeader label="OUTCOME" field="winner"    {...{sortField, sortAsc, toggleSort, sortArrow}} />
+            <SortHeader label="OUTCOME" field="winner" {...{sortField, sortAsc, toggleSort, sortArrow}} />
             <span>TYPE</span>
             <span>UNITS</span>
             <span>FLAGS</span>
+            <span>VER</span>
+            <span style={{ textAlign: "right" }}>WATCH</span>
           </div>
 
           {/* Rows */}
@@ -266,22 +299,34 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
             )}
             {filtered.map((r, i) => {
               const { text: outcomeText, color: outcomeColor } = outcomeLabel(r);
-              const { text: wtText, color: wtColor } = winTypeBadge(r.winType ?? r.outcome.winType);
+              const { text: wtText,     color: wtColor }      = winTypeBadge(r.winType ?? r.outcome.winType);
+              const isStarred = starred.has(r.id);
               const rFlags = r.flags ?? [];
               return (
                 <div
                   key={r.id}
                   style={{
-                    display: "grid",
-                    gridTemplateColumns: "80px 60px 100px 100px 130px 80px 90px 1fr",
+                    display: "grid", gridTemplateColumns: COLS,
                     padding: "9px 14px",
                     borderBottom: i < filtered.length - 1 ? `1px solid ${FCT.line}` : undefined,
                     alignItems: "center",
                     background: i % 2 === 0 ? "transparent" : FCT.bgPanelHi,
-                    transition: "background 0.1s",
                     minHeight: 40,
                   }}
                 >
+                  {/* Star */}
+                  <button
+                    onClick={() => toggleStar(r.id)}
+                    title={isStarred ? "Unstar" : "Star this replay"}
+                    style={{
+                      background: "none", border: "none", cursor: "pointer", padding: 0,
+                      fontSize: 14, color: isStarred ? FCT.amber : FCT.inkFaint,
+                      lineHeight: 1,
+                    }}
+                  >
+                    {isStarred ? "★" : "☆"}
+                  </button>
+
                   <span style={{ fontFamily: FCT.mono, fontSize: 11, color: FCT.inkDim }}>
                     {r.seed.toString().slice(-6).padStart(6, "0")}
                   </span>
@@ -311,20 +356,23 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
                       return (
                         <span key={f} style={{
                           fontFamily: FCT.mono, fontSize: 10, color,
-                          background: color + "18", borderRadius: 3, padding: "2px 6px",
+                          background: color + "18", borderRadius: 3, padding: "2px 5px",
                           whiteSpace: "nowrap",
-                        }}>
-                          {text}
-                        </span>
+                        }}>{text}</span>
                       );
                     })}
+                  </div>
+                  {/* Version */}
+                  <span style={{ fontFamily: FCT.mono, fontSize: 9, color: FCT.inkFaint, opacity: 0.7 }}>
+                    {r.version ?? "?"}
+                  </span>
+                  {/* Watch */}
+                  <div style={{ textAlign: "right" }}>
                     <FctBtn
                       primary
-                      style={{ padding: "3px 10px", fontSize: 11, marginLeft: "auto" }}
+                      style={{ padding: "3px 10px", fontSize: 11 }}
                       onClick={() => onWatch(r.id, r.outcome.ticks)}
-                    >
-                      ▶
-                    </FctBtn>
+                    >▶</FctBtn>
                   </div>
                 </div>
               );
@@ -336,47 +384,29 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
   );
 }
 
-// ── sub-components ───────────────────────────────────────────────────────────
+// ── sub-components ────────────────────────────────────────────────────────────
 
-function SortHeader({
-  label, field, sortField, toggleSort, sortArrow,
-}: {
+function SortHeader({ label, field, sortField, toggleSort, sortArrow }: {
   label: string; field: SortField;
   sortField: SortField; sortAsc: boolean;
   toggleSort: (f: SortField) => void; sortArrow: (f: SortField) => string;
 }) {
   return (
-    <span
-      onClick={() => toggleSort(field)}
-      style={{
-        cursor: "pointer",
-        userSelect: "none",
-        color: sortField === field ? FCT.ice : FCT.inkFaint,
-        transition: "color 0.15s",
-      }}
-    >
+    <span onClick={() => toggleSort(field)} style={{
+      cursor: "pointer", userSelect: "none",
+      color: sortField === field ? FCT.ice : FCT.inkFaint,
+    }}>
       {label}{sortArrow(field)}
     </span>
   );
 }
 
-// ── shared styles ────────────────────────────────────────────────────────────
+// ── shared styles ─────────────────────────────────────────────────────────────
 
 const selectStyle: React.CSSProperties = {
-  background: FCT.bgPanelHi,
-  color: FCT.ink,
-  border: `1px solid ${FCT.lineHi}`,
-  borderRadius: 4,
-  padding: "4px 8px",
-  fontFamily: FCT.mono,
-  fontSize: 11,
-  outline: "none",
+  background: FCT.bgPanelHi, color: FCT.ink,
+  border: `1px solid ${FCT.lineHi}`, borderRadius: 4,
+  padding: "4px 8px", fontFamily: FCT.mono, fontSize: 11, outline: "none",
 };
 
-const inputStyle: React.CSSProperties = {
-  ...selectStyle,
-  width: 120,
-};
-
-// Re-export for the parent
 export type { ReplayMeta };

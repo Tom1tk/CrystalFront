@@ -24,9 +24,13 @@
  */
 
 import { createInterface } from "node:readline";
-import { writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { writeFileSync, mkdirSync, existsSync, readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+
+const __dirnameHere = dirname(fileURLToPath(import.meta.url));
+const _pkg = JSON.parse(readFileSync(resolve(__dirnameHere, "../../package.json"), "utf8"));
+const GAME_VERSION: string = _pkg.version ?? "unknown";
 import { MatchEngine } from "../../server/src/match/matchEngine.js";
 import { DEFAULT_CONFIG } from "../../server/src/match/types.js";
 import type { PlayerSlot, MatchState } from "../../server/src/match/types.js";
@@ -197,7 +201,7 @@ function handleStep(actionIdx: number): void {
       if (!existsSync(REPLAYS_DIR)) mkdirSync(REPLAYS_DIR, { recursive: true });
       const path = resolve(REPLAYS_DIR, `${ts}-${match.seed}.json`);
       const payload = {
-        version:      "1.0",
+        version:      GAME_VERSION,
         seed:         match.seed,
         blue:         "ppo_agent",
         red:          redBot?.constructor.name ?? "bot",
