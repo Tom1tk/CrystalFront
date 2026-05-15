@@ -42,18 +42,7 @@ export const BALANCE_HISTORY: Readonly<Record<string, BalanceSnapshot>> = {
   },
 } as const;
 
-/** Look up the balance snapshot for a given version string, or undefined. */
+/** Look up the balance snapshot for a given version string, or undefined if not registered. */
 export function getBalanceForVersion(version: string): BalanceSnapshot | undefined {
   return BALANCE_HISTORY[version];
-}
-
-/** Build a snapshot from the current live values (used when saving new replays). */
-export function currentBalanceSnapshot(
-  workerCost: number,
-  workerSpeed: number,
-  skirmisherSpeed: number,
-  skirmisherDamage: number,
-  passiveWinThreshold: number,
-): BalanceSnapshot {
-  return { workerCost, workerSpeed, skirmisherSpeed, skirmisherDamage, passiveWinThreshold };
 }
