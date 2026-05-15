@@ -179,7 +179,7 @@ export const ECONOMY = {
   startingMaxSupply: 10,
   workerTrainCost: 25,
   workerSupplyCost: 1,
-  passiveWinThreshold: 5000,   // current held resources = win (turtling win condition)
+  passiveWinThreshold: 2500,   // current held resources = win (turtling win condition)
 } as const;
 
 // ====================================================================
@@ -190,7 +190,7 @@ export const NODES = {
   contestedCapacity: 300,
   safeCapacity: 100,
   maxGathererSlots: 3,
-  regenPerTick: 0.1,        // passive refill rate (resources per tick)
+  regenPerTick: 0.2,        // passive refill rate (resources per tick)
 } as const;
 
 // ====================================================================

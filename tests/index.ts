@@ -571,12 +571,9 @@ console.log("\n--- Combat: Auto-Attack in Range ---");
   match.entities.set(skirmisher.id, skirmisher);
   match.entities.set(enemyWorker.id, enemyWorker);
 
-  // Verify autoAttackEnabled is false by default for units
-  assert(skirmisher.autoAttackEnabled === false, "Skirmisher autoAttackEnabled is false by default");
+  // Combat units now spawn with auto-attack enabled by default
+  assert(skirmisher.autoAttackEnabled === true, "Skirmisher autoAttackEnabled is true by default");
 
-  // Enable auto-attack manually, skirmisher should auto-acquire target
-  skirmisher.autoAttackEnabled = true;
-  match.entities.set(skirmisher.id, skirmisher);
   engine.tick(match.id);
   const skirmAfter = match.entities.get(skirmisher.id)!;
   assert(skirmAfter.attackTargetId === enemyWorker.id, "Skirmisher auto-acquired enemy in range when auto-attack enabled");
@@ -1453,9 +1450,9 @@ console.log("\n--- Legal Actions + Mask ---");
 // ---- Expand Macro Actions — every legal action produces valid commands ----
 console.log("\n--- Expand Macro Actions ---");
 {
-  // Use a rich but sub-threshold starting balance (4800 < passiveWinThreshold=5000)
+  // Use a rich but sub-threshold starting balance (just below passiveWinThreshold)
   // so builds don't starve and the passive win doesn't fire during the test.
-  const richConfig = { ...DEFAULT_CONFIG, startingResources: 4800 };
+  const richConfig = { ...DEFAULT_CONFIG, startingResources: ECONOMY.passiveWinThreshold - 100 };
   const engine = new MatchEngine();
   const blueId = "test-blue2";
   const redId  = "test-red2";
