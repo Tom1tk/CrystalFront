@@ -36,6 +36,7 @@ import os
 import random
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -71,7 +72,7 @@ class Config:
     device:    str = "cuda"  # "cuda" uses ROCm on AMD; fall back to "cpu" if no GPU
 
     # Environment
-    num_envs:           int = 4           # parallel Node simulators
+    num_envs:           int = 20          # parallel Node simulators (all stepped in parallel via thread pool)
     opponent:           str = "macro"     # idle | rush | turtle | macro
     save_replay_every:  int = 500         # save a replay every N episodes per env (0=off)
 
@@ -275,12 +276,15 @@ def train(cfg: Config) -> None:
         print(f"  League state will be saved to: {league_state_path}")
 
     # ── environments ─────────────────────────────────────────────────────────
+    # Stagger subprocess startups by 0.5s each to avoid a simultaneous tsx
+    # compilation spike (20 processes × ~200MB RAM each would hit the limit).
     envs = [
         CrystalFrontEnv(
             opponent=cfg.opponent,
             save_replay_every=cfg.save_replay_every,
+            startup_delay=i * 0.5,
         )
-        for _ in range(cfg.num_envs)
+        for i in range(cfg.num_envs)
     ]
 
     # ── agent & optimiser ─────────────────────────────────────────────────────
@@ -294,18 +298,30 @@ def train(cfg: Config) -> None:
 
     optimizer = optim.Adam(agent.parameters(), lr=cfg.learning_rate, eps=1e-5)
 
-    # ── initial reset ─────────────────────────────────────────────────────────
-    obs_list: list[dict]   = []
-    info_list: list[dict]  = []
-    for i, env in enumerate(envs):
-        opts = {}
+    # ── thread pool for parallel env I/O ─────────────────────────────────────
+    # Each env is a separate Node.js subprocess; stepping them in parallel means
+    # Python waits ~10ms (one game tick) instead of N×10ms sequentially.
+    # Python's GIL releases during I/O blocking so threads genuinely run in parallel.
+    executor = ThreadPoolExecutor(max_workers=cfg.num_envs)
+
+    # ── initial reset (parallel) ──────────────────────────────────────────────
+    init_opts = []
+    for i in range(cfg.num_envs):
+        opts: dict = {}
         if league is not None:
-            # Sample initial opponent for this env
             opp = league.assign_env_opponent(i)
             opts["opponent"] = opp
-        obs, info = env.reset(seed=cfg.seed, options=opts if opts else None)
-        obs_list.append(obs)
-        info_list.append(info)
+        init_opts.append(opts)
+
+    def _do_reset(args: tuple) -> tuple[dict, dict]:
+        env, seed, opts = args
+        return env.reset(seed=seed, options=opts if opts else None)
+
+    init_results = list(executor.map(
+        _do_reset, [(envs[i], cfg.seed, init_opts[i]) for i in range(cfg.num_envs)]
+    ))
+    obs_list:  list[dict] = [r[0] for r in init_results]
+    info_list: list[dict] = [r[1] for r in init_results]
 
     # ── bookkeeping ───────────────────────────────────────────────────────────
     buffer = RolloutBuffer(cfg.num_steps, cfg.num_envs)
@@ -348,21 +364,31 @@ def train(cfg: Config) -> None:
             actions_np  = actions_t.cpu().numpy()
             logprobs_np = logprobs_t.cpu().numpy()
 
-            # Step each environment
-            next_obs_list: list[dict]  = []
-            next_info_list: list[dict] = []
+            # Step all envs in parallel — each is a separate subprocess so no contention
+            def _step(args: tuple):
+                env, action = args
+                return env.step(int(action))
+
+            step_results = list(executor.map(_step, zip(envs, actions_np)))
+
+            # Process results (fast bookkeeping — sequential is fine here)
+            next_obs_list:  list[dict | None] = [None] * cfg.num_envs
+            next_info_list: list[dict | None] = [None] * cfg.num_envs
             rewards_np = np.zeros(cfg.num_envs, dtype=np.float32)
             dones_np   = np.zeros(cfg.num_envs, dtype=np.float32)
+            done_indices: list[int] = []
 
-            for i, env in enumerate(envs):
-                obs_next, reward, terminated, truncated, info = env.step(int(actions_np[i]))
+            for i, (obs_next, reward, terminated, truncated, info) in enumerate(step_results):
                 done = terminated or truncated
                 rewards_np[i] = reward
                 dones_np[i]   = float(done)
                 episode_rewards[i] += reward
                 episode_lengths[i] += 1
+                next_obs_list[i]  = obs_next
+                next_info_list[i] = info
 
                 if done:
+                    done_indices.append(i)
                     completed_episodes += 1
                     window_episodes    += 1
                     winner = info.get("winner")
@@ -370,7 +396,6 @@ def train(cfg: Config) -> None:
                     if won:
                         wins_last_window += 1
 
-                    # League: record per-opponent result
                     if league is not None:
                         opp = league.get_env_opponent(i)
                         league.record_result(opp, won)
@@ -392,15 +417,25 @@ def train(cfg: Config) -> None:
                     episode_rewards[i] = 0.0
                     episode_lengths[i] = 0
 
-                    # Reset this env — sample a new opponent if in league mode
-                    opts = {}
+            # Reset done envs in parallel
+            if done_indices:
+                reset_opts = []
+                for i in done_indices:
+                    opts: dict = {}
                     if league is not None:
                         opp = league.assign_env_opponent(i)
                         opts["opponent"] = opp
-                    obs_next, info = env.reset(options=opts if opts else None)
+                    reset_opts.append(opts)
 
-                next_obs_list.append(obs_next)
-                next_info_list.append(info)
+                def _reset(args: tuple):
+                    env, opts = args
+                    return env.reset(options=opts if opts else None)
+
+                reset_results = list(executor.map(
+                    _reset, [(envs[i], reset_opts[j]) for j, i in enumerate(done_indices)]
+                ))
+                for j, i in enumerate(done_indices):
+                    next_obs_list[i], next_info_list[i] = reset_results[j]
 
             buffer.add(step, obs_list, legal_masks_np, actions_np, logprobs_np,
                        rewards_np, dones_np, values_np)
@@ -543,6 +578,7 @@ def train(cfg: Config) -> None:
     print(f"\nTraining complete. Final checkpoint: {final_path}")
 
     writer.close()
+    executor.shutdown(wait=False)
     for env in envs:
         env.close()
 
