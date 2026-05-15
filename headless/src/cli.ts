@@ -10,6 +10,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runMatch } from "./runMatch.js";
 import { IdleBot, RushBot, TurtleBot, MacroBot, HeavyBot } from "./bots/index.js";
+import { ECONOMY, UNIT_DEFS, currentBalanceSnapshot } from "@crystalfront/shared";
 import type { Agent } from "./types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -24,6 +25,13 @@ export function buildReplayPayload(
 ) {
   return {
     version,
+    balanceSnapshot: currentBalanceSnapshot(
+      ECONOMY.workerTrainCost,
+      UNIT_DEFS.worker.speed,
+      UNIT_DEFS.skirmisher.speed,
+      UNIT_DEFS.skirmisher.damage,
+      ECONOMY.passiveWinThreshold,
+    ),
     seed: result.seed,
     blue,
     red,
