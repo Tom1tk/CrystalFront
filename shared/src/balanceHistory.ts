@@ -29,6 +29,17 @@ export const BALANCE_HISTORY: Readonly<Record<string, BalanceSnapshot>> = {
     passiveWinThreshold:  2500,
   },
 
+  // ── 0.1.45-ML ──────────────────────────────────────────────────────────
+  // Reward-signal patch only (same unit stats as 0.1.44-ML).
+  // Forward pressure reward, worker kill/death split, depot headroom penalty.
+  "0.1.45-ML": {
+    workerCost:            50,
+    workerSpeed:            1.7,
+    skirmisherSpeed:        3.0,
+    skirmisherDamage:      12,
+    passiveWinThreshold: 3000,
+  },
+
   // ── 0.1.44-ML ──────────────────────────────────────────────────────────
   // Worker cost doubled to discourage idle-spam strategy.
   // Workers 15% slower, skirmishers 20% faster / 20% less damage (raiders).

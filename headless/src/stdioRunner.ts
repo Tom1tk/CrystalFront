@@ -94,30 +94,57 @@ function computeReward(
   const miningDelta = curr.global.ownLifetimeResourcesFrac - prev.global.ownLifetimeResourcesFrac;
   if (miningDelta > 0) r += 0.0001 * miningDelta * (ECONOMY.passiveWinThreshold * 2);
 
-  // Army supply advantage: raw supply difference (workers included, but consistent)
+  // Army supply advantage: raw supply difference
   r += 0.0005 * (curr.global.ownSupply - curr.global.oppVisibleSupply);
 
-  // Unit kill signal: opponent visible supply dropped → enemy units died (5× stronger)
-  const oppSupplyDelta = prev.global.oppVisibleSupply - curr.global.oppVisibleSupply;
-  if (oppSupplyDelta > 0) r += 0.5 * oppSupplyDelta;
+  // ── Kill / death signals ──────────────────────────────────────────────────
 
-  // Idle worker penalty: own workers not gathering, building, or moving cost resources
+  // Separate enemy worker kills from enemy combat kills — different reward tiers
+  // creates bodyguard incentive: combat units more valuable to kill than workers
+  const enemyWorkersPrev = prev.entities.filter(e => e.owner === -1 && e.typeIndex === 1).length;
+  const enemyWorkersCurr = curr.entities.filter(e => e.owner === -1 && e.typeIndex === 1).length;
+  const enemyWorkersKilled = Math.max(0, enemyWorkersPrev - enemyWorkersCurr);
+
+  const oppSupplyDelta = prev.global.oppVisibleSupply - curr.global.oppVisibleSupply;
+  const combatKillDelta = Math.max(0, oppSupplyDelta - enemyWorkersKilled);
+  if (combatKillDelta   > 0) r += 0.5  * combatKillDelta;    // combat unit kill
+  if (enemyWorkersKilled > 0) r += 0.2  * enemyWorkersKilled; // worker kill (less — bodyguard)
+
+  // Own worker death penalty — stronger than combat unit loss
+  const ownWorkersPrev = prev.entities.filter(e => e.owner === 1 && e.typeIndex === 1).length;
+  const ownWorkersCurr = curr.entities.filter(e => e.owner === 1 && e.typeIndex === 1).length;
+  const ownWorkersLost = Math.max(0, ownWorkersPrev - ownWorkersCurr);
+  if (ownWorkersLost > 0) r -= 0.8 * ownWorkersLost;
+
+  // ── Worker behaviour ──────────────────────────────────────────────────────
+
+  // Reward workers actively gathering — incentivises assigning them to nodes
+  const gatheringWorkers = curr.entities.filter(
+    e => e.owner === 1 && e.typeIndex === 1 && e.isGathering
+  ).length;
+  r += 0.0003 * gatheringWorkers;
+
+  // Idle worker penalty — workers doing absolutely nothing
   const idleWorkers = curr.entities.filter(
     e => e.owner === 1 && e.typeIndex === 1 && !e.isGathering && !e.isBuilding && !e.isMoving
   ).length;
   if (idleWorkers > 0) r -= 0.0005 * idleWorkers;
 
-  // Excess supply depot penalty: more than 2 depots is almost never useful;
-  // counters the agent building depots purely to keep workers "busy" and avoid the idle penalty
-  const depotCount = curr.entities.filter(
-    e => e.owner === 1 && e.typeIndex === 8
+  // ── Supply depot penalty ──────────────────────────────────────────────────
+  // Penalise having supply headroom > 1 while completed depots exist.
+  // Building a depot before you need it wastes resources and worker time.
+  // Penalty only fires when headroom is well above cap — not a blanket "no depots" rule.
+  const completedDepots = curr.entities.filter(
+    e => e.owner === 1 && e.typeIndex === 8 && e.constructionFrac >= 1
   ).length;
-  if (depotCount > 2) r -= 0.002 * (depotCount - 2);
+  if (completedDepots > 0) {
+    const headroom = curr.global.ownMaxSupply - curr.global.ownSupply;
+    if (headroom > 1) r -= 0.005 * (headroom - 1);
+  }
 
-  // Forward pressure: reward own combat units past the midfield
-  // Bridges the sparse-reward gap — agent must push forward to ever see the enemy
-  // crystal and get the damage reward; this incentivises exploration toward attacking.
-  // typeIndex 2=skirmisher 3=gunner 4=bruiser 5=medic; xNorm > 0.5 = enemy half (blue POV)
+  // ── Forward pressure ──────────────────────────────────────────────────────
+  // Crystal damage reward requires fog-of-war on the enemy crystal first.
+  // Without this, the agent never pushes forward and never finds the signal.
   const forwardCombat = curr.entities.filter(
     e => e.owner === 1 && e.typeIndex >= 2 && e.typeIndex <= 5 && e.xNorm > 0.5
   ).length;
