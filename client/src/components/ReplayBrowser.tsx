@@ -161,7 +161,7 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
         {/* Header row */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{
-            fontFamily: FCT.mono, fontSize: 9, color: FCT.inkDim, letterSpacing: "0.28em",
+            fontFamily: FCT.mono, fontSize: 11, color: FCT.inkDim, letterSpacing: "0.28em",
           }}>
             ▰ HEADLESS MATCH REPLAYS · {filtered.length} / {replays.length} SHOWN
           </div>
@@ -173,7 +173,7 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
         {/* ── Filter bar ──────────────────────────────────────────────────── */}
         <div style={{
           display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap",
-          fontFamily: FCT.mono, fontSize: 9, color: FCT.inkFaint,
+          fontFamily: FCT.mono, fontSize: 11, color: FCT.inkFaint,
         }}>
           {/* Winner filter */}
           <span>Winner:</span>
@@ -212,7 +212,7 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
           />
 
           {filtered.length < replays.length && (
-            <FctBtn sub style={{ padding: "3px 10px", fontSize: 8 }}
+            <FctBtn style={{ padding: "3px 10px", fontSize: 10 }}
               onClick={() => { setFilterWinner("all"); setFilterWinType("all"); setFilterBot(""); }}>
               Clear
             </FctBtn>
@@ -224,11 +224,11 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
           {/* Column headers */}
           <div style={{
             display: "grid",
-            gridTemplateColumns: "80px 60px 90px 90px 110px 60px 70px 1fr",
-            padding: "8px 12px",
+            gridTemplateColumns: "80px 60px 100px 100px 130px 80px 90px 1fr",
+            padding: "8px 14px",
             borderBottom: `1px solid ${FCT.lineHi}`,
             fontFamily: FCT.mono,
-            fontSize: 8,
+            fontSize: 10,
             color: FCT.inkFaint,
             letterSpacing: "0.26em",
           }}>
@@ -245,20 +245,20 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
           {/* Rows */}
           <div style={{ overflowY: "auto", maxHeight: "calc(100% - 40px)" }}>
             {loading && (
-              <div style={{ padding: 24, textAlign: "center", fontFamily: FCT.mono, fontSize: 10, color: FCT.inkFaint }}>
+              <div style={{ padding: 24, textAlign: "center", fontFamily: FCT.mono, fontSize: 12, color: FCT.inkFaint }}>
                 Loading…
               </div>
             )}
             {error && (
-              <div style={{ padding: 24, textAlign: "center", fontFamily: FCT.mono, fontSize: 10, color: FCT.red }}>
+              <div style={{ padding: 24, textAlign: "center", fontFamily: FCT.mono, fontSize: 12, color: FCT.red }}>
                 {error}
               </div>
             )}
             {!loading && !error && replays.length === 0 && (
-              <div style={{ padding: 24, textAlign: "center", fontFamily: FCT.mono, fontSize: 10, color: FCT.inkFaint }}>
+              <div style={{ padding: 24, textAlign: "center", fontFamily: FCT.mono, fontSize: 12, color: FCT.inkFaint }}>
                 No replays yet. Run the CLI to generate some:
                 <br />
-                <span style={{ color: FCT.ice, fontSize: 9, marginTop: 8, display: "block" }}>
+                <span style={{ color: FCT.ice, fontSize: 11, marginTop: 8, display: "block" }}>
                   tsx headless/src/cli.ts --blue rush --red idle
                 </span>
               </div>
@@ -272,34 +272,34 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
                   key={r.id}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "80px 60px 90px 90px 110px 60px 70px 1fr",
-                    padding: "8px 12px",
+                    gridTemplateColumns: "80px 60px 100px 100px 130px 80px 90px 1fr",
+                    padding: "9px 14px",
                     borderBottom: i < filtered.length - 1 ? `1px solid ${FCT.line}` : undefined,
                     alignItems: "center",
                     background: i % 2 === 0 ? "transparent" : FCT.bgPanelHi,
                     transition: "background 0.1s",
-                    minHeight: 36,
+                    minHeight: 40,
                   }}
                 >
-                  <span style={{ fontFamily: FCT.mono, fontSize: 9, color: FCT.inkDim }}>
+                  <span style={{ fontFamily: FCT.mono, fontSize: 11, color: FCT.inkDim }}>
                     {r.seed.toString().slice(-6).padStart(6, "0")}
                   </span>
-                  <span style={{ fontFamily: FCT.mono, fontSize: 9, color: FCT.ink }}>
+                  <span style={{ fontFamily: FCT.mono, fontSize: 11, color: FCT.ink }}>
                     {formatDuration(r.durationSecs)}
                   </span>
-                  <span style={{ fontFamily: FCT.ui, fontSize: 10, color: FCT.ice, textTransform: "capitalize" }}>
+                  <span style={{ fontFamily: FCT.ui, fontSize: 12, color: FCT.ice, textTransform: "capitalize" }}>
                     {r.blue}
                   </span>
-                  <span style={{ fontFamily: FCT.ui, fontSize: 10, color: FCT.red, textTransform: "capitalize" }}>
+                  <span style={{ fontFamily: FCT.ui, fontSize: 12, color: FCT.red, textTransform: "capitalize" }}>
                     {r.red}
                   </span>
-                  <span style={{ fontFamily: FCT.ui, fontSize: 10, color: outcomeColor, fontWeight: 600 }}>
+                  <span style={{ fontFamily: FCT.ui, fontSize: 12, color: outcomeColor, fontWeight: 600 }}>
                     {outcomeText}
                   </span>
-                  <span style={{ fontFamily: FCT.mono, fontSize: 8, color: wtColor }}>
+                  <span style={{ fontFamily: FCT.mono, fontSize: 11, color: wtColor }}>
                     {wtText}
                   </span>
-                  <span style={{ fontFamily: FCT.mono, fontSize: 7, color: FCT.inkDim, lineHeight: "1.3" }}>
+                  <span style={{ fontFamily: FCT.mono, fontSize: 10, color: FCT.inkDim, lineHeight: "1.3" }}>
                     <span style={{ color: FCT.ice }}>{unitsSummary(r.blueUnits)}</span>
                     <span style={{ color: FCT.inkFaint, margin: "0 2px" }}>vs</span>
                     <span style={{ color: FCT.red }}>{unitsSummary(r.redUnits)}</span>
@@ -309,8 +309,8 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
                       const { text, color } = flagBadge(f);
                       return (
                         <span key={f} style={{
-                          fontFamily: FCT.mono, fontSize: 7, color,
-                          background: color + "18", borderRadius: 3, padding: "1px 5px",
+                          fontFamily: FCT.mono, fontSize: 10, color,
+                          background: color + "18", borderRadius: 3, padding: "2px 6px",
                           whiteSpace: "nowrap",
                         }}>
                           {text}
@@ -319,7 +319,7 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
                     })}
                     <FctBtn
                       primary
-                      style={{ padding: "2px 8px", fontSize: 8, marginLeft: "auto" }}
+                      style={{ padding: "3px 10px", fontSize: 11, marginLeft: "auto" }}
                       onClick={() => onWatch(r.id, r.outcome.ticks)}
                     >
                       ▶
@@ -366,15 +366,15 @@ const selectStyle: React.CSSProperties = {
   color: FCT.ink,
   border: `1px solid ${FCT.lineHi}`,
   borderRadius: 4,
-  padding: "3px 6px",
+  padding: "4px 8px",
   fontFamily: FCT.mono,
-  fontSize: 9,
+  fontSize: 11,
   outline: "none",
 };
 
 const inputStyle: React.CSSProperties = {
   ...selectStyle,
-  width: 100,
+  width: 120,
 };
 
 // Re-export for the parent
