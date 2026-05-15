@@ -38,14 +38,14 @@ export interface UnitDef {
 
 export const UNIT_DEFS: Record<string, UnitDef> = {
   worker: {
-    cost: 25,
+    cost: 50,          // was 25 — expensive enough to discourage idle spam
     supplyCost: 1,
     buildTime: 80,
     health: 100,
     radius: 10,
     damage: 5,
     range: 15,
-    speed: 2,
+    speed: 1.7,        // was 2 — 15% slower, workers matter more per unit
     color: "#aabbcc",
     attackCooldown: 20,
     visionRange: 225,
@@ -56,9 +56,9 @@ export const UNIT_DEFS: Record<string, UnitDef> = {
     buildTime: 100,
     health: 120,
     radius: 12,
-    damage: 15,
+    damage: 12,        // was 15 — 20% less damage, faster but less punch
     range: 20,
-    speed: 2.5,
+    speed: 3.0,        // was 2.5 — 20% faster, skirmishers are now raiders
     color: "#44dd88",
     attackCooldown: 10,
     visionRange: 300,
@@ -177,9 +177,9 @@ export const BUILDING_ORDER: string[] = ["barracks", "foundry", "supply_depot", 
 export const ECONOMY = {
   startingResources: 50,
   startingMaxSupply: 10,
-  workerTrainCost: 25,
+  workerTrainCost: 50,          // must match UNIT_DEFS.worker.cost
   workerSupplyCost: 1,
-  passiveWinThreshold: 2500,   // current held resources = win (turtling win condition)
+  passiveWinThreshold: 3000,   // current held resources = win (turtling win condition)
 } as const;
 
 // ====================================================================

@@ -537,7 +537,7 @@ console.log("\n--- Combat: Counter Damage Multipliers ---");
   // Tick - skirmisher should deal 2x damage to gunner
   engine.tick(match.id);
   const gunnerAfter = match.entities.get(gunner.id)!;
-  const baseSkirmisherDamage = 15;
+  const baseSkirmisherDamage = 12;  // updated: skirmisher damage was reduced to 12
   const expectedDamage = Math.round(baseSkirmisherDamage * 2.0);
   assert(gunnerAfter.health === 80 - expectedDamage, `Gunner took ${expectedDamage} damage (2x counter)`);
 
