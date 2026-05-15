@@ -33,6 +33,8 @@ When to stop:
 from __future__ import annotations
 
 import os
+os.environ.setdefault("TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL", "1")  # optimised flash-attn on gfx1100
+
 import random
 import sys
 import time
@@ -74,7 +76,7 @@ class Config:
     # Environment
     num_envs:           int = 20          # parallel Node simulators (all stepped in parallel via thread pool)
     opponent:           str = "macro"     # idle | rush | turtle | macro
-    save_replay_every:  int = 500         # save a replay every N episodes per env (0=off)
+    save_replay_every:  int = 50          # save a replay every N episodes per env (0=off)
 
     # Training duration
     total_timesteps: int = 5_000_000
