@@ -4,7 +4,6 @@ import { WebSocket } from "ws";
 import { MatchEngine } from "./matchEngine.js";
 import { DEFAULT_CONFIG } from "./types.js";
 import { SIMULATION, getBalanceForVersion } from "@crystalfront/shared";
-import type { BalanceSnapshot } from "@crystalfront/shared";
 
 const REPLAYS_DIR = resolve(process.cwd(), "replays");
 
@@ -231,10 +230,8 @@ export class ReplayRunner {
       { playerId: redId,  username: replay.red,  color: "red",  score: 0 },
     ];
 
-    // Resolve balance snapshot: prefer embedded snapshot, then history lookup, then defaults
-    const rawReplay = replay as { balanceSnapshot?: BalanceSnapshot; version?: string };
-    const snap: BalanceSnapshot | undefined =
-      rawReplay.balanceSnapshot ?? getBalanceForVersion(rawReplay.version ?? "");
+    // Look up the balance for this replay's version; fall back to current defaults
+    const snap = getBalanceForVersion((replay as { version?: string }).version ?? "");
 
     const replayConfig = snap ? {
       ...DEFAULT_CONFIG,
