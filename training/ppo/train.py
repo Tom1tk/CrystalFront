@@ -76,7 +76,7 @@ class Config:
     # Environment
     num_envs:           int = 20          # parallel Node simulators (all stepped in parallel via thread pool)
     opponent:           str = "macro"     # idle | rush | turtle | macro
-    save_replay_every:  int = 50          # save a replay every N episodes per env (0=off)
+    save_replay_every:  int = 10          # save a replay every N episodes per env (0=off)
 
     # Training duration
     total_timesteps: int = 5_000_000
