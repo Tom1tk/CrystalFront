@@ -102,11 +102,26 @@ function computeReward(
   if (oppSupplyDelta > 0) r += 0.5 * oppSupplyDelta;
 
   // Idle worker penalty: own workers not gathering, building, or moving cost resources
-  // Discourages training workers just to let them stand around
   const idleWorkers = curr.entities.filter(
     e => e.owner === 1 && e.typeIndex === 1 && !e.isGathering && !e.isBuilding && !e.isMoving
   ).length;
   if (idleWorkers > 0) r -= 0.0005 * idleWorkers;
+
+  // Excess supply depot penalty: more than 2 depots is almost never useful;
+  // counters the agent building depots purely to keep workers "busy" and avoid the idle penalty
+  const depotCount = curr.entities.filter(
+    e => e.owner === 1 && e.typeIndex === 8
+  ).length;
+  if (depotCount > 2) r -= 0.002 * (depotCount - 2);
+
+  // Forward pressure: reward own combat units past the midfield
+  // Bridges the sparse-reward gap — agent must push forward to ever see the enemy
+  // crystal and get the damage reward; this incentivises exploration toward attacking.
+  // typeIndex 2=skirmisher 3=gunner 4=bruiser 5=medic; xNorm > 0.5 = enemy half (blue POV)
+  const forwardCombat = curr.entities.filter(
+    e => e.owner === 1 && e.typeIndex >= 2 && e.typeIndex <= 5 && e.xNorm > 0.5
+  ).length;
+  r += 0.0005 * forwardCombat;
 
   // Time penalty — mild stall discouragement
   r -= 0.00005;
