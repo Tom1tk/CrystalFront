@@ -60,6 +60,7 @@ const BUILDING_TYPES = ["barracks", "foundry", "supply_depot", "turret"];
 
 const FLAG_FAST_TICKS    = 600;   // games ending before this get "fast" flag
 const FLAG_LOPSIDED_MIN  = 6;     // unit-count disparity >= this gets "lopsided"
+const FLAG_SCRAPPY_MIN   = 20;    // total combat units trained across both sides
 
 function analyzeReplay(raw: Record<string, unknown>): EnrichedMetadata {
   const cmdLog = (raw.commandLog ?? []) as Array<{
@@ -124,12 +125,15 @@ function analyzeReplay(raw: Record<string, unknown>): EnrichedMetadata {
   const flags: string[] = [];
   if (ticks > 0 && ticks <= FLAG_FAST_TICKS) flags.push("fast");
 
-  const blueTotal = Object.values(blueUnits).reduce((a, b) => a + b, 0);
-  const redTotal  = Object.values(redUnits).reduce((a, b) => a + b, 0);
-  if (Math.abs(blueTotal - redTotal) >= FLAG_LOPSIDED_MIN) {
-    flags.push("lopsided");
-  }
+  const COMBAT_TYPES = ["skirmisher", "gunner", "bruiser", "medic"] as const;
+  const blueTotal   = Object.values(blueUnits).reduce((a, b) => a + b, 0);
+  const redTotal    = Object.values(redUnits).reduce((a, b) => a + b, 0);
+  if (Math.abs(blueTotal - redTotal) >= FLAG_LOPSIDED_MIN) flags.push("lopsided");
   if (winType === "resource") flags.push("resource_win");
+
+  const blueCombat = COMBAT_TYPES.reduce((s, t) => s + (blueUnits[t] ?? 0), 0);
+  const redCombat  = COMBAT_TYPES.reduce((s, t) => s + (redUnits[t] ?? 0), 0);
+  if (blueCombat + redCombat >= FLAG_SCRAPPY_MIN) flags.push("scrappy");
 
   return {
     winType,
