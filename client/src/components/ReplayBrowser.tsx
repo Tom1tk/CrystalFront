@@ -400,7 +400,7 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
                       );
                     })}
                   </div>
-                  <span style={{ fontFamily: FCT.mono, fontSize: 9, color: FCT.inkFaint, opacity: 0.7 }}>
+                  <span style={{ fontFamily: FCT.mono, fontSize: 9, color: FCT.inkFaint }}>
                     {r.version ?? "?"}
                   </span>
                   <div style={{ textAlign: "right" }}>

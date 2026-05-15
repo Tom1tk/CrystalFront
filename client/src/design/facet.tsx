@@ -14,8 +14,8 @@ export const FCT = {
   bgPanelHi: "#0f1320",
   bgEnemy: "#1a0e18",
   ink: "#e8ecf5",
-  inkDim: "#7c83a3",
-  inkFaint: "#3a3f55",
+  inkDim: "#9ba5c8",    // was #7c83a3 — lifted for ~7:1 contrast on dark bg
+  inkFaint: "#6e7890",  // was #3a3f55 — lifted for ~4:1 contrast (was ~1.7:1, unreadable)
   line: "rgba(180,200,255,0.10)",
   lineHi: "rgba(180,200,255,0.22)",
   ice: "#7ce8ff",
