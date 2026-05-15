@@ -12,7 +12,13 @@ function useScreenFlow() {
   const [screen, setScreen] = useState<Screen>("menu");
   const [isHost, setIsHost] = useState(false);
   const [replayTotalTicks, setReplayTotalTicks] = useState<number | undefined>(undefined);
+  const [replayVersion, setReplayVersion]       = useState<string | undefined>(undefined);
+  const [gameVersion,   setGameVersion]         = useState<string>("?");
   const hasLobbyStateRef = useRef(false);
+
+  useEffect(() => {
+    fetch("/api/version").then(r => r.json()).then(d => setGameVersion(d.version ?? "?")).catch(() => {});
+  }, []);
 
   const ws = useWebSocket();
 
@@ -93,8 +99,9 @@ function useScreenFlow() {
   }, []);
 
   const handleWatchReplay = useCallback(
-    (replayId: string, totalTicks: number) => {
+    (replayId: string, totalTicks: number, version?: string) => {
       setReplayTotalTicks(totalTicks);
+      setReplayVersion(version);
       ws.startReplay(replayId);
     },
     [ws]
@@ -186,6 +193,8 @@ function useScreenFlow() {
     handleStopReplay,
     handleBackFromReplays,
     replayTotalTicks,
+    replayVersion,
+    gameVersion,
     handleLeave,
     handleRematch,
     handleExit,
@@ -212,6 +221,8 @@ export default function App() {
     handleStopReplay,
     handleBackFromReplays,
     replayTotalTicks,
+    replayVersion,
+    gameVersion,
     handleLeave,
     handleRematch,
     handleExit,
@@ -245,6 +256,8 @@ export default function App() {
           isReplay
           onStopReplay={handleStopReplay}
           replayTotalTicks={replayTotalTicks}
+          replayVersion={replayVersion}
+          gameVersion={gameVersion}
         />
       )}
       {screen === "lobby" && lobby && player && (

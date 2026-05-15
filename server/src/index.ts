@@ -3,6 +3,12 @@ import { createServer } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
+import { resolve as resolvePath, dirname as dirnameFn } from "node:path";
+
+const _serverDir = dirnameFn(fileURLToPath(import.meta.url));
+const _pkg = JSON.parse(readFileSync(resolvePath(_serverDir, "../../package.json"), "utf8"));
+const GAME_VERSION: string = _pkg.version ?? "unknown";
 import { LobbyManager } from "./lobby/lobbyManager.js";
 import { MatchEngine } from "./match/matchEngine.js";
 import { LiveMatchRunner } from "./match/liveMatchRunner.js";
@@ -955,6 +961,10 @@ app.get("/api/lobbies", (_req: Request, res: Response) => {
 
 app.get("/api/matches", (_req: Request, res: Response) => {
   res.json({ matches: matchEngine.getAllMatches() });
+});
+
+app.get("/api/version", (_req: Request, res: Response) => {
+  res.json({ version: GAME_VERSION });
 });
 
 app.get("/api/replays", (req: Request, res: Response) => {
