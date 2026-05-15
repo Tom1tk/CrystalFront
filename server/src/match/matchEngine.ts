@@ -1039,7 +1039,8 @@ if (command.type === "gather") {
     // Phase 3.5: Passive win — first player to hold enough resources at once wins
     for (let i = 0; i < 2; i++) {
       const eco = match.economy[i];
-      if (eco && eco.resources >= ECONOMY.passiveWinThreshold) {
+      const passiveThreshold = match.config.passiveWinThreshold ?? ECONOMY.passiveWinThreshold;
+      if (eco && eco.resources >= passiveThreshold) {
         const winner = match.players[i]?.playerId;
         if (winner) {
           match.phase = "ended";
@@ -1161,7 +1162,11 @@ if (command.type === "gather") {
       if (!entity.moveTarget) continue;
 
       const unitDef = UNIT_DEFS[entity.type as keyof typeof UNIT_DEFS];
-      const speedPerTick = unitDef?.speed ?? 2;
+      const baseSpeed = unitDef?.speed ?? 2;
+      const speedPerTick =
+        entity.type === "worker"     && match.config.workerSpeed     !== undefined ? match.config.workerSpeed :
+        entity.type === "skirmisher" && match.config.skirmisherSpeed !== undefined ? match.config.skirmisherSpeed :
+        baseSpeed;
       const moveAmount = Math.min(speedPerTick / stepsPerTick, this.dist(entity.x, entity.y, entity.moveTarget.x, entity.moveTarget.y));
 
       const dx = entity.moveTarget.x - entity.x;
@@ -1333,7 +1338,7 @@ if (command.type === "gather") {
       }
 
       // Deal damage
-      const baseDamage = this.getDamage(entity);
+      const baseDamage = this.getDamage(entity, match.config);
       const multiplier = this.getCounterMultiplier(entity.type, target.type);
      const finalDamage = Math.round(baseDamage * multiplier);
 
@@ -1358,9 +1363,12 @@ if (command.type === "gather") {
     return (unitDef?.range ?? 20) + entity.radius;
   }
 
-  private getDamage(entity: MatchEntity): number {
+  private getDamage(entity: MatchEntity, config?: MatchConfig): number {
     if (entity.type === "building" && entity.buildingType === "turret") {
       return BUILDING_DEFS.turret.damage ?? 18;
+    }
+    if (entity.type === "skirmisher" && config?.skirmisherDamage !== undefined) {
+      return config.skirmisherDamage;
     }
     const unitDef = UNIT_DEFS[entity.type as keyof typeof UNIT_DEFS];
     return unitDef?.damage ?? 5;

@@ -3,7 +3,8 @@ import { resolve, join } from "node:path";
 import { WebSocket } from "ws";
 import { MatchEngine } from "./matchEngine.js";
 import { DEFAULT_CONFIG } from "./types.js";
-import { SIMULATION } from "@crystalfront/shared";
+import { SIMULATION, getBalanceForVersion } from "@crystalfront/shared";
+import type { BalanceSnapshot } from "@crystalfront/shared";
 
 const REPLAYS_DIR = resolve(process.cwd(), "replays");
 
@@ -230,7 +231,21 @@ export class ReplayRunner {
       { playerId: redId,  username: replay.red,  color: "red",  score: 0 },
     ];
 
-    const match = this.engine.createMatch("replay", players, DEFAULT_CONFIG, replay.seed);
+    // Resolve balance snapshot: prefer embedded snapshot, then history lookup, then defaults
+    const rawReplay = replay as { balanceSnapshot?: BalanceSnapshot; version?: string };
+    const snap: BalanceSnapshot | undefined =
+      rawReplay.balanceSnapshot ?? getBalanceForVersion(rawReplay.version ?? "");
+
+    const replayConfig = snap ? {
+      ...DEFAULT_CONFIG,
+      workerTrainCost:      snap.workerCost,
+      workerSpeed:          snap.workerSpeed,
+      skirmisherSpeed:      snap.skirmisherSpeed,
+      skirmisherDamage:     snap.skirmisherDamage,
+      passiveWinThreshold:  snap.passiveWinThreshold,
+    } : DEFAULT_CONFIG;
+
+    const match = this.engine.createMatch("replay", players, replayConfig, replay.seed);
     this.engine.startMatch(match.id);
 
     // Group commandLog by tick for fast lookup

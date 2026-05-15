@@ -156,6 +156,11 @@ export interface MatchConfig {
   gatherRatePerTick: number;
   viewportWidth: number;
   viewportHeight: number;
+  // ── Per-version balance overrides (populated from BalanceSnapshot for replays) ──
+  passiveWinThreshold?: number;   // held resources to win; falls back to ECONOMY constant
+  workerSpeed?: number;           // px/substep override
+  skirmisherSpeed?: number;
+  skirmisherDamage?: number;
 }
 
 export const DEFAULT_CONFIG: MatchConfig = {

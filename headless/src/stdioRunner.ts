@@ -39,7 +39,7 @@ import { getLegalActions } from "./legalActions.js";
 import { expandMacroAction } from "./actionSpace.js";
 import { indexToAction, legalMask as buildLegalMask } from "./actionIndex.js";
 import { IdleBot, RushBot, TurtleBot, MacroBot, HeavyBot } from "./bots/index.js";
-import { ECONOMY } from "@crystalfront/shared";
+import { ECONOMY, UNIT_DEFS, currentBalanceSnapshot } from "@crystalfront/shared";
 import type { Agent, PlayerObservation } from "./types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -213,6 +213,13 @@ function handleStep(actionIdx: number): void {
       const path = resolve(REPLAYS_DIR, `${ts}-${match.seed}.json`);
       const payload = {
         version:      GAME_VERSION,
+        balanceSnapshot: currentBalanceSnapshot(
+          ECONOMY.workerTrainCost,
+          UNIT_DEFS.worker.speed,
+          UNIT_DEFS.skirmisher.speed,
+          UNIT_DEFS.skirmisher.damage,
+          ECONOMY.passiveWinThreshold,
+        ),
         seed:         match.seed,
         blue:         "ppo_agent",
         red:          currentOpponentName,
