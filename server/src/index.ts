@@ -957,8 +957,10 @@ app.get("/api/matches", (_req: Request, res: Response) => {
   res.json({ matches: matchEngine.getAllMatches() });
 });
 
-app.get("/api/replays", (_req: Request, res: Response) => {
-  res.json({ replays: listReplays() });
+app.get("/api/replays", (req: Request, res: Response) => {
+  const limit = Math.min(parseInt(req.query.limit as string) || 50, 1000);
+  const all = listReplays();
+  res.json({ replays: all.slice(0, limit), total: all.length });
 });
 
 app.get("/api/replays/:id", (req: Request, res: Response) => {
