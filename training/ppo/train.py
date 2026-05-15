@@ -111,6 +111,7 @@ class Config:
     log_dir:        str = "runs"
     checkpoint_dir: str = "checkpoints"
     save_interval:  int = 50              # save checkpoint every N policy updates
+    checkpoint:     str = ""             # path to .pt file to resume from (loads weights + optimizer)
 
     # Phase 4 — league training (PFSP opponent sampling)
     league:               bool  = False   # enable league mode
@@ -299,6 +300,13 @@ def train(cfg: Config) -> None:
     ).to(device)
 
     optimizer = optim.Adam(agent.parameters(), lr=cfg.learning_rate, eps=1e-5)
+
+    # ── optional checkpoint resume ────────────────────────────────────────────
+    if cfg.checkpoint:
+        ckpt = torch.load(cfg.checkpoint, map_location=device, weights_only=False)
+        agent.load_state_dict(ckpt["agent"])
+        optimizer.load_state_dict(ckpt["optimizer"])
+        print(f"  Resumed from:  {cfg.checkpoint}  (update {ckpt.get('update', '?')}, step {ckpt.get('global_step', '?'):,})")
 
     # ── thread pool for parallel env I/O ─────────────────────────────────────
     # Each env is a separate Node.js subprocess; stepping them in parallel means
