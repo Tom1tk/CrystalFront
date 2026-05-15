@@ -97,9 +97,16 @@ function computeReward(
   // Army supply advantage: raw supply difference (workers included, but consistent)
   r += 0.0005 * (curr.global.ownSupply - curr.global.oppVisibleSupply);
 
-  // Unit kill signal: opponent visible supply dropped → enemy units died
+  // Unit kill signal: opponent visible supply dropped → enemy units died (5× stronger)
   const oppSupplyDelta = prev.global.oppVisibleSupply - curr.global.oppVisibleSupply;
-  if (oppSupplyDelta > 0) r += 0.1 * oppSupplyDelta;
+  if (oppSupplyDelta > 0) r += 0.5 * oppSupplyDelta;
+
+  // Idle worker penalty: own workers not gathering, building, or moving cost resources
+  // Discourages training workers just to let them stand around
+  const idleWorkers = curr.entities.filter(
+    e => e.owner === 1 && e.typeIndex === 1 && !e.isGathering && !e.isBuilding && !e.isMoving
+  ).length;
+  if (idleWorkers > 0) r -= 0.0005 * idleWorkers;
 
   // Time penalty — mild stall discouragement
   r -= 0.00005;
