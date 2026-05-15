@@ -5,20 +5,20 @@ import LobbyScreen from "./components/LobbyScreen";
 import GameShell from "./components/GameShell";
 import MatchEndScreen from "./components/MatchEndScreen";
 import ReplayBrowser from "./components/ReplayBrowser";
-import type { Screen, Player } from "./types";
+import type { Screen, Player, MatchState } from "./types";
 import { FCT } from "./design/facet";
 
 function useScreenFlow() {
   const [screen, setScreen] = useState<Screen>("menu");
   const [isHost, setIsHost] = useState(false);
   const [replayTotalTicks, setReplayTotalTicks] = useState<number | undefined>(undefined);
-  const [replayVersion, setReplayVersion]       = useState<string | undefined>(undefined);
-  const [gameVersion,   setGameVersion]         = useState<string>("?");
   const hasLobbyStateRef = useRef(false);
 
-  useEffect(() => {
-    fetch("/api/version").then(r => r.json()).then(d => setGameVersion(d.version ?? "?")).catch(() => {});
-  }, []);
+  // Replay playback state
+  const replayBufferRef = useRef<MatchState[]>([]);
+  const [replayFrame, setReplayFrame]       = useState(0);
+  const [playbackSpeed, setPlaybackSpeed]   = useState<number>(1);
+  const replayDoneRef = useRef(false);
 
   const ws = useWebSocket();
 
@@ -62,13 +62,38 @@ function useScreenFlow() {
     }
   }, [ws.matchState, screen]);
 
-  // Return to replay browser when replay ends
+  // Buffer incoming frames during replay
   useEffect(() => {
-    if (ws.replayEnd) {
+    if (screen !== "watching_replay") return;
+    if (!ws.matchState) return;
+    replayBufferRef.current.push(ws.matchState);
+  }, [ws.matchState, screen]);
+
+  // Playback interval — advances or rewinds the frame pointer
+  useEffect(() => {
+    if (screen !== "watching_replay" || playbackSpeed === 0) return;
+    const dir = playbackSpeed > 0 ? 1 : -1;
+    const absSpeed = Math.abs(playbackSpeed);
+    const id = setInterval(() => {
+      setReplayFrame(f => Math.max(0, Math.min(f + dir * absSpeed, replayBufferRef.current.length - 1)));
+    }, 100);
+    return () => clearInterval(id);
+  }, [screen, playbackSpeed]);
+
+  // Sync server speed with forward playback speed (server doesn't do reverse)
+  useEffect(() => {
+    if (screen !== "watching_replay") return;
+    ws.setReplaySpeed(playbackSpeed < 0 ? 0 : playbackSpeed);
+  }, [playbackSpeed, screen]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // When server finishes, pause and let user rewind freely
+  useEffect(() => {
+    if (ws.replayEnd && screen === "watching_replay") {
       ws.clearReplayEnd();
-      setScreen("replays");
+      replayDoneRef.current = true;
+      setPlaybackSpeed(0);
     }
-  }, [ws.replayEnd]);
+  }, [ws.replayEnd, screen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleHost = useCallback(
     (name: string) => {
@@ -99,9 +124,12 @@ function useScreenFlow() {
   }, []);
 
   const handleWatchReplay = useCallback(
-    (replayId: string, totalTicks: number, version?: string) => {
+    (replayId: string, totalTicks: number, _version?: string) => {
+      replayBufferRef.current = [];
+      setReplayFrame(0);
+      setPlaybackSpeed(1);
+      replayDoneRef.current = false;
       setReplayTotalTicks(totalTicks);
-      setReplayVersion(version);
       ws.startReplay(replayId);
     },
     [ws]
@@ -110,6 +138,10 @@ function useScreenFlow() {
   const handleStopReplay = useCallback(() => {
     ws.stopReplay();
     ws.clearMatchState();
+    replayBufferRef.current = [];
+    setReplayFrame(0);
+    setPlaybackSpeed(1);
+    replayDoneRef.current = false;
     setScreen("replays");
   }, [ws]);
 
@@ -176,12 +208,17 @@ function useScreenFlow() {
     return null;
   };
 
+  const displayMatchState = screen === "watching_replay"
+    ? (replayBufferRef.current[replayFrame] ?? ws.matchState)
+    : ws.matchState;
+
   return {
     screen,
     setScreen,
     isHost,
     ws,
     matchState: ws.matchState,
+    displayMatchState,
     matchWinnerId: ws.matchEnd?.winner ?? ws.matchState?.result?.winner ?? null,
     getCurrentPlayer,
     getCurrentLobby,
@@ -193,8 +230,10 @@ function useScreenFlow() {
     handleStopReplay,
     handleBackFromReplays,
     replayTotalTicks,
-    replayVersion,
-    gameVersion,
+    replayBufferRef,
+    replayFrame,
+    playbackSpeed,
+    setPlaybackSpeed,
     handleLeave,
     handleRematch,
     handleExit,
@@ -210,6 +249,7 @@ export default function App() {
     isHost,
     ws,
     matchState,
+    displayMatchState,
     matchWinnerId,
     getCurrentPlayer,
     getCurrentLobby,
@@ -221,8 +261,10 @@ export default function App() {
     handleStopReplay,
     handleBackFromReplays,
     replayTotalTicks,
-    replayVersion,
-    gameVersion,
+    replayBufferRef,
+    replayFrame,
+    playbackSpeed,
+    setPlaybackSpeed,
     handleLeave,
     handleRematch,
     handleExit,
@@ -242,12 +284,12 @@ export default function App() {
       {screen === "replays" && (
         <ReplayBrowser onBack={handleBackFromReplays} onWatch={handleWatchReplay} />
       )}
-      {screen === "watching_replay" && matchState && (
+      {screen === "watching_replay" && displayMatchState && (
         <GameShell
           lobby={{ code: "REPLAY", players: [null, null], status: "match", hostId: "" }}
           player={{ id: "__observer__", username: "Replay", color: "blue", ready: false, score: 0 }}
-          matchState={matchState}
-          resourceNodes={ws.resourceNodes}
+          matchState={displayMatchState}
+          resourceNodes={displayMatchState.resourceNodes ?? ws.resourceNodes}
           onDebugWin={handleDebugWin}
           onDebugSpawn={handleDebugSpawn}
           onGameCommand={handleGameCommand}
@@ -256,8 +298,10 @@ export default function App() {
           isReplay
           onStopReplay={handleStopReplay}
           replayTotalTicks={replayTotalTicks}
-          replayVersion={replayVersion}
-          gameVersion={gameVersion}
+          playbackSpeed={playbackSpeed}
+          onSetPlaybackSpeed={setPlaybackSpeed}
+          replayFrame={replayFrame}
+          replayBufferSize={replayBufferRef.current.length}
         />
       )}
       {screen === "lobby" && lobby && player && (

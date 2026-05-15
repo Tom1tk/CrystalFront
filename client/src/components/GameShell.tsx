@@ -26,8 +26,10 @@ interface GameShellProps {
   isReplay?: boolean;
   onStopReplay?: () => void;
   replayTotalTicks?: number;
-  replayVersion?: string;
-  gameVersion?: string;
+  playbackSpeed?: number;
+  onSetPlaybackSpeed?: (speed: number) => void;
+  replayFrame?: number;
+  replayBufferSize?: number;
 }
 
 const CANVAS_WIDTH = 960;
@@ -603,8 +605,10 @@ export default function GameShell({
   isReplay = false,
   onStopReplay,
   replayTotalTicks,
-  replayVersion,
-  gameVersion,
+  playbackSpeed = 1,
+  onSetPlaybackSpeed,
+  replayFrame = 0,
+  replayBufferSize = 0,
 }: GameShellProps) {
   // Callers always provide player (even replay passes a synthetic observer object).
   // The null type on the prop exists so replay can pass `null`-ish defaults,
@@ -2510,69 +2514,88 @@ export default function GameShell({
         )}
       </div>
 
-      {/* ── Replay overlay ───────────────────────────────────── */}
+      {/* ── Replay playback bar ──────────────────────────────── */}
       {isReplay && (
         <div style={{
-          position: "fixed",
-          top: 10,
-          right: 10,
-          zIndex: 100,
+          position: "absolute",
+          top: 88,
+          left: 0,
+          right: 0,
           display: "flex",
-          flexDirection: "column",
-          alignItems: "flex-end",
-          gap: 6,
+          justifyContent: "center",
+          zIndex: 8,
+          pointerEvents: "none",
         }}>
-          {/* Version mismatch warning */}
-          {replayVersion && gameVersion && replayVersion !== gameVersion && (
-            <div style={{
-              background: "rgba(20,8,8,0.95)",
-              border: `1px solid ${FCT.red}`,
-              padding: "6px 14px",
+          <div style={{
+            background: "rgba(5,6,10,0.92)",
+            border: `1px solid ${FCT.lineHi}`,
+            borderTop: "none",
+            display: "flex",
+            alignItems: "center",
+            gap: 2,
+            padding: "5px 10px",
+            pointerEvents: "auto",
+            clipPath: "polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px))",
+          }}>
+            {([[-8, "◀◀◀"], [-4, "◀◀"], [-1, "◀"], [0, "⏸"], [1, "▶"], [4, "▶▶"], [8, "▶▶▶"]] as [number, string][]).map(([spd, icon]) => (
+              <button
+                key={spd}
+                onClick={() => onSetPlaybackSpeed?.(spd)}
+                title={spd === 0 ? "Pause" : `${Math.abs(spd)}× ${spd < 0 ? "reverse" : "forward"}`}
+                style={{
+                  background: playbackSpeed === spd ? FCT.amber : "transparent",
+                  color: playbackSpeed === spd ? FCT.bg : FCT.inkDim,
+                  border: `1px solid ${playbackSpeed === spd ? FCT.amber : FCT.lineHi}`,
+                  padding: "3px 8px",
+                  fontFamily: FCT.mono,
+                  fontSize: 10,
+                  letterSpacing: "0.06em",
+                  cursor: "pointer",
+                  minWidth: 36,
+                  transition: "background 0.1s, color 0.1s",
+                }}
+              >
+                {icon}{spd !== 0 ? ` ${Math.abs(spd)}×` : ""}
+              </button>
+            ))}
+            <span style={{
+              marginLeft: 10,
               fontFamily: FCT.mono,
               fontSize: 9,
               letterSpacing: "0.18em",
-              color: FCT.red,
-              maxWidth: 340,
-              lineHeight: 1.5,
+              color: FCT.inkDim,
+              minWidth: 110,
             }}>
-              ⚠ VERSION MISMATCH — recorded on {replayVersion}, running {gameVersion}.
-              Balance values differ; playback will not be accurate.
-            </div>
-          )}
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{
-            background: "rgba(5,6,10,0.85)",
-            border: `1px solid ${FCT.amber}`,
-            padding: "6px 14px",
-            fontFamily: FCT.mono,
-            fontSize: 9,
-            letterSpacing: "0.28em",
-            color: FCT.amber,
-            clipPath: "polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)",
-          }}>
-            ▶ REPLAY
-            {replayTotalTicks !== undefined && matchState && (
-              <span style={{ marginLeft: 10, color: FCT.inkDim }}>
-                {matchState.tick} / {replayTotalTicks} ticks
-              </span>
-            )}
-          </div>
-          <button
-            onClick={onStopReplay}
-            style={{
-              background: "rgba(5,6,10,0.85)",
-              border: `1px solid ${FCT.lineHi}`,
-              padding: "6px 12px",
+              {matchState?.tick ?? replayFrame} / {replayTotalTicks ?? "?"} ticks
+            </span>
+            <span style={{
+              marginLeft: 4,
               fontFamily: FCT.mono,
               fontSize: 9,
-              letterSpacing: "0.22em",
-              color: FCT.inkDim,
-              cursor: "pointer",
-              clipPath: "polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)",
-            }}
-          >
-            ✕ Stop
-          </button>
+              letterSpacing: "0.14em",
+              width: 52,
+              textAlign: "center" as const,
+              color: FCT.amber,
+              opacity: replayBufferSize > 0 && replayFrame >= replayBufferSize - Math.abs(playbackSpeed) - 1 ? 1 : 0,
+            }}>
+              ● LIVE
+            </span>
+            <button
+              onClick={onStopReplay}
+              style={{
+                marginLeft: 10,
+                background: "transparent",
+                border: `1px solid ${FCT.lineHi}`,
+                padding: "3px 10px",
+                fontFamily: FCT.mono,
+                fontSize: 9,
+                letterSpacing: "0.22em",
+                color: FCT.inkDim,
+                cursor: "pointer",
+              }}
+            >
+              ✕ STOP
+            </button>
           </div>
         </div>
       )}

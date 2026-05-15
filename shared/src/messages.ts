@@ -18,6 +18,7 @@ export const WS_EVENT = {
   START_REPLAY: "start_replay",
   STOP_REPLAY: "stop_replay",
   REPLAY_END: "replay_end",
+  REPLAY_SPEED: "replay_speed",
 } as const;
 
 export const CLIENT_MSG = {
@@ -33,6 +34,7 @@ export const CLIENT_MSG = {
   START_SOLO_TEST: "start_solo_test",
   START_REPLAY: "start_replay",
   STOP_REPLAY: "stop_replay",
+  REPLAY_SPEED: "replay_speed",
 } as const;
 
 export const SERVER_EVT = {
@@ -58,7 +60,8 @@ export type ClientToServerMsg =
   | { type: typeof CLIENT_MSG.MATCH_START }
   | { type: typeof CLIENT_MSG.START_SOLO_TEST; payload: { username: string; difficulty?: "easy" | "medium" | "hard" } }
   | { type: typeof CLIENT_MSG.START_REPLAY; payload: { replayId: string } }
-  | { type: typeof CLIENT_MSG.STOP_REPLAY };
+  | { type: typeof CLIENT_MSG.STOP_REPLAY }
+  | { type: typeof CLIENT_MSG.REPLAY_SPEED; payload: { speed: number } };
 
 export type ServerToClientMsg =
   | { type: typeof SERVER_EVT.CONNECTED; payload: { playerId: PlayerId } }

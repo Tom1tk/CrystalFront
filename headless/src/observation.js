@@ -1,5 +1,5 @@
 import { ENTITY_TYPES } from "./types.js";
-import { MAP } from "@crystalfront/shared";
+import { MAP, ECONOMY, ENTITY } from "@crystalfront/shared";
 export function buildObservation(match, playerId) {
     const playerIdx = match.players.findIndex(p => p?.playerId === playerId);
     const oppIdx = playerIdx === 0 ? 1 : 0;
@@ -13,7 +13,6 @@ export function buildObservation(match, playerId) {
     const ownResources = economy ? economy.resources / 1000 : 0;
     const ownSupply = economy ? economy.supply / Math.max(economy.maxSupply, 1) : 0;
     const ownMaxSupply = economy?.maxSupply ?? 0;
-    // Opponent supply is only known if we can see any of their units
     const oppId = match.players[oppIdx]?.playerId ?? "";
     const canSeeOpp = [...visibleEntityIds].some(id => {
         const e = match.entities.get(id);
@@ -22,6 +21,18 @@ export function buildObservation(match, playerId) {
     const oppVisibleSupply = canSeeOpp && oppEconomy
         ? oppEconomy.supply / Math.max(oppEconomy.maxSupply, 1)
         : 0;
+    // Crystal health fractions
+    const ownCrystal = [...match.entities.values()].find(e => e.type === "crystal" && e.ownerId === playerId);
+    const oppCrystal = canSeeOpp
+        ? [...match.entities.values()].find(e => e.type === "crystal" && e.ownerId === oppId)
+        : undefined;
+    const crystalMaxHp = ENTITY.crystal.health;
+    const threshold = ECONOMY.passiveWinThreshold;
+    const ownHeldRaw = economy?.resources ?? 0;
+    const oppHeldRaw = canSeeOpp ? (oppEconomy?.resources ?? 0) : 0;
+    // Lifetime resources for reward signal (mining rate)
+    const ownLifetime = economy?.lifetimeResources ?? 0;
+    const oppLifetime = canSeeOpp ? (oppEconomy?.lifetimeResources ?? 0) : 0;
     const global = {
         ownResources,
         ownSupply,
@@ -29,6 +40,12 @@ export function buildObservation(match, playerId) {
         oppVisibleSupply,
         tick: match.tick / 6000,
         scoreDiff: (match.players[playerIdx]?.score ?? 0) - (match.players[oppIdx]?.score ?? 0),
+        ownCrystalHealthFrac: ownCrystal ? ownCrystal.health / crystalMaxHp : 0,
+        oppCrystalHealthFrac: oppCrystal ? oppCrystal.health / crystalMaxHp : 0,
+        ownResourcesWinFrac: Math.min(ownHeldRaw / threshold, 1),
+        oppResourcesWinFrac: Math.min(oppHeldRaw / threshold, 1),
+        ownLifetimeResourcesFrac: Math.min(ownLifetime / (threshold * 2), 1),
+        oppLifetimeResourcesFrac: Math.min(oppLifetime / (threshold * 2), 1),
     };
     // Entity features — only visible entities
     const entities = [];

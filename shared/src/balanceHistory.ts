@@ -29,6 +29,26 @@ export const BALANCE_HISTORY: Readonly<Record<string, BalanceSnapshot>> = {
     passiveWinThreshold:  2500,
   },
 
+  // ── 0.1.47-ML ──────────────────────────────────────────────────────────
+  // Agent v2 clean start. Draw/timeout penalty carried forward from 0.1.46.
+  "0.1.47-ML": {
+    workerCost:            50,
+    workerSpeed:            1.7,
+    skirmisherSpeed:        3.0,
+    skirmisherDamage:      12,
+    passiveWinThreshold: 3000,
+  },
+
+  // ── 0.1.46-ML ──────────────────────────────────────────────────────────
+  // Draw/timeout penalised identically to a loss (-10). Agent v2 fresh start.
+  "0.1.46-ML": {
+    workerCost:            50,
+    workerSpeed:            1.7,
+    skirmisherSpeed:        3.0,
+    skirmisherDamage:      12,
+    passiveWinThreshold: 3000,
+  },
+
   // ── 0.1.45-ML ──────────────────────────────────────────────────────────
   // Reward-signal patch only (same unit stats as 0.1.44-ML).
   // Forward pressure reward, worker kill/death split, depot headroom penalty.

@@ -15,6 +15,8 @@ export function getLegalActions(match, playerId) {
     const ownEntities = [...match.entities.values()].filter(e => e.ownerId === playerId);
     const workers = ownEntities.filter(e => e.type === "worker");
     const idleWorkers = workers.filter(e => !e.buildTargetId && !e.gatheringNodeId && !e.attackTargetId);
+    // Any worker not already mid-construction can be redirected to a new build
+    const availableBuilders = workers.filter(e => !e.buildTargetId);
     const completedBuildings = ownEntities.filter(e => e.type === "building" && e.constructionProgress >= 100);
     const combatUnits = ownEntities.filter(e => ["skirmisher", "gunner", "bruiser", "medic"].includes(e.type));
     // train_worker — needs resources and supply headroom
@@ -43,8 +45,8 @@ export function getLegalActions(match, playerId) {
             legal.push({ type: "train_unit", unitType });
         }
     }
-    // build — needs resources, idle workers, and a valid building type
-    if (idleWorkers.length > 0) {
+    // build — needs resources and a worker not already mid-construction
+    if (availableBuilders.length > 0) {
         for (const buildingType of ["barracks", "foundry", "supply_depot", "turret"]) {
             const def = BUILDING_DEFS[buildingType];
             if (economy.resources >= def.cost) {

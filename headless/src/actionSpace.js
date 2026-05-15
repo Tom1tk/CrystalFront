@@ -27,7 +27,8 @@ export function expandMacroAction(action, match, playerId) {
         case "build": {
             if (!action.buildingType)
                 return [];
-            const workers = getIdleWorkers(match, playerId, 1);
+            // Any worker not mid-construction can be redirected; engine clears gatheringNodeId
+            const workers = getAvailableBuilders(match, playerId, 1);
             if (workers.length === 0)
                 return [];
             const pos = chooseBuildPosition(playerColor, action.xZone ?? "mid_base", action.yZone ?? "middle", match);
@@ -126,6 +127,16 @@ function getIdleWorkers(match, playerId, min = 0) {
     }
     return workers;
 }
+function getAvailableBuilders(match, playerId, min = 0) {
+    const workers = [];
+    for (const e of match.entities.values()) {
+        if (e.type !== "worker" || e.ownerId !== playerId)
+            continue;
+        if (!e.buildTargetId)
+            workers.push(e); // gathering workers OK; engine clears it on build
+    }
+    return workers;
+}
 function getUnitGroup(match, playerId, group) {
     const results = [];
     for (const e of match.entities.values()) {
@@ -173,9 +184,25 @@ function chooseBuildPosition(color, xZone, yZone, match) {
         middle: mapH * 0.5,
         bottom: mapH * 0.8,
     };
-    const x = xBands[xZone ?? "mid_base"] ?? (zoneStart + zoneWidth * 0.5);
-    const y = yBands[yZone ?? "middle"] ?? mapH * 0.5;
-    return { x, y };
+    const baseX = xBands[xZone ?? "mid_base"] ?? (zoneStart + zoneWidth * 0.5);
+    const baseY = yBands[yZone ?? "middle"] ?? mapH * 0.5;
+    // Jitter position if the zone coordinate is blocked by an existing building.
+    // Step in 80-pixel increments (roughly one building width) up to 5 attempts.
+    const STEP = 80;
+    const existingBuildings = [...match.entities.values()].filter(e => e.type === "building");
+    for (let attempt = 0; attempt < 8; attempt++) {
+        const dx = (attempt % 3) * STEP * (attempt % 2 === 0 ? 1 : -1);
+        const dy = Math.floor(attempt / 3) * STEP * (attempt < 4 ? 1 : -1);
+        const cx = Math.max(zoneStart + 40, Math.min(zoneEnd - 40, baseX + dx));
+        const cy = Math.max(40, Math.min(mapH - 40, baseY + dy));
+        const blocked = existingBuildings.some(b => {
+            const d = Math.sqrt((b.x - cx) ** 2 + (b.y - cy) ** 2);
+            return d < b.radius + 50; // 50px clearance
+        });
+        if (!blocked)
+            return { x: cx, y: cy };
+    }
+    return { x: baseX, y: baseY }; // fallback — engine will reject if still blocked
 }
 function resolveTargetZone(zone, playerColor, match) {
     const isBlue = playerColor === "blue";
