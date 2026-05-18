@@ -14,7 +14,7 @@ Architecture:
   Trunk           — 2-layer MLP on [global || entity_summary || node_summary]
                     Output: (B, MLP_HIDDEN)
 
-  Actor head      — Linear → 73 logits; illegal actions masked to -1e9 before sample
+  Actor head      — Linear → 37 logits; illegal actions masked to -1e9 before sample
   Critic head     — Linear → scalar value
 
 Why set-attention?
@@ -34,11 +34,11 @@ from torch.distributions import Categorical
 
 # ── constants matching env/crystalfront_env.py ───────────────────────────────
 
-GLOBAL_DIM        = 12
-ENTITY_DIM        = 11       # raw features (typeIndex as scalar)
+GLOBAL_DIM        = 22   # 18 base + 4 threat geometry (v0.1.57)
+ENTITY_DIM        = 12   # raw features (v0.1.57: +inAttackRange)
 NODE_DIM          = 5
 N_ENTITY_TYPES    = 10
-ACTION_SPACE_SIZE = 73
+ACTION_SPACE_SIZE = 58   # v0.1.57: 37→58 (targeted attacks, hold_position, dynamic zones)
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────

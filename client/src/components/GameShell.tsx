@@ -30,6 +30,7 @@ interface GameShellProps {
   onSetPlaybackSpeed?: (speed: number) => void;
   replayFrame?: number;
   replayBufferSize?: number;
+  onSeekReplay?: (frame: number) => void;
 }
 
 const CANVAS_WIDTH = 960;
@@ -609,6 +610,7 @@ export default function GameShell({
   onSetPlaybackSpeed,
   replayFrame = 0,
   replayBufferSize = 0,
+  onSeekReplay,
 }: GameShellProps) {
   // Callers always provide player (even replay passes a synthetic observer object).
   // The null type on the prop exists so replay can pass `null`-ish defaults,
@@ -1104,7 +1106,7 @@ export default function GameShell({
 
       const worldX = screenX + cameraXRef.current;
       const worldY = screenY + cameraYRef.current;
-      setHoverPos({ x: worldX, y: worldY });
+      setHoverPos(prev => (prev && prev.x === worldX && prev.y === worldY ? prev : { x: worldX, y: worldY }));
 
       // Debug drag resource node (throttled to ~10 cmds/sec)
       if (debugDraggingNodeId) {
@@ -2564,16 +2566,41 @@ export default function GameShell({
               fontSize: 9,
               letterSpacing: "0.18em",
               color: FCT.inkDim,
-              minWidth: 110,
+              minWidth: 90,
+              flexShrink: 0,
             }}>
-              {matchState?.tick ?? replayFrame} / {replayTotalTicks ?? "?"} ticks
+              {replayFrame} / {replayTotalTicks ?? "?"}
             </span>
+            {replayTotalTicks != null && replayTotalTicks > 1 && onSeekReplay && (
+              <input
+                type="range"
+                min={0}
+                max={replayTotalTicks - 1}
+                value={replayFrame}
+                onChange={e => {
+                  // Clamp seek to what has been buffered; can only scrub into unloaded
+                  // territory once the server streams those frames forward.
+                  const target = Math.min(Number(e.target.value), replayBufferSize - 1);
+                  onSetPlaybackSpeed?.(0);
+                  onSeekReplay(Math.max(0, target));
+                }}
+                style={{
+                  margin: "0 8px",
+                  width: 180,
+                  accentColor: FCT.amber,
+                  cursor: "pointer",
+                  flexShrink: 1,
+                }}
+                title="Scrub to frame"
+              />
+            )}
             <span style={{
               marginLeft: 4,
               fontFamily: FCT.mono,
               fontSize: 9,
               letterSpacing: "0.14em",
               width: 52,
+              flexShrink: 0,
               textAlign: "center" as const,
               color: FCT.amber,
               opacity: replayBufferSize > 0 && replayFrame >= replayBufferSize - Math.abs(playbackSpeed) - 1 ? 1 : 0,

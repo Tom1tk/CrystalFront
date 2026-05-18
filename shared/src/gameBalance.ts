@@ -179,7 +179,7 @@ export const ECONOMY = {
   startingMaxSupply: 10,
   workerTrainCost: 50,          // must match UNIT_DEFS.worker.cost
   workerSupplyCost: 1,
-  passiveWinThreshold: 3000,   // current held resources = win (turtling win condition)
+  passiveWinThreshold: 4500,   // current held resources = win (turtling win condition)
 } as const;
 
 // ====================================================================
@@ -310,9 +310,6 @@ export const COUNTER_MODIFIER: Record<string, Record<string, number>> = {
   medic:      { worker: 1.0, skirmisher: 1.0, gunner: 1.0, bruiser: 1.0 },
   worker:     { worker: 1.0, skirmisher: 1.0, gunner: 1.0, bruiser: 1.0, medic: 1.0 },
 };
-
-// Legacy alias — keep for backwards compatibility
-export const COUNTER_MULTIPLIERS = COUNTER_MODIFIER;
 
 // ====================================================================
 //  LOBBY & NETWORK (non-balance, but grouped for completeness)

@@ -24,8 +24,6 @@ export class HeavyBot implements Agent {
   private lastBuildTick  = -60;
   private lastPushTick   = -60;
 
-  private turretYZones: MacroAction["yZone"][] = ["middle", "top", "bottom"];
-  private turretBaseZone = 0;
   private prevTurretCount = 0;
 
   init(playerId: string, _match: MatchState): void {
@@ -35,7 +33,6 @@ export class HeavyBot implements Agent {
     this.lastBuildTick  = -60;
     this.lastPushTick   = -60;
     this.prevTurretCount = 0;
-    this.turretBaseZone = Math.floor(Math.random() * 3);
   }
 
   step(obs: PlayerObservation, legal: MacroAction[]): MacroAction[] {
@@ -52,9 +49,6 @@ export class HeavyBot implements Agent {
     const gunners     = entities.filter(e => e.owner === 1 && e.typeIndex === 3).length;
     const turretCount = entities.filter(e => e.owner === 1 && e.typeIndex === 9 && e.constructionFrac >= 1).length;
 
-    if (turretCount < this.prevTurretCount) {
-      this.turretBaseZone = (this.turretBaseZone + 1) % this.turretYZones.length;
-    }
     this.prevTurretCount = turretCount;
 
     // Phase transitions
@@ -99,12 +93,7 @@ export class HeavyBot implements Agent {
       }
       // 2 forward turrets for early defence
       if (!built && turretCount < 2) {
-        const zoneIdx = (this.turretBaseZone + turretCount) % this.turretYZones.length;
-        const yZone   = this.turretYZones[zoneIdx];
-        const b = legal.find(a =>
-          a.type === "build" && a.buildingType === "turret" &&
-          a.xZone === "forward" && a.yZone === yZone
-        );
+        const b = legal.find(a => a.type === "build" && a.buildingType === "turret" && a.xZone === "forward");
         if (b) { actions.push(b); built = true; }
       }
       // 2nd depot when first units exist (pre-emptive, don't wait for cap)
@@ -147,12 +136,6 @@ export class HeavyBot implements Agent {
     if (hasBarracks && gunners < Math.floor(bruisers / 3) + 1) {
       const train = legal.find(a => a.type === "train_unit" && a.unitType === "gunner");
       if (train) actions.push(train);
-    }
-
-    // ── Rally forward once army is forming ────────────────────────────────
-    if ((this.phase === "mass" || this.phase === "push") && tick % 300 === 0) {
-      const rally = legal.find(a => a.type === "set_rally" && a.targetZone === "midfield");
-      if (rally) actions.push(rally);
     }
 
     // ── Attack: only commit with a full heavy force ────────────────────────

@@ -1395,7 +1395,7 @@ console.log("\n--- Determinism: Same seed produces identical state ---");
 // ---- Action Index ----
 console.log("\n--- Action Index ---");
 {
-  assert(ACTION_SPACE_SIZE === 73, `Action space has 73 actions (got ${ACTION_SPACE_SIZE})`);
+  assert(ACTION_SPACE_SIZE === 58, `Action space has 58 actions (got ${ACTION_SPACE_SIZE})`);
 
   // Every action round-trips through index
   let allRoundTrip = true;
@@ -1545,6 +1545,40 @@ console.log("\n--- Passive Win Condition ---");
   assert(match.phase === "ended", "Match ends when passive win threshold reached");
   assert(match.result?.winner === blueId, "Blue wins the passive win");
   assert(match.result?.winType === "resource", "Win type is 'resource'");
+}
+
+// ---- Engine Determinism ----
+console.log("\n--- Engine Determinism ---");
+{
+  function runAndHash(seed: number, ticks: number): string {
+    const engine = new MatchEngine();
+    const players: [PlayerSlot | null, PlayerSlot | null] = [
+      { playerId: "det-blue", username: "Blue", color: "blue", score: 0 },
+      { playerId: "det-red",  username: "Red",  color: "red",  score: 0 },
+    ];
+    const match = engine.createMatch("det-test", players, DEFAULT_CONFIG, seed);
+    engine.startMatch(match.id);
+    for (let i = 0; i < ticks && match.phase === "playing"; i++) {
+      engine.tick(match.id);
+    }
+    // Hash: sorted entity ids + positions + health (deterministic ordering)
+    const snapshot = Array.from(match.entities.values())
+      .map(e => `${e.type}:${Math.round(e.x)},${Math.round(e.y)},${Math.round(e.health)}`)
+      .sort()
+      .join("|");
+    return snapshot;
+  }
+
+  const SEED = 0xdeadbeef;
+  const TICKS = 500;
+  const run1 = runAndHash(SEED, TICKS);
+  const run2 = runAndHash(SEED, TICKS);
+  assert(run1 === run2, `Same seed (${SEED}) produces identical state after ${TICKS} ticks`);
+  assert(run1.length > 0, "State hash is non-empty (match made progress)");
+
+  // Runs with the same seed must also be identical across multiple repetitions
+  const run3 = runAndHash(SEED, TICKS);
+  assert(run1 === run3, `Third run with same seed (${SEED}) also matches`);
 }
 
 console.log(`\n${"=".repeat(40)}`);

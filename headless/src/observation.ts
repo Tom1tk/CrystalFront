@@ -1,7 +1,7 @@
 import type { MatchState } from "../../server/src/match/types.js";
 import type { PlayerObservation, GlobalFeatures, EntityFeature, NodeFeature } from "./types.js";
 import { ENTITY_TYPES } from "./types.js";
-import { MAP, ECONOMY, ENTITY } from "@crystalfront/shared";
+import { MAP, ECONOMY, ENTITY, UNIT_DEFS } from "@crystalfront/shared";
 
 export function buildObservation(match: MatchState, playerId: string): PlayerObservation {
   const playerIdx = match.players.findIndex(p => p?.playerId === playerId);
@@ -10,12 +10,10 @@ export function buildObservation(match: MatchState, playerId: string): PlayerObs
   const economy = match.economy[playerIdx];
   const oppEconomy = match.economy[oppIdx];
 
-  // Fog of war: which entities/nodes are visible to this player?
   const vis = match.visibilityData?.get(playerId);
   const visibleEntityIds = vis?.entityIds ?? new Set<string>();
   const visibleNodeIds   = vis?.nodeIds   ?? new Set<string>();
 
-  // Global features
   const ownResources  = economy ? economy.resources / 1000 : 0;
   const ownSupply     = economy ? economy.supply / Math.max(economy.maxSupply, 1) : 0;
   const ownMaxSupply  = economy?.maxSupply ?? 0;
@@ -28,7 +26,6 @@ export function buildObservation(match: MatchState, playerId: string): PlayerObs
     ? oppEconomy.supply / Math.max(oppEconomy.maxSupply, 1)
     : 0;
 
-  // Crystal health fractions
   const ownCrystal = [...match.entities.values()].find(
     e => e.type === "crystal" && e.ownerId === playerId
   );
@@ -40,9 +37,58 @@ export function buildObservation(match: MatchState, playerId: string): PlayerObs
   const threshold = ECONOMY.passiveWinThreshold;
   const ownHeldRaw = economy?.resources ?? 0;
   const oppHeldRaw = canSeeOpp ? (oppEconomy?.resources ?? 0) : 0;
-  // Lifetime resources for reward signal (mining rate)
   const ownLifetime = economy?.lifetimeResources ?? 0;
   const oppLifetime = canSeeOpp ? (oppEconomy?.lifetimeResources ?? 0) : 0;
+
+  const mid = MAP.width / 2;
+  const isBlue = match.players[playerIdx]?.color === "blue";
+
+  // Enemy unit composition (visible only)
+  const visibleEnemies = [...match.entities.values()].filter(
+    e => e.ownerId === oppId && visibleEntityIds.has(e.id)
+  );
+  const enemyWorkerCount     = visibleEnemies.filter(e => e.type === "worker").length / 10;
+  const enemySkirmisherCount = visibleEnemies.filter(e => e.type === "skirmisher").length / 10;
+  const enemyBruiserCount    = visibleEnemies.filter(e => e.type === "bruiser").length / 10;
+  const enemyBarracksCount   = visibleEnemies.filter(e => e.type === "building" && e.buildingType === "barracks" && e.constructionProgress >= 100).length / 4;
+  const enemyTurretCount     = visibleEnemies.filter(e => e.type === "building" && e.buildingType === "turret"   && e.constructionProgress >= 100).length / 4;
+  const enemyForwardUnits    = visibleEnemies.filter(e =>
+    ["skirmisher","gunner","bruiser","medic"].includes(e.type) && (
+      isBlue ? e.x > mid : e.x < mid
+    )
+  ).length;
+  const oppTotalVisibleCombat = visibleEnemies.filter(e =>
+    ["skirmisher","gunner","bruiser","medic"].includes(e.type)
+  ).length;
+  const enemyForwardUnitFrac = oppTotalVisibleCombat > 0 ? enemyForwardUnits / oppTotalVisibleCombat : 0;
+
+  // ── Threat geometry features (v0.1.57) ───────────────────────────────────────
+  // nearestEnemyToCrystalDistNorm: how close is the nearest visible enemy to our crystal?
+  const ownCrystalX = ownCrystal?.x ?? (isBlue ? 100 : MAP.width - 100);
+  const ownCrystalY = ownCrystal?.y ?? MAP.height / 2;
+  const visibleEnemyUnits = visibleEnemies.filter(e =>
+    ["skirmisher","gunner","bruiser","medic"].includes(e.type)
+  );
+  let nearestEnemyToCrystalDistNorm = 1.0;
+  for (const e of visibleEnemyUnits) {
+    const d = Math.sqrt((e.x - ownCrystalX) ** 2 + (e.y - ownCrystalY) ** 2) / MAP.width;
+    if (d < nearestEnemyToCrystalDistNorm) nearestEnemyToCrystalDistNorm = d;
+  }
+
+  // ownCombatInOwnHalf: our combat units in our half
+  const ownEntities = [...match.entities.values()].filter(e => e.ownerId === playerId);
+  const ownCombatInOwnHalf = ownEntities.filter(e =>
+    ["skirmisher","gunner","bruiser","medic"].includes(e.type) &&
+    (isBlue ? e.x < mid : e.x > mid)
+  ).length / 10;
+
+  // enemyCombatInOwnHalf: visible enemy combat units in our half
+  const enemyCombatInOwnHalf = visibleEnemyUnits.filter(e =>
+    isBlue ? e.x < mid : e.x > mid
+  ).length / 10;
+
+  // totalVisibleEnemyCombat
+  const totalVisibleEnemyCombat = oppTotalVisibleCombat / 10;
 
   const global: GlobalFeatures = {
     ownResources,
@@ -57,9 +103,24 @@ export function buildObservation(match: MatchState, playerId: string): PlayerObs
     oppResourcesWinFrac: Math.min(oppHeldRaw / threshold, 1),
     ownLifetimeResourcesFrac: Math.min(ownLifetime / (threshold * 2), 1),
     oppLifetimeResourcesFrac: Math.min(oppLifetime / (threshold * 2), 1),
+    enemyWorkerCount,
+    enemySkirmisherCount,
+    enemyBruiserCount,
+    enemyBarracksCount,
+    enemyTurretCount,
+    enemyForwardUnitFrac,
+    nearestEnemyToCrystalDistNorm,
+    ownCombatInOwnHalf,
+    enemyCombatInOwnHalf,
+    totalVisibleEnemyCombat,
   };
 
-  // Entity features — only visible entities
+  // ── Entity features — only visible entities ───────────────────────────────────
+  // Pre-build a spatial lookup of visible enemies for attack-range checking
+  const visibleEnemyList = [...match.entities.values()].filter(
+    e => e.ownerId !== playerId && visibleEntityIds.has(e.id)
+  );
+
   const entities: EntityFeature[] = [];
   for (const [id, e] of match.entities) {
     if (!visibleEntityIds.has(id)) continue;
@@ -69,6 +130,21 @@ export function buildObservation(match: MatchState, playerId: string): PlayerObs
       ? `building_${e.buildingType ?? "barracks"}` as const
       : e.type;
     const typeIndex = ENTITY_TYPES.indexOf(typeKey as typeof ENTITY_TYPES[number]);
+
+    // inAttackRange: is there a visible enemy within this entity's weapon range?
+    let inAttackRange = false;
+    if (isOwn) {
+      const unitRange = (UNIT_DEFS as Record<string, { range: number }>)[e.type]?.range ?? 0;
+      if (unitRange > 0) {
+        for (const enemy of visibleEnemyList) {
+          const d = Math.sqrt((enemy.x - e.x) ** 2 + (enemy.y - e.y) ** 2);
+          if (d <= unitRange + (enemy.radius ?? 0)) {
+            inAttackRange = true;
+            break;
+          }
+        }
+      }
+    }
 
     entities.push({
       id,
@@ -83,10 +159,11 @@ export function buildObservation(match: MatchState, playerId: string): PlayerObs
       isGathering: !!e.gatheringNodeId,
       isBuilding: !!e.buildTargetId,
       attackCooldownNorm: e.attackCooldown / 25,
+      inAttackRange,
     });
   }
 
-  // Node features — only visible nodes
+  // ── Node features — only visible nodes ───────────────────────────────────────
   const nodes: NodeFeature[] = [];
   for (const node of match.resourceNodes) {
     if (!visibleNodeIds.has(node.id)) continue;
