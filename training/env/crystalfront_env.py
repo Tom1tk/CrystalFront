@@ -5,15 +5,15 @@ Wraps one Node.js stdio subprocess (headless/src/stdioRunner.ts).
 Blue = policy agent, Red = scripted opponent.
 
 Observation space: Dict with:
-  global      (12,)             -- normalised scalar game state
-  entities    (MAX_ENTITIES,11) -- per-entity features (raw, incl. typeIndex)
+  global      (22,)             -- normalised scalar game state (v0.1.57: 18→22)
+  entities    (MAX_ENTITIES,12) -- per-entity features (v0.1.57: 11→12, added inAttackRange)
   entity_mask (MAX_ENTITIES,)   -- True where slot is occupied
   nodes       (MAX_NODES,5)     -- per-node features
   node_mask   (MAX_NODES,)      -- True where slot is occupied
 
-Action space: Discrete(73) -- see headless/src/actionIndex.ts
+Action space: Discrete(58) -- see headless/src/actionIndex.ts (v0.1.57: 37→58)
 
-Legal mask is returned in info["legal_mask"] (bool[73]).  The policy should
+Legal mask is returned in info["legal_mask"] (bool[58]).  The policy should
 zero out illegal logits before sampling.
 """
 
@@ -29,12 +29,12 @@ import numpy as np
 
 # ── constants matching TypeScript types.ts / actionIndex.ts ─────────────────
 
-GLOBAL_DIM    = 12
-ENTITY_DIM    = 11   # raw features per entity (typeIndex as scalar 0-9)
+GLOBAL_DIM    = 22   # 18 base + 4 threat geometry features (v0.1.57)
+ENTITY_DIM    = 12   # raw features per entity (v0.1.57: +inAttackRange)
 NODE_DIM      = 5
 MAX_ENTITIES  = 64
 MAX_NODES     = 8
-ACTION_SPACE_SIZE = 73
+ACTION_SPACE_SIZE = 58  # v0.1.57: 37→58 (targeted attacks, hold_position, dynamic zones)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TSX_BIN   = str(REPO_ROOT / "node_modules/.bin/tsx")
@@ -47,6 +47,12 @@ GLOBAL_KEYS = [
     "ownCrystalHealthFrac", "oppCrystalHealthFrac",
     "ownResourcesWinFrac", "oppResourcesWinFrac",
     "ownLifetimeResourcesFrac", "oppLifetimeResourcesFrac",
+    # Enemy composition (v0.1.49)
+    "enemyWorkerCount", "enemySkirmisherCount", "enemyBruiserCount",
+    "enemyBarracksCount", "enemyTurretCount", "enemyForwardUnitFrac",
+    # Threat geometry (v0.1.57)
+    "nearestEnemyToCrystalDistNorm", "ownCombatInOwnHalf",
+    "enemyCombatInOwnHalf", "totalVisibleEnemyCombat",
 ]
 
 
@@ -133,10 +139,26 @@ class CrystalFrontEnv(gym.Env):
         self._ensure_proc()
 
         # Allow per-reset opponent override (Phase 4 league training).
-        # options["opponent"] takes precedence over self.opponent.
         opponent = self.opponent
         if options is not None and "opponent" in options:
             opponent = options["opponent"]
+
+        # Opponent sampling modes
+        if opponent == "random":
+            import random as _random
+            opponent = _random.choice(["idle", "rush", "turtle", "macro"])
+        elif opponent == "combat":
+            import random as _random
+            opponent = _random.choice(["rush", "macro"])
+        elif opponent == "combat_weak":
+            # Phase 1 curriculum: learn basic combat vs weak opponents
+            import random as _random
+            opponent = _random.choice(["idle", "turtle", "rush_weak"])
+        elif opponent == "combat_medium":
+            # Phase 2 curriculum: scale up combat vs medium opponents
+            import random as _random
+            opponent = _random.choice(["turtle", "rush_weak", "rush_medium", "macro"])
+        # passive: single known-beatable bot — no sampling needed
 
         self._episode_count += 1
         rng_seed = int(seed) if seed is not None else int(np.random.randint(0, 2**31))
@@ -146,8 +168,6 @@ class CrystalFrontEnv(gym.Env):
         )
         self._send({"type": "reset", "seed": rng_seed, "opponent": opponent, "save_replay": do_save})
 
-
-        # Store the active opponent so callers can inspect it.
         self._current_opponent = opponent
         msg = self._recv()
         assert msg["type"] == "ready", f"Expected 'ready', got {msg['type']}"
@@ -174,7 +194,7 @@ class CrystalFrontEnv(gym.Env):
         g = raw["global"]
         global_vec = np.array([g[k] for k in GLOBAL_KEYS], dtype=np.float32)
 
-        # Entities
+        # Entities (12 features, including new inAttackRange)
         ents = raw.get("entities", [])
         entity_mat  = np.zeros((MAX_ENTITIES, ENTITY_DIM), dtype=np.float32)
         entity_mask = np.zeros(MAX_ENTITIES, dtype=bool)
@@ -190,6 +210,7 @@ class CrystalFrontEnv(gym.Env):
                 float(e["isGathering"]),
                 float(e["isBuilding"]),
                 e["attackCooldownNorm"],
+                float(e.get("inAttackRange", False)),  # v0.1.57
             ]
             entity_mask[i] = True
 

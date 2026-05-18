@@ -977,10 +977,43 @@ app.get("/api/version", (_req: Request, res: Response) => {
 });
 
 app.get("/api/replays", (req: Request, res: Response) => {
-  const limit  = Math.min(parseInt(req.query.limit  as string) || 500, 2000);
-  const offset = Math.max(parseInt(req.query.offset as string) || 0, 0);
-  const all    = listReplays();
-  res.json({ replays: all.slice(offset, offset + limit), total: all.length });
+  const page     = Math.max(1, parseInt(req.query.page     as string) || 1);
+  const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize as string) || 30));
+  const sort     = (req.query.sort    as string) || "timestamp";
+  const asc      = req.query.asc === "true";
+  const winner   = (req.query.winner  as string) || "all";
+  const winType  = (req.query.winType as string) || "all";
+  const bot      = ((req.query.bot    as string) || "").toLowerCase().trim();
+  const flags    = ((req.query.flags  as string) || "").split(",").filter(Boolean);
+  const starred  = new Set(((req.query.starred as string) || "").split(",").filter(Boolean));
+
+  let list = listReplays();
+
+  if (winner === "blue")   list = list.filter(r => r.outcome.winner?.includes("blue"));
+  else if (winner === "red")   list = list.filter(r => r.outcome.winner?.includes("red"));
+  else if (winner === "draw")  list = list.filter(r => !r.outcome.winner);
+
+  if (winType !== "all") list = list.filter(r => (r.winType ?? r.outcome.winType) === winType);
+  if (bot)               list = list.filter(r => r.blue.toLowerCase().includes(bot) || r.red.toLowerCase().includes(bot));
+  if (flags.length > 0)  list = list.filter(r => flags.every(f => (r.flags ?? []).includes(f)));
+  if (starred.size > 0)  list = list.filter(r => starred.has(r.id));
+
+  list.sort((a, b) => {
+    let va: number, vb: number;
+    switch (sort) {
+      case "seed":   va = a.seed;          vb = b.seed;          break;
+      case "ticks":  va = a.outcome.ticks; vb = b.outcome.ticks; break;
+      case "winner":
+        va = a.outcome.winner?.includes("blue") ? 1 : a.outcome.winner?.includes("red") ? 2 : 0;
+        vb = b.outcome.winner?.includes("blue") ? 1 : b.outcome.winner?.includes("red") ? 2 : 0;
+        break;
+      default: va = a.timestamp; vb = b.timestamp; break;
+    }
+    return asc ? va - vb : vb - va;
+  });
+
+  const total = list.length;
+  res.json({ replays: list.slice((page - 1) * pageSize, page * pageSize), total, page, pageSize });
 });
 
 app.get("/api/replays/:id", (req: Request, res: Response) => {

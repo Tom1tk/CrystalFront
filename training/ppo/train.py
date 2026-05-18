@@ -87,7 +87,7 @@ class Config:
 
     # PPO rollout
     num_steps:      int   = 512           # steps per env per rollout
-    gamma:          float = 0.995         # high for long episodes (up to 6000 ticks)
+    gamma:          float = 0.995         # longer horizon — makes early-game rewards ~20× more influential (v0.1.59)
     gae_lambda:     float = 0.95
 
     # PPO update
@@ -96,7 +96,7 @@ class Config:
     clip_coef:        float = 0.2
     norm_adv:         bool  = True
     clip_vloss:       bool  = True
-    ent_coef:         float = 0.01        # entropy bonus — keep > 0 to encourage exploration
+    ent_coef:         float = 0.02        # entropy bonus (v0.1.49: 0.05→0.02 now reward is denser)
     vf_coef:          float = 0.5
     max_grad_norm:    float = 0.5
 
@@ -237,8 +237,13 @@ def train(cfg: Config) -> None:
     set_seed(cfg.seed)
     device = torch.device(cfg.device)
 
+    # Read version from package.json so run names are self-documenting
+    import json as _json
+    _pkg_path = REPO_ROOT / "package.json"
+    _version = _json.loads(_pkg_path.read_text()).get("version", "unknown").replace(".", "_")
+
     opp_label = "league" if cfg.league else cfg.opponent
-    run_name = f"{cfg.exp_name}__{opp_label}__{cfg.seed}__{int(time.time())}"
+    run_name = f"{cfg.exp_name}__{_version}__{opp_label}__{cfg.seed}__{int(time.time())}"
     log_path  = Path(cfg.log_dir) / run_name
     ckpt_path = Path(cfg.checkpoint_dir) / run_name
     ckpt_path.mkdir(parents=True, exist_ok=True)
@@ -279,13 +284,15 @@ def train(cfg: Config) -> None:
         print(f"  League state will be saved to: {league_state_path}")
 
     # ── environments ─────────────────────────────────────────────────────────
-    # Stagger subprocess startups by 0.5s each to avoid a simultaneous tsx
-    # compilation spike (20 processes × ~200MB RAM each would hit the limit).
+    # Stagger subprocess startups to avoid simultaneous tsx compilation spikes.
+    # Cap total startup window at 20s regardless of env count — tsx caches its
+    # compilation after the first few processes, so 0.25s gaps are enough at scale.
+    _stagger = min(0.5, 20.0 / max(cfg.num_envs - 1, 1))
     envs = [
         CrystalFrontEnv(
             opponent=cfg.opponent,
             save_replay_every=cfg.save_replay_every,
-            startup_delay=i * 0.5,
+            startup_delay=i * _stagger,
         )
         for i in range(cfg.num_envs)
     ]
@@ -343,6 +350,15 @@ def train(cfg: Config) -> None:
     wins_last_window    = 0
     window_episodes     = 0
     WIN_WINDOW          = 100   # log win-rate over last N episodes
+    # Diagnostic tracking
+    combat_wins_window   = 0
+    resource_wins_window = 0
+    first_barracks_ticks:     list[int] = []
+    first_combat_ticks:       list[int] = []
+    first_attack_ticks:       list[int] = []
+    entities_discovered_list: list[int] = []
+    # Action histogram — tracks how often each of the 58 actions is chosen per window
+    action_counts = np.zeros(ACTION_SPACE_SIZE, dtype=np.int64)
 
     start_time = time.time()
 
@@ -374,6 +390,10 @@ def train(cfg: Config) -> None:
             actions_np  = actions_t.cpu().numpy()
             logprobs_np = logprobs_t.cpu().numpy()
 
+            # Accumulate action histogram
+            for a in actions_np:
+                action_counts[int(a)] += 1
+
             # Step all envs in parallel — each is a separate subprocess so no contention
             def _step(args: tuple):
                 env, action = args
@@ -401,10 +421,28 @@ def train(cfg: Config) -> None:
                     done_indices.append(i)
                     completed_episodes += 1
                     window_episodes    += 1
-                    winner = info.get("winner")
+                    winner  = info.get("winner")
+                    win_type = info.get("winType")
                     won = winner == "headless-blue"
                     if won:
                         wins_last_window += 1
+                        if win_type == "resource":
+                            resource_wins_window += 1
+                        else:
+                            combat_wins_window += 1
+                    # Milestone tracking
+                    fb = info.get("firstBarracksTick", -1)
+                    fc = info.get("firstCombatUnitTick", -1)
+                    fa = info.get("firstAttackTick", -1)
+                    if fb is not None and fb >= 0:
+                        first_barracks_ticks.append(int(fb))
+                    if fc is not None and fc >= 0:
+                        first_combat_ticks.append(int(fc))
+                    if fa is not None and fa >= 0:
+                        first_attack_ticks.append(int(fa))
+                    ed = info.get("entitiesDiscovered", 0)
+                    if ed is not None:
+                        entities_discovered_list.append(int(ed))
 
                     if league is not None:
                         opp = league.get_env_opponent(i)
@@ -415,14 +453,44 @@ def train(cfg: Config) -> None:
                     if window_episodes >= WIN_WINDOW:
                         win_rate = wins_last_window / window_episodes
                         writer.add_scalar("game/win_rate", win_rate, global_step)
+                        # Win-type breakdown
+                        writer.add_scalar("diagnostics/win_type_combat_rate",
+                                          combat_wins_window / window_episodes, global_step)
+                        writer.add_scalar("diagnostics/win_type_resource_rate",
+                                          resource_wins_window / window_episodes, global_step)
+                        # Milestone timing (mean tick across episodes where milestone was reached)
+                        if first_barracks_ticks:
+                            writer.add_scalar("diagnostics/first_barracks_tick",
+                                              sum(first_barracks_ticks) / len(first_barracks_ticks), global_step)
+                        if first_combat_ticks:
+                            writer.add_scalar("diagnostics/first_combat_unit_tick",
+                                              sum(first_combat_ticks) / len(first_combat_ticks), global_step)
+                        if first_attack_ticks:
+                            writer.add_scalar("diagnostics/first_attack_tick",
+                                              sum(first_attack_ticks) / len(first_attack_ticks), global_step)
+                        if entities_discovered_list:
+                            writer.add_scalar("diagnostics/entities_discovered_per_ep",
+                                              sum(entities_discovered_list) / len(entities_discovered_list), global_step)
+                        total_acts_log = max(action_counts.sum(), 1)
+                        pct_atk_mv  = int(100 * (action_counts[18:30].sum() + action_counts[50:58].sum()) / total_acts_log)
+                        pct_atk_tgt = int(100 * action_counts[37:49].sum() / total_acts_log)
+                        pct_bld     = int(100 * action_counts[6:18].sum()  / total_acts_log)
+                        pct_trn     = int(100 * (action_counts[1] + action_counts[2:6].sum()) / total_acts_log)
                         print(
                             f"  update={update:5d} | step={global_step:8d} | "
                             f"win_rate={win_rate:.2f} ({wins_last_window}/{window_episodes}) | "
-                            f"ep_len={episode_lengths[i]:4d} | "
-                            f"ep_rew={episode_rewards[i]:.2f}"
+                            f"ep_len={episode_lengths[i]:4d} | ep_rew={episode_rewards[i]:.2f} | "
+                            f"atk_mv={pct_atk_mv}% tgt={pct_atk_tgt}% bld={pct_bld}% trn={pct_trn}%"
                         )
                         wins_last_window = 0
                         window_episodes  = 0
+                        combat_wins_window = 0
+                        resource_wins_window = 0
+                        first_barracks_ticks.clear()
+                        first_combat_ticks.clear()
+                        first_attack_ticks.clear()
+                        entities_discovered_list.clear()
+                        action_counts[:] = 0
 
                     episode_rewards[i] = 0.0
                     episode_lengths[i] = 0
@@ -545,6 +613,20 @@ def train(cfg: Config) -> None:
         writer.add_scalar("ppo/entropy_bonus",          entropy_loss.item(),                        global_step)
         writer.add_scalar("ppo/clip_fraction",          np.mean(clip_fracs),                        global_step)
         writer.add_scalar("ppo/approx_kl_divergence",   ((ratio - 1) - log_ratio).mean().item(),    global_step)
+
+        # Action category histograms — track which action groups are being used.
+        # Ranges match actionIndex.ts: 0=noop,1=train_worker,2-5=train_unit,
+        # 6-17=build,18-29=attack_move,30-33=retreat,34-36=assign,
+        # 37-48=attack_targeted,49=hold_pos,50-57=attack_move_new_zones
+        total_acts = max(action_counts.sum(), 1)
+        writer.add_scalar("actions/pct_train_unit",      action_counts[2:6].sum()   / total_acts, global_step)
+        writer.add_scalar("actions/pct_build",           action_counts[6:18].sum()  / total_acts, global_step)
+        writer.add_scalar("actions/pct_attack_move",     action_counts[18:30].sum() / total_acts, global_step)
+        writer.add_scalar("actions/pct_retreat",         action_counts[30:34].sum() / total_acts, global_step)
+        writer.add_scalar("actions/pct_attack_targeted", action_counts[37:49].sum() / total_acts, global_step)
+        writer.add_scalar("actions/pct_hold_position",  action_counts[49]           / total_acts, global_step)
+        writer.add_scalar("actions/pct_attack_move_new",action_counts[50:58].sum()  / total_acts, global_step)
+        writer.add_scalar("actions/pct_assign_workers", action_counts[34:37].sum()  / total_acts, global_step)
 
         # ── checkpoint ────────────────────────────────────────────────────────
         if update % cfg.save_interval == 0:

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { FCT, FctFrame, FctPanel, HEX_CLIP, FctBtn } from "../design/facet";
 
 // ── types ─────────────────────────────────────────────────────────────────────
@@ -88,11 +88,11 @@ function unitsSummary(units?: Record<string, number>) {
 // ── component ─────────────────────────────────────────────────────────────────
 
 export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
-  const [allReplays, setAllReplays] = useState<ReplayMeta[]>([]);
-  const [total,      setTotal]      = useState(0);
-  const [loading,    setLoading]    = useState(true);
-  const [error,      setError]      = useState<string | null>(null);
-  const [starred,    setStarred]    = useState<Set<string>>(() => loadStarred());
+  const [replays,  setReplays]  = useState<ReplayMeta[]>([]);
+  const [total,    setTotal]    = useState(0);
+  const [loading,  setLoading]  = useState(true);
+  const [error,    setError]    = useState<string | null>(null);
+  const [starred,  setStarred]  = useState<Set<string>>(() => loadStarred());
 
   // Filters
   const [filterWinner,  setFilterWinner]  = useState("all");
@@ -106,32 +106,56 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
   // Sort + page
   const [sortField, setSortField] = useState<SortField>("timestamp");
   const [sortAsc,   setSortAsc]   = useState(false);
-  const [pageSize,  setPageSize]  = useState<number>(50);
+  const [pageSize,  setPageSize]  = useState<number>(30);
   const [page,      setPage]      = useState(1);
 
-  // Fetch all metadata once (server returns newest-first, up to 500)
+  // Debounce bot input — only trigger a fetch after 300 ms of no typing
+  const [debouncedBot, setDebouncedBot] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedBot(filterBot), 300);
+    return () => clearTimeout(t);
+  }, [filterBot]);
+
+  // Reset to page 1 whenever any filter or sort changes
+  useEffect(() => { setPage(1); }, [filterWinner, filterWinType, debouncedBot, filterStarred, filterFlags, sortField, sortAsc, pageSize]);
+
+  // Fetch one page from the server whenever page / filters / sort change
   useEffect(() => {
     setLoading(true);
-    fetch("/api/replays?limit=500")
+    setError(null);
+
+    const params = new URLSearchParams({
+      page:     String(page),
+      pageSize: String(pageSize),
+      sort:     sortField,
+      asc:      String(sortAsc),
+      winner:   filterWinner,
+      winType:  filterWinType,
+    });
+    if (debouncedBot)         params.set("bot",     debouncedBot);
+    if (filterFlags.size > 0) params.set("flags",   [...filterFlags].join(","));
+    if (filterStarred && starred.size > 0) params.set("starred", [...starred].join(","));
+    // If starred filter is on but nothing is starred, short-circuit to empty result
+    if (filterStarred && starred.size === 0) {
+      setReplays([]); setTotal(0); setLoading(false); return;
+    }
+
+    fetch(`/api/replays?${params}`)
       .then(r => r.json())
-      .then(d => { setAllReplays(d.replays ?? []); setTotal(d.total ?? 0); setLoading(false); })
+      .then(d => { setReplays(d.replays ?? []); setTotal(d.total ?? 0); setLoading(false); })
       .catch(() => { setError("Could not load replays."); setLoading(false); });
-  }, []);
+  }, [page, pageSize, sortField, sortAsc, filterWinner, filterWinType, debouncedBot, filterFlags, filterStarred, starred]);
 
   // Close flag dropdown when clicking outside
   useEffect(() => {
     if (!flagMenuOpen) return;
     const handler = (e: MouseEvent) => {
-      if (flagMenuRef.current && !flagMenuRef.current.contains(e.target as Node)) {
+      if (flagMenuRef.current && !flagMenuRef.current.contains(e.target as Node))
         setFlagMenuOpen(false);
-      }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [flagMenuOpen]);
-
-  // Reset to page 1 when any filter changes
-  useEffect(() => { setPage(1); }, [filterWinner, filterWinType, filterBot, filterStarred, filterFlags, sortField, sortAsc, pageSize]);
 
   const toggleStar = useCallback((id: string) => {
     setStarred(prev => {
@@ -150,53 +174,14 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
     });
   }, []);
 
-  // Apply filters + sort to the full loaded set
-  const filtered = useMemo(() => {
-    let list = [...allReplays];
-    if (filterStarred) list = list.filter(r => starred.has(r.id));
-    if (filterWinner === "blue") list = list.filter(r =>  r.outcome.winner?.includes("blue"));
-    else if (filterWinner === "red")  list = list.filter(r =>  r.outcome.winner?.includes("red"));
-    else if (filterWinner === "draw") list = list.filter(r => !r.outcome.winner);
-    if (filterWinType !== "all")
-      list = list.filter(r => (r.winType ?? r.outcome.winType) === filterWinType);
-    if (filterBot.trim()) {
-      const q = filterBot.trim().toLowerCase();
-      list = list.filter(r => r.blue.toLowerCase().includes(q) || r.red.toLowerCase().includes(q));
-    }
-    if (filterFlags.size > 0) {
-      // ALL selected flags must be present (AND logic)
-      list = list.filter(r => {
-        const rf = new Set(r.flags ?? []);
-        return [...filterFlags].every(f => rf.has(f));
-      });
-    }
-    list.sort((a, b) => {
-      let va: number, vb: number;
-      switch (sortField) {
-        case "seed":   va = a.seed;          vb = b.seed;          break;
-        case "ticks":  va = a.outcome.ticks; vb = b.outcome.ticks; break;
-        case "winner":
-          va = a.outcome.winner?.includes("blue") ? 1 : a.outcome.winner?.includes("red") ? 2 : 0;
-          vb = b.outcome.winner?.includes("blue") ? 1 : b.outcome.winner?.includes("red") ? 2 : 0;
-          break;
-        default: va = a.timestamp; vb = b.timestamp; break;
-      }
-      return sortAsc ? va - vb : vb - va;
-    });
-    return list;
-  }, [allReplays, filterStarred, filterWinner, filterWinType, filterBot, filterFlags, starred, sortField, sortAsc]);
-
-  const totalPages  = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const currentPage = Math.min(page, totalPages);
-  const pageItems   = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const totalPages  = Math.max(1, Math.ceil(total / pageSize));
+  const hasFilters  = filterWinner !== "all" || filterWinType !== "all"
+    || filterBot.trim() || filterStarred || filterFlags.size > 0;
 
   function toggleSort(field: SortField) {
     if (sortField === field) setSortAsc(a => !a);
     else { setSortField(field); setSortAsc(false); }
   }
-
-  const hasFilters = filterWinner !== "all" || filterWinType !== "all"
-    || filterBot.trim() || filterStarred || filterFlags.size > 0;
 
   const COLS = "30px 80px 60px 100px 100px 130px 80px 90px 1fr 60px 60px";
 
@@ -210,7 +195,7 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
         {/* ── Header ── */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ fontFamily: FCT.mono, fontSize: 11, color: FCT.inkDim, letterSpacing: "0.28em" }}>
-            ▰ BOT REPLAYS · {filtered.length} matching / {total} total
+            ▰ BOT REPLAYS · {total} total
           </div>
           <FctBtn sub="ESC" onClick={onBack} style={{ padding: "6px 18px" }}>← Back</FctBtn>
         </div>
@@ -270,33 +255,24 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
                 boxShadow: "0 4px 16px #0006",
               }}>
                 {KNOWN_FLAGS.map(f => (
-                  <label
-                    key={f.id}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 8,
-                      padding: "6px 14px", cursor: "pointer",
-                      fontFamily: FCT.mono, fontSize: 11, color: f.color,
-                      background: filterFlags.has(f.id) ? f.color + "18" : "transparent",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={filterFlags.has(f.id)}
+                  <label key={f.id} style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    padding: "6px 14px", cursor: "pointer",
+                    fontFamily: FCT.mono, fontSize: 11, color: f.color,
+                    background: filterFlags.has(f.id) ? f.color + "18" : "transparent",
+                  }}>
+                    <input type="checkbox" checked={filterFlags.has(f.id)}
                       onChange={() => toggleFlag(f.id)}
-                      style={{ accentColor: f.color, cursor: "pointer" }}
-                    />
+                      style={{ accentColor: f.color, cursor: "pointer" }} />
                     {f.label}
                   </label>
                 ))}
                 {filterFlags.size > 0 && (
-                  <div
-                    onClick={() => setFilterFlags(new Set())}
-                    style={{
-                      padding: "5px 14px", borderTop: `1px solid ${FCT.line}`,
-                      fontFamily: FCT.mono, fontSize: 10, color: FCT.inkFaint,
-                      cursor: "pointer", marginTop: 4,
-                    }}
-                  >
+                  <div onClick={() => setFilterFlags(new Set())} style={{
+                    padding: "5px 14px", borderTop: `1px solid ${FCT.line}`,
+                    fontFamily: FCT.mono, fontSize: 10, color: FCT.inkFaint,
+                    cursor: "pointer", marginTop: 4,
+                  }}>
                     Clear flags
                   </div>
                 )}
@@ -344,13 +320,13 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
           <div style={{ overflowY: "auto", height: "calc(100% - 88px)" }}>
             {loading && <Msg text="Loading…" color={FCT.inkFaint} />}
             {error   && <Msg text={error}    color={FCT.red} />}
-            {!loading && !error && allReplays.length === 0 && (
+            {!loading && !error && total === 0 && replays.length === 0 && (
               <Msg text="No replays yet — run: tsx headless/src/cli.ts --blue rush --red idle" color={FCT.inkFaint} />
             )}
-            {!loading && !error && allReplays.length > 0 && filtered.length === 0 && (
+            {!loading && !error && total > 0 && replays.length === 0 && (
               <Msg text="No replays match the current filters." color={FCT.inkFaint} />
             )}
-            {pageItems.map((r, i) => {
+            {replays.map((r, i) => {
               const { text: outcomeText, color: outcomeColor } = outcomeLabel(r);
               const { text: wtText,     color: wtColor }      = winTypeBadge(r.winType ?? r.outcome.winType);
               const isStarred = starred.has(r.id);
@@ -358,7 +334,7 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
                 <div key={r.id} style={{
                   display: "grid", gridTemplateColumns: COLS,
                   padding: "9px 14px",
-                  borderBottom: i < pageItems.length - 1 ? `1px solid ${FCT.line}` : undefined,
+                  borderBottom: i < replays.length - 1 ? `1px solid ${FCT.line}` : undefined,
                   alignItems: "center",
                   background: i % 2 === 0 ? "transparent" : FCT.bgPanelHi,
                   minHeight: 40,
@@ -413,30 +389,21 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
           </div>
 
           {/* ── Pagination footer ── */}
-          {!loading && filtered.length > 0 && (
+          {!loading && total > 0 && (
             <div style={{
               display: "flex", alignItems: "center", justifyContent: "space-between",
               padding: "8px 14px", borderTop: `1px solid ${FCT.lineHi}`,
               fontFamily: FCT.mono, fontSize: 10, color: FCT.inkFaint,
             }}>
-              <FctBtn
-                style={{ padding: "3px 12px", fontSize: 10 }}
-                onClick={() => setPage(p => Math.max(1, p - 1))}
-              >
-                ← Prev
-              </FctBtn>
+              <FctBtn style={{ padding: "3px 12px", fontSize: 10 }}
+                onClick={() => setPage(p => Math.max(1, p - 1))}>← Prev</FctBtn>
               <span>
-                Page {currentPage} of {totalPages}
+                Page {page} of {totalPages}
                 &nbsp;·&nbsp;
-                {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, filtered.length)} of {filtered.length}
-                {filtered.length < total ? ` (${total} total)` : ""}
+                {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} of {total}
               </span>
-              <FctBtn
-                style={{ padding: "3px 12px", fontSize: 10 }}
-                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-              >
-                Next →
-              </FctBtn>
+              <FctBtn style={{ padding: "3px 12px", fontSize: 10 }}
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}>Next →</FctBtn>
             </div>
           )}
         </FctPanel>

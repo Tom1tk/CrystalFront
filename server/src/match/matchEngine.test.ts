@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { MatchEngine } from "./matchEngine.js";
-import { UNIT_DEFS, COUNTER_MULTIPLIERS, HEALING, BUILDING_DEFS } from "@crystalfront/shared";
+import { UNIT_DEFS, COUNTER_MODIFIER, HEALING, BUILDING_DEFS } from "@crystalfront/shared";
 import type { MatchState, MatchEntity } from "./types.js";
 
 function findEntity(match: MatchState, type: string, ownerId?: string): MatchEntity | undefined {
@@ -76,33 +76,33 @@ describe("Combat System", () => {
 
   describe("Counter Multipliers", () => {
     it("skirmisher deals 2x damage to gunner", () => {
-      expect(COUNTER_MULTIPLIERS.skirmisher.gunner).toBe(2.0);
+      expect(COUNTER_MODIFIER.skirmisher.gunner).toBe(2.0);
     });
 
     it("skirmisher deals 0.5x damage to bruiser", () => {
-      expect(COUNTER_MULTIPLIERS.skirmisher.bruiser).toBe(0.5);
+      expect(COUNTER_MODIFIER.skirmisher.bruiser).toBe(0.5);
     });
 
     it("gunner deals 2x damage to bruiser", () => {
-      expect(COUNTER_MULTIPLIERS.gunner.bruiser).toBe(2.0);
+      expect(COUNTER_MODIFIER.gunner.bruiser).toBe(2.0);
     });
 
     it("gunner deals 0.5x damage to skirmisher", () => {
-      expect(COUNTER_MULTIPLIERS.gunner.skirmisher).toBe(0.5);
+      expect(COUNTER_MODIFIER.gunner.skirmisher).toBe(0.5);
     });
 
     it("bruiser deals 2x damage to skirmisher", () => {
-      expect(COUNTER_MULTIPLIERS.bruiser.skirmisher).toBe(2.0);
+      expect(COUNTER_MODIFIER.bruiser.skirmisher).toBe(2.0);
     });
 
     it("bruiser deals 0.5x damage to gunner", () => {
-      expect(COUNTER_MULTIPLIERS.bruiser.gunner).toBe(0.5);
+      expect(COUNTER_MODIFIER.bruiser.gunner).toBe(0.5);
     });
 
     it("medic has no counter bonuses", () => {
-      expect(COUNTER_MULTIPLIERS.medic.skirmisher).toBe(1.0);
-      expect(COUNTER_MULTIPLIERS.medic.gunner).toBe(1.0);
-      expect(COUNTER_MULTIPLIERS.medic.bruiser).toBe(1.0);
+      expect(COUNTER_MODIFIER.medic.skirmisher).toBe(1.0);
+      expect(COUNTER_MODIFIER.medic.gunner).toBe(1.0);
+      expect(COUNTER_MODIFIER.medic.bruiser).toBe(1.0);
     });
   });
 

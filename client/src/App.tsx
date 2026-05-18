@@ -100,7 +100,7 @@ function useScreenFlow() {
       ws.createLobby(name);
       setIsHost(true);
     },
-    [ws]
+    [ws.createLobby]
   );
 
   const handleJoin = useCallback(
@@ -108,7 +108,7 @@ function useScreenFlow() {
       ws.joinLobby(code, name);
       setIsHost(false);
     },
-    [ws]
+    [ws.joinLobby]
   );
 
   const handleSoloTest = useCallback(
@@ -116,7 +116,7 @@ function useScreenFlow() {
       ws.startSoloTest(name);
       setIsHost(true);
     },
-    [ws]
+    [ws.startSoloTest]
   );
 
   const handleOpenReplays = useCallback(() => {
@@ -132,7 +132,7 @@ function useScreenFlow() {
       setReplayTotalTicks(totalTicks);
       ws.startReplay(replayId);
     },
-    [ws]
+    [ws.startReplay]
   );
 
   const handleStopReplay = useCallback(() => {
@@ -143,7 +143,7 @@ function useScreenFlow() {
     setPlaybackSpeed(1);
     replayDoneRef.current = false;
     setScreen("replays");
-  }, [ws]);
+  }, [ws.stopReplay, ws.clearMatchState]);
 
   const handleBackFromReplays = useCallback(() => {
     setScreen("menu");
@@ -152,40 +152,40 @@ function useScreenFlow() {
   const handleLeave = useCallback(() => {
     ws.leaveLobby();
     setScreen("menu");
-  }, [ws]);
+  }, [ws.leaveLobby]);
 
   const handleRematch = useCallback(() => {
     ws.clearMatchEnd();
     ws.clearMatchState();
     setScreen("lobby");
-  }, [ws]);
+  }, [ws.clearMatchEnd, ws.clearMatchState]);
 
   const handleExit = useCallback(() => {
     ws.clearMatchEnd();
     ws.clearMatchState();
     ws.leaveLobby();
     setScreen("menu");
-  }, [ws]);
+  }, [ws.clearMatchEnd, ws.clearMatchState, ws.leaveLobby]);
 
   const handleDebugWin = useCallback(
     (_player: "player1" | "player2") => {
       ws.debugWin("self");
     },
-    [ws]
+    [ws.debugWin]
   );
 
   const handleDebugSpawn = useCallback(
     (entityType: string, x: number, y: number, buildingType?: string) => {
       ws.debugSpawn(entityType, x, y, buildingType);
     },
-    [ws]
+    [ws.debugSpawn]
   );
 
   const handleGameCommand = useCallback(
     (command: { type: string; entityId?: string; targetX?: number; targetY?: number; targetEntityId?: string; buildingType?: string }) => {
       ws.sendGameCommand(command as never);
     },
-    [ws]
+    [ws.sendGameCommand]
   );
 
   const getCurrentPlayer = (): Player | null => {
@@ -232,6 +232,7 @@ function useScreenFlow() {
     replayTotalTicks,
     replayBufferRef,
     replayFrame,
+    setReplayFrame,
     playbackSpeed,
     setPlaybackSpeed,
     handleLeave,
@@ -263,6 +264,7 @@ export default function App() {
     replayTotalTicks,
     replayBufferRef,
     replayFrame,
+    setReplayFrame,
     playbackSpeed,
     setPlaybackSpeed,
     handleLeave,
@@ -302,6 +304,7 @@ export default function App() {
           onSetPlaybackSpeed={setPlaybackSpeed}
           replayFrame={replayFrame}
           replayBufferSize={replayBufferRef.current.length}
+          onSeekReplay={setReplayFrame}
         />
       )}
       {screen === "lobby" && lobby && player && (

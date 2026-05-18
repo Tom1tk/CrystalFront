@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import pathLib from "node:path";
 import type { PlayerId, PlayerColor, EntityId } from "@crystalfront/shared";
@@ -18,31 +17,26 @@ import type {
 } from "./types.js";
 import { createMap } from "./map.js";
 import { DEFAULT_CONFIG } from "./types.js";
-import {
-  BUILDING_DEFS,
-  UNIT_DEFS,
-  COUNTER_MULTIPLIERS,
-} from "@crystalfront/shared";
-import {
-  GATHERING,
-  NODES,
-  SIMULATION,
-  HEALING,
-  ECONOMY,
-} from "@crystalfront/shared";
-
-const GATHER_RANGE = GATHERING.range;
-const GATHER_RATE_PER_WORKER = GATHERING.ratePerTick / GATHERING.perWorkerDivisor;
+import { BUILDING_DEFS, UNIT_DEFS, GATHERING, SIMULATION, ECONOMY } from "@crystalfront/shared";
+import { computeVisibility } from "./engine/visibility.js";
+import { processMovement } from "./engine/movement.js";
+import { processCombat } from "./engine/combat.js";
+import { processGathering } from "./engine/gathering.js";
+import { processRepairAndHealing } from "./engine/repair.js";
+import { dist } from "./engine/utils.js";
 import {
   validatePlacement,
   findCrystalByColor,
   type PlacementResult,
 } from "./buildingValidation.js";
 
+const GATHER_RANGE = GATHERING.range;
+
 export class MatchEngine {
   private matches = new Map<string, MatchState>();
   private broadcastCallback: ((matchId: string) => void) | null = null;
   private matchEndCallback: ((matchId: string, winner: PlayerId) => void) | null = null;
+  private nextMatchId = 0;
 
   setBroadcastCallback(cb: (matchId: string) => void): void {
     this.broadcastCallback = cb;
@@ -58,7 +52,7 @@ export class MatchEngine {
     config: MatchConfig = DEFAULT_CONFIG,
     seed?: number
   ): MatchState {
-    const id = randomUUID();
+    const id = `match-${++this.nextMatchId}`;
     const resolvedSeed = seed ?? (Date.now() & 0xffffffff);
     const rng = new Rng(resolvedSeed);
     const idGen = new IdGen();
@@ -391,7 +385,7 @@ if (command.type === "move") {
          entity.moveTarget = { x: clampedX, y: clampedY };
          entity.attackTargetId = undefined;
          entity.healTargetId = undefined;
-         entity.commandedTicks = 5;
+         entity.commandedTicks = 1;
        }
 
        // Clean up gathering assignment when moving
@@ -894,10 +888,9 @@ if (command.type === "gather") {
         const entity = match.entities.get(eid);
         if (!entity || entity.ownerId !== playerId) continue;
         if (entity.type === "building") continue;
-        // Cancel all modes
+        // Path toward own crystal. Keep autoAttackEnabled so units fire while retreating.
         entity.moveTarget = { x: crystal.x, y: crystal.y };
         entity.attackTargetId = undefined;
-        entity.autoAttackEnabled = false;
         entity.healTargetId = undefined;
         // Cancel gathering
         if (entity.gatheringNodeId) {
@@ -1025,16 +1018,16 @@ if (command.type === "gather") {
     match.attackLog = match.attackLog.filter(evt => currentTick - evt.tick < SIMULATION.attackLogRetention);
 
     // Phase 1: Movement
-    this.processMovement(match, 100);
+    processMovement(match, 100);
 
     // Phase 2: Combat
-    const damageLog = this.processCombat(match);
+    const damageLog = processCombat(match);
 
     // Phase 2.5: Post-combat movement (chase/follow initiated this tick)
-    this.processMovement(match, 100);
+    processMovement(match, 100);
 
     // Phase 3: Gathering
-    this.processGathering(match);
+    processGathering(match);
 
     // Phase 3.5: Passive win — first player to hold enough resources at once wins
     for (let i = 0; i < 2; i++) {
@@ -1059,464 +1052,58 @@ if (command.type === "gather") {
     this.processDeaths(match, damageLog);
 
     // Phase 6: Repair & Medic healing
-    this.processRepairAndHealing(match);
+    processRepairAndHealing(match);
 
     // Phase 7: Fog of war — compute visibility per player
-    this.computeVisibility(match);
+    computeVisibility(match);
 
     match.stateTimestamp = Date.now();
     return match;
   }
 
-  /**
-   * Compute fog-of-war visibility for each player.
-   * Each entity has a vision range; any entity within that range is "visible".
-   * Results stored on match.visibilityData keyed by playerId.
-   */
-  private computeVisibility(match: MatchState): void {
-    const allEntities = Array.from(match.entities.values());
-    const visibility = new Map<PlayerId, { entityIds: Set<EntityId>; nodeIds: Set<string> }>();
-
-    for (const p of match.players) {
-      if (p) {
-        visibility.set(p.playerId, { entityIds: new Set(), nodeIds: new Set() });
-      }
-    }
-
-    for (const [playerId, vis] of visibility) {
-      const myEntities = allEntities.filter(
-        (e) =>
-          e.ownerId === playerId &&
-          (e.health > 0 || (e.type === "building" && e.constructionProgress < 100))
-      );
-      // Every player always sees their own living entities (safety guarantee)
-      for (const mine of myEntities) {
-        vis.entityIds.add(mine.id);
-      }
-      for (const src of myEntities) {
-        const vRange = this.getVisionRange(src);
-        const vRangeSq = vRange * vRange;
-        for (const target of allEntities) {
-          if (target.health <= 0) continue;
-          const dx = target.x - src.x;
-          const dy = target.y - src.y;
-          if (dx * dx + dy * dy <= vRangeSq) {
-            vis.entityIds.add(target.id);
-          }
-        }
-        for (const node of match.resourceNodes) {
-          const dx = node.x - src.x;
-          const dy = node.y - src.y;
-          if (dx * dx + dy * dy <= vRangeSq) {
-            vis.nodeIds.add(node.id);
-          }
-        }
-      }
-    }
-
-    match.visibilityData = visibility;
-  }
-
-  /** Get the vision range for an entity based on its type. */
-  private getVisionRange(entity: MatchEntity): number {
-    if (entity.type === "building" && entity.buildingType) {
-      const def = BUILDING_DEFS[entity.buildingType];
-      return def?.visionRange ?? 100;
-    }
-    if (entity.type === "crystal") {
-      return SIMULATION.crystalVisionRange;
-    }
-    const def = UNIT_DEFS[entity.type];
-    return def?.visionRange ?? SIMULATION.defaultVisionRange;
-  }
-
   subStepMovement(matchId: string): void {
     const match = this.matches.get(matchId);
     if (!match || match.phase !== "playing") return;
-    this.processMovement(match, 20);
+    processMovement(match, 20);
   }
 
-  private dist(x1: number, y1: number, x2: number, y2: number): number {
-    const dx = x2 - x1;
-    const dy = y2 - y1;
-    return Math.sqrt(dx * dx + dy * dy);
-  }
 
-  private buildSpatialGrid(entities: MatchEntity[], cellSize: number): Map<string, MatchEntity[]> {
-    const grid = new Map<string, MatchEntity[]>();
-    for (const entity of entities) {
-      const key = `${Math.floor(entity.x / cellSize)},${Math.floor(entity.y / cellSize)}`;
-      if (!grid.has(key)) grid.set(key, []);
-      grid.get(key)!.push(entity);
-    }
-    return grid;
-  }
+  private processConstruction(match: MatchState): void {
+    for (const entity of match.entities.values()) {
+      if (entity.type !== "building") continue;
 
-  private processMovement(match: MatchState, subStepMs: number = 100): void {
-    const entities = Array.from(match.entities.values());
-    const arrivalThreshold = SIMULATION.arrivalThreshold;
-    const stepsPerTick = (100 / subStepMs) || 1;
-
-    for (const entity of entities) {
-      if (entity.type === "crystal" || entity.type === "building") continue;
-      if (!entity.moveTarget) continue;
-
-      const unitDef = UNIT_DEFS[entity.type as keyof typeof UNIT_DEFS];
-      const baseSpeed = unitDef?.speed ?? 2;
-      const speedPerTick =
-        entity.type === "worker"     && match.config.workerSpeed     !== undefined ? match.config.workerSpeed :
-        entity.type === "skirmisher" && match.config.skirmisherSpeed !== undefined ? match.config.skirmisherSpeed :
-        baseSpeed;
-      const moveAmount = Math.min(speedPerTick / stepsPerTick, this.dist(entity.x, entity.y, entity.moveTarget.x, entity.moveTarget.y));
-
-      const dx = entity.moveTarget.x - entity.x;
-      const dy = entity.moveTarget.y - entity.y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-
-      if (distance <= arrivalThreshold) {
-        entity.moveTarget = undefined;
-        continue;
-      }
-
-      entity.x += (dx / distance) * moveAmount;
-      entity.y += (dy / distance) * moveAmount;
-
-      // Clamp to map bounds (prevent units walking off-map)
-      const mapW = match.config.mapWidth;
-      const mapH = match.config.mapHeight;
-      entity.x = Math.max(entity.radius, Math.min(mapW - entity.radius, entity.x));
-      entity.y = Math.max(entity.radius, Math.min(mapH - entity.radius, entity.y));
-
-      const newDistance = this.dist(entity.x, entity.y, entity.moveTarget.x, entity.moveTarget.y);
-      if (newDistance <= arrivalThreshold) {
-        entity.moveTarget = undefined;
-      }
-    }
-
-    // Soft collision with spatial grid (run twice for stability)
-    const mobile = entities.filter(
-      (e) => e.type !== "crystal" && e.type !== "building"
-    );
-    const cellSize = SIMULATION.spatialCellSize;
-    for (let pass = 0; pass < 2; pass++) {
-      const grid = this.buildSpatialGrid(mobile, cellSize);
-      const checked = new Set<string>();
-      for (const entity of mobile) {
-        const cx = Math.floor(entity.x / cellSize);
-        const cy = Math.floor(entity.y / cellSize);
-        for (let ddx = -1; ddx <= 1; ddx++) {
-          for (let ddy = -1; ddy <= 1; ddy++) {
-            const key = `${cx + ddx},${cy + ddy}`;
-            const cell = grid.get(key);
-            if (!cell) continue;
-            for (const other of cell) {
-              if (other.id <= entity.id) continue;
-              if (checked.has(`${entity.id}-${other.id}`)) continue;
-              checked.add(`${entity.id}-${other.id}`);
-              const dx = other.x - entity.x;
-              const dy = other.y - entity.y;
-              const distance = Math.sqrt(dx * dx + dy * dy);
-              const minDist = entity.radius + other.radius;
-              if (distance < minDist && distance > 0) {
-                const push = (minDist - distance) * 0.5;
-                const nx = dx / distance;
-                const ny = dy / distance;
-                entity.x -= nx * push;
-                entity.y -= ny * push;
-                other.x += nx * push;
-                other.y += ny * push;
+      if (entity.constructionProgress < 100) {
+        const def = entity.buildingType ? BUILDING_DEFS[entity.buildingType] : null;
+        if (def && entity.buildWorkerIds && entity.buildWorkerIds.size > 0) {
+          let workersInRange = 0;
+          for (const wid of entity.buildWorkerIds) {
+            const worker = match.entities.get(wid);
+            if (!worker) continue;
+            const d = dist(worker.x, worker.y, entity.x, entity.y);
+            if (d <= GATHER_RANGE) {
+              workersInRange++;
+              if (worker.moveTarget) {
+                const dx = worker.moveTarget.x - entity.x;
+                const dy = worker.moveTarget.y - entity.y;
+                if (Math.sqrt(dx * dx + dy * dy) < 5) worker.moveTarget = undefined;
               }
+            } else {
+              worker.moveTarget = { x: entity.x, y: entity.y };
             }
           }
-        }
-      }
-    }
-  }
 
-  private processCombat(match: MatchState): Map<string, number> {
-    const damageLog = new Map<string, number>();
-    const entities = Array.from(match.entities.values());
+          if (workersInRange > 0) {
+            const progressPerTick = (workersInRange / def.buildTime) * 100;
+            entity.constructionProgress = Math.min(100, entity.constructionProgress + progressPerTick);
 
-    // Auto-attack acquisition: idle combat units find nearest enemy in range
-    for (const entity of entities) {
-      if (!entity.autoAttackEnabled) continue;
-      // Decrement player command cooldown
-      if (entity.commandedTicks !== undefined && entity.commandedTicks > 0) {
-        entity.commandedTicks--;
-      }
-      // Don't auto-acquire while player command is active
-      if (entity.commandedTicks !== undefined && entity.commandedTicks > 0) continue;
-      if (entity.type === "building") {
-        // Turrets: auto-attack if constructed
-        if (entity.constructionProgress < 100) continue;
-      }
-      // Don't auto-acquire if already has a target
-      if (entity.attackTargetId) continue;
-
-      // Find nearest enemy in range
-      let nearestDist = Infinity;
-      let nearestId: string | undefined;
-      for (const other of entities) {
-        if (other.ownerId === entity.ownerId) continue;
-        const range = this.getRange(entity);
-        const d = this.dist(entity.x, entity.y, other.x, other.y);
-        if (d <= range + other.radius && d < nearestDist) {
-          nearestDist = d;
-          nearestId = other.id;
-        }
-      }
-      if (nearestId) {
-        entity.attackTargetId = nearestId;
-      }
-    }
-
-    // Attack chase: units with attackTargetId move toward target if out of range
-    for (const entity of entities) {
-      if (!entity.attackTargetId) continue;
-      if (entity.type === "crystal" || entity.type === "building") continue;
-      const target = match.entities.get(entity.attackTargetId);
-      if (!target) {
-        entity.attackTargetId = undefined;
-        continue;
-      }
-      const range = this.getRange(entity);
-      const d = this.dist(entity.x, entity.y, target.x, target.y);
-      if (d > range + target.radius) {
-        entity.moveTarget = { x: target.x, y: target.y };
-      }
-    }
-
-    // Medic follow behavior: move toward heal target if out of range
-    for (const entity of entities) {
-      if (entity.type !== "medic" || !entity.healTargetId) continue;
-      const target = match.entities.get(entity.healTargetId);
-      if (!target) {
-        entity.healTargetId = undefined;
-        continue;
-      }
-      const healRange = UNIT_DEFS.medic.range;
-      const d = this.dist(entity.x, entity.y, target.x, target.y);
-      if (d > healRange + entity.radius + target.radius) {
-        entity.moveTarget = { x: target.x, y: target.y };
-      } else if (entity.moveTarget) {
-        if (!entity.attackTargetId) {
-          entity.moveTarget = undefined;
-        }
-      }
-    }
-
-    // Resolve attacks - all entities with attackTargetId, regardless of autoAttackEnabled
-    for (const entity of entities) {
-      if (!entity.attackTargetId) continue;
-
-      // Check if target still exists
-      const target = match.entities.get(entity.attackTargetId!);
-      if (!target) {
-        entity.attackTargetId = undefined;
-        continue;
-      }
-
-      // Check range (edge-to-edge: include target radius)
-      const range = this.getRange(entity);
-      const d = this.dist(entity.x, entity.y, target.x, target.y);
-       if (d > range + target.radius) {
-        if (entity.type === "building") {
-          entity.attackTargetId = undefined;
-        }
-        continue;
-      }
-
-      // In range: clear moveTarget so unit stops and holds position to attack
-      if (entity.type !== "building") {
-        entity.moveTarget = undefined;
-      }
-
-      // Check cooldown
-      if (entity.attackCooldown > 0) {
-        entity.attackCooldown--;
-        continue;
-      }
-
-      // Deal damage
-      const baseDamage = this.getDamage(entity, match.config);
-      const multiplier = this.getCounterMultiplier(entity.type, target.type);
-     const finalDamage = Math.round(baseDamage * multiplier);
-
-        const currentDamage = damageLog.get(target.id) ?? 0;
-      damageLog.set(target.id, currentDamage + finalDamage);
-      match.attackLog.push({ attackerId: entity.id, targetId: target.id, damage: finalDamage, tick: match.tick, isHeal: false });
-
-      // Reset cooldown
-      const cooldown = this.getAttackCooldown(entity);
-      entity.attackCooldown = cooldown;
-    }
-
-    return damageLog;
-  }
-
-  private getRange(entity: MatchEntity): number {
-    if (entity.type === "building" && entity.buildingType === "turret") {
-      return BUILDING_DEFS.turret.range ?? 150;
-    }
-    const unitDef = UNIT_DEFS[entity.type as keyof typeof UNIT_DEFS];
-    // Add own radius so melee range is measured from unit edge, not center
-    return (unitDef?.range ?? 20) + entity.radius;
-  }
-
-  private getDamage(entity: MatchEntity, config?: MatchConfig): number {
-    if (entity.type === "building" && entity.buildingType === "turret") {
-      return BUILDING_DEFS.turret.damage ?? 18;
-    }
-    if (entity.type === "skirmisher" && config?.skirmisherDamage !== undefined) {
-      return config.skirmisherDamage;
-    }
-    const unitDef = UNIT_DEFS[entity.type as keyof typeof UNIT_DEFS];
-    return unitDef?.damage ?? 5;
-  }
-
-  private getAttackCooldown(entity: MatchEntity): number {
-    if (entity.type === "building" && entity.buildingType === "turret") {
-      return BUILDING_DEFS.turret.attackCooldown ?? 12;
-    }
-    const unitDef = UNIT_DEFS[entity.type as keyof typeof UNIT_DEFS];
-    return unitDef?.attackCooldown ?? 20;
-  }
-
-  private getCounterMultiplier(attackerType: string, defenderType: string): number {
-    const attackerCounters = COUNTER_MULTIPLIERS[attackerType];
-    if (!attackerCounters) return 1.0;
-    // Turret uses gunner counter multipliers
-    const effectiveAttacker = attackerType === "building" ? "gunner" : attackerType;
-    const effectiveDefender = defenderType === "building" ? "worker" : defenderType;
-    return COUNTER_MULTIPLIERS[effectiveAttacker]?.[effectiveDefender] ?? 1.0;
-  }
-
-  private processGathering(match: MatchState): void {
-    for (const node of match.resourceNodes) {
-      // Skip if no gatherers or node fully depleted (remaining < 1)
-      if (node.gathererSlots.size === 0) continue;
-      if (node.remaining < 1) continue;
-
-      const inRangeWorkers: EntityId[] = [];
-      for (const workerId of node.gathererSlots) {
-        const worker = match.entities.get(workerId);
-        if (!worker) continue;
-
-        const d = this.dist(worker.x, worker.y, node.x, node.y);
-        if (d <= GATHER_RANGE) {
-          inRangeWorkers.push(workerId);
-          if (worker.moveTarget) {
-            const dx = worker.moveTarget.x - node.x;
-            const dy = worker.moveTarget.y - node.y;
-            if (Math.sqrt(dx * dx + dy * dy) < 5) {
-              worker.moveTarget = undefined;
-            }
-          }
-        } else {
-          worker.moveTarget = { x: node.x, y: node.y };
-        }
-      }
-
-      const gatherCount = inRangeWorkers.length;
-      if (gatherCount === 0) continue;
-
-      const totalGather = gatherCount * GATHER_RATE_PER_WORKER;
-      node.accumulatedGather = (node.accumulatedGather ?? 0) + totalGather;
-      const wholeResources = Math.floor(node.accumulatedGather);
-
-      if (wholeResources > 0) {
-        const perWorker = wholeResources / Math.max(inRangeWorkers.length, 1);
-        const gatheredByPlayer = new Map<string, number>();
-        for (const workerId of inRangeWorkers) {
-          const worker = match.entities.get(workerId);
-          if (worker) {
-            gatheredByPlayer.set(
-              worker.ownerId,
-              (gatheredByPlayer.get(worker.ownerId) ?? 0) + perWorker
-            );
-          }
-        }
-
-        let distributed = 0;
-        for (const [ownerId, count] of gatheredByPlayer) {
-          const rounded = Math.round(count);
-          const capped = Math.min(rounded, wholeResources - distributed);
-          if (capped <= 0) continue;
-          const playerIdx = match.players.findIndex((p) => p?.playerId === ownerId);
-          if (playerIdx >= 0 && match.economy[playerIdx]) {
-            match.economy[playerIdx]!.resources += capped;
-            match.economy[playerIdx]!.lifetimeResources += capped;
-            distributed += capped;
-          }
-        }
-
-        node.remaining = Math.max(0, node.remaining - distributed);
-        node.accumulatedGather -= distributed;
-      }
-
-      if (node.remaining <= 0) {
-        // Workers stay assigned — they harvest regen as it refills
-      }
-    }
-
-    // Passive refresh: all nodes slowly replenish regardless of assignment
-    for (const node of match.resourceNodes) {
-      if (node.remaining < node.capacity) {
-        node.remaining = Math.min(node.capacity, node.remaining + NODES.regenPerTick);
-      }
-    }
-  }
-
-private processConstruction(match: MatchState): void {
-     for (const entity of match.entities.values()) {
-       if (entity.type !== "building") continue;
-
-       // If under construction, advance progress based on workers in range
-       if (entity.constructionProgress < 100) {
-         const def = entity.buildingType ? BUILDING_DEFS[entity.buildingType] : null;
-         if (def && entity.buildWorkerIds && entity.buildWorkerIds.size > 0) {
-           let workersInRange = 0;
-           for (const wid of entity.buildWorkerIds) {
-             const worker = match.entities.get(wid);
-             if (!worker) continue;
-             const d = this.dist(worker.x, worker.y, entity.x, entity.y);
-             if (d <= GATHER_RANGE) {
-               workersInRange++;
-               // Stop worker at building edge
-               if (worker.moveTarget) {
-                 const dx = worker.moveTarget.x - entity.x;
-                 const dy = worker.moveTarget.y - entity.y;
-                 if (Math.sqrt(dx * dx + dy * dy) < 5) {
-                   worker.moveTarget = undefined;
-                 }
-               }
-             } else {
-               // Move worker toward building
-               worker.moveTarget = { x: entity.x, y: entity.y };
-             }
-           }
-
-           if (workersInRange > 0) {
-             const progressPerTick = (workersInRange / def.buildTime) * 100;
-             entity.constructionProgress = Math.min(
-               100,
-               entity.constructionProgress + progressPerTick
-             );
-
-             if (entity.constructionProgress >= 100) {
-               entity.health = def.health;
-               entity.maxHealth = def.health;
-               // Free workers
-               for (const wid of entity.buildWorkerIds) {
-                 const worker = match.entities.get(wid);
-                 if (worker) {
-                   worker.buildTargetId = undefined;
-                   worker.moveTarget = undefined;
-                 }
-               }
-               entity.buildWorkerIds.clear();
-
-              // If supply depot, increase max supply upon completion
+            if (entity.constructionProgress >= 100) {
+              entity.health = def.health;
+              entity.maxHealth = def.health;
+              for (const wid of entity.buildWorkerIds) {
+                const worker = match.entities.get(wid);
+                if (worker) { worker.buildTargetId = undefined; worker.moveTarget = undefined; }
+              }
+              entity.buildWorkerIds.clear();
               if (entity.buildingType === "supply_depot") {
                 const playerIdx = match.players.findIndex((p) => p?.playerId === entity.ownerId);
                 if (playerIdx >= 0 && match.economy[playerIdx]) {
@@ -1524,99 +1111,31 @@ private processConstruction(match: MatchState): void {
                 }
               }
             }
-           }
-         }
-       }
-
-       // Process production queue
-       if (entity.constructionProgress >= 100 && entity.productionQueue.length > 0) {
-         const item = entity.productionQueue[0];
-         if (item) {
-           item.remainingTicks -= 1;
-
-           if (item.remainingTicks <= 0) {
-             const unitDef = UNIT_DEFS[item.unitType];
-             if (unitDef) {
-               const spawn = this.spawnOutside(match.rng, entity, unitDef.radius);
-               const unit = this.createEntity(
-                 match.idGen,
-                 item.unitType,
-                 entity.ownerId,
-                 spawn.x,
-                 spawn.y,
-                 unitDef.health,
-                 unitDef.radius,
-                 unitDef.color
-               );
-               // Apply rally point if set
-               if (entity.rallyPoint) {
-                 unit.moveTarget = { ...entity.rallyPoint };
-               }
-               match.entities.set(unit.id, unit);
-               // Increment supply for the spawned unit
-               const spawnPIdx = match.players.findIndex((p) => p?.playerId === entity.ownerId);
-               if (spawnPIdx >= 0 && match.economy[spawnPIdx]) {
-                 match.economy[spawnPIdx]!.supply += item.supplyCost;
-               }
-               entity.productionQueue.shift();
-             }
-           }
-         }
-       }
-     }
-   }
-
-  private processRepairAndHealing(match: MatchState): void {
-    for (const entity of match.entities.values()) {
-      // Process building repair
-      if (
-        entity.type === "building" &&
-        entity.health < entity.maxHealth &&
-        entity.repairTargetId
-      ) {
-        const worker = match.entities.get(entity.repairTargetId);
-        if (worker) {
-          const playerIdx = match.players.findIndex((p) => p?.playerId === entity.ownerId);
-          if (playerIdx >= 0 && match.economy[playerIdx]) {
-            const economy = match.economy[playerIdx]!;
-            const hpToRestore = HEALING.repairHpPerTick;
-            const cost = hpToRestore * HEALING.repairCostPerHp;
-
-            if (economy.resources >= cost) {
-              economy.resources -= cost;
-              entity.health = Math.min(
-                entity.maxHealth,
-                entity.health + hpToRestore
-              );
-
-              if (entity.health >= entity.maxHealth) {
-                entity.repairTargetId = undefined;
-              }
-            }
           }
         }
       }
 
-      // Process Medic healing
-      if (entity.type === "medic" && entity.healTargetId) {
-        const target = match.entities.get(entity.healTargetId);
-        if (!target || target.ownerId !== entity.ownerId) {
-          entity.healTargetId = undefined;
-          continue;
-        }
-        if (target.type === "crystal" || target.type === "building") {
-          entity.healTargetId = undefined;
-          continue;
-        }
-      const healRange = this.getRange(entity);
-        const d = this.dist(entity.x, entity.y, target.x, target.y);
-        if (d <= healRange + target.radius && target.health < target.maxHealth) {
-          const healed = Math.min(
-            target.maxHealth,
-            target.health + HEALING.healRatePerTick
-          );
-          target.health = healed;
-          match.attackLog.push({ attackerId: entity.id, targetId: target.id, damage: HEALING.healRatePerTick, tick: match.tick, isHeal: true });
+      if (entity.constructionProgress >= 100 && entity.productionQueue.length > 0) {
+        const item = entity.productionQueue[0];
+        if (item) {
+          item.remainingTicks -= 1;
+          if (item.remainingTicks <= 0) {
+            const unitDef = UNIT_DEFS[item.unitType];
+            if (unitDef) {
+              const spawn = this.spawnOutside(match.rng, entity, unitDef.radius);
+              const unit = this.createEntity(
+                match.idGen, item.unitType, entity.ownerId,
+                spawn.x, spawn.y, unitDef.health, unitDef.radius, unitDef.color,
+              );
+              if (entity.rallyPoint) unit.moveTarget = { ...entity.rallyPoint };
+              match.entities.set(unit.id, unit);
+              const spawnPIdx = match.players.findIndex((p) => p?.playerId === entity.ownerId);
+              if (spawnPIdx >= 0 && match.economy[spawnPIdx]) {
+                match.economy[spawnPIdx]!.supply += item.supplyCost;
+              }
+              entity.productionQueue.shift();
+            }
+          }
         }
       }
     }

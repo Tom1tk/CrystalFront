@@ -15,6 +15,18 @@ export interface GlobalFeatures {
   oppResourcesWinFrac: number;     // (0 if not visible)
   ownLifetimeResourcesFrac: number; // lifetime gathered / (passiveWinThreshold*2) — for reward signal
   oppLifetimeResourcesFrac: number; // (0 if unknown)
+  // Enemy unit composition (visible only) — enables adaptive counter-play
+  enemyWorkerCount: number;        // visible enemy workers / 10
+  enemySkirmisherCount: number;    // visible enemy skirmishers / 10
+  enemyBruiserCount: number;       // visible enemy bruisers / 10
+  enemyBarracksCount: number;      // visible enemy completed barracks / 4
+  enemyTurretCount: number;        // visible enemy completed turrets / 4
+  enemyForwardUnitFrac: number;    // fraction of visible enemy supply that is past midfield
+  // Threat geometry (v0.1.57) — derived features for tactical awareness
+  nearestEnemyToCrystalDistNorm: number; // dist from own crystal to nearest visible enemy / MAP.width
+  ownCombatInOwnHalf: number;      // own combat units in own half / 10
+  enemyCombatInOwnHalf: number;    // visible enemy combat in own half / 10
+  totalVisibleEnemyCombat: number; // total visible enemy combat units / 10
 }
 
 export interface EntityFeature {
@@ -30,6 +42,7 @@ export interface EntityFeature {
   isGathering: boolean;
   isBuilding: boolean;
   attackCooldownNorm: number;
+  inAttackRange: boolean;     // v0.1.57: enemy within this unit's weapon range
 }
 
 export interface NodeFeature {
@@ -57,6 +70,8 @@ export type MacroActionType =
   | "train_unit"
   | "build"
   | "attack_move"
+  | "attack_targeted"
+  | "hold_position"
   | "retreat"
   | "assign_workers"
   | "set_rally";
@@ -69,9 +84,11 @@ export interface MacroAction {
   buildingType?: "barracks" | "foundry" | "supply_depot" | "turret";
   xZone?: "near_crystal" | "mid_base" | "forward";
   yZone?: "top" | "middle" | "bottom";
-  // attack_move / retreat
+  // attack_move / retreat / hold_position
   group?: "all_combat" | "skirmishers" | "gunners" | "bruisers" | "all_workers";
-  targetZone?: "enemy_crystal" | "midfield" | "contested_node";
+  targetZone?: "enemy_crystal" | "midfield" | "contested_node" | "enemy_army" | "defend_crystal";
+  // attack_targeted
+  targetType?: "nearest_threat" | "nearest_enemy" | "focus_weakest";
   // assign_workers
   nodeChoice?: "nearest_safe" | "nearest_contested" | "richest_visible";
   workerCount?: 1 | 2 | 3 | "all_idle";
