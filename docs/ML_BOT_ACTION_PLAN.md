@@ -12,6 +12,27 @@ A running log of meaningful milestones, decisions, and pivots. Most recent first
 
 ---
 
+### 2026-05-18 — v0.1.75-ML: Phase C v8 — oscillation analysis + passive_bot diagnosis
+
+**Training status (PID 522611, `/tmp/train_v75.log`):**
+```
+update=  8 | win_rate=0.77 | ep_len=3000 | ep_rew= 31 | bld=34% trn=0%
+update= 15 | win_rate=0.37 | ep_len=3000 | ep_rew= 35 | bld=51% trn=0%
+update= 21 | win_rate=0.67 | ep_len=1185 | ep_rew=104 | bld=37% trn=0%
+```
+Same ~12-update oscillation cycle as v74. ent_coef=0.03 did not stop the V(s) lag cycle.
+
+**Passive_bot geometry diagnosis:** Ran a test match — passive_bot DOES build a barracks at (900, 380) and trains 2 skirmishers with autoAttackEnabled=true. However, the skirmishers sit at (871, 359) and (866, 391), offset in y from the blue workers' approach vector (y≈300). Workers walking at y=300 toward the crystal at (900, 300) may slip past the skirmishers (60–90px offset in y) without triggering auto-attack. This partly explains wins with trn=0%.
+
+**Root of oscillation (V(s) lag):** Policy at peak had A(train_unit) > 0, wins at 86%. After PPO update, V(s) rises to ~106. Next batch: A(train_unit) = R_train_onward − V(s) ≈ 40 − 106 = **−66** (negative). Policy pushes away from train_unit. trn→0%, win rate drops. V(s) corrects to ~35. A(train_unit) becomes positive again. Cycle repeats every ~12 updates.
+
+**Next steps to break the cycle:**
+1. Fix passive_bot skirmisher positioning to block the y=250–350 worker corridor
+2. Reduce `hasTrainedCombatUnit` back to +15 — the +50 spike is causing V(s) overshoot
+3. Per-unit reward instead of one-shot: +2.0 every time a NEW combat unit appears (capped 5/ep)
+
+---
+
 ### 2026-05-18 — v0.1.75-ML: Phase C v8 — locking in the winning policy
 
 **Status:** Running (PID 522611, `/tmp/train_v75.log`)
@@ -237,39 +258,39 @@ Original ML_BOT_ACTION_PLAN.md written. 6-phase plan: Phase 0 (engine refactors)
 
 ---
 
-### 2026-05-14 — Phases 0–3 implemented
+### 2026-05-14 — Phases 0–3 implemented (status as of 2026-05-18)
 
-**Phase 0 — Engine refactors (partial):**
+**Phase 0 — Engine refactors:**
 - ✅ `Rng` class (mulberry32, seedable) — `server/src/match/engine/rng.ts`
 - ✅ `IdGen` class (monotonic counter) — `server/src/match/engine/idGen.ts`
 - ✅ `LiveMatchRunner` split from `MatchEngine` — `server/src/match/liveMatchRunner.ts`
 - ✅ `commandLog` added to match state (replay system foundation)
 - ✅ `replayRunner.ts` for server-side replay playback
-- ⚠️ `matchEngine.ts` still ~1953 lines (engine/combat.ts etc. not yet extracted)
-- ⚠️ One `randomUUID()` call remains in matchEngine.ts (IdGen not fully plumbed everywhere)
-- ❌ Determinism test not added to CI (seed→hash equality assertion)
-- ❌ Legacy aliases in `gameBalance.ts` not removed
-- ❌ Duplicate type definitions (`BuildingDef`/`UnitDef`) not resolved
+- ✅ `matchEngine.ts` split: engine/combat.ts, gathering.ts, movement.ts, repair.ts, utils.ts, visibility.ts
+- ✅ Determinism test added: same seed × 500 ticks → identical state hash (391 tests passing)
+- ✅ `randomUUID()` removed — IdGen used throughout
+- ❌ Legacy aliases in `gameBalance.ts` not removed (low priority)
+- ❌ Duplicate type definitions not resolved (low priority)
 
 **Phase 1 — Headless + scripted bots (complete + exceeded):**
 - ✅ `headless/` workspace, `runMatch.ts`, CLI tool
 - ✅ `observation.ts`, `actionSpace.ts`, `legalActions.ts`, `actionIndex.ts`
-- ✅ `IdleBot`, `RushBot`, `TurtleBot`, `MacroBot`, `HeavyBot`
-- ✅ `WeakRushBot`, `MediumRushBot`, `PassiveBot` (added during training campaign)
-- ✅ `BotPlayer` in-process driver (live game plays vs scripted bot)
-- ✅ Difficulty selector in lobby UI (easy/medium/hard)
+- ✅ `IdleBot`, `RushBot`, `TurtleBot`, `MacroBot`, `HeavyBot`, `WeakRushBot`, `MediumRushBot`, `PassiveBot`
+- ✅ `BotPlayer` in-process driver; difficulty selector in lobby UI
 - ✅ Replay saving (seed + command log → JSON)
-- ⚠️ Replay viewer in client is basic — no scrub/pause controls beyond play speed
+- ✅ Server-side pagination in replay browser (30/page, filter/sort to `/api/replays`)
+- ✅ Scrub bar fixed to show full game length
+- ✅ Training replays suppressed (`--save_replay_every 0`)
+- ⚠️ No speed selector or jump-to-event in replay viewer
 
 **Phase 2 — Specs (complete):**
-- ✅ `/root/CRYSTALFRONT_OBS_SPEC.md`
-- ✅ `/root/CRYSTALFRONT_ACTION_SPEC.md`
-- ✅ `/root/CRYSTALFRONT_REWARD_SPEC.md`
-- ✅ 388 passing tests covering action space, observation, legal masks, win conditions
+- ✅ `docs/CRYSTALFRONT_OBS_SPEC.md`, `docs/CRYSTALFRONT_ACTION_SPEC.md`, `docs/CRYSTALFRONT_REWARD_SPEC.md`
+- ✅ 391 passing tests (added determinism test)
+- ⚠️ Reward spec may lag behind stdioRunner.ts (source of truth)
 
 **Phase 3 — Python training harness (complete):**
 - ✅ `training/env/crystalfront_env.py` (Gymnasium wrapper, 60 parallel Node sims)
-- ✅ `training/ppo/train.py` (CleanRL-style PPO, TensorBoard, milestone tracking)
+- ✅ `training/ppo/train.py` (CleanRL-style PPO, TensorBoard, action histograms, checkpoint save/load)
 - ✅ `training/ppo/policy.py` (Set-transformer, entity attention, global concat, legal-action masking)
 - ✅ ROCm/CUDA GPU training confirmed working
 
@@ -469,17 +490,16 @@ Each phase has a clear definition of done. Don't move to the next phase until th
 
 **Estimated effort:** 2–3 days of focused work.
 
-**Status (2026-05-17):**
-- ✅ Tasks 1–4 (Rng, IdGen, LiveMatchRunner split, commandLog)
-- ✅ Task 9 (commandLog in match state)
-- ✅ Task 10 (resource node symmetry — was already correct)
-- ⚠️ Task 5 (matchEngine still ~1953 lines; only rng/idGen extracted to engine/)
-- ⚠️ Task 6 (some O(n) lookups fixed, not all)
-- ❌ Task 7 (duplicate types not resolved)
-- ❌ Task 8 (legacy aliases not removed)
-- ❌ Determinism CI test not added
+**Status (2026-05-18): ✅ Mostly complete**
+- ✅ Tasks 1–4, 9, 10 (Rng, IdGen, LiveMatchRunner, commandLog, node symmetry)
+- ✅ Task 5: matchEngine.ts split into engine/{combat,gathering,movement,repair,utils,visibility}.ts
+- ✅ Determinism test added: same seed × 500 ticks → identical state hash (391 tests passing)
+- ✅ randomUUID() removed — IdGen used throughout match lifecycle
+- ⚠️ Task 6 (O(n) lookups — partially addressed, not fully audited)
+- ❌ Task 7 (duplicate types — low priority)
+- ❌ Task 8 (legacy aliases — low priority)
 
-**Outstanding from Phase 0:** The engine works correctly for training (determinism via Rng is done, the key blocker). Remaining tasks are code-quality cleanup that can be done any time without blocking training. Recommend deferring until a competent policy is locked in.
+**Outstanding:** Only cleanup tasks remain. Engine is fit for training.
 
 ---
 
@@ -517,13 +537,15 @@ Each phase has a clear definition of done. Don't move to the next phase until th
 
 **Estimated effort:** 1 week.
 
-**Status (2026-05-17): ✅ Complete (exceeded plan)**
+**Status (2026-05-18): ✅ Complete + exceeded plan**
 - ✅ All tasks 1–9 done
 - ✅ 8 scripted bots (IdleBot, RushBot, TurtleBot, MacroBot, HeavyBot, WeakRushBot, MediumRushBot, PassiveBot)
 - ✅ Replay saving (seed + command log → JSON, ~20–50 KB/match as planned)
 - ✅ BotPlayer in-process driver wired into live server; difficulty selector in lobby UI
-- ✅ `cli.ts` runs in <1 second
-- ⚠️ Replay playback in client exists but controls are basic (play/pause, no scrubbing to specific tick, no "jump to event")
+- ✅ Server-side replay pagination (30/page; was fetching all replays on every render)
+- ✅ Scrub bar fixed to represent full game length (not just buffered portion)
+- ✅ Training replays suppressed by default (`--save_replay_every 0`)
+- ⚠️ No speed selector or jump-to-event controls
 
 ---
 
@@ -615,11 +637,10 @@ Each phase has a clear definition of done. Don't move to the next phase until th
 
 **Estimated effort:** 4–5 days.
 
-**Status (2026-05-17): ✅ Complete**
-- ✅ `/root/CRYSTALFRONT_OBS_SPEC.md` — observation spec (GLOBAL_DIM=22, ENTITY_DIM=12)
-- ✅ `/root/CRYSTALFRONT_ACTION_SPEC.md` — action space spec (58 discrete actions)
-- ✅ `/root/CRYSTALFRONT_REWARD_SPEC.md` — reward shaping spec (now v0.1.60-ML version)
-- ✅ 388 tests passing, covering legal actions, observations, win conditions
+**Status (2026-05-18): ✅ Complete**
+- ✅ `docs/CRYSTALFRONT_OBS_SPEC.md`, `docs/CRYSTALFRONT_ACTION_SPEC.md`, `docs/CRYSTALFRONT_REWARD_SPEC.md`
+- ✅ 391 tests passing (added determinism test)
+- ⚠️ Reward spec may lag stdioRunner.ts — source of truth is the code
 
 ---
 
@@ -650,14 +671,13 @@ Each phase has a clear definition of done. Don't move to the next phase until th
 
 **Estimated effort:** 2 weeks. This is the hardest phase if you've never done RL before.
 
-**Status (2026-05-17): ✅ Complete**
+**Status (2026-05-18): ✅ Complete**
 - ✅ `training/env/crystalfront_env.py` — Gymnasium wrapper, 60 parallel Node sims
-- ✅ `training/ppo/train.py` — CleanRL PPO with TensorBoard, milestone logging, action histograms
+- ✅ `training/ppo/train.py` — CleanRL PPO, TensorBoard, action histograms, checkpoint save/load, `--save_replay_every`
 - ✅ `training/ppo/policy.py` — Set-transformer over entity list, global concat, legal-action masking
 - ✅ GPU training working (ROCm/CUDA)
-- ✅ Win rate vs IdleBot reached ~100% early in training (pre-v0.1.56)
-- ✅ 60M+ steps of training completed across v0.1.43→v0.1.60
-- ⚠️ Currently stuck at 0% win rate vs combat opponents (the ongoing ML challenge — see diary)
+- ✅ 0% win rate plateau broken — Phase A win_rate=1.00 (v0.1.65-ML), Phase B win_rate=1.00 (v0.1.67-ML)
+- 🔄 Phase C (full build chain) oscillating 37-77% win rate — see diary for diagnosis
 
 ---
 
@@ -776,15 +796,15 @@ Each phase has a clear definition of done. Don't move to the next phase until th
 
 **Estimated effort:** 3–4 days.
 
-**Status (2026-05-17): ⚠️ Infrastructure half-done**
+**Status (2026-05-18): ⚠️ Infrastructure half-done — blocked on Phase 4**
 - ✅ `BotPlayer` in-process driver (`server/src/match/botPlayer.ts`) — takes any `Agent`, calls `.tick()` each game tick
 - ✅ Difficulty selector in lobby UI (easy/medium/hard) wired into `START_SOLO_TEST`
 - ✅ Easy/Medium/Hard currently serve scripted bots (IdleBot / MacroBot / RushBot)
-- ❌ `training/eval/export_onnx.py` — ONNX export script not written
+- ❌ `training/eval/export_onnx.py` — not written
 - ❌ ONNX policy loader in Node (`onnxruntime-node`) not implemented
-- ❌ Trained policy cannot yet be used as the hard bot; difficulty tiers are still all-scripted
+- ❌ Trained policy cannot yet serve as the hard bot; all difficulty tiers are scripted
 
-**What remains:** Once a competent policy exists (~Phase 4 done), ONNX export + a small Node loader wires directly into the existing `BotPlayer`. Estimated 2–3 days when ready.
+**What remains:** Once Phase C converges (stable >70% vs passive_bot), ONNX export + Node loader is ~2 days. Not worth starting until a policy worth shipping exists.
 
 ---
 
