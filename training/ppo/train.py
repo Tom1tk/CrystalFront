@@ -531,6 +531,7 @@ def train(cfg: Config) -> None:
                         pct_bld     = int(100 * action_counts[6:18].sum()  / total_acts_log)
                         pct_trn     = int(100 * (action_counts[1] + action_counts[2:6].sum()) / total_acts_log)
                         pct_noop    = int(100 * action_counts[0] / total_acts_log)
+                        pct_wkr_mv  = int(100 * action_counts[66:71].sum() / total_acts_log)
                         no_pres_pct = int(100 * warn_no_pressure_window / window_episodes)
                         ecd_mean    = int(sum(enemy_crystal_dmg_pct_list) / len(enemy_crystal_dmg_pct_list)) if enemy_crystal_dmg_pct_list else 0
                         print(
@@ -538,7 +539,7 @@ def train(cfg: Config) -> None:
                             f"win_rate={win_rate:.2f} ({wins_last_window}/{window_episodes}) | "
                             f"cbt={combat_win_rate:.2f} tmt={timeout_rate_log:.2f} | "
                             f"ep_len={episode_lengths[i]:4d} | ep_rew={episode_rewards[i]:.2f} | "
-                            f"atk_mv={pct_atk_mv}% tgt={pct_atk_tgt}% bld={pct_bld}% trn={pct_trn}% noop={pct_noop}% | "
+                            f"atk_mv={pct_atk_mv}% tgt={pct_atk_tgt}% bld={pct_bld}% trn={pct_trn}% wkr_mv={pct_wkr_mv}% noop={pct_noop}% | "
                             f"crys_dmg={ecd_mean}% no_pres={no_pres_pct}%",
                             flush=True
                         )
@@ -700,6 +701,7 @@ def train(cfg: Config) -> None:
         writer.add_scalar("actions/pct_attack_move_new",action_counts[50:58].sum()  / total_acts, global_step)
         writer.add_scalar("actions/pct_attack_targeted_new", action_counts[58:66].sum() / total_acts, global_step)
         writer.add_scalar("actions/pct_assign_workers", action_counts[34:37].sum()  / total_acts, global_step)
+        writer.add_scalar("actions/pct_worker_move",    action_counts[66:71].sum()  / total_acts, global_step)
 
         # ── checkpoint ────────────────────────────────────────────────────────
         if update % cfg.save_interval == 0:

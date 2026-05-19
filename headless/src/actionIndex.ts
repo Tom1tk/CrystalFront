@@ -15,6 +15,11 @@
  *     spread_fire: distribute group 1:1 across visible enemies
  *   Total: 58 → 66 actions
  *
+ * v0.2.4-ML changes:
+ *   + attack_move × all_workers × 5 zones = 5 (indices 66-70)
+ *     Allows workers to move freely between map zones (scout/reposition)
+ *   Total: 66 → 71 actions
+ *
  * The order here is fixed — never reorder without bumping the spec version.
  */
 import type { MacroAction } from "./types.js";
@@ -28,6 +33,7 @@ const NEW_ZONES     = ["enemy_army", "defend_crystal"] as const;
 const TARGET_TYPES      = ["nearest_threat", "nearest_enemy", "focus_weakest"] as const;
 const NEW_TARGET_TYPES  = ["targeting_friend", "spread_fire"] as const;
 const NODE_CHOICES  = ["nearest_safe", "nearest_contested", "richest_visible"] as const;
+const ALL_ZONES     = ["enemy_crystal", "midfield", "contested_node", "enemy_army", "defend_crystal"] as const;
 
 function buildAllActions(): MacroAction[] {
   const actions: MacroAction[] = [];
@@ -91,11 +97,16 @@ function buildAllActions(): MacroAction[] {
     }
   }
 
+  // 66–70: attack_move × all_workers × 5 zones = 5  [v0.2.4-ML]
+  for (const targetZone of ALL_ZONES) {
+    actions.push({ type: "attack_move", group: "all_workers", targetZone });
+  }
+
   return actions;
 }
 
 export const ALL_ACTIONS: ReadonlyArray<MacroAction> = buildAllActions();
-export const ACTION_SPACE_SIZE = ALL_ACTIONS.length;  // 66
+export const ACTION_SPACE_SIZE = ALL_ACTIONS.length;  // 71
 
 /**
  * Convert a MacroAction to its canonical integer index.
