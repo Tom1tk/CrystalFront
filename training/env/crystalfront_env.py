@@ -11,9 +11,9 @@ Observation space: Dict with:
   nodes       (MAX_NODES,5)     -- per-node features
   node_mask   (MAX_NODES,)      -- True where slot is occupied
 
-Action space: Discrete(58) -- see headless/src/actionIndex.ts (v0.1.57: 37→58)
+Action space: Discrete(66) -- see headless/src/actionIndex.ts (v0.2.3-ML: 58→66)
 
-Legal mask is returned in info["legal_mask"] (bool[58]).  The policy should
+Legal mask is returned in info["legal_mask"] (bool[66]).  The policy should
 zero out illegal logits before sampling.
 """
 
@@ -34,7 +34,7 @@ ENTITY_DIM    = 12   # raw features per entity (v0.1.57: +inAttackRange)
 NODE_DIM      = 5
 MAX_ENTITIES  = 64
 MAX_NODES     = 8
-ACTION_SPACE_SIZE = 58  # v0.1.57: 37→58 (targeted attacks, hold_position, dynamic zones)
+ACTION_SPACE_SIZE = 66  # v0.2.3-ML: 58→66 (targeting_friend, spread_fire × 4 groups)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TSX_BIN   = str(REPO_ROOT / "node_modules/.bin/tsx")

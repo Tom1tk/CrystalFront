@@ -71,16 +71,34 @@ export function expandMacroAction(
     }
 
     case "attack_targeted": {
-      // Emit real targeted `attack` commands — the core bug fix.
-      // Each unit in the group gets assigned a specific enemy entity as its attack target.
       const group = getUnitGroup(match, playerId, action.group ?? "all_combat");
       if (group.length === 0) return [];
       const visibleEnemies = getVisibleEnemies(match, playerId, visibleIds);
       if (visibleEnemies.length === 0) return [];
 
       const cmds: Record<string, unknown>[] = [];
+      const targetType = action.targetType ?? "nearest_enemy";
+
+      if (targetType === "spread_fire") {
+        // Distribute group 1:1 across visible enemies — each unit claims the nearest unclaimed enemy.
+        const enemyCombat = visibleEnemies.filter(e =>
+          ["skirmisher", "gunner", "bruiser", "medic"].includes(e.type)
+        );
+        const pool = enemyCombat.length > 0 ? [...enemyCombat] : [...visibleEnemies];
+        const claimed = new Set<string>();
+        for (const unit of group) {
+          const available = pool.filter(e => !claimed.has(e.id));
+          const candidates = available.length > 0 ? available : pool;
+          const target = candidates.slice().sort((a, b) => dist2(a, unit) - dist2(b, unit))[0];
+          if (!target) continue;
+          claimed.add(target.id);
+          cmds.push({ type: "attack", entityId: unit.id, targetEntityId: target.id });
+        }
+        return cmds;
+      }
+
       for (const unit of group) {
-        const target = resolveAttackTarget(unit, visibleEnemies, action.targetType ?? "nearest_enemy", playerColor, match);
+        const target = resolveAttackTarget(unit, visibleEnemies, targetType, playerColor, match);
         if (!target) continue;
         cmds.push({ type: "attack", entityId: unit.id, targetEntityId: target.id });
       }
@@ -251,6 +269,16 @@ function resolveAttackTarget(
     })[0];
   }
 
+  if (targetType === "targeting_friend") {
+    // Find enemies whose current attack target is a friendly unit or building.
+    const ownIds = new Set(
+      [...match.entities.values()].filter(e => e.ownerId === playerId).map(e => e.id)
+    );
+    const attackers = enemyCombat.filter(e => e.attackTargetId && ownIds.has(e.attackTargetId));
+    const pool = attackers.length > 0 ? attackers : enemyCombat.length > 0 ? enemyCombat : visibleEnemies;
+    return pool.slice().sort((a, b) => dist2(a, unit) - dist2(b, unit))[0];
+  }
+
   return visibleEnemies[0];
 }
 
@@ -368,8 +396,8 @@ function resolveTargetZone(
       const cy = enemyCombat.reduce((s, e) => s + e.y, 0) / enemyCombat.length;
       return { x: cx, y: cy };
     }
-    // Fall back to midfield
-    return { x: mid, y: MAP.height / 2 };
+    // Fall back to enemy crystal
+    return { x: isBlue ? MAP.width - 100 : 100, y: MAP.height / 2 };
   }
 
   if (zone === "defend_crystal") {

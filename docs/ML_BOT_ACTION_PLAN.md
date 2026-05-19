@@ -1,12 +1,195 @@
 # Crystal Front — ML Bot Action Plan
 
 **Branch:** `CrystalFront-ML`
-**Status:** Active training — Phase C curriculum (0.1.75-ML, full build chain vs passive_bot)
-**Last updated:** 2026-05-18
+**Status:** Active training — Phase 0 curriculum (v0.2.3-ML, IdleBot, PID 671281, fresh start)
+**Last updated:** 2026-05-19
 
 ---
 
 ## Development Diary
+
+### 2026-05-18 — v0.2.0-ML: Major reset — course-corrected reward function, Phase 0 begins
+
+**Version bump rationale:** Fresh start to reflect the complete reward function overhaul. Previous versions (0.1.x-ML) used fundamentally broken reward shaping — a +50 first_combat_unit spike that caused V(s) oscillation, passive army-ownership trickles that rewarded doing nothing, and ±30 terminal rewards that could be offset by accumulated shaping. All now corrected.
+
+**Key reward function changes (vs 0.1.75-ML):**
+- Terminal rewards: ±30 → **±100** (combat win / all losses)
+- Shaping clamp: none → **clamp(total_shaping, −20, +20)** at episode end
+- `first_combat_unit` milestone: +50 → **+2** (was causing V(s) overshoot)
+- Standing force trickle (+0.005×army): **removed** (passive ownership reward)
+- Crystal damage per HP: +0.005 → **+0.01** (doubled)
+- Own crystal damage penalty: −0.002 → **−0.003**
+- Barracks-idle trickle: −0.015 → **−0.003** (was too punitive before barracks economy)
+- New milestones: army reaches 3 units (+2.0), enemy quarter entry (+3.0)
+- Crystal depth milestones: +1/+2/+5 → **+3/+5/+8**
+- First crystal hit: +3 → **+5**
+- Removed passive signals: gathering workers trickle, supply advantage, survival reward, friendly-vs-enemy presence, forward scout trickle
+- Added 3 anti-passivity penalties (army idle with advantage, no crystal pressure, late-game no-damage)
+
+**Game config reverted to full defaults:**
+- Map: 6000×600px (was 1000px training map)
+- Crystal HP: 1000 (was 100)
+- Max ticks: 6000 (was 3000)
+- Starting resources: 50 (was 500)
+- passiveWinThreshold: 4500 (was 999999)
+
+**Training setup:**
+- PID: 554458, log: `/tmp/train_v76.log`
+- Phase 0: `idle` opponent (IdleBot — never attacks, easy first target)
+- 60 parallel envs, ent_coef=0.05, gamma=0.995
+- Starting from scratch — no checkpoint (reward function incompatible with all prior runs)
+
+**Phase 0 exit criteria (from PPO_AGENT_TRAINING_PHASES.md):**
+- Combat win rate ≥ 85%
+- First enemy crystal hit rate ≥ 90%
+- Timeout rate ≤ 10%
+- Episodes with 4+ combat units but 0 crystal damage ≤ 10%
+
+**Early snapshots:**
+
+| update | win_rate | cbt | tmt | crys_dmg | trn% | notes |
+|--------|----------|-----|-----|----------|------|-------|
+| 24 | 0.00 | 0.00 | 1.00 | 0% | 2% | Baseline (old run flush) — all timeouts, floor reward -120 confirmed |
+| 47 | 0.00 | 0.00 | 1.00 | 0% | 2% | bld 1%→4%, noop 94%→91%, no_pres=1% (first episode with 4+ units!) |
+| 59 | 0.00 | 0.00 | 1.00 | 0% | 2% | bld 13%, noop 79%, atk_mv 1%, no_pres=11% — build chain firing consistently! Units trained but not attacking yet. |
+| ~80 | 0.00 | 0.00 | 1.00 | 0% | 2% | bld 18%, noop 73%, atk_mv 2%, no_pres=22% — army building but not attacking. From TB during print-buffering period. |
+| — | — | — | — | — | — | **Final config: num_steps=2048, ent_coef=0.10, total_timesteps=20M, save_interval=25. PID 587601, run crystalfront_ppo__0_2_0-ML__idle__1__1779126770. ~163 updates, ~20 eps/update, ~5.5h est.** |
+| 6 | 0.00 | 0.00 | 1.00 | 0% | 2% | bld=9%, noop=85%, no_pres=7% |
+| 12 | 0.00 | 0.00 | 1.00 | 0% | 2% | bld=15%, noop=79%, no_pres=7% |
+| 15 | 0.00 | 0.00 | 1.00 | 0% | 2% | bld=17%, noop=77%, no_pres=6% |
+| 21 | 0.00 | 0.00 | 1.00 | 0% | 2% | bld=26%, noop=67%, no_pres=6% — bld rising fast |
+| 27 | 0.00 | 0.00 | 1.00 | 0% | 2% | bld=24%, noop=70%, no_pres=3% ⚠️ no_pres falling |
+| 30 | 0.00 | 0.00 | 1.00 | 0% | 2% | bld=24%, noop=70%, no_pres=1% 🔴 near-zero. 60 replays saved. |
+| 36 | 0.00 | 0.00 | 1.00 | 0% | 2% | bld=17%, noop=77%, no_pres=3% — stabilising |
+| 42 | 0.00 | 0.00 | 1.00 | 0% | 2% | bld=16%, noop=78%, no_pres=3% |
+| 50 | 0.00 | 0.00 | 1.00 | 0% | 2% | bld=17%, noop=77%, no_pres=4% — slow recovery |
+| 56 | 0.00 | 0.00 | 1.00 | 0% | 2% | bld=16%, atk_mv=1%, no_pres=11% 🟡 RECOVERY — first attack moves! 120 replays saved. |
+| 59 | 0.00 | 0.00 | 1.00 | 0% | 2% | bld=14%, atk_mv=0%, no_pres=9% — recovery holding, atk_mv flickering |
+| — | — | — | — | — | — | **v0.2.1-ML restart. PID 602231, run crystalfront_ppo__0_2_1-ML__idle__1__1779136130, resumed from u75. Fixes: fightingBack→inAttackRange, approaching reward +0.0003, wrong-building penalty -0.003** |
+| 6 (v0.2.1) | 0.00 | 0.00 | 1.00 | 0% | 1% | atk_mv=3%, no_pres=23% 🟢 Immediate improvement vs prior run |
+| 12 | 0.00 | 0.00 | 1.00 | 0% | 1% | atk_mv=4%, no_pres=22%, bld=10% — stable |
+| 15 | 0.00 | 0.00 | 1.00 | 0% | 2% | atk_mv=4%, no_pres=24%, bld=11% |
+| 21 | 0.00 | 0.00 | 1.00 | 0% | 1% | atk_mv=5%, tgt=1%, no_pres=29% — tgt attacks emerging |
+| 27 | 0.00 | 0.00 | 1.00 | 0% | 2% | atk_mv=5%, tgt=1%, no_pres=30% |
+| 30 | 0.00 | 0.00 | 1.00 | 0% | 1% | atk_mv=8%, tgt=1%, no_pres=36% 🔥 Accelerating |
+| 36 | 0.01 | 0.00 | 0.99 | 0% | 1% | atk_mv=9%, no_pres=40% — FIRST WIN (resource win, not combat). cbt=0.00. |
+| 42 | 0.02 | 0.00 | 0.98 | 0% | 1% | atk_mv=17%, no_pres=61% 🚀 atk_mv surge. But crys_dmg=0% — units attacking but not reaching crystal. Resource wins only. |
+| 44 | 0.00 | 0.00 | 1.00 | 0% | 2% | atk_mv=10%, no_pres=47% |
+| 50 | 0.00 | 0.00 | 1.00 | 0% | 1% | atk_mv=15%, no_pres=49% |
+| 56 | 0.00 | 0.00 | 1.00 | 0% | 1% | atk_mv=22%, no_pres=78% — accelerating hard |
+| 59 | 0.00 | 0.00 | 1.00 | 0% | 1% | atk_mv=27%, no_pres=86% |
+| 65 | 0.01 | 0.00 | 0.99 | 0% | 1% | atk_mv=30%, no_pres=89% 🔴 CONFIRMED EXPLOITATION. 30% attack-moves, 89% unit episodes, crys_dmg=0% throughout. Approaching reward driving oscillation — units bouncing between targets, never committing. 240 replays. |
+
+---
+
+### 2026-05-19 — v0.2.3-ML: Reward function overhaul (in progress, not yet launched)
+
+**Training config:** PID 671281, run `crystalfront_ppo__0_2_3-ML__idle__1__1779183745`. Fresh start — no checkpoint (action space 58→66 is incompatible with all prior checkpoints). num_steps=512, num_envs=60, batch_size=30,720, total_timesteps=20M, ent_coef=0.10.
+
+**Changes from v0.2.2-ML:**
+- `actionSpace.ts`: `enemy_army` fallback midfield → enemy crystal position (bug fix)
+- All 3 anti-passivity penalties removed
+- Cross-midfield and enemy-quarter milestone rewards removed (tracking only)
+- Removed: /tick in-range and in-range-attacking rewards
+- Added: damage-dealt reward — `0.1 × healthFrac_delta` for units/workers, `0.05` for buildings
+- Added: own building damage penalty — `−0.04 × healthFrac_delta` (slightly less than dealing to buildings)
+- Added: map visibility reward — `visibleAreaFraction × 0.001` per tick (60×6 grid approximation, own unit vision radii)
+- Worker kill: +0.15 → +0.20
+- Own crystal damage penalty: −0.003 → −0.01 per HP (now symmetric with dealing damage)
+- Removed: idle combat units penalty, barracks-idle penalty, reactive barracks reward
+
+**v0.2.3-ML snapshots:**
+
+| update | win_rate | cbt | tmt | ep_rew | atk_mv | noop | crys_dmg | no_pres | notes |
+|--------|----------|-----|-----|--------|--------|------|----------|---------|-------|
+
+---
+
+### 2026-05-19 — v0.2.2-ML: Remove approaching reward + idle penalties, fix barracks milestone, add foundry milestone
+
+**Context:** v0.2.1-ML confirmed exploitation of approaching reward (+0.0003/unit/tick). Removed it plus idle_worker_penalty and supply_headroom_waste to eliminate worker spam loop. Barracks milestone changed from time-decaying `1.5×max(0,(600-tick)/600)` to flat +3.0 (time-decay gave 0 reward when barracks built after tick 600). Added foundry milestone +2.0. Reverted to num_steps=512 (same as successful 0.1.xx runs). Resumed from v0.2.1-ML update_000075.
+
+**Training config:** PID 615692, run `crystalfront_ppo__0_2_2-ML__idle__1__1779144843`, num_steps=512, num_envs=60, batch_size=30,720, total_timesteps=20M, ent_coef=0.10, save_interval=25, save_replay_every=10. ~651 updates total (resumed at step 9,216,000, ~351 remaining).
+
+**v0.2.2-ML early snapshots:**
+
+| update | win_rate | cbt | tmt | ep_rew | atk_mv | noop | crys_dmg | no_pres | notes |
+|--------|----------|-----|-----|--------|--------|------|----------|---------|-------|
+| 24 | 0.00 | 0.00 | 1.00 | -101.10 | 36% | 53% | 0% | 28% | First update logged. All timeouts, no wins. |
+| 47 | 0.00 | 0.00 | 1.00 | -108.55 | 31% | 56% | 0% | 71% | no_pres rising rapidly — same pattern as v0.2.1 emerging |
+| 59 | 0.00 | 0.00 | 1.00 | -99.87 | 41% | 45% | 0% | 94% | 🔴 no_pres=94%. Units being trained but not reaching crystal. |
+| 83 | 0.00 | 0.00 | 1.00 | -101.45 | 45% | 37% | 0% | 99% | 🔴🔴 no_pres=99%. 13% through run. Midfield-attractor pattern confirmed. |
+| 106 | 0.00 | 0.00 | 1.00 | -102.74 | 47% | 33% | 0% | 99% | atk_mv still climbing, noop falling, no recovery in crys_dmg |
+| 118 | 0.00 | 0.00 | 1.00 | -101.45 | 52% | 25% | 0% | 99% | atk_mv=52%: agent spamming attack_move, never reaching crystal |
+| 141 | 0.00 | 0.00 | 1.00 | -102.32 | 52% | 28% | 0% | 99% | No change |
+| 165 | 0.00 | 0.00 | 1.00 | -99.26 | 54% | 28% | 0% | 100% | no_pres hits 100% |
+| 176 | 0.00 | 0.00 | 1.00 | -94.34 | 59% | 24% | 0% | 100% | ep_rew improving slightly (milestone rewards accumulating), crys_dmg still 0% |
+| 200 | 0.00 | 0.00 | 1.00 | -95.52 | 57% | 26% | 0% | 100% | Stable at bad local optimum |
+| 223 | 0.00 | 0.00 | 1.00 | -100.22 | 58% | 25% | 0% | 100% | 34% through run. no_pres=100%, crys_dmg=0%. No recovery in sight. |
+| 235 | 0.00 | 0.00 | 1.00 | -98.87 | 55% | 29% | 0% | 100% | No change |
+| 258 | 0.00 | 0.00 | 1.00 | -98.37 | 58% | 26% | 0% | 100% | 40% through run. Fully stuck. |
+| 282 | 0.00 | 0.00 | 1.00 | -94.95 | 62% | 22% | 0% | 100% | atk_mv climbing toward 62% |
+| 293 | 0.00 | 0.00 | 1.00 | -92.42 | 60% | 23% | 0% | 100% | ep_rew improves slightly but crys_dmg still 0% |
+| 317 | 0.00 | 0.00 | 1.00 | -96.13 | 62% | 22% | 0% | 100% | No change |
+| 340 | 0.00 | 0.00 | 1.00 | -96.06 | 62% | 22% | 0% | 100% | No change |
+| 352 | 0.00 | 0.00 | 1.00 | -95.62 | 62% | 23% | 0% | 100% | 54% through run. Fully converged to bad local optimum. |
+| 375 | 0.00 | 0.00 | 1.00 | -94.54 | 61% | 22% | 0% | 100% | Flat |
+| 399 | 0.00 | 0.00 | 1.00 | -95.99 | 62% | 21% | 0% | 100% | 61% through run. No change. |
+| 411 | 0.00 | 0.00 | 1.00 | -94.83 | 63% | 21% | 0% | 100% | Flat |
+| 434 | 0.00 | 0.00 | 1.00 | -94.74 | 61% | 22% | 0% | 100% | Flat |
+| 458 | 0.00 | 0.00 | 1.00 | -95.26 | 62% | 21% | 0% | 100% | Flat |
+| 469 | 0.00 | 0.00 | 1.00 | -96.55 | 63% | 21% | 0% | 100% | Flat |
+| 493 | 0.00 | 0.00 | 1.00 | -95.78 | 61% | 22% | 0% | 100% | 76% through run. Completely stuck. |
+| 516 | 0.00 | 0.00 | 1.00 | -96.32 | 63% | 21% | 0% | 100% | Flat |
+| 528 | 0.00 | 0.00 | 1.00 | -95.54 | 63% | 20% | 0% | 100% | 81% through run. No change. |
+| 551 | 0.00 | 0.00 | 1.00 | -95.73 | 64% | 20% | 0% | 100% | Flat |
+| 575 | 0.00 | 0.00 | 1.00 | -94.29 | 64% | 20% | 0% | 100% | Flat |
+| 586 | 0.00 | 0.00 | 1.00 | -93.97 | 63% | 21% | 0% | 100% | Flat |
+| 610 | 0.00 | 0.00 | 1.00 | -96.76 | 63% | 21% | 0% | 100% | Flat |
+| 633 | 0.00 | 0.00 | 1.00 | -95.22 | 64% | 20% | 0% | 100% | 97% through run. Final stretch — zero change across entire run. |
+| 645 | 0.00 | 0.00 | 1.00 | -95.82 | 64% | 20% | 0% | 100% | Final logged update. Run ended at step 19,800,000. |
+
+**Phase 0 verdict: FAILED**
+
+| Criterion | Target | Final | Result |
+|-----------|--------|-------|--------|
+| cbt (combat win rate) | ≥ 0.85 | 0.00 | ❌ |
+| crys_dmg | > 0% | 0% | ❌ |
+| tmt (timeout rate) | ≤ 0.10 | 1.00 | ❌ |
+| no_pres | ≤ 0.10 | 100% | ❌ |
+
+**Post-mortem:**
+
+The run completed all 651 updates (20M steps) without a single episode of crystal damage, no combat wins, and a 100% timeout rate. The policy converged fully to a bad local optimum by update 165 and never recovered.
+
+**Trajectory summary:**
+
+| Phase | Updates | no_pres | atk_mv | ep_rew | Description |
+|-------|---------|---------|--------|--------|-------------|
+| Early | u24–u59 | 28%→94% | 36%→41% | -101 | Rapid no_pres rise, exploring |
+| Convergence | u83–u165 | 99%→100% | 45%→54% | -102→-99 | Locks into bad local optimum |
+| Plateau | u165–u645 | 100% | 54%→64% | ~-95 | Fully stuck for 480 updates |
+
+**Root cause (confirmed):**
+
+Two interacting problems created an unescapable local optimum:
+
+1. **`attack_move enemy_army` falls back to midfield.** When no enemy combat units are visible, `resolveTargetZone("enemy_army")` returns `{ x: mid, y: MAP.height/2 }`. Against IdleBot (which trains ZERO combat units ever), this means every `enemy_army` attack_move resolves to the exact centre of the map. The agent learned to use this action heavily.
+
+2. **`hasForwardUnit` threshold xNorm > 0.45 creates a midfield attractor.** The anti-passivity army-idle penalty fires when `ownCombat >= 3` and no unit has `xNorm > 0.45`. A unit parked at xNorm ≈ 0.46–0.49 satisfies this check (avoiding the -0.002/tick penalty) but falls short of the midfield milestone threshold (xNorm > 0.50) and of the enemy quarter milestone (xNorm > 0.75). Forward progression milestones (+3 midfield, +3 enemy quarter, +5 crystal hit) were NEVER triggered in the entire 20M step run.
+
+Result: the agent settled into building barracks/foundry, training a few units, moving them to xNorm ≈ 0.45, and looping. ep_rew stabilised at ~-95 = -100 terminal + ~+9 milestone shaping - ~-4 anti-passivity. This was the local optimum.
+
+**Fixes required for v0.2.3-ML:**
+
+1. **`actionSpace.ts`: Change `enemy_army` fallback from midfield → enemy_crystal.**
+   `return { x: mid, y: MAP.height / 2 }` → `return { x: isBlue ? MAP.width - 100 : 100, y: MAP.height / 2 }`
+   This removes the midfield attractor for this action.
+
+2. **`stdioRunner.ts`: Raise `hasForwardUnit` threshold from xNorm > 0.45 → xNorm > 0.65.**
+   Forces units to enter the enemy quarter before the army-idle penalty is relieved. Eliminates the stable parking spot between 0.45 and 0.5.
+
+**Final checkpoint:** `checkpoints/crystalfront_ppo__0_2_2-ML__idle__1__1779144843/final.pt`
 
 A running log of meaningful milestones, decisions, and pivots. Most recent first.
 

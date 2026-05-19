@@ -1395,7 +1395,7 @@ console.log("\n--- Determinism: Same seed produces identical state ---");
 // ---- Action Index ----
 console.log("\n--- Action Index ---");
 {
-  assert(ACTION_SPACE_SIZE === 58, `Action space has 58 actions (got ${ACTION_SPACE_SIZE})`);
+  assert(ACTION_SPACE_SIZE === 66, `Action space has 66 actions (got ${ACTION_SPACE_SIZE})`);
 
   // Every action round-trips through index
   let allRoundTrip = true;
