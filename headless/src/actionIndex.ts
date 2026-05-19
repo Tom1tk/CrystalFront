@@ -9,6 +9,12 @@
  *   + attack_move 2 new zones × 4 groups = 8 (indices 50-57)
  *   Total: 37 → 58 actions
  *
+ * v0.2.3-ML changes:
+ *   + attack_targeted × 4 groups × 2 new targetTypes = 8 (indices 58-65)
+ *     targeting_friend: attack enemies currently targeting a friendly unit/building
+ *     spread_fire: distribute group 1:1 across visible enemies
+ *   Total: 58 → 66 actions
+ *
  * The order here is fixed — never reorder without bumping the spec version.
  */
 import type { MacroAction } from "./types.js";
@@ -19,7 +25,8 @@ const X_ZONES       = ["near_crystal", "mid_base", "forward"] as const;
 const GROUPS        = ["all_combat", "skirmishers", "gunners", "bruisers"] as const;
 const TARGET_ZONES  = ["enemy_crystal", "midfield", "contested_node"] as const;
 const NEW_ZONES     = ["enemy_army", "defend_crystal"] as const;
-const TARGET_TYPES  = ["nearest_threat", "nearest_enemy", "focus_weakest"] as const;
+const TARGET_TYPES      = ["nearest_threat", "nearest_enemy", "focus_weakest"] as const;
+const NEW_TARGET_TYPES  = ["targeting_friend", "spread_fire"] as const;
 const NODE_CHOICES  = ["nearest_safe", "nearest_contested", "richest_visible"] as const;
 
 function buildAllActions(): MacroAction[] {
@@ -77,11 +84,18 @@ function buildAllActions(): MacroAction[] {
     }
   }
 
+  // 58–65: attack_targeted × (4 groups × 2 new targetTypes) = 8  [v0.2.3-ML]
+  for (const group of GROUPS) {
+    for (const targetType of NEW_TARGET_TYPES) {
+      actions.push({ type: "attack_targeted", group, targetType });
+    }
+  }
+
   return actions;
 }
 
 export const ALL_ACTIONS: ReadonlyArray<MacroAction> = buildAllActions();
-export const ACTION_SPACE_SIZE = ALL_ACTIONS.length;  // 58
+export const ACTION_SPACE_SIZE = ALL_ACTIONS.length;  // 66
 
 /**
  * Convert a MacroAction to its canonical integer index.

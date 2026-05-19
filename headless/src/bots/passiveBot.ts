@@ -74,7 +74,13 @@ export class PassiveBot implements Agent {
       if (depot) { actions.push(depot); this.lastDepotTick = tick; }
     }
 
-    // Never attack — crystal undefended after 2 skirmishers built
+    // Once both skirmishers are trained, periodically send them to hold midfield.
+    // This blocks the blue worker-rush lane and forces the agent to train combat units.
+    if (this.totalSkirmishersTrained >= this.MAX_SKIRMISHERS && tick % 300 === 0) {
+      const patrol = legal.find(a => a.type === "attack_move" && a.targetZone === "midfield");
+      if (patrol) actions.push(patrol);
+    }
+
     return actions;
   }
 }

@@ -313,7 +313,7 @@ def train(cfg: Config) -> None:
         ckpt = torch.load(cfg.checkpoint, map_location=device, weights_only=False)
         agent.load_state_dict(ckpt["agent"])
         optimizer.load_state_dict(ckpt["optimizer"])
-        print(f"  Resumed from:  {cfg.checkpoint}  (update {ckpt.get('update', '?')}, step {ckpt.get('global_step', '?'):,})")
+        print(f"  Resumed from:  {cfg.checkpoint}  (update {ckpt.get('update', '?')}, step {ckpt.get('global_step', '?'):,})", flush=True)
 
     # ── thread pool for parallel env I/O ─────────────────────────────────────
     # Each env is a separate Node.js subprocess; stepping them in parallel means
@@ -353,10 +353,22 @@ def train(cfg: Config) -> None:
     # Diagnostic tracking
     combat_wins_window   = 0
     resource_wins_window = 0
-    first_barracks_ticks:     list[int] = []
-    first_combat_ticks:       list[int] = []
-    first_attack_ticks:       list[int] = []
-    entities_discovered_list: list[int] = []
+    timeout_window       = 0
+    loss_window          = 0
+    warn_no_pressure_window     = 0
+    warn_loss_pos_reward_window = 0
+    first_barracks_ticks:           list[int]   = []
+    first_combat_ticks:             list[int]   = []
+    first_three_combat_ticks:       list[int]   = []
+    first_midfield_ticks:           list[int]   = []
+    first_enemy_quarter_ticks:      list[int]   = []
+    first_attack_ticks:             list[int]   = []
+    enemy_crystal_dmg_pct_list:     list[float] = []
+    own_crystal_dmg_pct_list:       list[float] = []
+    final_reward_list:              list[float] = []
+    terminal_reward_list:           list[float] = []
+    raw_shaping_list:               list[float] = []
+    entities_discovered_list:       list[int]   = []
     # Action histogram — tracks how often each of the 58 actions is chosen per window
     action_counts = np.zeros(ACTION_SPACE_SIZE, dtype=np.int64)
 
@@ -430,16 +442,36 @@ def train(cfg: Config) -> None:
                             resource_wins_window += 1
                         else:
                             combat_wins_window += 1
+                    # Outcome breakdown
+                    outcome = info.get("episodeOutcome", "")
+                    if outcome == "timeout":
+                        timeout_window += 1
+                    elif outcome == "loss":
+                        loss_window += 1
+                    if info.get("warn_no_pressure"):
+                        warn_no_pressure_window += 1
+                    if info.get("warn_loss_positive_reward"):
+                        warn_loss_pos_reward_window += 1
+                    # Reward breakdown
+                    fr = info.get("finalReward");      final_reward_list.append(float(fr)) if fr is not None else None
+                    tr = info.get("terminalReward");   terminal_reward_list.append(float(tr)) if tr is not None else None
+                    rs = info.get("rawShapingReward"); raw_shaping_list.append(float(rs)) if rs is not None else None
+                    # Crystal damage
+                    ecd = info.get("enemyCrystalDamagePct"); enemy_crystal_dmg_pct_list.append(float(ecd)) if ecd is not None else None
+                    ocd = info.get("ownCrystalDamagePct");   own_crystal_dmg_pct_list.append(float(ocd)) if ocd is not None else None
                     # Milestone tracking
                     fb = info.get("firstBarracksTick", -1)
                     fc = info.get("firstCombatUnitTick", -1)
-                    fa = info.get("firstAttackTick", -1)
-                    if fb is not None and fb >= 0:
-                        first_barracks_ticks.append(int(fb))
-                    if fc is not None and fc >= 0:
-                        first_combat_ticks.append(int(fc))
-                    if fa is not None and fa >= 0:
-                        first_attack_ticks.append(int(fa))
+                    f3 = info.get("firstThreeCombatUnitsTick", -1)
+                    fm = info.get("firstMidfieldCrossTick", -1)
+                    feq = info.get("firstEnemyQuarterEntryTick", -1)
+                    fa = info.get("firstEnemyCrystalHitTick", -1)
+                    if fb is not None and fb >= 0:  first_barracks_ticks.append(int(fb))
+                    if fc is not None and fc >= 0:  first_combat_ticks.append(int(fc))
+                    if f3 is not None and f3 >= 0:  first_three_combat_ticks.append(int(f3))
+                    if fm is not None and fm >= 0:  first_midfield_ticks.append(int(fm))
+                    if feq is not None and feq >= 0: first_enemy_quarter_ticks.append(int(feq))
+                    if fa is not None and fa >= 0:  first_attack_ticks.append(int(fa))
                     ed = info.get("entitiesDiscovered", 0)
                     if ed is not None:
                         entities_discovered_list.append(int(ed))
@@ -453,42 +485,82 @@ def train(cfg: Config) -> None:
                     if window_episodes >= WIN_WINDOW:
                         win_rate = wins_last_window / window_episodes
                         writer.add_scalar("game/win_rate", win_rate, global_step)
-                        # Win-type breakdown
-                        writer.add_scalar("diagnostics/win_type_combat_rate",
-                                          combat_wins_window / window_episodes, global_step)
-                        writer.add_scalar("diagnostics/win_type_resource_rate",
-                                          resource_wins_window / window_episodes, global_step)
+                        # Outcome breakdown
+                        combat_win_rate   = combat_wins_window / window_episodes
+                        timeout_rate_log  = timeout_window / window_episodes
+                        loss_rate_log     = loss_window / window_episodes
+                        writer.add_scalar("diagnostics/combat_win_rate",    combat_win_rate,  global_step)
+                        writer.add_scalar("diagnostics/timeout_rate",       timeout_rate_log, global_step)
+                        writer.add_scalar("diagnostics/loss_rate",          loss_rate_log,    global_step)
+                        writer.add_scalar("diagnostics/resource_win_rate",  resource_wins_window / window_episodes, global_step)
+                        writer.add_scalar("diagnostics/warn_no_pressure",   warn_no_pressure_window / window_episodes, global_step)
+                        writer.add_scalar("diagnostics/warn_loss_pos_rew",  warn_loss_pos_reward_window / window_episodes, global_step)
+                        # Reward breakdown
+                        if final_reward_list:
+                            writer.add_scalar("rewards/final_reward_mean",    sum(final_reward_list) / len(final_reward_list), global_step)
+                        if terminal_reward_list:
+                            writer.add_scalar("rewards/terminal_reward_mean", sum(terminal_reward_list) / len(terminal_reward_list), global_step)
+                        if raw_shaping_list:
+                            writer.add_scalar("rewards/raw_shaping_mean",     sum(raw_shaping_list) / len(raw_shaping_list), global_step)
+                        # Crystal damage
+                        if enemy_crystal_dmg_pct_list:
+                            writer.add_scalar("diagnostics/enemy_crystal_dmg_pct",
+                                              sum(enemy_crystal_dmg_pct_list) / len(enemy_crystal_dmg_pct_list), global_step)
+                            writer.add_scalar("diagnostics/crystal_hit_rate",
+                                              sum(1 for v in enemy_crystal_dmg_pct_list if v > 0) / len(enemy_crystal_dmg_pct_list), global_step)
+                        if own_crystal_dmg_pct_list:
+                            writer.add_scalar("diagnostics/own_crystal_dmg_pct",
+                                              sum(own_crystal_dmg_pct_list) / len(own_crystal_dmg_pct_list), global_step)
                         # Milestone timing (mean tick across episodes where milestone was reached)
-                        if first_barracks_ticks:
-                            writer.add_scalar("diagnostics/first_barracks_tick",
-                                              sum(first_barracks_ticks) / len(first_barracks_ticks), global_step)
-                        if first_combat_ticks:
-                            writer.add_scalar("diagnostics/first_combat_unit_tick",
-                                              sum(first_combat_ticks) / len(first_combat_ticks), global_step)
-                        if first_attack_ticks:
-                            writer.add_scalar("diagnostics/first_attack_tick",
-                                              sum(first_attack_ticks) / len(first_attack_ticks), global_step)
-                        if entities_discovered_list:
-                            writer.add_scalar("diagnostics/entities_discovered_per_ep",
-                                              sum(entities_discovered_list) / len(entities_discovered_list), global_step)
+                        def _mean(lst): return sum(lst) / len(lst) if lst else None
+                        for tag, lst in [
+                            ("diagnostics/first_barracks_tick",       first_barracks_ticks),
+                            ("diagnostics/first_combat_unit_tick",    first_combat_ticks),
+                            ("diagnostics/first_three_combat_tick",   first_three_combat_ticks),
+                            ("diagnostics/first_midfield_cross_tick", first_midfield_ticks),
+                            ("diagnostics/first_enemy_quarter_tick",  first_enemy_quarter_ticks),
+                            ("diagnostics/first_crystal_hit_tick",    first_attack_ticks),
+                            ("diagnostics/entities_discovered_per_ep", entities_discovered_list),
+                        ]:
+                            v = _mean(lst)
+                            if v is not None:
+                                writer.add_scalar(tag, v, global_step)
                         total_acts_log = max(action_counts.sum(), 1)
                         pct_atk_mv  = int(100 * (action_counts[18:30].sum() + action_counts[50:58].sum()) / total_acts_log)
-                        pct_atk_tgt = int(100 * action_counts[37:49].sum() / total_acts_log)
+                        pct_atk_tgt = int(100 * (action_counts[37:49].sum() + action_counts[58:66].sum()) / total_acts_log)
                         pct_bld     = int(100 * action_counts[6:18].sum()  / total_acts_log)
                         pct_trn     = int(100 * (action_counts[1] + action_counts[2:6].sum()) / total_acts_log)
+                        pct_noop    = int(100 * action_counts[0] / total_acts_log)
+                        no_pres_pct = int(100 * warn_no_pressure_window / window_episodes)
+                        ecd_mean    = int(sum(enemy_crystal_dmg_pct_list) / len(enemy_crystal_dmg_pct_list)) if enemy_crystal_dmg_pct_list else 0
                         print(
                             f"  update={update:5d} | step={global_step:8d} | "
                             f"win_rate={win_rate:.2f} ({wins_last_window}/{window_episodes}) | "
+                            f"cbt={combat_win_rate:.2f} tmt={timeout_rate_log:.2f} | "
                             f"ep_len={episode_lengths[i]:4d} | ep_rew={episode_rewards[i]:.2f} | "
-                            f"atk_mv={pct_atk_mv}% tgt={pct_atk_tgt}% bld={pct_bld}% trn={pct_trn}%"
+                            f"atk_mv={pct_atk_mv}% tgt={pct_atk_tgt}% bld={pct_bld}% trn={pct_trn}% noop={pct_noop}% | "
+                            f"crys_dmg={ecd_mean}% no_pres={no_pres_pct}%",
+                            flush=True
                         )
                         wins_last_window = 0
                         window_episodes  = 0
                         combat_wins_window = 0
                         resource_wins_window = 0
+                        timeout_window = 0
+                        loss_window = 0
+                        warn_no_pressure_window = 0
+                        warn_loss_pos_reward_window = 0
                         first_barracks_ticks.clear()
                         first_combat_ticks.clear()
+                        first_three_combat_ticks.clear()
+                        first_midfield_ticks.clear()
+                        first_enemy_quarter_ticks.clear()
                         first_attack_ticks.clear()
+                        enemy_crystal_dmg_pct_list.clear()
+                        own_crystal_dmg_pct_list.clear()
+                        final_reward_list.clear()
+                        terminal_reward_list.clear()
+                        raw_shaping_list.clear()
                         entities_discovered_list.clear()
                         action_counts[:] = 0
 
@@ -623,9 +695,10 @@ def train(cfg: Config) -> None:
         writer.add_scalar("actions/pct_build",           action_counts[6:18].sum()  / total_acts, global_step)
         writer.add_scalar("actions/pct_attack_move",     action_counts[18:30].sum() / total_acts, global_step)
         writer.add_scalar("actions/pct_retreat",         action_counts[30:34].sum() / total_acts, global_step)
-        writer.add_scalar("actions/pct_attack_targeted", action_counts[37:49].sum() / total_acts, global_step)
+        writer.add_scalar("actions/pct_attack_targeted", (action_counts[37:49].sum() + action_counts[58:66].sum()) / total_acts, global_step)
         writer.add_scalar("actions/pct_hold_position",  action_counts[49]           / total_acts, global_step)
         writer.add_scalar("actions/pct_attack_move_new",action_counts[50:58].sum()  / total_acts, global_step)
+        writer.add_scalar("actions/pct_attack_targeted_new", action_counts[58:66].sum() / total_acts, global_step)
         writer.add_scalar("actions/pct_assign_workers", action_counts[34:37].sum()  / total_acts, global_step)
 
         # ── checkpoint ────────────────────────────────────────────────────────
@@ -638,7 +711,7 @@ def train(cfg: Config) -> None:
                 "optimizer":    optimizer.state_dict(),
                 "config":       cfg,
             }, path)
-            print(f"  [checkpoint] saved → {path}")
+            print(f"  [checkpoint] saved → {path}", flush=True)
 
         # ── league step ───────────────────────────────────────────────────────
         if league is not None:

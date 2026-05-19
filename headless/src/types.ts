@@ -88,7 +88,7 @@ export interface MacroAction {
   group?: "all_combat" | "skirmishers" | "gunners" | "bruisers" | "all_workers";
   targetZone?: "enemy_crystal" | "midfield" | "contested_node" | "enemy_army" | "defend_crystal";
   // attack_targeted
-  targetType?: "nearest_threat" | "nearest_enemy" | "focus_weakest";
+  targetType?: "nearest_threat" | "nearest_enemy" | "focus_weakest" | "targeting_friend" | "spread_fire";
   // assign_workers
   nodeChoice?: "nearest_safe" | "nearest_contested" | "richest_visible";
   workerCount?: 1 | 2 | 3 | "all_idle";
