@@ -294,7 +294,7 @@ function computeReward(
     const hadBarracks = prev.entities.some(e => e.owner === 1 && e.typeIndex === 6);
     const hasBarracks = curr.entities.some(e => e.owner === 1 && e.typeIndex === 6);
     if (!hadBarracks && hasBarracks) {
-      r += 3.0;
+      r += 5.0;
       milestones.hasBuiltBarracks = true;
       milestones.firstBarracksTick = curr.tick;
     }
@@ -458,12 +458,10 @@ function computeReward(
   if (done) {
     const terminal = (winner === BLUE_ID && winType !== "resource") ? 100.0 : -100.0;
 
-    const rawShaping     = episodeShaping;
-    const clampedShaping = Math.max(-20, Math.min(20, rawShaping));
-    lastRewardBreakdown  = { terminal, rawShaping, clampedShaping, finalReward: terminal + clampedShaping };
+    const totalShaping = episodeShaping;
+    lastRewardBreakdown = { terminal, rawShaping: totalShaping, clampedShaping: totalShaping, finalReward: terminal + totalShaping };
 
-    // Correction keeps Python's running total == terminal + clampedShaping
-    return r + terminal + (clampedShaping - rawShaping);
+    return r + terminal;
   }
 
   return r;

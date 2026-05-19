@@ -38,7 +38,7 @@ GLOBAL_DIM        = 22   # 18 base + 4 threat geometry (v0.1.57)
 ENTITY_DIM        = 12   # raw features (v0.1.57: +inAttackRange)
 NODE_DIM          = 5
 N_ENTITY_TYPES    = 10
-ACTION_SPACE_SIZE = 66   # v0.2.3-ML: 58→66 (targeting_friend, spread_fire × 4 groups)
+ACTION_SPACE_SIZE = 71   # v0.2.3-ML: 58→66 → 71 (targeting_friend, spread_fire × 4 groups)
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────

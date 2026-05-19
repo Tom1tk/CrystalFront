@@ -1,7 +1,7 @@
 # Crystal Front — ML Bot Action Plan
 
 **Branch:** `CrystalFront-ML`
-**Status:** Active training — Phase 0 curriculum (v0.2.3-ML, IdleBot, PID 671281, fresh start)
+**Status:** Active training — Phase 0 curriculum (v0.2.4-ML, IdleBot, PID 681602, fresh start)
 **Last updated:** 2026-05-19
 
 ---
@@ -82,26 +82,61 @@
 
 ---
 
-### 2026-05-19 — v0.2.3-ML: Reward function overhaul (in progress, not yet launched)
+### 2026-05-19 — v0.2.4-ML: Remove shaping clamp, barracks +5, worker movement actions
 
-**Training config:** PID 671281, run `crystalfront_ppo__0_2_3-ML__idle__1__1779183745`. Fresh start — no checkpoint (action space 58→66 is incompatible with all prior checkpoints). num_steps=512, num_envs=60, batch_size=30,720, total_timesteps=20M, ent_coef=0.10.
+**Training config:** PID 681602, run `crystalfront_ppo__0_2_4-ML__idle__1__1779193049`. Fresh start — no checkpoint (action space 66→71 incompatible). num_steps=512, num_envs=60, batch_size=30,720, total_timesteps=20M, ent_coef=0.10.
 
-**Changes from v0.2.2-ML:**
+**Changes from v0.2.3-ML:**
+- Shaping clamp (±20) fully removed — agent now feels full magnitude of all decisions in both directions. Terminal (±100) still dominates.
+- Barracks milestone: +3.0 → +5.0 (stronger nudge toward the build→combat→attack chain)
+- Added: worker movement actions — `attack_move × all_workers × 5 zones` (indices 66–70). Workers can now be explicitly sent to enemy_crystal, midfield, contested_node, enemy_army, defend_crystal. Previously workers could only move to resource nodes or build sites.
+- Action space: 66 → 71
+
+**Why fresh start:** Action space change (66→71) requires new policy architecture.
+
+**v0.2.4-ML snapshots:**
+
+| update | win_rate | cbt | tmt | ep_rew | wkr_mv | crys_dmg | no_pres | notes |
+|--------|----------|-----|-----|--------|--------|----------|---------|-------|
+| 24 | 0.00 | 0.00 | 1.00 | -118.06 | ~89% | 0% | 0% | Unclamped — ep_rew no longer pinned at -120. wkr_mv dominates early. |
+| 47 | 0.00 | 0.00 | 1.00 | -117.71 | ~89% | 0% | 0% | ep_rew varying, signal alive |
+| 59 | 0.00 | 0.00 | 1.00 | -118.98 | ~89% | 0% | 0% | Still early, exploring |
+
+---
+
+### 2026-05-19 — v0.2.3-ML: STOPPED at u235 — worker spam exploitation
+
+**Training config:** PID 676184, run `crystalfront_ppo__0_2_3-ML__idle__1__1779184406`. Fresh start. Killed at update 235/651 (36% complete) after replay analysis confirmed the failure mode.
+
+**Changes from v0.2.2-ML (all carried forward to v0.2.4):**
 - `actionSpace.ts`: `enemy_army` fallback midfield → enemy crystal position (bug fix)
 - All 3 anti-passivity penalties removed
 - Cross-midfield and enemy-quarter milestone rewards removed (tracking only)
 - Removed: /tick in-range and in-range-attacking rewards
 - Added: damage-dealt reward — `0.1 × healthFrac_delta` for units/workers, `0.05` for buildings
-- Added: own building damage penalty — `−0.04 × healthFrac_delta` (slightly less than dealing to buildings)
-- Added: map visibility reward — `visibleAreaFraction × 0.001` per tick (60×6 grid approximation, own unit vision radii)
-- Worker kill: +0.15 → +0.20
-- Own crystal damage penalty: −0.003 → −0.01 per HP (now symmetric with dealing damage)
-- Removed: idle combat units penalty, barracks-idle penalty, reactive barracks reward
+- Added: own building damage penalty — `−0.04 × healthFrac_delta`
+- Added: map visibility reward — `visibleAreaFraction × 0.001` per tick
+- Worker kill: +0.15 → +0.20; own crystal damage: −0.003 → −0.01 per HP
+- Removed: idle combat, barracks-idle, reactive barracks penalties/rewards
+- Action space: 58 → 66 (targeting_friend, spread_fire × 4 groups)
 
-**v0.2.3-ML snapshots:**
+**Failure analysis:**
+
+ep_rew pinned at exactly −120.00 for all 235 updates. Replay analysis showed every episode: 127–168 `train_worker`, 56–65 `build:supply_depot`, 2–4 `build:turret`, zero barracks, zero combat units.
+
+Root cause (two interacting issues):
+1. **attack_move is gated on combat units** — `legalActions.ts` only adds attack_move to the legal mask when `combatUnits.length > 0`. Since the agent never trained a combat unit, ALL attack actions were permanently illegal. atk_mv=0% was not a policy choice — it was a legal mask constraint.
+2. **Wrong-building-first + defenseless penalties hit the shaping clamp floor** — building depots before barracks costs −0.003/tick (−18/ep), no-barracks defenseless costs −0.002/tick (−11/ep) = −29/ep raw. The ±20 clamp flattened this to −20 regardless of how many depots were built, removing all marginal gradient. The agent couldn't distinguish "somewhat bad" from "catastrophically bad."
+3. **Map visibility reward** was incidentally boosting the worker spam: 100+ workers spread across the map → near-100% coverage → ~+6/ep from visibility. Not enough to escape the -20 floor but a competing gradient against building barracks.
+
+**v0.2.3-ML snapshots (killed):**
 
 | update | win_rate | cbt | tmt | ep_rew | atk_mv | noop | crys_dmg | no_pres | notes |
 |--------|----------|-----|-----|--------|--------|------|----------|---------|-------|
+| 24 | 0.00 | 0.00 | 1.00 | -120.00 | 0% | 91% | 0% | 1% | Cold start |
+| 83 | 0.00 | 0.00 | 1.00 | -120.00 | 0% | 82% | 0% | 0% | Pinned at floor |
+| 165 | 0.00 | 0.00 | 1.00 | -120.00 | 0% | 83% | 0% | 1% | No movement |
+| 235 | 0.00 | 0.00 | 1.00 | -120.00 | 0% | 84% | 0% | 1% | Killed — same pattern as all prior runs, no path to barracks |
 
 ---
 

@@ -116,6 +116,13 @@ export function getLegalActions(match: MatchState, playerId: string): MacroActio
     legal.push({ type: "hold_position", group: "all_combat" });
   }
 
+  // move_workers — workers can be sent to any zone (scout / reposition)
+  if (workers.length > 0) {
+    for (const targetZone of ["enemy_crystal", "midfield", "contested_node", "enemy_army", "defend_crystal"] as const) {
+      legal.push({ type: "attack_move", group: "all_workers", targetZone });
+    }
+  }
+
   // assign_workers — only "all_idle" variant
   if (idleWorkers.length > 0) {
     const hasNodes = match.resourceNodes.some(
