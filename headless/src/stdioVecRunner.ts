@@ -65,7 +65,8 @@ function performPreSetup(m: MatchState, eng: MatchEngine, pre: PrePlace): void {
   const econ = m.economy[pidx];
   if (!econ) return;
 
-  econ.resources = 9999;
+  // Cap at 400 — enough for barracks (75) + units (50 each), below passive-win threshold (4500).
+  econ.resources = 400;
   econ.maxSupply = Math.max(econ.maxSupply, 10 + pre.units.length * 2);
 
   const buildCmds = expandMacroAction({ type: "build", buildingType: "barracks", xZone: "near_crystal" } as MacroAction, m, BLUE_ID);
@@ -80,7 +81,7 @@ function performPreSetup(m: MatchState, eng: MatchEngine, pre: PrePlace): void {
   }
 
   for (const unitType of pre.units) {
-    econ.resources = 9999;
+    econ.resources = 400;
     const trainCmds = expandMacroAction({ type: "train_unit", unitType } as MacroAction, m, BLUE_ID);
     for (const cmd of trainCmds) eng.processCommand(m.id, BLUE_ID, cmd as Parameters<MatchEngine["processCommand"]>[2]);
 

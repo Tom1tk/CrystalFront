@@ -81,8 +81,9 @@ function performPreSetup(m: MatchState, eng: MatchEngine, pre: PrePlace): void {
   const econ = m.economy[pidx];
   if (!econ) return;
 
-  // Grant enough resources and supply for the setup
-  econ.resources = 9999;
+  // Grant resources for setup — capped at 400, well below the passive-win
+  // threshold (4500 held resources). 400 covers barracks (75) + units (50 each).
+  econ.resources = 400;
   econ.maxSupply = Math.max(econ.maxSupply, 10 + pre.units.length * 2);
 
   // Build barracks — reuse existing action expansion so position logic is correct
@@ -100,7 +101,7 @@ function performPreSetup(m: MatchState, eng: MatchEngine, pre: PrePlace): void {
 
   // Train each requested unit type one at a time
   for (const unitType of pre.units) {
-    econ.resources = 9999;
+    econ.resources = 400;
     const trainCmds = expandMacroAction({ type: "train_unit", unitType } as MacroAction, m, BLUE_ID);
     for (const cmd of trainCmds) eng.processCommand(m.id, BLUE_ID, cmd as Parameters<MatchEngine["processCommand"]>[2]);
 
