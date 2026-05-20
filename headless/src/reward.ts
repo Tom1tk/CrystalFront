@@ -53,7 +53,8 @@ export function computeReward(
   let r = 0;
 
   // Crystal damage dealt (+5 per full crystal HP lost)
-  if (prev.global.oppCrystalHealthFrac > 0) {
+  // Both prev and curr must be > 0 to avoid false rewards from visibility changes.
+  if (prev.global.oppCrystalHealthFrac > 0 && curr.global.oppCrystalHealthFrac > 0) {
     const delta = prev.global.oppCrystalHealthFrac - curr.global.oppCrystalHealthFrac;
     if (delta > 0) r += 5.0 * delta;
   }
@@ -87,10 +88,14 @@ export function computeReward(
   // Time penalty (-0.001/tick = -6 over a 6000-tick episode)
   r -= 0.001;
 
-  // Diagnostic tracking (no reward)
-  if (milestones.firstAttackTick < 0 && prev.global.oppCrystalHealthFrac > curr.global.oppCrystalHealthFrac)
+  // Diagnostic tracking (no reward) — only update when crystal is visible (> 0)
+  if (milestones.firstAttackTick < 0
+      && prev.global.oppCrystalHealthFrac > 0
+      && curr.global.oppCrystalHealthFrac > 0
+      && curr.global.oppCrystalHealthFrac < prev.global.oppCrystalHealthFrac)
     milestones.firstAttackTick = curr.tick;
-  if (curr.global.oppCrystalHealthFrac < milestones.minOppCrystalHealthFrac)
+  if (curr.global.oppCrystalHealthFrac > 0
+      && curr.global.oppCrystalHealthFrac < milestones.minOppCrystalHealthFrac)
     milestones.minOppCrystalHealthFrac = curr.global.oppCrystalHealthFrac;
   if (curr.global.ownCrystalHealthFrac < milestones.minOwnCrystalHealthFrac)
     milestones.minOwnCrystalHealthFrac = curr.global.ownCrystalHealthFrac;
