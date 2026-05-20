@@ -1,6 +1,6 @@
 {
   "name": "@crystalfront/client",
-  "version": "0.2.7-ML",
+  "version": "0.2.8-ML",
   "private": true,
   "type": "module",
   "scripts": {
