@@ -7,3 +7,5 @@ training/__pycache__/
 training/**/__pycache__/
 checkpoints/
 runs/
+tunableop_results*.csv
+headless/src/**/*.d.ts

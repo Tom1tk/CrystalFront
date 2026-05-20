@@ -1,16 +1,18 @@
 """
 Behaviour Cloning pre-training for CrystalFront.
 
-Collects (obs, action) demonstration data from RushBot vs IdleBot, then trains
-the CrystalFrontAgent policy head with cross-entropy loss for a few epochs.
-The result is saved as bc_warmup.pt — use as --checkpoint for PPO training.
+Runs RushBot (as blue) vs IdleBot (as red) for N episodes using stdioRunner's
+demo mode.  At each tick the Node process drives blue with RushBot and returns
+the chosen action index alongside the observation.  Python collects these
+(obs, action) pairs and trains CrystalFrontAgent with cross-entropy loss.
+
+The resulting bc_warmup.pt is checkpoint-compatible with train.py.
 
 Usage:
     python -m training.bc_pretrain [options]
 
-Key options:
-    --episodes 500        episodes of RushBot demonstrations to collect
-    --epochs   3          supervised training epochs over the collected data
+    --episodes 500    episodes of RushBot demonstrations to collect
+    --epochs   3      supervised training epochs over collected data
     --output   bc_warmup.pt
 """
 
@@ -18,14 +20,13 @@ from __future__ import annotations
 
 import os
 os.environ.setdefault("HSA_OVERRIDE_GFX_VERSION", "11.0.0")
-os.environ.setdefault("PYTORCH_TUNABLEOP_ENABLED", "0")  # no tuning during BC
+os.environ.setdefault("PYTORCH_TUNABLEOP_ENABLED", "0")
 
 import json
 import random
 import sys
-import time
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -37,10 +38,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
 from training.env.crystalfront_env import CrystalFrontEnv
-from training.env.crystalfront_vec_env import (
-    GLOBAL_DIM, ENTITY_DIM, NODE_DIM,
-    MAX_ENTITIES, MAX_NODES, ACTION_SPACE_SIZE,
-)
 from training.ppo.policy import CrystalFrontAgent
 
 
@@ -52,9 +49,10 @@ class Config:
     learning_rate:   float = 1e-3
     device:          str   = "cuda"
     output:          str   = "bc_warmup.pt"
-    opponent:        str   = "rush"   # demonstrations come from RushBot
+    demo_bot:        str   = "rush"    # blue player is driven by this scripted bot
+    opponent:        str   = "idle"    # red player
     seed:            int   = 42
-    # network (must match train.py defaults)
+    # network dims — must match train.py defaults
     entity_d_model:  int   = 64
     entity_n_heads:  int   = 4
     entity_n_layers: int   = 2
@@ -63,93 +61,41 @@ class Config:
 
 
 def collect_demonstrations(cfg: Config) -> tuple[list[dict], list[int]]:
-    """Run RushBot as blue agent, collect (obs, action) pairs."""
+    """
+    Run demo_bot as blue against opponent as red.
+    The Node process drives blue internally and returns info['demoAction']
+    at every tick — the macro-action index RushBot actually chose.
+    """
     obs_list: list[dict] = []
     act_list: list[int]  = []
 
-    env = CrystalFrontEnv(opponent="idle")
+    # CrystalFrontEnv wraps a single stdioRunner process.
+    # We pass demo_bot via options so the Node runner activates demo mode.
+    env = CrystalFrontEnv(opponent=cfg.opponent, demo_bot=cfg.demo_bot)
 
-    from training.env.crystalfront_env import CrystalFrontEnv as _E
-
-    # Import the headless helpers directly via the Node single-game env
-    # We drive RushBot by calling the headless runner in a special mode.
-    # Simpler approach: use a scripted bot via the existing single-env interface
-    # with save_replay=False and record every (obs, legal_mask, chosen_action).
-    # We can't directly call TS from Python, so we spawn a bot-vs-bot match
-    # via the Node runner passing "rush" as both sides, capturing observations.
-
-    # Strategy: use opponent="idle" and the env's step interface but take
-    # RANDOM LEGAL actions from the RushBot side.  That won't be a good prior.
-    # Better: use a second single-env instance where "blue" is the bot we want
-    # to clone — but CrystalFrontEnv only runs policy as blue and scripted as red.
-
-    # Real approach: add a special mode to stdioRunner where blue = scripted bot.
-    # We do this by asking for opponent="rush" and then ignoring the obs/action
-    # from the env (we're collecting what the bot does, not the policy).
-
-    # The cleanest solution given the existing infra: run the env with the
-    # opponent=rush so RED is RushBot; BLUE plays random legal actions.
-    # We collect the RED bot's observations and infer its actions.
-    # This is awkward, so instead we use a simpler heuristic:
-    #   - Use the env normally (blue=policy, red=idle)
-    #   - Instead of a real policy, run the action-space sampler weighted by
-    #     the macro-action type distribution of RushBot (hardcoded prior):
-    #     build_barracks ~10%, train_skirmisher ~5%, attack_move ~20%, noop ~rest
-    # This gives a "rush-like" prior without needing a direct bot-to-obs bridge.
-
-    # The BEST approach: use the existing headless runner's RushBot directly.
-    # We do this by spawning a bot-mode Node process that runs RushBot as blue.
-    # For now we implement the pragmatic version using the env + a rush-like
-    # action sampler that weights towards the expected RushBot behaviour.
-
-    print(f"Collecting {cfg.episodes} episodes of demonstration data…")
-    env_inst = CrystalFrontEnv(opponent="idle")
-
-    # RushBot-like action sampling: prefer build, then train_unit, then attack_move
-    # Action index reference (from actionIndex.ts):
-    #   0        = noop
-    #   1        = train_worker
-    #   2-5      = train_unit (skirmisher/gunner/bruiser/medic)
-    #   6-17     = build (4 buildings × 3 xZones)
-    #   18-29    = attack_move all_combat × 5 zones + skirmishers + gunners + bruisers
-    #   66-70    = attack_move all_workers × 5 zones
-    RUSH_WEIGHTS = np.ones(ACTION_SPACE_SIZE, dtype=np.float32)
-    RUSH_WEIGHTS[0]    = 0.05   # noop very rare
-    RUSH_WEIGHTS[1]    = 2.0    # train_worker encouraged
-    RUSH_WEIGHTS[2:6]  = 3.0    # train combat units strongly preferred when legal
-    RUSH_WEIGHTS[6:18] = 4.0    # build strongly preferred
-    RUSH_WEIGHTS[18:30] = 3.0   # attack_move encouraged
-    RUSH_WEIGHTS[34:37] = 2.0   # assign_workers
-
+    print(f"Collecting {cfg.episodes} episodes of {cfg.demo_bot} demonstrations vs {cfg.opponent}…")
     episodes_done = 0
+
     while episodes_done < cfg.episodes:
-        obs, info = env_inst.reset(seed=random.randint(0, 2**31))
+        obs, info = env.reset(seed=random.randint(0, 2**31))
         done = False
         while not done:
-            legal_mask = info["legal_mask"]  # bool array shape (81,)
-            # Sample from legal actions weighted by rush prior
-            weights = RUSH_WEIGHTS * legal_mask.astype(np.float32)
-            total_w = weights.sum()
-            if total_w <= 0:
-                action = 0
-            else:
-                action = int(np.random.choice(ACTION_SPACE_SIZE, p=weights / total_w))
+            # In demo mode the Node ignores the action we send.
+            # We send 0 (noop) as a placeholder; the bot's choice is in info.
+            demo_action = info.get("demoAction", 0)
             obs_list.append({k: v.copy() for k, v in obs.items()})
-            act_list.append(action)
-            obs, _reward, terminated, truncated, info = env_inst.step(action)
+            act_list.append(int(demo_action))
+            obs, _reward, terminated, truncated, info = env.step(0)
             done = terminated or truncated
+
         episodes_done += 1
         if episodes_done % 50 == 0:
             print(f"  collected {episodes_done}/{cfg.episodes} episodes  "
                   f"({len(obs_list):,} transitions)", flush=True)
 
-    env_inst.close()
+    env.close()
     print(f"  Total transitions: {len(obs_list):,}")
     return obs_list, act_list
-
-
-def obs_to_device(obs: dict, device: torch.device) -> dict[str, torch.Tensor]:
-    return {k: torch.from_numpy(v).unsqueeze(0).to(device) for k, v in obs.items()}
 
 
 def train_bc(cfg: Config) -> None:
@@ -162,13 +108,19 @@ def train_bc(cfg: Config) -> None:
     obs_list, act_list = collect_demonstrations(cfg)
     N = len(obs_list)
 
-    # Stack into arrays
-    globals_arr      = np.stack([o["global"]      for o in obs_list])        # (N, GLOBAL_DIM)
-    entities_arr     = np.stack([o["entities"]    for o in obs_list])        # (N, MAX_E, ENTITY_DIM)
-    entity_masks_arr = np.stack([o["entity_mask"] for o in obs_list])        # (N, MAX_E)
-    nodes_arr        = np.stack([o["nodes"]       for o in obs_list])        # (N, MAX_N, NODE_DIM)
-    node_masks_arr   = np.stack([o["node_mask"]   for o in obs_list])        # (N, MAX_N)
-    actions_arr      = np.array(act_list, dtype=np.int64)                    # (N,)
+    globals_arr      = np.stack([o["global"]      for o in obs_list])
+    entities_arr     = np.stack([o["entities"]    for o in obs_list])
+    entity_masks_arr = np.stack([o["entity_mask"] for o in obs_list])
+    nodes_arr        = np.stack([o["nodes"]       for o in obs_list])
+    node_masks_arr   = np.stack([o["node_mask"]   for o in obs_list])
+    actions_arr      = np.array(act_list, dtype=np.int64)
+
+    # Log action distribution to sanity-check we got real bot behaviour
+    unique, counts = np.unique(actions_arr, return_counts=True)
+    top = sorted(zip(counts, unique), reverse=True)[:8]
+    print(f"\nTop demo actions (index: count):")
+    for cnt, idx in top:
+        print(f"  action {idx:3d}: {cnt:6d}  ({100*cnt/N:.1f}%)")
 
     agent = CrystalFrontAgent(
         entity_d_model=cfg.entity_d_model,
@@ -203,7 +155,6 @@ def train_bc(cfg: Config) -> None:
             }
             mb_actions = torch.from_numpy(actions_arr[bidx]).to(device)
 
-            # Forward: get unmasked logits via internal encode + actor head
             logits = agent.actor_head(agent._encode(mb_obs))  # (B, ACTION_SPACE_SIZE)
             loss   = criterion(logits, mb_actions)
 
@@ -220,7 +171,6 @@ def train_bc(cfg: Config) -> None:
         acc      = 100.0 * correct / N
         print(f"  epoch {epoch}/{cfg.epochs}  loss={avg_loss:.4f}  acc={acc:.1f}%", flush=True)
 
-    # Save compatible with train.py checkpoint format
     out_path = Path(cfg.output)
     torch.save({
         "update":      0,
@@ -230,7 +180,9 @@ def train_bc(cfg: Config) -> None:
         "config":      cfg,
     }, out_path)
     print(f"\nBC warmup saved to: {out_path}")
-    print("Use with: python -m training.ppo.train --checkpoint bc_warmup.pt --ent_coef 0.02")
+    print("Suggested next step:")
+    print("  python -m training.eval.eval_checkpoint --checkpoint bc_warmup.pt --episodes 50")
+    print("  python -m training.ppo.train --curriculum True --checkpoint bc_warmup.pt --ent_coef 0.02")
 
 
 if __name__ == "__main__":

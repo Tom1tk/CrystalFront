@@ -272,8 +272,9 @@ function resolveAttackTarget(unit, visibleEnemies, targetType, playerColor, matc
         })[0];
     }
     if (targetType === "targeting_friend") {
-        // Find enemies whose current attack target is a friendly unit or building.
-        const ownIds = new Set([...match.entities.values()].filter(e => e.ownerId === playerId).map(e => e.id));
+        // Find enemies targeting a friendly unit. Derive ownerId from playerColor.
+        const ownPlayerId = match.players.find(p => p?.color === playerColor)?.playerId ?? "";
+        const ownIds = new Set([...match.entities.values()].filter(e => e.ownerId === ownPlayerId).map(e => e.id));
         const attackers = enemyCombat.filter(e => e.attackTargetId && ownIds.has(e.attackTargetId));
         const pool = attackers.length > 0 ? attackers : enemyCombat.length > 0 ? enemyCombat : visibleEnemies;
         return pool.slice().sort((a, b) => dist2(a, unit) - dist2(b, unit))[0];
