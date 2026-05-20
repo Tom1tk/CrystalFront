@@ -57,6 +57,44 @@ import { IdleBot, RushBot, WeakRushBot, MediumRushBot, PassiveBot, TurtleBot, Ma
 import type { Agent, PlayerObservation, MacroAction } from "./types.js";
 import { type Milestones, freshMilestones, computeReward } from "./reward.js";
 
+interface PrePlace { barracks: boolean; units: string[] }
+
+function performPreSetup(m: MatchState, eng: MatchEngine, pre: PrePlace): void {
+  if (!pre.barracks && pre.units.length === 0) return;
+  const pidx = m.players.findIndex(p => p?.playerId === BLUE_ID);
+  const econ = m.economy[pidx];
+  if (!econ) return;
+
+  econ.resources = 9999;
+  econ.maxSupply = Math.max(econ.maxSupply, 10 + pre.units.length * 2);
+
+  const buildCmds = expandMacroAction({ type: "build", buildingType: "barracks", xZone: "near_crystal" } as MacroAction, m, BLUE_ID);
+  for (const cmd of buildCmds) eng.processCommand(m.id, BLUE_ID, cmd as Parameters<MatchEngine["processCommand"]>[2]);
+
+  for (let t = 0; t < 300 && m.phase === "playing"; t++) {
+    const done = [...m.entities.values()].find(e =>
+      e.ownerId === BLUE_ID && e.type === "building" && e.buildingType === "barracks" && e.constructionProgress >= 100
+    );
+    if (done) break;
+    eng.tick(m.id);
+  }
+
+  for (const unitType of pre.units) {
+    econ.resources = 9999;
+    const trainCmds = expandMacroAction({ type: "train_unit", unitType } as MacroAction, m, BLUE_ID);
+    for (const cmd of trainCmds) eng.processCommand(m.id, BLUE_ID, cmd as Parameters<MatchEngine["processCommand"]>[2]);
+
+    const prevCount = [...m.entities.values()].filter(e => e.ownerId === BLUE_ID && e.type === unitType).length;
+    for (let t = 0; t < 150 && m.phase === "playing"; t++) {
+      const currCount = [...m.entities.values()].filter(e => e.ownerId === BLUE_ID && e.type === unitType).length;
+      if (currCount > prevCount) break;
+      eng.tick(m.id);
+    }
+  }
+
+  econ.resources = m.config.startingResources;
+}
+
 const REPO_ROOT   = resolve(__dirnameHere, "..", "..");
 const REPLAYS_DIR = resolve(REPO_ROOT, "replays");
 
@@ -81,6 +119,7 @@ interface SlotState {
   lastTerminalReturn: number;
   episodeActionCounts: Record<string, number>;
   episodeTotalActions: number;
+  prePlace?: PrePlace;
 }
 
 function makeBot(name: string): Agent {
@@ -100,7 +139,7 @@ function makeBot(name: string): Agent {
 
 // ── slot lifecycle ────────────────────────────────────────────────────────────
 
-function resetSlot(slot: SlotState, seed: number | undefined, opponent: string, doSave: boolean, configOverrides?: Partial<import("../../server/src/match/types.js").MatchConfig>): PlayerObservation {
+function resetSlot(slot: SlotState, seed: number | undefined, opponent: string, doSave: boolean, configOverrides?: Partial<import("../../server/src/match/types.js").MatchConfig>, prePlace?: PrePlace): PlayerObservation {
   slot.milestones         = freshMilestones();
   slot.episodeShaping     = 0;
   slot.lastTerminalReturn = 0;
@@ -121,6 +160,8 @@ function resetSlot(slot: SlotState, seed: number | undefined, opponent: string, 
   slot.engine.startMatch(slot.match.id);
   slot.redBot = makeBot(opponent);
   slot.redBot.init(RED_ID, slot.match);
+
+  if (prePlace) performPreSetup(slot.match, slot.engine, prePlace);
 
   const obs = buildObservation(slot.match, BLUE_ID);
   slot.prevBlueObs = obs;
@@ -228,7 +269,7 @@ function stepSlot(slot: SlotState, actionIdx: number): {
     // Autoreset: immediately start a new episode in this slot
     slot.episodeCount++;
     const doNextSave = slot.saveReplayEvery > 0 && slot.episodeCount % slot.saveReplayEvery === 0;
-    const nextObs    = resetSlot(slot, undefined, slot.opponentName, doNextSave);
+    const nextObs    = resetSlot(slot, undefined, slot.opponentName, doNextSave, undefined, slot.prePlace);
     const nextLegal  = getLegalActions(slot.match!, BLUE_ID);
     return { obs: nextObs, legalMask: buildLegalMask(nextLegal), reward, done, info };
   }
@@ -260,6 +301,7 @@ rl.on("line", (raw) => {
         const saveReplays = msg.save_replays as boolean[];
         const saveEvery   = (msg.save_replay_every as number) ?? 0;
         const cfgOverrides = msg.config_overrides as Partial<import("../../server/src/match/types.js").MatchConfig> | undefined;
+        const prePlaceMsg  = msg.pre_place as PrePlace | undefined;
         if (msg.max_ticks !== undefined) MAX_TICKS = msg.max_ticks as number;
 
         slots = [];
@@ -277,8 +319,9 @@ rl.on("line", (raw) => {
             episodeShaping: 0,
             lastTerminalReturn: 0,
             episodeActionCounts: {}, episodeTotalActions: 0,
+            prePlace: prePlaceMsg,
           };
-          const obs = resetSlot(slot, seeds[i], opponents[i], saveReplays[i], cfgOverrides);
+          const obs = resetSlot(slot, seeds[i], opponents[i], saveReplays[i], cfgOverrides, prePlaceMsg);
           slots.push(slot);
           const legal = getLegalActions(slot.match!, BLUE_ID);
           readySlots.push({ obs, legalMask: buildLegalMask(legal) });

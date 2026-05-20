@@ -66,6 +66,7 @@ class CrystalFrontVecEnv:
         startup_delay: float = 0.0,
         config_overrides: dict | None = None,
         max_ticks: int = 6000,
+        pre_place: dict | None = None,
     ):
         self.vec_size          = vec_size
         self.opponent          = opponent
@@ -73,6 +74,7 @@ class CrystalFrontVecEnv:
         self._startup_delay    = startup_delay
         self._config_overrides = config_overrides or {}
         self._max_ticks        = max_ticks
+        self._pre_place        = pre_place
         self._proc: subprocess.Popen | None = None
         self._last_legal_masks = [np.ones(ACTION_SPACE_SIZE, dtype=bool)] * vec_size
 
@@ -153,6 +155,8 @@ class CrystalFrontVecEnv:
         }
         if self._config_overrides:
             msg["config_overrides"] = self._config_overrides
+        if self._pre_place:
+            msg["pre_place"] = self._pre_place
         self._send(msg)
         msg = self._recv()
         assert msg["type"] == "ready", f"Expected 'ready', got {msg['type']}"
