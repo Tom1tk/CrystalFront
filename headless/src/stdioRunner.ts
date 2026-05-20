@@ -37,7 +37,7 @@ import type { PlayerSlot, MatchState, MatchEntity } from "../../server/src/match
 import { buildObservation } from "./observation.js";
 import { getLegalActions } from "./legalActions.js";
 import { expandMacroAction } from "./actionSpace.js";
-import { indexToAction, legalMask as buildLegalMask } from "./actionIndex.js";
+import { indexToAction, actionToIndex, legalMask as buildLegalMask } from "./actionIndex.js";
 import { IdleBot, RushBot, WeakRushBot, MediumRushBot, PassiveBot, TurtleBot, MacroBot, HeavyBot } from "./bots/index.js";
 import { UNIT_DEFS, BUILDING_DEFS } from "@crystalfront/shared";
 import type { Agent, PlayerObservation } from "./types.js";
@@ -91,11 +91,12 @@ let episodeTotalActions   = 0;
 let engine: MatchEngine | null = null;
 let match: MatchState | null = null;
 let redBot: Agent | null = null;
+let blueBot: Agent | null = null;  // non-null in demo mode: scripted bot drives blue
 let prevBlueObs: PlayerObservation | null = null;
 let saveReplay = false;
 let commandLog: Array<{ tick: number; playerId: string; command: Record<string, unknown> }> = [];
 
-function handleReset(seed?: number, opponent?: string, doSave = false, configOverrides?: Partial<import("../../server/src/match/types.js").MatchConfig>, newMaxTicks?: number): void {
+function handleReset(seed?: number, opponent?: string, doSave = false, configOverrides?: Partial<import("../../server/src/match/types.js").MatchConfig>, newMaxTicks?: number, demoBot?: string): void {
   milestones = freshMilestones();
   episodeShaping      = 0;
   lastTerminalReturn  = 0;
@@ -119,6 +120,10 @@ function handleReset(seed?: number, opponent?: string, doSave = false, configOve
   redBot = makeBot(opponent);
   redBot.init(RED_ID, match);
 
+  // Demo mode: also drive blue with a scripted bot to collect demonstrations
+  blueBot = demoBot ? makeBot(demoBot) : null;
+  if (blueBot) blueBot.init(BLUE_ID, match);
+
   commandLog = [];
   const obs  = buildObservation(match, BLUE_ID);
   const legal = getLegalActions(match, BLUE_ID);
@@ -137,7 +142,19 @@ function handleStep(actionIdx: number): void {
     return;
   }
 
-  const macroAction = indexToAction(actionIdx);
+  // In demo mode, ignore Python's action — use the scripted blue bot instead
+  let macroAction = indexToAction(actionIdx);
+  let demoActionIdx = actionIdx;
+  if (blueBot) {
+    const blueLegal = getLegalActions(match, BLUE_ID);
+    const botActions = blueBot.step(buildObservation(match, BLUE_ID), blueLegal);
+    if (botActions.length > 0) {
+      macroAction = botActions[0];
+      demoActionIdx = actionToIndex(macroAction);
+      if (demoActionIdx < 0) demoActionIdx = 0;  // fallback to noop if not found
+    }
+  }
+
   episodeTotalActions++;
   episodeActionCounts[macroAction.type] = (episodeActionCounts[macroAction.type] ?? 0) + 1;
 
@@ -178,6 +195,7 @@ function handleStep(actionIdx: number): void {
 
   const legal = getLegalActions(match, BLUE_ID);
   const info: Record<string, unknown> = { ticks: match.tick };
+  if (blueBot) info.demoAction = demoActionIdx;
 
   if (done) {
     info.winner  = winner;
@@ -257,7 +275,7 @@ rl.on("line", (raw) => {
     const msg = JSON.parse(line);
     switch (msg.type) {
       case "reset":
-        handleReset(msg.seed, msg.opponent, msg.save_replay === true, msg.config_overrides ?? undefined, msg.max_ticks ?? undefined);
+        handleReset(msg.seed, msg.opponent, msg.save_replay === true, msg.config_overrides ?? undefined, msg.max_ticks ?? undefined, msg.demo_bot ?? undefined);
         break;
       case "step":
         handleStep(msg.action as number);

@@ -79,7 +79,7 @@ class CrystalFrontEnv(gym.Env):
     action_space = gym.spaces.Discrete(ACTION_SPACE_SIZE)
 
     def __init__(self, opponent: str = "macro", save_replay_every: int = 0,
-                 startup_delay: float = 0.0):
+                 startup_delay: float = 0.0, demo_bot: str | None = None):
         """
         Args:
             opponent:          scripted bot to play against
@@ -91,10 +91,11 @@ class CrystalFrontEnv(gym.Env):
         self.opponent = opponent
         self.save_replay_every = save_replay_every
         self._startup_delay = startup_delay
+        self._demo_bot = demo_bot
         self._proc: subprocess.Popen | None = None
         self._episode_count = 0
         self._last_legal_mask = np.ones(ACTION_SPACE_SIZE, dtype=bool)
-        self._current_opponent = opponent  # may change per reset in league mode
+        self._current_opponent = opponent
 
     # ── lifecycle ─────────────────────────────────────────────────────────────
 
@@ -174,7 +175,10 @@ class CrystalFrontEnv(gym.Env):
             self.save_replay_every > 0
             and self._episode_count % self.save_replay_every == 0
         )
-        self._send({"type": "reset", "seed": rng_seed, "opponent": opponent, "save_replay": do_save})
+        msg_reset: dict = {"type": "reset", "seed": rng_seed, "opponent": opponent, "save_replay": do_save}
+        if self._demo_bot:
+            msg_reset["demo_bot"] = self._demo_bot
+        self._send(msg_reset)
 
         self._current_opponent = opponent
         msg = self._recv()
