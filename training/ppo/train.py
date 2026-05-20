@@ -308,8 +308,6 @@ def train(cfg: Config) -> None:
 
     writer = SummaryWriter(str(log_path))
     writer.add_text("config", str(cfg))
-    if cfg.curriculum:
-        writer.add_scalar("curriculum/stage", cur_stage_idx, 0)
     print(f"\nCrystalFront PPO training")
     if cfg.league:
         print(f"  Mode:       LEAGUE (PFSP, temp={cfg.league_pfsp_temp})")
@@ -378,6 +376,7 @@ def train(cfg: Config) -> None:
     if cur_stage:
         print(f"  Curriculum stage: {cur_stage.name}  (map={cur_stage.map_width or 'default'}, "
               f"crystal_hp={cur_stage.crystal_health or 'default'}, opp={cur_stage.opponent})", flush=True)
+        writer.add_scalar("curriculum/stage", cur_stage_idx, 0)
     vec_envs = _build_vec_envs(_cfg_overrides, _max_ticks, _opponent)
 
     # ── agent & optimiser ─────────────────────────────────────────────────────
@@ -389,6 +388,20 @@ def train(cfg: Config) -> None:
         mlp_hidden=cfg.mlp_hidden,
     ).to(device)
 
+    # ── optional checkpoint resume ────────────────────────────────────────────
+    # Load weights BEFORE compile so key names are always undecorated.
+    # Strip _orig_mod. prefix if checkpoint was saved from a compiled agent.
+    start_update = 1
+    _ckpt = None
+    if cfg.checkpoint:
+        _ckpt = torch.load(cfg.checkpoint, map_location=device, weights_only=False)
+        sd = _ckpt["agent"]
+        if any(k.startswith("_orig_mod.") for k in sd):
+            sd = {k[len("_orig_mod."):]: v for k, v in sd.items()}
+        agent.load_state_dict(sd)
+        start_update = int(_ckpt.get("update", 0)) + 1
+        print(f"  Resumed from: {cfg.checkpoint}  (update {_ckpt.get('update','?')}, step {_ckpt.get('global_step',0):,})", flush=True)
+
     if cfg.compile_agent:
         print("  Compiling agent with torch.compile(reduce-overhead)…", flush=True)
         agent = torch.compile(agent, mode="reduce-overhead", dynamic=False)  # type: ignore[assignment]
@@ -396,14 +409,8 @@ def train(cfg: Config) -> None:
 
     optimizer = optim.Adam(agent.parameters(), lr=cfg.learning_rate, eps=1e-5)
 
-    # ── optional checkpoint resume ────────────────────────────────────────────
-    start_update = 1
-    if cfg.checkpoint:
-        ckpt = torch.load(cfg.checkpoint, map_location=device, weights_only=False)
-        agent.load_state_dict(ckpt["agent"])
-        optimizer.load_state_dict(ckpt["optimizer"])
-        start_update = int(ckpt.get("update", 0)) + 1
-        print(f"  Resumed from: {cfg.checkpoint}  (update {ckpt.get('update','?')}, step {ckpt.get('global_step',0):,})", flush=True)
+    if _ckpt is not None:
+        optimizer.load_state_dict(_ckpt["optimizer"])
 
     # ── thread pool ───────────────────────────────────────────────────────────
     # One thread per Node process — much fewer threads than old 1-game-per-proc design.
