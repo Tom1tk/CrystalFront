@@ -17,12 +17,20 @@ Legal mask is returned in info["legal_mask"] (bool[81]).  The policy should
 zero out illegal logits before sampling.
 """
 
-import json
 import os
 import subprocess
 import time
 from pathlib import Path
 from typing import Any
+
+try:
+    import orjson
+    def _json_loads(b):  return orjson.loads(b)
+    def _json_dumps(obj): return orjson.dumps(obj).decode() + "\n"
+except ImportError:
+    import json as _json
+    def _json_loads(b):  return _json.loads(b)
+    def _json_dumps(obj): return _json.dumps(obj) + "\n"
 
 import gymnasium as gym
 import numpy as np
@@ -119,7 +127,7 @@ class CrystalFrontEnv(gym.Env):
 
     def _send(self, msg: dict) -> None:
         assert self._proc and self._proc.stdin
-        self._proc.stdin.write(json.dumps(msg) + "\n")
+        self._proc.stdin.write(_json_dumps(msg))
         self._proc.stdin.flush()
 
     def _recv(self) -> dict:
@@ -127,7 +135,7 @@ class CrystalFrontEnv(gym.Env):
         line = self._proc.stdout.readline()
         if not line:
             raise RuntimeError("Node subprocess exited unexpectedly")
-        msg = json.loads(line.strip())
+        msg = _json_loads(line.strip())
         if msg.get("type") == "error":
             raise RuntimeError(f"Node error: {msg['message']}")
         return msg

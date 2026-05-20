@@ -1,39 +1,39 @@
 """
-Crystal Front PPO Trainer
+Crystal Front PPO Trainer — v0.2.8-ML optimised build
 
 Based on CleanRL's PPO reference implementation (https://github.com/vwxyzjn/cleanrl).
-Adapted for:
-  - Structured Dict observations (global + entity set + node set)
-  - Legal-action masking
-  - Multiple parallel Node.js simulators as the environment backend
 
-Usage examples:
-  # Baseline: train vs idle bot first (should converge quickly)
-  python training/ppo/train.py --opponent idle --num_envs 4 --total_timesteps 500000
+Key optimisations vs prior version:
+  - Vectorised Node runner: VEC_SIZE games per Node process, far fewer subprocesses
+  - GPU rollout buffer: obs/logprobs/values stored on device, no re-upload for PPO
+  - bf16 autocast for policy inference (bf16 natively fast on gfx1100 / RDNA3)
+  - torch.compile(mode="reduce-overhead") — reduces per-step kernel launch cost
+  - GAE computed on GPU with torch ops (no numpy loop)
+  - orjson for JSON encode/decode in env
+  - ROCm tuning env vars
+  - torch.set_float32_matmul_precision("high")
+  - np.bincount for action histograms
 
-  # Main training run vs strongest scripted bot
-  python training/ppo/train.py --opponent macro --num_envs 8 --total_timesteps 5000000
-
-  # Monitor in TensorBoard (run in a second terminal):
-  tensorboard --logdir /root/CrystalFront/runs --bind_all
-
-Key hyperparameter guidance:
-  num_envs      — increase to use more CPU cores (each env = 1 Node subprocess)
-                  28-core Xeon: try num_envs=16 or 20
-  num_steps     — rollout length per env; 512 is good for episodes ~1000 ticks
-  gamma         — 0.995 works well for long episodes (up to 6000 ticks)
-  opponent      — start with 'idle', then 'rush', then 'turtle', then 'macro'
-                  Move to the next once win rate > 90% for 200k steps
-
-When to stop:
-  Phase 3 done = win rate vs IdleBot at 100% AND visible reward improvement vs macro.
-  Phase 4 (league / self-play) begins after Phase 3 is confirmed working.
+Hyperparameter guidance:
+  num_envs  — total parallel games (across all Node processes)
+              num_procs = num_envs // VEC_SIZE Node processes are actually spawned
+              With 12 vCPUs: num_envs=20, VEC_SIZE=4 → 5 Node processes (recommended)
+  num_steps — rollout length per env; raise to 1536+ so GAE spans a meaningful
+              fraction of the 6000-tick episode horizon
+  VEC_SIZE  — games per Node process (default 4)
 """
 
 from __future__ import annotations
 
 import os
-os.environ.setdefault("TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL", "1")  # optimised flash-attn on gfx1100
+
+# ── ROCm / GPU tuning env vars (set before torch import) ─────────────────────
+os.environ.setdefault("TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL", "1")   # flash-attn gfx1100
+os.environ.setdefault("PYTORCH_TUNABLEOP_ENABLED",               "1")   # auto-tune GEMMs
+os.environ.setdefault("PYTORCH_TUNABLEOP_TUNING",                "1")   # persist tuning to csv
+os.environ.setdefault("MIOPEN_FIND_MODE",                        "FAST") # skip exhaustive search
+os.environ.setdefault("MIOPEN_USER_DB_PATH",      "/root/.cache/miopen") # persistent kernel cache
+os.environ.setdefault("HSA_OVERRIDE_GFX_VERSION",                "11.0.0")
 
 import random
 import sys
@@ -50,16 +50,19 @@ import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 import tyro
 
+torch.set_float32_matmul_precision("high")
+
 # ── project imports ───────────────────────────────────────────────────────────
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
-from training.env.crystalfront_env import (
-    CrystalFrontEnv,
+from training.env.crystalfront_vec_env import (
+    CrystalFrontVecEnv,
     GLOBAL_DIM, ENTITY_DIM, NODE_DIM,
     MAX_ENTITIES, MAX_NODES, ACTION_SPACE_SIZE,
 )
+from training.env.crystalfront_env import CrystalFrontEnv  # kept for legacy checkpoint compat
 from training.ppo.policy import CrystalFrontAgent
 from training.ppo.league import LeagueManager, SCRIPTED_BOTS
 
@@ -71,32 +74,33 @@ class Config:
     # Experiment identity
     exp_name:  str = "crystalfront_ppo"
     seed:      int = 1
-    device:    str = "cuda"  # "cuda" uses ROCm on AMD; fall back to "cpu" if no GPU
+    device:    str = "cuda"
 
     # Environment
-    num_envs:           int = 20          # parallel Node simulators (all stepped in parallel via thread pool)
-    opponent:           str = "macro"     # idle | rush | turtle | macro
-    save_replay_every:  int = 10          # save a replay every N episodes per env (0=off)
+    num_envs:           int = 20       # total parallel games
+    vec_size:           int = 4        # games per Node process; num_procs = num_envs // vec_size
+    opponent:           str = "idle"
+    save_replay_every:  int = 10
 
     # Training duration
     total_timesteps: int = 5_000_000
 
     # Optimiser
     learning_rate: float = 3e-4
-    anneal_lr:     bool  = True           # cosine-anneal LR to 0 by end of training
+    anneal_lr:     bool  = True
 
     # PPO rollout
-    num_steps:      int   = 512           # steps per env per rollout
-    gamma:          float = 0.995         # longer horizon — makes early-game rewards ~20× more influential (v0.1.59)
+    num_steps:      int   = 1536       # longer rollout for better GAE horizon
+    gamma:          float = 0.995
     gae_lambda:     float = 0.95
 
     # PPO update
     update_epochs:    int   = 4
-    num_minibatches:  int   = 4
+    num_minibatches:  int   = 6        # 20×1536 / 6 = 5120 per minibatch
     clip_coef:        float = 0.2
     norm_adv:         bool  = True
     clip_vloss:       bool  = True
-    ent_coef:         float = 0.02        # entropy bonus (v0.1.49: 0.05→0.02 now reward is denser)
+    ent_coef:         float = 0.02
     vf_coef:          float = 0.5
     max_grad_norm:    float = 0.5
 
@@ -105,19 +109,26 @@ class Config:
     entity_n_heads:  int = 4
     entity_n_layers: int = 2
     node_d_model:    int = 32
-    mlp_hidden:      int = 256
+    mlp_hidden:      int = 384         # wider trunk; free SPS on this GPU
 
     # Logging & checkpoints
     log_dir:        str = "runs"
     checkpoint_dir: str = "checkpoints"
-    save_interval:  int = 50              # save checkpoint every N policy updates
-    checkpoint:     str = ""             # path to .pt file to resume from (loads weights + optimizer)
+    save_interval:  int = 50
+    checkpoint:     str = ""
 
-    # Phase 4 — league training (PFSP opponent sampling)
-    league:               bool  = False   # enable league mode
-    league_pfsp_temp:     float = 0.5     # PFSP temperature: higher = focus on hard opponents
-    league_add_interval:  int   = 100     # add current policy as opponent every N updates (0=off)
-    league_state:         str   = ""      # path to league state JSON (auto-generated if blank)
+    # Compiler
+    compile_agent:  bool = True        # torch.compile(mode="reduce-overhead")
+
+    # League (Phase 4)
+    league:               bool  = False
+    league_pfsp_temp:     float = 0.5
+    league_add_interval:  int   = 100
+    league_state:         str   = ""
+
+    @property
+    def num_procs(self) -> int:
+        return max(1, self.num_envs // self.vec_size)
 
     @property
     def batch_size(self) -> int:
@@ -137,97 +148,100 @@ def set_seed(seed: int) -> None:
     torch.cuda.manual_seed_all(seed)
 
 
-def obs_to_tensor(obs: dict, device: torch.device) -> dict[str, torch.Tensor]:
-    """Convert numpy obs dict → device tensors, adding batch dim."""
+def obs_list_to_device(obs_list: list[dict], device: torch.device) -> dict[str, torch.Tensor]:
+    """Stack a list of obs dicts (one per env) into batched device tensors."""
+    globals_np      = np.stack([o["global"]      for o in obs_list])
+    entities_np     = np.stack([o["entities"]    for o in obs_list])
+    entity_masks_np = np.stack([o["entity_mask"] for o in obs_list])
+    nodes_np        = np.stack([o["nodes"]       for o in obs_list])
+    node_masks_np   = np.stack([o["node_mask"]   for o in obs_list])
     return {
-        k: torch.as_tensor(
-            v[None] if v.ndim < 2 else v[None],   # add batch dim
-            dtype=torch.bool if v.dtype == bool or v.dtype == np.bool_ else torch.float32,
-            device=device,
-        )
-        for k, v in obs.items()
-    }
-
-
-def stack_obs(obs_list: list[dict]) -> dict[str, np.ndarray]:
-    """Stack a list of single-env obs dicts into a batched numpy dict."""
-    return {k: np.stack([o[k] for o in obs_list]) for k in obs_list[0]}
-
-
-def batch_obs_to_tensor(obs_batch: dict[str, np.ndarray], device: torch.device) -> dict[str, torch.Tensor]:
-    """Convert batched numpy obs dict → device tensors."""
-    return {
-        k: torch.as_tensor(
-            v,
-            dtype=torch.bool if v.dtype == bool or v.dtype == np.bool_ else torch.float32,
-            device=device,
-        )
-        for k, v in obs_batch.items()
+        "global":      torch.from_numpy(globals_np).to(device),
+        "entities":    torch.from_numpy(entities_np).to(device),
+        "entity_mask": torch.from_numpy(entity_masks_np).to(device),
+        "nodes":       torch.from_numpy(nodes_np).to(device),
+        "node_mask":   torch.from_numpy(node_masks_np).to(device),
     }
 
 
 # ── rollout buffer ────────────────────────────────────────────────────────────
 
 class RolloutBuffer:
-    """Stores one rollout (num_steps × num_envs transitions) as numpy arrays."""
+    """
+    Stores one rollout (num_steps × num_envs transitions) as GPU tensors.
 
-    def __init__(self, num_steps: int, num_envs: int):
+    All data lives on device — no H2D re-upload during the PPO update phase.
+    Obs are copied to GPU during rollout collection (non_blocking where possible).
+    """
+
+    def __init__(self, num_steps: int, num_envs: int, device: torch.device):
         self.T = num_steps
         self.E = num_envs
-        self.pos = 0
+        self.device = device
 
-        self.globals      = np.zeros((num_steps, num_envs, GLOBAL_DIM),           dtype=np.float32)
-        self.entities     = np.zeros((num_steps, num_envs, MAX_ENTITIES, ENTITY_DIM), dtype=np.float32)
-        self.entity_masks = np.zeros((num_steps, num_envs, MAX_ENTITIES),          dtype=bool)
-        self.nodes        = np.zeros((num_steps, num_envs, MAX_NODES, NODE_DIM),  dtype=np.float32)
-        self.node_masks   = np.zeros((num_steps, num_envs, MAX_NODES),            dtype=bool)
-        self.legal_masks  = np.zeros((num_steps, num_envs, ACTION_SPACE_SIZE),    dtype=bool)
+        self.globals      = torch.zeros((num_steps, num_envs, GLOBAL_DIM),               device=device)
+        self.entities     = torch.zeros((num_steps, num_envs, MAX_ENTITIES, ENTITY_DIM), device=device)
+        self.entity_masks = torch.zeros((num_steps, num_envs, MAX_ENTITIES),             device=device, dtype=torch.bool)
+        self.nodes        = torch.zeros((num_steps, num_envs, MAX_NODES, NODE_DIM),      device=device)
+        self.node_masks   = torch.zeros((num_steps, num_envs, MAX_NODES),                device=device, dtype=torch.bool)
+        self.legal_masks  = torch.zeros((num_steps, num_envs, ACTION_SPACE_SIZE),        device=device, dtype=torch.bool)
 
-        self.actions   = np.zeros((num_steps, num_envs), dtype=np.int64)
-        self.logprobs  = np.zeros((num_steps, num_envs), dtype=np.float32)
-        self.rewards   = np.zeros((num_steps, num_envs), dtype=np.float32)
-        self.dones     = np.zeros((num_steps, num_envs), dtype=np.float32)
-        self.values    = np.zeros((num_steps, num_envs), dtype=np.float32)
+        self.actions  = torch.zeros((num_steps, num_envs), dtype=torch.long,   device=device)
+        self.logprobs = torch.zeros((num_steps, num_envs),                     device=device)
+        self.rewards  = torch.zeros((num_steps, num_envs),                     device=device)
+        self.dones    = torch.zeros((num_steps, num_envs),                     device=device)
+        self.values   = torch.zeros((num_steps, num_envs),                     device=device)
 
     def add(
         self,
         step: int,
-        env_obs: list[dict],       # list of obs, one per env
-        legal_masks: np.ndarray,   # (num_envs, 73)
-        actions: np.ndarray,       # (num_envs,)
-        logprobs: np.ndarray,      # (num_envs,)
-        rewards: np.ndarray,       # (num_envs,)
-        dones: np.ndarray,         # (num_envs,)
-        values: np.ndarray,        # (num_envs,)
+        obs_list: list[dict],          # list of obs dicts, one per env (CPU numpy)
+        legal_masks_np: np.ndarray,    # (num_envs, ACTION_SPACE_SIZE) bool
+        actions_t:  torch.Tensor,      # (num_envs,)  on device
+        logprobs_t: torch.Tensor,      # (num_envs,)  on device
+        rewards_np: np.ndarray,        # (num_envs,)
+        dones_np:   np.ndarray,        # (num_envs,)
+        values_t:   torch.Tensor,      # (num_envs,)  on device
     ) -> None:
-        for i, obs in enumerate(env_obs):
-            self.globals[step, i]      = obs["global"]
-            self.entities[step, i]     = obs["entities"]
-            self.entity_masks[step, i] = obs["entity_mask"]
-            self.nodes[step, i]        = obs["nodes"]
-            self.node_masks[step, i]   = obs["node_mask"]
-        self.legal_masks[step] = legal_masks
-        self.actions[step]     = actions
-        self.logprobs[step]    = logprobs
-        self.rewards[step]     = rewards
-        self.dones[step]       = dones
-        self.values[step]      = values
+        # Upload obs in one batch (non_blocking: queues DMA without stalling Python)
+        g  = np.stack([o["global"]      for o in obs_list])
+        e  = np.stack([o["entities"]    for o in obs_list])
+        em = np.stack([o["entity_mask"] for o in obs_list])
+        n  = np.stack([o["nodes"]       for o in obs_list])
+        nm = np.stack([o["node_mask"]   for o in obs_list])
 
-    def flatten(self) -> dict[str, np.ndarray]:
-        """Flatten (T, E, ...) → (T*E, ...) for minibatch sampling."""
+        self.globals[step].copy_(torch.from_numpy(g),  non_blocking=True)
+        self.entities[step].copy_(torch.from_numpy(e),  non_blocking=True)
+        self.entity_masks[step].copy_(torch.from_numpy(em), non_blocking=True)
+        self.nodes[step].copy_(torch.from_numpy(n),   non_blocking=True)
+        self.node_masks[step].copy_(torch.from_numpy(nm), non_blocking=True)
+        self.legal_masks[step].copy_(
+            torch.from_numpy(legal_masks_np), non_blocking=True)
+
+        # Policy outputs already on device — direct assignment, no copy
+        self.actions[step]  = actions_t.detach()
+        self.logprobs[step] = logprobs_t.detach()
+        self.values[step]   = values_t.detach()
+
+        # Small CPU arrays — synchronous (only 20 floats each)
+        self.rewards[step] = torch.tensor(rewards_np, dtype=torch.float32, device=self.device)
+        self.dones[step]   = torch.tensor(dones_np,   dtype=torch.float32, device=self.device)
+
+    def flatten(self) -> dict[str, torch.Tensor]:
+        """Flatten (T, E, ...) → (T*E, ...).  All tensors already on device."""
         B = self.T * self.E
         return {
-            "globals":      self.globals.reshape(B, GLOBAL_DIM),
-            "entities":     self.entities.reshape(B, MAX_ENTITIES, ENTITY_DIM),
-            "entity_masks": self.entity_masks.reshape(B, MAX_ENTITIES),
-            "nodes":        self.nodes.reshape(B, MAX_NODES, NODE_DIM),
-            "node_masks":   self.node_masks.reshape(B, MAX_NODES),
-            "legal_masks":  self.legal_masks.reshape(B, ACTION_SPACE_SIZE),
-            "actions":      self.actions.reshape(B),
-            "logprobs":     self.logprobs.reshape(B),
-            "rewards":      self.rewards.reshape(B),
-            "dones":        self.dones.reshape(B),
-            "values":       self.values.reshape(B),
+            "globals":      self.globals.view(B, GLOBAL_DIM),
+            "entities":     self.entities.view(B, MAX_ENTITIES, ENTITY_DIM),
+            "entity_masks": self.entity_masks.view(B, MAX_ENTITIES),
+            "nodes":        self.nodes.view(B, MAX_NODES, NODE_DIM),
+            "node_masks":   self.node_masks.view(B, MAX_NODES),
+            "legal_masks":  self.legal_masks.view(B, ACTION_SPACE_SIZE),
+            "actions":      self.actions.view(B),
+            "logprobs":     self.logprobs.view(B),
+            "rewards":      self.rewards.view(B),
+            "dones":        self.dones.view(B),
+            "values":       self.values.view(B),
         }
 
 
@@ -237,14 +251,13 @@ def train(cfg: Config) -> None:
     set_seed(cfg.seed)
     device = torch.device(cfg.device)
 
-    # Read version from package.json so run names are self-documenting
     import json as _json
     _pkg_path = REPO_ROOT / "package.json"
-    _version = _json.loads(_pkg_path.read_text()).get("version", "unknown").replace(".", "_")
+    _version  = _json.loads(_pkg_path.read_text()).get("version", "unknown").replace(".", "_")
 
     opp_label = "league" if cfg.league else cfg.opponent
-    run_name = f"{cfg.exp_name}__{_version}__{opp_label}__{cfg.seed}__{int(time.time())}"
-    log_path  = Path(cfg.log_dir) / run_name
+    run_name  = f"{cfg.exp_name}__{_version}__{opp_label}__{cfg.seed}__{int(time.time())}"
+    log_path  = Path(cfg.log_dir)  / run_name
     ckpt_path = Path(cfg.checkpoint_dir) / run_name
     ckpt_path.mkdir(parents=True, exist_ok=True)
 
@@ -255,8 +268,9 @@ def train(cfg: Config) -> None:
         print(f"  Mode:       LEAGUE (PFSP, temp={cfg.league_pfsp_temp})")
     else:
         print(f"  Opponent:   {cfg.opponent}")
-    print(f"  Envs:       {cfg.num_envs}")
+    print(f"  Envs:       {cfg.num_envs}  (vec_size={cfg.vec_size}, procs={cfg.num_procs})")
     print(f"  Batch size: {cfg.batch_size}  (steps={cfg.num_steps} × envs={cfg.num_envs})")
+    print(f"  Minibatch:  {cfg.minibatch_size}  ({cfg.num_minibatches} minibatches × {cfg.update_epochs} epochs)")
     print(f"  Device:     {device}")
     print(f"  Run name:   {run_name}\n")
 
@@ -264,37 +278,32 @@ def train(cfg: Config) -> None:
     league: LeagueManager | None = None
     league_state_path: str = ""
     if cfg.league:
-        league_state_path = cfg.league_state
-        if not league_state_path:
-            league_state_path = str(ckpt_path / "league_state.json")
-        elif not os.path.isabs(league_state_path):
+        league_state_path = cfg.league_state or str(ckpt_path / "league_state.json")
+        if not os.path.isabs(league_state_path):
             league_state_path = str(Path(league_state_path).resolve())
-
         league = LeagueManager(
             num_envs=cfg.num_envs,
             pfsp_temperature=cfg.league_pfsp_temp,
             add_interval=cfg.league_add_interval,
             results_dir=cfg.log_dir,
         )
-        # Resume from previous league state if it exists
         if os.path.exists(league_state_path):
             print(f"  Resuming league state from {league_state_path}")
             league.load_state(league_state_path)
         print(f"  League opponents: {list(league.state.opponents.keys())}")
-        print(f"  League state will be saved to: {league_state_path}")
+        print(f"  League state → {league_state_path}")
 
-    # ── environments ─────────────────────────────────────────────────────────
-    # Stagger subprocess startups to avoid simultaneous tsx compilation spikes.
-    # Cap total startup window at 20s regardless of env count — tsx caches its
-    # compilation after the first few processes, so 0.25s gaps are enough at scale.
-    _stagger = min(0.5, 20.0 / max(cfg.num_envs - 1, 1))
-    envs = [
-        CrystalFrontEnv(
+    # ── vectorised environments ───────────────────────────────────────────────
+    # Stagger process startup to avoid simultaneous Node compilation spikes.
+    _stagger = min(0.4, 15.0 / max(cfg.num_procs - 1, 1))
+    vec_envs = [
+        CrystalFrontVecEnv(
+            vec_size=cfg.vec_size,
             opponent=cfg.opponent,
             save_replay_every=cfg.save_replay_every,
             startup_delay=i * _stagger,
         )
-        for i in range(cfg.num_envs)
+        for i in range(cfg.num_procs)
     ]
 
     # ── agent & optimiser ─────────────────────────────────────────────────────
@@ -306,6 +315,11 @@ def train(cfg: Config) -> None:
         mlp_hidden=cfg.mlp_hidden,
     ).to(device)
 
+    if cfg.compile_agent:
+        print("  Compiling agent with torch.compile(reduce-overhead)…", flush=True)
+        agent = torch.compile(agent, mode="reduce-overhead", dynamic=False)  # type: ignore[assignment]
+        print("  Compilation done (first forward will JIT-compile kernels)\n", flush=True)
+
     optimizer = optim.Adam(agent.parameters(), lr=cfg.learning_rate, eps=1e-5)
 
     # ── optional checkpoint resume ────────────────────────────────────────────
@@ -313,35 +327,30 @@ def train(cfg: Config) -> None:
         ckpt = torch.load(cfg.checkpoint, map_location=device, weights_only=False)
         agent.load_state_dict(ckpt["agent"])
         optimizer.load_state_dict(ckpt["optimizer"])
-        print(f"  Resumed from:  {cfg.checkpoint}  (update {ckpt.get('update', '?')}, step {ckpt.get('global_step', '?'):,})", flush=True)
+        print(f"  Resumed from: {cfg.checkpoint}  (update {ckpt.get('update','?')}, step {ckpt.get('global_step',0):,})", flush=True)
 
-    # ── thread pool for parallel env I/O ─────────────────────────────────────
-    # Each env is a separate Node.js subprocess; stepping them in parallel means
-    # Python waits ~10ms (one game tick) instead of N×10ms sequentially.
-    # Python's GIL releases during I/O blocking so threads genuinely run in parallel.
-    executor = ThreadPoolExecutor(max_workers=cfg.num_envs)
+    # ── thread pool ───────────────────────────────────────────────────────────
+    # One thread per Node process — much fewer threads than old 1-game-per-proc design.
+    executor = ThreadPoolExecutor(max_workers=cfg.num_procs)
 
     # ── initial reset (parallel) ──────────────────────────────────────────────
-    init_opts = []
-    for i in range(cfg.num_envs):
-        opts: dict = {}
-        if league is not None:
-            opp = league.assign_env_opponent(i)
-            opts["opponent"] = opp
-        init_opts.append(opts)
+    def _do_reset_vec(args: tuple) -> list:
+        venv, proc_idx, opts_list = args
+        seeds = [int(np.random.randint(0, 2**31)) for _ in range(venv.vec_size)]
+        return venv.reset(seeds=seeds, options=opts_list)
 
-    def _do_reset(args: tuple) -> tuple[dict, dict]:
-        env, seed, opts = args
-        return env.reset(seed=seed, options=opts if opts else None)
-
+    init_opts_list = [[{}] * cfg.vec_size for _ in range(cfg.num_procs)]
     init_results = list(executor.map(
-        _do_reset, [(envs[i], cfg.seed, init_opts[i]) for i in range(cfg.num_envs)]
+        _do_reset_vec,
+        [(vec_envs[i], i, init_opts_list[i]) for i in range(cfg.num_procs)],
     ))
-    obs_list:  list[dict] = [r[0] for r in init_results]
-    info_list: list[dict] = [r[1] for r in init_results]
+    # Flatten: list of (num_procs × vec_size) (obs, info) tuples
+    flat_init = [r for batch in init_results for r in batch]
+    obs_list:  list[dict] = [r[0] for r in flat_init]
+    info_list: list[dict] = [r[1] for r in flat_init]
 
     # ── bookkeeping ───────────────────────────────────────────────────────────
-    buffer = RolloutBuffer(cfg.num_steps, cfg.num_envs)
+    buffer = RolloutBuffer(cfg.num_steps, cfg.num_envs, device)
     num_updates         = cfg.total_timesteps // cfg.batch_size
     global_step         = 0
     episode_rewards     = [0.0] * cfg.num_envs
@@ -349,27 +358,25 @@ def train(cfg: Config) -> None:
     completed_episodes  = 0
     wins_last_window    = 0
     window_episodes     = 0
-    WIN_WINDOW          = 100   # log win-rate over last N episodes
-    # Diagnostic tracking
+    WIN_WINDOW          = 100
     combat_wins_window   = 0
     resource_wins_window = 0
     timeout_window       = 0
     loss_window          = 0
     warn_no_pressure_window     = 0
     warn_loss_pos_reward_window = 0
-    first_barracks_ticks:           list[int]   = []
-    first_combat_ticks:             list[int]   = []
-    first_three_combat_ticks:       list[int]   = []
-    first_midfield_ticks:           list[int]   = []
-    first_enemy_quarter_ticks:      list[int]   = []
-    first_attack_ticks:             list[int]   = []
-    enemy_crystal_dmg_pct_list:     list[float] = []
-    own_crystal_dmg_pct_list:       list[float] = []
-    final_reward_list:              list[float] = []
-    terminal_reward_list:           list[float] = []
-    raw_shaping_list:               list[float] = []
-    entities_discovered_list:       list[int]   = []
-    # Action histogram — tracks how often each of the 58 actions is chosen per window
+    first_barracks_ticks:      list[int]   = []
+    first_combat_ticks:        list[int]   = []
+    first_three_combat_ticks:  list[int]   = []
+    first_midfield_ticks:      list[int]   = []
+    first_enemy_quarter_ticks: list[int]   = []
+    first_attack_ticks:        list[int]   = []
+    enemy_crystal_dmg_pct_list: list[float] = []
+    own_crystal_dmg_pct_list:   list[float] = []
+    final_reward_list:          list[float] = []
+    terminal_reward_list:       list[float] = []
+    raw_shaping_list:           list[float] = []
+    entities_discovered_list:   list[int]   = []
     action_counts = np.zeros(ACTION_SPACE_SIZE, dtype=np.int64)
 
     start_time = time.time()
@@ -377,7 +384,6 @@ def train(cfg: Config) -> None:
     # ── main training loop ────────────────────────────────────────────────────
     for update in range(1, num_updates + 1):
 
-        # LR annealing (cosine schedule)
         if cfg.anneal_lr:
             frac = 1.0 - (update - 1) / num_updates
             optimizer.param_groups[0]["lr"] = cfg.learning_rate * frac
@@ -386,39 +392,42 @@ def train(cfg: Config) -> None:
         for step in range(cfg.num_steps):
             global_step += cfg.num_envs
 
-            # Batch current observations
-            obs_batch = stack_obs(obs_list)
-            obs_t = batch_obs_to_tensor(obs_batch, device)
+            # Stack obs and upload to device in one batch
+            obs_t = obs_list_to_device(obs_list, device)
 
             legal_masks_np = np.stack([info_list[i]["legal_mask"] for i in range(cfg.num_envs)])
-            legal_t = torch.as_tensor(legal_masks_np, dtype=torch.bool, device=device)
+            legal_t = torch.from_numpy(legal_masks_np).to(device)
 
-            with torch.no_grad():
+            with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                 actions_t, logprobs_t, _, values_t = agent.get_action_and_value(
                     obs_t, legal_mask=legal_t
                 )
-                values_np = values_t.squeeze(-1).cpu().numpy()
+                values_t = values_t.squeeze(-1).float()  # keep fp32 for GAE accuracy
 
-            actions_np  = actions_t.cpu().numpy()
-            logprobs_np = logprobs_t.cpu().numpy()
+            # Only actions need to land on CPU (for env stepping)
+            actions_np = actions_t.cpu().numpy()
 
-            # Accumulate action histogram
-            for a in actions_np:
-                action_counts[int(a)] += 1
+            # Accumulate action histogram (vectorised)
+            action_counts += np.bincount(actions_np.astype(np.int64), minlength=ACTION_SPACE_SIZE)
 
-            # Step all envs in parallel — each is a separate subprocess so no contention
-            def _step(args: tuple):
-                env, action = args
-                return env.step(int(action))
+            # Step all vec envs in parallel — one future per Node process
+            # Reshape actions to (num_procs, vec_size)
+            actions_by_proc = actions_np.reshape(cfg.num_procs, cfg.vec_size)
 
-            step_results = list(executor.map(_step, zip(envs, actions_np)))
+            def _step_vec(args: tuple) -> list:
+                venv, acts = args
+                return venv.step(acts.tolist())
 
-            # Process results (fast bookkeeping — sequential is fine here)
-            next_obs_list:  list[dict | None] = [None] * cfg.num_envs
-            next_info_list: list[dict | None] = [None] * cfg.num_envs
+            vec_step_results = list(executor.map(
+                _step_vec, zip(vec_envs, actions_by_proc)
+            ))
+            # Flatten to num_envs results
+            step_results = [r for batch in vec_step_results for r in batch]
+
+            next_obs_list  = [None] * cfg.num_envs
+            next_info_list = [None] * cfg.num_envs
             rewards_np = np.zeros(cfg.num_envs, dtype=np.float32)
             dones_np   = np.zeros(cfg.num_envs, dtype=np.float32)
-            done_indices: list[int] = []
 
             for i, (obs_next, reward, terminated, truncated, info) in enumerate(step_results):
                 done = terminated or truncated
@@ -430,79 +439,65 @@ def train(cfg: Config) -> None:
                 next_info_list[i] = info
 
                 if done:
-                    done_indices.append(i)
                     completed_episodes += 1
                     window_episodes    += 1
-                    winner  = info.get("winner")
+                    winner   = info.get("winner")
                     win_type = info.get("winType")
                     won = winner == "headless-blue"
                     if won:
                         wins_last_window += 1
-                        if win_type == "resource":
-                            resource_wins_window += 1
-                        else:
-                            combat_wins_window += 1
-                    # Outcome breakdown
+                        if win_type == "resource": resource_wins_window += 1
+                        else:                      combat_wins_window   += 1
                     outcome = info.get("episodeOutcome", "")
-                    if outcome == "timeout":
-                        timeout_window += 1
-                    elif outcome == "loss":
-                        loss_window += 1
-                    if info.get("warn_no_pressure"):
-                        warn_no_pressure_window += 1
-                    if info.get("warn_loss_positive_reward"):
-                        warn_loss_pos_reward_window += 1
-                    # Reward breakdown
+                    if outcome == "timeout": timeout_window += 1
+                    elif outcome == "loss":  loss_window    += 1
+                    if info.get("warn_no_pressure"):       warn_no_pressure_window     += 1
+                    if info.get("warn_loss_positive_reward"): warn_loss_pos_reward_window += 1
+
                     fr = info.get("finalReward");      final_reward_list.append(float(fr)) if fr is not None else None
                     tr = info.get("terminalReward");   terminal_reward_list.append(float(tr)) if tr is not None else None
                     rs = info.get("rawShapingReward"); raw_shaping_list.append(float(rs)) if rs is not None else None
-                    # Crystal damage
                     ecd = info.get("enemyCrystalDamagePct"); enemy_crystal_dmg_pct_list.append(float(ecd)) if ecd is not None else None
                     ocd = info.get("ownCrystalDamagePct");   own_crystal_dmg_pct_list.append(float(ocd)) if ocd is not None else None
-                    # Milestone tracking
-                    fb = info.get("firstBarracksTick", -1)
-                    fc = info.get("firstCombatUnitTick", -1)
-                    f3 = info.get("firstThreeCombatUnitsTick", -1)
-                    fm = info.get("firstMidfieldCrossTick", -1)
-                    feq = info.get("firstEnemyQuarterEntryTick", -1)
-                    fa = info.get("firstEnemyCrystalHitTick", -1)
-                    if fb is not None and fb >= 0:  first_barracks_ticks.append(int(fb))
-                    if fc is not None and fc >= 0:  first_combat_ticks.append(int(fc))
-                    if f3 is not None and f3 >= 0:  first_three_combat_ticks.append(int(f3))
-                    if fm is not None and fm >= 0:  first_midfield_ticks.append(int(fm))
-                    if feq is not None and feq >= 0: first_enemy_quarter_ticks.append(int(feq))
-                    if fa is not None and fa >= 0:  first_attack_ticks.append(int(fa))
+
+                    for attr, lst in [
+                        ("firstBarracksTick",          first_barracks_ticks),
+                        ("firstCombatUnitTick",        first_combat_ticks),
+                        ("firstThreeCombatUnitsTick",  first_three_combat_ticks),
+                        ("firstMidfieldCrossTick",     first_midfield_ticks),
+                        ("firstEnemyQuarterEntryTick", first_enemy_quarter_ticks),
+                        ("firstEnemyCrystalHitTick",   first_attack_ticks),
+                    ]:
+                        v = info.get(attr, -1)
+                        if v is not None and v >= 0: lst.append(int(v))
                     ed = info.get("entitiesDiscovered", 0)
-                    if ed is not None:
-                        entities_discovered_list.append(int(ed))
+                    if ed is not None: entities_discovered_list.append(int(ed))
 
                     if league is not None:
                         opp = league.get_env_opponent(i)
                         league.record_result(opp, won)
 
-                    writer.add_scalar("game/episode_reward", episode_rewards[i], global_step)
+                    writer.add_scalar("game/episode_reward",       episode_rewards[i], global_step)
                     writer.add_scalar("game/episode_length_ticks", episode_lengths[i], global_step)
+
                     if window_episodes >= WIN_WINDOW:
                         win_rate = wins_last_window / window_episodes
                         writer.add_scalar("game/win_rate", win_rate, global_step)
-                        # Outcome breakdown
-                        combat_win_rate   = combat_wins_window / window_episodes
-                        timeout_rate_log  = timeout_window / window_episodes
-                        loss_rate_log     = loss_window / window_episodes
-                        writer.add_scalar("diagnostics/combat_win_rate",    combat_win_rate,  global_step)
-                        writer.add_scalar("diagnostics/timeout_rate",       timeout_rate_log, global_step)
-                        writer.add_scalar("diagnostics/loss_rate",          loss_rate_log,    global_step)
-                        writer.add_scalar("diagnostics/resource_win_rate",  resource_wins_window / window_episodes, global_step)
-                        writer.add_scalar("diagnostics/warn_no_pressure",   warn_no_pressure_window / window_episodes, global_step)
-                        writer.add_scalar("diagnostics/warn_loss_pos_rew",  warn_loss_pos_reward_window / window_episodes, global_step)
-                        # Reward breakdown
+                        cbt_rate  = combat_wins_window   / window_episodes
+                        tmt_rate  = timeout_window       / window_episodes
+                        loss_rate = loss_window          / window_episodes
+                        writer.add_scalar("diagnostics/combat_win_rate",   cbt_rate,  global_step)
+                        writer.add_scalar("diagnostics/timeout_rate",      tmt_rate,  global_step)
+                        writer.add_scalar("diagnostics/loss_rate",         loss_rate, global_step)
+                        writer.add_scalar("diagnostics/resource_win_rate", resource_wins_window / window_episodes, global_step)
+                        writer.add_scalar("diagnostics/warn_no_pressure",  warn_no_pressure_window / window_episodes, global_step)
+                        writer.add_scalar("diagnostics/warn_loss_pos_rew", warn_loss_pos_reward_window / window_episodes, global_step)
                         if final_reward_list:
                             writer.add_scalar("rewards/final_reward_mean",    sum(final_reward_list) / len(final_reward_list), global_step)
                         if terminal_reward_list:
                             writer.add_scalar("rewards/terminal_reward_mean", sum(terminal_reward_list) / len(terminal_reward_list), global_step)
                         if raw_shaping_list:
                             writer.add_scalar("rewards/raw_shaping_mean",     sum(raw_shaping_list) / len(raw_shaping_list), global_step)
-                        # Crystal damage
                         if enemy_crystal_dmg_pct_list:
                             writer.add_scalar("diagnostics/enemy_crystal_dmg_pct",
                                               sum(enemy_crystal_dmg_pct_list) / len(enemy_crystal_dmg_pct_list), global_step)
@@ -511,7 +506,6 @@ def train(cfg: Config) -> None:
                         if own_crystal_dmg_pct_list:
                             writer.add_scalar("diagnostics/own_crystal_dmg_pct",
                                               sum(own_crystal_dmg_pct_list) / len(own_crystal_dmg_pct_list), global_step)
-                        # Milestone timing (mean tick across episodes where milestone was reached)
                         def _mean(lst): return sum(lst) / len(lst) if lst else None
                         for tag, lst in [
                             ("diagnostics/first_barracks_tick",       first_barracks_ticks),
@@ -523,131 +517,108 @@ def train(cfg: Config) -> None:
                             ("diagnostics/entities_discovered_per_ep", entities_discovered_list),
                         ]:
                             v = _mean(lst)
-                            if v is not None:
-                                writer.add_scalar(tag, v, global_step)
-                        total_acts_log = max(action_counts.sum(), 1)
-                        pct_atk_mv  = int(100 * (action_counts[18:30].sum() + action_counts[50:58].sum()) / total_acts_log)
-                        pct_atk_tgt = int(100 * (action_counts[37:49].sum() + action_counts[58:66].sum()) / total_acts_log)
-                        pct_bld     = int(100 * action_counts[6:18].sum()  / total_acts_log)
-                        pct_trn     = int(100 * (action_counts[1] + action_counts[2:6].sum()) / total_acts_log)
-                        pct_noop    = int(100 * action_counts[0] / total_acts_log)
-                        pct_wkr_mv  = int(100 * action_counts[66:71].sum() / total_acts_log)
+                            if v is not None: writer.add_scalar(tag, v, global_step)
+
+                        total_acts = max(action_counts.sum(), 1)
+                        pct_atk_mv  = int(100 * (action_counts[18:30].sum() + action_counts[50:58].sum()) / total_acts)
+                        pct_atk_tgt = int(100 * (action_counts[37:49].sum() + action_counts[58:66].sum()) / total_acts)
+                        pct_bld     = int(100 * action_counts[6:18].sum()  / total_acts)
+                        pct_trn     = int(100 * (action_counts[1] + action_counts[2:6].sum()) / total_acts)
+                        pct_noop    = int(100 * action_counts[0] / total_acts)
+                        pct_wkr_mv  = int(100 * action_counts[66:71].sum() / total_acts)
                         no_pres_pct = int(100 * warn_no_pressure_window / window_episodes)
                         ecd_mean    = int(sum(enemy_crystal_dmg_pct_list) / len(enemy_crystal_dmg_pct_list)) if enemy_crystal_dmg_pct_list else 0
                         print(
                             f"  update={update:5d} | step={global_step:8d} | "
                             f"win_rate={win_rate:.2f} ({wins_last_window}/{window_episodes}) | "
-                            f"cbt={combat_win_rate:.2f} tmt={timeout_rate_log:.2f} | "
+                            f"cbt={cbt_rate:.2f} tmt={tmt_rate:.2f} | "
                             f"ep_len={episode_lengths[i]:4d} | ep_rew={episode_rewards[i]:.2f} | "
                             f"atk_mv={pct_atk_mv}% tgt={pct_atk_tgt}% bld={pct_bld}% trn={pct_trn}% wkr_mv={pct_wkr_mv}% noop={pct_noop}% | "
                             f"crys_dmg={ecd_mean}% no_pres={no_pres_pct}%",
                             flush=True
                         )
-                        wins_last_window = 0
-                        window_episodes  = 0
-                        combat_wins_window = 0
-                        resource_wins_window = 0
-                        timeout_window = 0
-                        loss_window = 0
-                        warn_no_pressure_window = 0
-                        warn_loss_pos_reward_window = 0
-                        first_barracks_ticks.clear()
-                        first_combat_ticks.clear()
-                        first_three_combat_ticks.clear()
-                        first_midfield_ticks.clear()
-                        first_enemy_quarter_ticks.clear()
-                        first_attack_ticks.clear()
-                        enemy_crystal_dmg_pct_list.clear()
-                        own_crystal_dmg_pct_list.clear()
-                        final_reward_list.clear()
-                        terminal_reward_list.clear()
-                        raw_shaping_list.clear()
-                        entities_discovered_list.clear()
+                        wins_last_window = 0; window_episodes = 0
+                        combat_wins_window = 0; resource_wins_window = 0
+                        timeout_window = 0; loss_window = 0
+                        warn_no_pressure_window = 0; warn_loss_pos_reward_window = 0
+                        first_barracks_ticks.clear(); first_combat_ticks.clear()
+                        first_three_combat_ticks.clear(); first_midfield_ticks.clear()
+                        first_enemy_quarter_ticks.clear(); first_attack_ticks.clear()
+                        enemy_crystal_dmg_pct_list.clear(); own_crystal_dmg_pct_list.clear()
+                        final_reward_list.clear(); terminal_reward_list.clear()
+                        raw_shaping_list.clear(); entities_discovered_list.clear()
                         action_counts[:] = 0
 
                     episode_rewards[i] = 0.0
                     episode_lengths[i] = 0
+                    # VecRunner autoreset: next_obs_list[i] already contains fresh-episode obs
+                    # No explicit env.reset() call needed
 
-            # Reset done envs in parallel
-            if done_indices:
-                reset_opts = []
-                for i in done_indices:
-                    opts: dict = {}
-                    if league is not None:
-                        opp = league.assign_env_opponent(i)
-                        opts["opponent"] = opp
-                    reset_opts.append(opts)
-
-                def _reset(args: tuple):
-                    env, opts = args
-                    return env.reset(options=opts if opts else None)
-
-                reset_results = list(executor.map(
-                    _reset, [(envs[i], reset_opts[j]) for j, i in enumerate(done_indices)]
-                ))
-                for j, i in enumerate(done_indices):
-                    next_obs_list[i], next_info_list[i] = reset_results[j]
-
-            buffer.add(step, obs_list, legal_masks_np, actions_np, logprobs_np,
-                       rewards_np, dones_np, values_np)
+            buffer.add(step, obs_list, legal_masks_np, actions_t, logprobs_t.float(),
+                       rewards_np, dones_np, values_t)
             obs_list  = next_obs_list
             info_list = next_info_list
 
-        # ── bootstrap last value with GAE ────────────────────────────────────
-        with torch.no_grad():
-            next_obs_batch = stack_obs(obs_list)
-            next_obs_t = batch_obs_to_tensor(next_obs_batch, device)
-            next_values = agent.get_value(next_obs_t).squeeze(-1).cpu().numpy()
+        # ── bootstrap last value & GAE (fully on GPU) ─────────────────────────
+        with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+            next_obs_t = obs_list_to_device(obs_list, device)
+            next_values = agent.get_value(next_obs_t).squeeze(-1).float()  # (E,)
 
-        flat = buffer.flatten()
+        flat = buffer.flatten()   # all GPU tensors, no upload
         T, E = cfg.num_steps, cfg.num_envs
-        rewards_2d = flat["rewards"].reshape(T, E)
-        dones_2d   = flat["dones"].reshape(T, E)
-        values_2d  = flat["values"].reshape(T, E)
+        rewards_2d  = flat["rewards"].view(T, E)
+        dones_2d    = flat["dones"].view(T, E)
+        values_2d   = flat["values"].view(T, E)
 
-        advantages_2d = np.zeros_like(rewards_2d)
-        last_gae      = np.zeros(E)
+        # GAE on GPU — T-step loop over scalar ops on (E,) tensors, very fast
+        advantages = torch.zeros_like(values_2d)
+        last_gae   = torch.zeros(E, device=device)
         for t in reversed(range(T)):
             next_val = next_values if t == T - 1 else values_2d[t + 1]
-            delta = rewards_2d[t] + cfg.gamma * next_val * (1.0 - dones_2d[t]) - values_2d[t]
+            delta    = rewards_2d[t] + cfg.gamma * next_val * (1.0 - dones_2d[t]) - values_2d[t]
             last_gae = delta + cfg.gamma * cfg.gae_lambda * (1.0 - dones_2d[t]) * last_gae
-            advantages_2d[t] = last_gae
-        returns_2d = advantages_2d + values_2d
+            advantages[t] = last_gae
+        returns = advantages + values_2d
 
-        advantages_flat = advantages_2d.flatten()
-        returns_flat    = returns_2d.flatten()
+        advantages_flat = advantages.view(-1)
+        returns_flat    = returns.view(-1)
 
         # ── PPO update ────────────────────────────────────────────────────────
-        B = cfg.batch_size
-        indices = np.arange(B)
-        clip_fracs = []
+        B       = cfg.batch_size
+        indices = torch.randperm(B, device=device)
+        clip_fracs: list[float] = []
 
         for epoch in range(cfg.update_epochs):
-            np.random.shuffle(indices)
+            indices = indices[torch.randperm(B, device=device)]
             for start in range(0, B, cfg.minibatch_size):
-                end = start + cfg.minibatch_size
+                end    = start + cfg.minibatch_size
                 mb_idx = indices[start:end]
 
+                # All minibatch data already on device — just slice
                 mb_obs = {
-                    "global":      torch.as_tensor(flat["globals"][mb_idx],      device=device),
-                    "entities":    torch.as_tensor(flat["entities"][mb_idx],     device=device),
-                    "entity_mask": torch.as_tensor(flat["entity_masks"][mb_idx], dtype=torch.bool, device=device),
-                    "nodes":       torch.as_tensor(flat["nodes"][mb_idx],        device=device),
-                    "node_mask":   torch.as_tensor(flat["node_masks"][mb_idx],   dtype=torch.bool, device=device),
+                    "global":      flat["globals"][mb_idx],
+                    "entities":    flat["entities"][mb_idx],
+                    "entity_mask": flat["entity_masks"][mb_idx],
+                    "nodes":       flat["nodes"][mb_idx],
+                    "node_mask":   flat["node_masks"][mb_idx],
                 }
-                mb_legal = torch.as_tensor(flat["legal_masks"][mb_idx], dtype=torch.bool, device=device)
-                mb_actions  = torch.as_tensor(flat["actions"][mb_idx],   device=device)
-                mb_logprobs = torch.as_tensor(flat["logprobs"][mb_idx],  device=device)
-                mb_advs     = torch.as_tensor(advantages_flat[mb_idx],   device=device)
-                mb_returns  = torch.as_tensor(returns_flat[mb_idx],      device=device)
-                mb_values   = torch.as_tensor(flat["values"][mb_idx],    device=device)
+                mb_legal    = flat["legal_masks"][mb_idx]
+                mb_actions  = flat["actions"][mb_idx]
+                mb_logprobs = flat["logprobs"][mb_idx]
+                mb_advs     = advantages_flat[mb_idx]
+                mb_returns  = returns_flat[mb_idx]
+                mb_values   = flat["values"][mb_idx]
 
-                _, new_logprobs, entropy, new_values = agent.get_action_and_value(
-                    mb_obs, action=mb_actions, legal_mask=mb_legal
-                )
-                new_values = new_values.squeeze(-1)
-                log_ratio  = new_logprobs - mb_logprobs
-                ratio      = log_ratio.exp()
+                with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                    _, new_logprobs, entropy, new_values = agent.get_action_and_value(
+                        mb_obs, action=mb_actions, legal_mask=mb_legal
+                    )
+                new_values = new_values.squeeze(-1).float()
+                new_logprobs = new_logprobs.float()
+                entropy      = entropy.float()
+
+                log_ratio = new_logprobs - mb_logprobs
+                ratio     = log_ratio.exp()
 
                 with torch.no_grad():
                     clip_fracs.append(((ratio - 1.0).abs() > cfg.clip_coef).float().mean().item())
@@ -655,17 +626,14 @@ def train(cfg: Config) -> None:
                 if cfg.norm_adv:
                     mb_advs = (mb_advs - mb_advs.mean()) / (mb_advs.std() + 1e-8)
 
-                # Policy loss (PPO clip)
                 pg_loss1 = -mb_advs * ratio
                 pg_loss2 = -mb_advs * ratio.clamp(1 - cfg.clip_coef, 1 + cfg.clip_coef)
                 pg_loss  = torch.max(pg_loss1, pg_loss2).mean()
 
-                # Value loss
                 if cfg.clip_vloss:
                     v_loss_unclipped = (new_values - mb_returns) ** 2
                     v_clipped = mb_values + (new_values - mb_values).clamp(-cfg.clip_coef, cfg.clip_coef)
-                    v_loss_clipped = (v_clipped - mb_returns) ** 2
-                    v_loss = 0.5 * torch.max(v_loss_unclipped, v_loss_clipped).mean()
+                    v_loss = 0.5 * torch.max(v_loss_unclipped, (v_clipped - mb_returns) ** 2).mean()
                 else:
                     v_loss = 0.5 * ((new_values - mb_returns) ** 2).mean()
 
@@ -679,54 +647,48 @@ def train(cfg: Config) -> None:
 
         # ── logging ───────────────────────────────────────────────────────────
         sps = int(global_step / (time.time() - start_time))
-        writer.add_scalar("training/learning_rate",      optimizer.param_groups[0]["lr"],            global_step)
-        writer.add_scalar("training/steps_per_second",  sps,                                        global_step)
-        writer.add_scalar("ppo/policy_gradient_loss",   pg_loss.item(),                             global_step)
-        writer.add_scalar("ppo/value_function_loss",    v_loss.item(),                              global_step)
-        writer.add_scalar("ppo/entropy_bonus",          entropy_loss.item(),                        global_step)
-        writer.add_scalar("ppo/clip_fraction",          np.mean(clip_fracs),                        global_step)
-        writer.add_scalar("ppo/approx_kl_divergence",   ((ratio - 1) - log_ratio).mean().item(),    global_step)
+        writer.add_scalar("training/learning_rate",     optimizer.param_groups[0]["lr"], global_step)
+        writer.add_scalar("training/steps_per_second",  sps,                             global_step)
+        writer.add_scalar("ppo/policy_gradient_loss",   pg_loss.item(),                  global_step)
+        writer.add_scalar("ppo/value_function_loss",    v_loss.item(),                   global_step)
+        writer.add_scalar("ppo/entropy_bonus",          entropy_loss.item(),             global_step)
+        writer.add_scalar("ppo/clip_fraction",          float(np.mean(clip_fracs)),      global_step)
+        writer.add_scalar("ppo/approx_kl_divergence",  ((ratio - 1) - log_ratio).mean().item(), global_step)
 
-        # Action category histograms — track which action groups are being used.
-        # Ranges match actionIndex.ts: 0=noop,1=train_worker,2-5=train_unit,
-        # 6-17=build,18-29=attack_move,30-33=retreat,34-36=assign,
-        # 37-48=attack_targeted,49=hold_pos,50-57=attack_move_new_zones
         total_acts = max(action_counts.sum(), 1)
-        writer.add_scalar("actions/pct_train_unit",      action_counts[2:6].sum()   / total_acts, global_step)
-        writer.add_scalar("actions/pct_build",           action_counts[6:18].sum()  / total_acts, global_step)
-        writer.add_scalar("actions/pct_attack_move",     action_counts[18:30].sum() / total_acts, global_step)
-        writer.add_scalar("actions/pct_retreat",         action_counts[30:34].sum() / total_acts, global_step)
-        writer.add_scalar("actions/pct_attack_targeted", (action_counts[37:49].sum() + action_counts[58:66].sum()) / total_acts, global_step)
-        writer.add_scalar("actions/pct_hold_position",  action_counts[49]           / total_acts, global_step)
-        writer.add_scalar("actions/pct_attack_move_new",action_counts[50:58].sum()  / total_acts, global_step)
-        writer.add_scalar("actions/pct_attack_targeted_new", action_counts[58:66].sum() / total_acts, global_step)
-        writer.add_scalar("actions/pct_assign_workers", action_counts[34:37].sum()  / total_acts, global_step)
-        writer.add_scalar("actions/pct_worker_move",    action_counts[66:71].sum()  / total_acts, global_step)
+        writer.add_scalar("actions/pct_train_unit",          action_counts[2:6].sum()   / total_acts, global_step)
+        writer.add_scalar("actions/pct_build",               action_counts[6:18].sum()  / total_acts, global_step)
+        writer.add_scalar("actions/pct_attack_move",         action_counts[18:30].sum() / total_acts, global_step)
+        writer.add_scalar("actions/pct_retreat",             action_counts[30:34].sum() / total_acts, global_step)
+        writer.add_scalar("actions/pct_attack_targeted",     (action_counts[37:49].sum() + action_counts[58:66].sum()) / total_acts, global_step)
+        writer.add_scalar("actions/pct_hold_position",       action_counts[49]           / total_acts, global_step)
+        writer.add_scalar("actions/pct_attack_move_new",     action_counts[50:58].sum()  / total_acts, global_step)
+        writer.add_scalar("actions/pct_attack_targeted_new", action_counts[58:66].sum()  / total_acts, global_step)
+        writer.add_scalar("actions/pct_assign_workers",      action_counts[34:37].sum()  / total_acts, global_step)
+        writer.add_scalar("actions/pct_worker_move",         action_counts[66:71].sum()  / total_acts, global_step)
+        writer.add_scalar("actions/pct_idle_combat_atk",     action_counts[71:76].sum()  / total_acts, global_step)
+        writer.add_scalar("actions/pct_idle_worker_move",    action_counts[76:81].sum()  / total_acts, global_step)
 
         # ── checkpoint ────────────────────────────────────────────────────────
         if update % cfg.save_interval == 0:
             path = ckpt_path / f"update_{update:06d}.pt"
             torch.save({
-                "update":       update,
-                "global_step":  global_step,
-                "agent":        agent.state_dict(),
-                "optimizer":    optimizer.state_dict(),
-                "config":       cfg,
+                "update":      update,
+                "global_step": global_step,
+                "agent":       agent.state_dict(),
+                "optimizer":   optimizer.state_dict(),
+                "config":      cfg,
             }, path)
             print(f"  [checkpoint] saved → {path}", flush=True)
 
         # ── league step ───────────────────────────────────────────────────────
         if league is not None:
-            # Register the latest checkpoint with the league
             latest_ckpt = str(ckpt_path / f"update_{update:06d}.pt")
             league.step_update(update, latest_ckpt)
-            # Save league state
             league.save_state(league_state_path)
-            # Log win-rate matrix to TensorBoard
             matrix = league.get_win_rate_matrix()
             for opp_name, stats in matrix.items():
                 writer.add_scalar(f"league/win_vs_{opp_name}", stats["win_rate"], global_step)
-            # Also write matrix as text (viewable in TensorBoard text tab)
             matrix_text = "\n".join(
                 f"  {n:30s}  {s['win_rate']:.3f}  ({s['wins']}/{s['total']})  [{s['type']}]"
                 for n, s in sorted(matrix.items())
@@ -746,8 +708,8 @@ def train(cfg: Config) -> None:
 
     writer.close()
     executor.shutdown(wait=False)
-    for env in envs:
-        env.close()
+    for venv in vec_envs:
+        venv.close()
 
 
 if __name__ == "__main__":
