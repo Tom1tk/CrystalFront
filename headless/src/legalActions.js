@@ -1,4 +1,4 @@
-import { BUILDING_DEFS, UNIT_DEFS, ECONOMY } from "@crystalfront/shared";
+import { BUILDING_DEFS, UNIT_DEFS, ECONOMY, MAP } from "@crystalfront/shared";
 /**
  * Returns the set of macro-actions that are currently legal for the given player.
  * "Legal" means the action is structurally possible (enough resources, supply,
@@ -12,19 +12,27 @@ export function getLegalActions(match, playerId) {
     const economy = match.economy[playerIdx];
     if (!economy)
         return legal;
+    const isBlue = match.players[playerIdx]?.color === "blue";
+    const mid = (match.config?.mapWidth ?? MAP.width) / 2;
+    // Visibility
+    const visibleIds = match.visibilityData?.get(playerId)?.entityIds ?? new Set();
     const ownEntities = [...match.entities.values()].filter(e => e.ownerId === playerId);
     const workers = ownEntities.filter(e => e.type === "worker");
     const idleWorkers = workers.filter(e => !e.buildTargetId && !e.gatheringNodeId && !e.attackTargetId);
-    // Any worker not already mid-construction can be redirected to a new build
     const availableBuilders = workers.filter(e => !e.buildTargetId);
     const completedBuildings = ownEntities.filter(e => e.type === "building" && e.constructionProgress >= 100);
     const combatUnits = ownEntities.filter(e => ["skirmisher", "gunner", "bruiser", "medic"].includes(e.type));
-    // train_worker — needs resources and supply headroom
+    // Visible enemy combat units — needed for targeted attack legality
+    const visibleEnemyCombat = [...match.entities.values()].filter(e => e.ownerId !== playerId &&
+        visibleIds.has(e.id) &&
+        ["skirmisher", "gunner", "bruiser", "medic", "crystal", "building"].includes(e.type));
+    const hasVisibleEnemy = visibleEnemyCombat.length > 0;
+    // train_worker
     if (economy.resources >= ECONOMY.workerTrainCost &&
         economy.supply + ECONOMY.workerSupplyCost <= economy.maxSupply) {
         legal.push({ type: "train_worker" });
     }
-    // train_unit — per unit type, per available building
+    // train_unit — per unit type
     const productionBuildings = completedBuildings.filter(b => b.buildingType);
     const queuedSupply = ownEntities
         .filter(e => e.type === "building")
@@ -41,24 +49,21 @@ export function getLegalActions(match, playerId) {
             const bdef = b.buildingType ? BUILDING_DEFS[b.buildingType] : null;
             return bdef?.produces?.includes(unitType);
         });
-        if (canProduce) {
+        if (canProduce)
             legal.push({ type: "train_unit", unitType });
-        }
     }
-    // build — needs resources and a worker not already mid-construction
+    // build — xZone only
     if (availableBuilders.length > 0) {
         for (const buildingType of ["barracks", "foundry", "supply_depot", "turret"]) {
             const def = BUILDING_DEFS[buildingType];
             if (economy.resources >= def.cost) {
                 for (const xZone of ["near_crystal", "mid_base", "forward"]) {
-                    for (const yZone of ["top", "middle", "bottom"]) {
-                        legal.push({ type: "build", buildingType, xZone, yZone });
-                    }
+                    legal.push({ type: "build", buildingType, xZone });
                 }
             }
         }
     }
-    // attack_move — needs combat units
+    // attack_move (original zones)
     if (combatUnits.length > 0) {
         const groups = ["all_combat"];
         if (combatUnits.some(e => e.type === "skirmisher"))
@@ -71,27 +76,60 @@ export function getLegalActions(match, playerId) {
             for (const targetZone of ["enemy_crystal", "midfield", "contested_node"]) {
                 legal.push({ type: "attack_move", group, targetZone });
             }
+            // New dynamic zones
+            legal.push({ type: "attack_move", group, targetZone: "enemy_army" });
+            legal.push({ type: "attack_move", group, targetZone: "defend_crystal" });
         }
     }
-    // retreat — needs units that can retreat
+    // retreat
     if (combatUnits.length > 0) {
         legal.push({ type: "retreat", group: "all_combat" });
     }
-    // assign_workers — needs idle workers and available nodes
+    // attack_targeted — requires combat units AND visible enemies
+    if (combatUnits.length > 0 && hasVisibleEnemy) {
+        const groups = ["all_combat"];
+        if (combatUnits.some(e => e.type === "skirmisher"))
+            groups.push("skirmishers");
+        if (combatUnits.some(e => e.type === "gunner"))
+            groups.push("gunners");
+        if (combatUnits.some(e => e.type === "bruiser"))
+            groups.push("bruisers");
+        for (const group of groups) {
+            for (const targetType of ["nearest_threat", "nearest_enemy", "focus_weakest"]) {
+                legal.push({ type: "attack_targeted", group, targetType });
+            }
+        }
+    }
+    // hold_position — requires combat units
+    if (combatUnits.length > 0) {
+        legal.push({ type: "hold_position", group: "all_combat" });
+    }
+    // move_workers — workers can be sent to any zone (scout / reposition)
+    if (workers.length > 0) {
+        for (const targetZone of ["enemy_crystal", "midfield", "contested_node", "enemy_army", "defend_crystal"]) {
+            legal.push({ type: "attack_move", group: "all_workers", targetZone });
+        }
+    }
+    // idle-only groups — legal whenever any idle unit of that type exists
+    const trueIdleCombat = combatUnits.filter(e => !e.moveTarget && !e.buildTargetId && !e.gatheringNodeId && !e.attackTargetId);
+    if (trueIdleCombat.length > 0) {
+        for (const targetZone of ["enemy_crystal", "midfield", "contested_node", "enemy_army", "defend_crystal"]) {
+            legal.push({ type: "attack_move", group: "all_idle_combat", targetZone });
+        }
+    }
+    const trueIdleWorkers = workers.filter(e => !e.moveTarget && !e.buildTargetId && !e.gatheringNodeId && !e.attackTargetId);
+    if (trueIdleWorkers.length > 0) {
+        for (const targetZone of ["enemy_crystal", "midfield", "contested_node", "enemy_army", "defend_crystal"]) {
+            legal.push({ type: "attack_move", group: "idle_workers", targetZone });
+        }
+    }
+    // assign_workers — only "all_idle" variant
     if (idleWorkers.length > 0) {
         const hasNodes = match.resourceNodes.some(n => n.remaining > 0 && n.gathererSlots.size < n.maxGathererSlots);
         if (hasNodes) {
             for (const nodeChoice of ["nearest_safe", "nearest_contested", "richest_visible"]) {
-                for (const count of [1, 2, 3, "all_idle"]) {
-                    legal.push({ type: "assign_workers", nodeChoice, workerCount: count });
-                }
+                legal.push({ type: "assign_workers", nodeChoice, workerCount: "all_idle" });
             }
-        }
-    }
-    // set_rally — needs completed buildings
-    if (completedBuildings.length > 0) {
-        for (const targetZone of ["enemy_crystal", "midfield", "contested_node"]) {
-            legal.push({ type: "set_rally", targetZone });
         }
     }
     return legal;

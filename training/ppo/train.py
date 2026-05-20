@@ -67,6 +67,41 @@ from training.ppo.policy import CrystalFrontAgent
 from training.ppo.league import LeagueManager, SCRIPTED_BOTS
 
 
+# ── curriculum stages ─────────────────────────────────────────────────────────
+# Each stage defines the training environment.  Promote when win_rate ≥
+# promotion_threshold over eval_window episodes.  Regress when stuck for
+# max_steps_per_stage steps.
+#
+# map_width / crystal_health / starting_resources / max_ticks / opponent
+# 0 values → use game default.
+
+from dataclasses import dataclass as _dc
+
+@_dc
+class CurriculumStage:
+    name:                str
+    map_width:           int   = 0
+    crystal_health:      int   = 0
+    starting_resources:  int   = 0
+    max_ticks:           int   = 3000
+    opponent:            str   = "idle"
+    promotion_threshold: float = 0.70
+    eval_window:         int   = 100
+    max_steps:           int   = 2_000_000   # steps before trying to regress
+
+
+CURRICULUM: list[CurriculumStage] = [
+    CurriculumStage("0c", map_width=800,  crystal_health=50,   starting_resources=50,  max_ticks=2000, opponent="idle",        promotion_threshold=0.70, max_steps=2_000_000),
+    CurriculumStage("1a", map_width=1500, crystal_health=100,  starting_resources=50,  max_ticks=3000, opponent="idle",        promotion_threshold=0.70, max_steps=3_000_000),
+    CurriculumStage("1b", map_width=1500, crystal_health=100,  starting_resources=50,  max_ticks=3000, opponent="passive",     promotion_threshold=0.70, max_steps=3_000_000),
+    CurriculumStage("2a", map_width=3000, crystal_health=300,  starting_resources=50,  max_ticks=5000, opponent="passive",     promotion_threshold=0.70, max_steps=4_000_000),
+    CurriculumStage("2b", map_width=3000, crystal_health=300,  starting_resources=50,  max_ticks=5000, opponent="rush_weak",   promotion_threshold=0.70, max_steps=5_000_000),
+    CurriculumStage("3a", map_width=0,    crystal_health=0,    starting_resources=50,  max_ticks=6000, opponent="passive",     promotion_threshold=0.70, max_steps=5_000_000),
+    CurriculumStage("3b", map_width=0,    crystal_health=0,    starting_resources=50,  max_ticks=6000, opponent="rush_medium", promotion_threshold=0.50, max_steps=8_000_000),
+    CurriculumStage("4",  map_width=0,    crystal_health=0,    starting_resources=50,  max_ticks=6000, opponent="league",      promotion_threshold=0.60, max_steps=20_000_000),
+]
+
+
 # ── config ────────────────────────────────────────────────────────────────────
 
 @dataclass
@@ -119,6 +154,16 @@ class Config:
 
     # Compiler
     compile_agent:  bool = True        # torch.compile(mode="reduce-overhead")
+
+    # MatchConfig overrides for curriculum (0 = use default)
+    map_width:          int   = 0      # 0 = use game default (6000)
+    crystal_health:     int   = 0      # 0 = use game default (1000)
+    starting_resources: int   = 0      # 0 = use game default (50)
+    max_ticks:          int   = 6000   # episode truncation tick
+
+    # Curriculum (set curriculum=True to use CURRICULUM stages)
+    curriculum:           bool  = False
+    curriculum_stage:     int   = 0    # index into CURRICULUM list (0 = first stage)
 
     # League (Phase 4)
     league:               bool  = False
@@ -263,6 +308,8 @@ def train(cfg: Config) -> None:
 
     writer = SummaryWriter(str(log_path))
     writer.add_text("config", str(cfg))
+    if cfg.curriculum:
+        writer.add_scalar("curriculum/stage", cur_stage_idx, 0)
     print(f"\nCrystalFront PPO training")
     if cfg.league:
         print(f"  Mode:       LEAGUE (PFSP, temp={cfg.league_pfsp_temp})")
@@ -293,18 +340,45 @@ def train(cfg: Config) -> None:
         print(f"  League opponents: {list(league.state.opponents.keys())}")
         print(f"  League state → {league_state_path}")
 
+    # ── curriculum state ──────────────────────────────────────────────────────
+    cur_stage_idx  = cfg.curriculum_stage if cfg.curriculum else -1
+    cur_stage      = CURRICULUM[cur_stage_idx] if cfg.curriculum else None
+    stage_step_start = 0  # global_step when current stage began
+
+    def _resolve_env_params() -> tuple[dict, int, str]:
+        """Return (config_overrides, max_ticks, opponent) for current stage or cfg defaults."""
+        if cur_stage is not None:
+            ov: dict = {}
+            if cur_stage.map_width          > 0: ov["mapWidth"]          = cur_stage.map_width
+            if cur_stage.crystal_health     > 0: ov["crystalHealth"]     = cur_stage.crystal_health
+            if cur_stage.starting_resources > 0: ov["startingResources"] = cur_stage.starting_resources
+            return ov, cur_stage.max_ticks, cur_stage.opponent
+        ov = {}
+        if cfg.map_width          > 0: ov["mapWidth"]          = cfg.map_width
+        if cfg.crystal_health     > 0: ov["crystalHealth"]     = cfg.crystal_health
+        if cfg.starting_resources > 0: ov["startingResources"] = cfg.starting_resources
+        return ov, cfg.max_ticks, cfg.opponent
+
+    def _build_vec_envs(config_overrides: dict, max_ticks: int, opponent: str) -> list[CrystalFrontVecEnv]:
+        _stagger = min(0.4, 15.0 / max(cfg.num_procs - 1, 1))
+        return [
+            CrystalFrontVecEnv(
+                vec_size=cfg.vec_size,
+                opponent=opponent,
+                save_replay_every=cfg.save_replay_every,
+                startup_delay=i * _stagger,
+                config_overrides=config_overrides or None,
+                max_ticks=max_ticks,
+            )
+            for i in range(cfg.num_procs)
+        ]
+
     # ── vectorised environments ───────────────────────────────────────────────
-    # Stagger process startup to avoid simultaneous Node compilation spikes.
-    _stagger = min(0.4, 15.0 / max(cfg.num_procs - 1, 1))
-    vec_envs = [
-        CrystalFrontVecEnv(
-            vec_size=cfg.vec_size,
-            opponent=cfg.opponent,
-            save_replay_every=cfg.save_replay_every,
-            startup_delay=i * _stagger,
-        )
-        for i in range(cfg.num_procs)
-    ]
+    _cfg_overrides, _max_ticks, _opponent = _resolve_env_params()
+    if cur_stage:
+        print(f"  Curriculum stage: {cur_stage.name}  (map={cur_stage.map_width or 'default'}, "
+              f"crystal_hp={cur_stage.crystal_health or 'default'}, opp={cur_stage.opponent})", flush=True)
+    vec_envs = _build_vec_envs(_cfg_overrides, _max_ticks, _opponent)
 
     # ── agent & optimiser ─────────────────────────────────────────────────────
     agent = CrystalFrontAgent(
@@ -323,10 +397,12 @@ def train(cfg: Config) -> None:
     optimizer = optim.Adam(agent.parameters(), lr=cfg.learning_rate, eps=1e-5)
 
     # ── optional checkpoint resume ────────────────────────────────────────────
+    start_update = 1
     if cfg.checkpoint:
         ckpt = torch.load(cfg.checkpoint, map_location=device, weights_only=False)
         agent.load_state_dict(ckpt["agent"])
         optimizer.load_state_dict(ckpt["optimizer"])
+        start_update = int(ckpt.get("update", 0)) + 1
         print(f"  Resumed from: {cfg.checkpoint}  (update {ckpt.get('update','?')}, step {ckpt.get('global_step',0):,})", flush=True)
 
     # ── thread pool ───────────────────────────────────────────────────────────
@@ -382,7 +458,7 @@ def train(cfg: Config) -> None:
     start_time = time.time()
 
     # ── main training loop ────────────────────────────────────────────────────
-    for update in range(1, num_updates + 1):
+    for update in range(start_update, num_updates + 1):
 
         if cfg.anneal_lr:
             frac = 1.0 - (update - 1) / num_updates
@@ -528,11 +604,12 @@ def train(cfg: Config) -> None:
                         pct_wkr_mv  = int(100 * action_counts[66:71].sum() / total_acts)
                         no_pres_pct = int(100 * warn_no_pressure_window / window_episodes)
                         ecd_mean    = int(sum(enemy_crystal_dmg_pct_list) / len(enemy_crystal_dmg_pct_list)) if enemy_crystal_dmg_pct_list else 0
+                        ep_ret_mean = int(sum(terminal_reward_list) / len(terminal_reward_list)) if terminal_reward_list else 0
                         print(
                             f"  update={update:5d} | step={global_step:8d} | "
                             f"win_rate={win_rate:.2f} ({wins_last_window}/{window_episodes}) | "
                             f"cbt={cbt_rate:.2f} tmt={tmt_rate:.2f} | "
-                            f"ep_len={episode_lengths[i]:4d} | ep_rew={episode_rewards[i]:.2f} | "
+                            f"ep_len={episode_lengths[i]:4d} | ep_rew={episode_rewards[i]:.2f} ep_ret={ep_ret_mean} | "
                             f"atk_mv={pct_atk_mv}% tgt={pct_atk_tgt}% bld={pct_bld}% trn={pct_trn}% wkr_mv={pct_wkr_mv}% noop={pct_noop}% | "
                             f"crys_dmg={ecd_mean}% no_pres={no_pres_pct}%",
                             flush=True
@@ -548,6 +625,45 @@ def train(cfg: Config) -> None:
                         final_reward_list.clear(); terminal_reward_list.clear()
                         raw_shaping_list.clear(); entities_discovered_list.clear()
                         action_counts[:] = 0
+
+                        # ── curriculum promotion check ──────────────────────
+                        if cur_stage is not None:
+                            _stage_steps = global_step - stage_step_start
+                            if win_rate >= cur_stage.promotion_threshold:
+                                next_idx = cur_stage_idx + 1
+                                if next_idx < len(CURRICULUM):
+                                    cur_stage_idx  = next_idx
+                                    cur_stage      = CURRICULUM[cur_stage_idx]
+                                    stage_step_start = global_step
+                                    print(f"\n  *** CURRICULUM PROMOTE → stage {cur_stage.name} "
+                                          f"(map={cur_stage.map_width or 'default'}, opp={cur_stage.opponent}) ***\n", flush=True)
+                                    writer.add_scalar("curriculum/stage", cur_stage_idx, global_step)
+                                    for ve in vec_envs: ve.close()
+                                    _ov, _mt, _op = _resolve_env_params()
+                                    vec_envs = _build_vec_envs(_ov, _mt, _op)
+                                    # Re-init obs by resetting all envs
+                                    _init = list(executor.map(_do_reset_vec,
+                                        [(vec_envs[k], k, [[{}]*cfg.vec_size][0]) for k in range(cfg.num_procs)]))
+                                    _flat = [r for batch in _init for r in batch]
+                                    obs_list  = [r[0] for r in _flat]
+                                    info_list = [r[1] for r in _flat]
+                                else:
+                                    print(f"\n  *** CURRICULUM COMPLETE — all stages solved ***\n", flush=True)
+                                    cur_stage = None
+                            elif _stage_steps > cur_stage.max_steps and cur_stage_idx > 0:
+                                cur_stage_idx -= 1
+                                cur_stage      = CURRICULUM[cur_stage_idx]
+                                stage_step_start = global_step
+                                print(f"\n  *** CURRICULUM REGRESS → stage {cur_stage.name} (stuck) ***\n", flush=True)
+                                writer.add_scalar("curriculum/stage", cur_stage_idx, global_step)
+                                for ve in vec_envs: ve.close()
+                                _ov, _mt, _op = _resolve_env_params()
+                                vec_envs = _build_vec_envs(_ov, _mt, _op)
+                                _init = list(executor.map(_do_reset_vec,
+                                    [(vec_envs[k], k, [[{}]*cfg.vec_size][0]) for k in range(cfg.num_procs)]))
+                                _flat = [r for batch in _init for r in batch]
+                                obs_list  = [r[0] for r in _flat]
+                                info_list = [r[1] for r in _flat]
 
                     episode_rewards[i] = 0.0
                     episode_lengths[i] = 0
