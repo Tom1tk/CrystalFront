@@ -1339,3 +1339,50 @@ Everything downstream depends on this.
 ---
 
 *End of plan. Live document — update as decisions evolve.*
+
+---
+
+## 12. Training diary
+
+### v0.3.0-ML — Independent technical review + methodology overhaul (2026-05-20)
+
+**Status:** Infrastructure changes complete, training not started.
+
+An independent technical review of the full project history identified the root cause of 35+ days without beating IdleBot: shaping-reward whack-a-mole combined with premature abandonment of the curriculum. Key findings:
+
+- The credit-assignment gap is the core problem. At gamma=0.995, the +100 win terminal is discounted to ~7×10⁻⁸ by the time the agent decides to build barracks. PPO literally cannot see the win signal from the build decision.
+- The reward function grew to 20+ components totalling ~150 max shaping per episode — 1.5× the terminal magnitude. The agent can lose every game and net positive reward.
+- The per-tick building bonus added in v0.2.10 is the same "standing force trickle" trap that was removed in v0.2.0, just in different clothing.
+- MAP.width was hardcoded in 15+ places in headless/src/ — any small-map curriculum config would silently break observations and actions.
+- The reward function was duplicated between stdioRunner.ts and stdioVecRunner.ts, causing silent drift.
+
+**Changes made (v0.3.0-ML):**
+
+1. **MAP.width fix** — All MAP.width/height hardcodes in observation.js, actionSpace.js, legalActions.js replaced with match.config.mapWidth/mapHeight. Small-map curriculum stages now work correctly.
+
+2. **Reward extraction + simplification** — Created `headless/src/reward.ts` as single source of truth. Reward simplified to exactly 6 components:
+   - Terminal: ±100
+   - Crystal damage dealt: +5 × healthFrac_delta
+   - Crystal damage taken: -2 × healthFrac_delta
+   - First barracks built: +10 (one-time)
+   - First combat unit trained: +5 (one-time)
+   - Time penalty: -0.001/tick
+   - Max achievable shaping ≈ +14 (well below ±100 terminal)
+
+3. **LR schedule bug fix** — Checkpoint resume now restores the update counter so the LR anneal schedule continues from the correct position instead of restarting from 1.0.
+
+4. **MatchConfig pass-through** — mapWidth, crystalHealth, startingResources, max_ticks are now configurable via CLI and passed through to the Node engine.
+
+5. **Curriculum stages** — 8-stage curriculum (0c → 4) defined in train.py. Stages auto-promote on win_rate ≥ threshold and auto-regress when stuck. Each stage has a max_steps budget before regression.
+
+6. **ep_ret logging** — The console print now shows both ep_rew (with shaping) and ep_ret (terminal-only), making shaping-hacking immediately visible.
+
+7. **bc_pretrain.py** — Behaviour cloning script. Run ~500 episodes of rush-weighted random play, train policy with cross-entropy for 3 epochs, save bc_warmup.pt. Use as starting point for PPO.
+
+8. **eval_checkpoint.py** — Checkpoint evaluator. Loads any .pt file and plays N deterministic matches vs each scripted bot, printing win rates.
+
+**Recommended next steps:**
+1. Run BC warmup: `python -m training.bc_pretrain --episodes 500 --output bc_warmup.pt`
+2. Eval BC: `python -m training.eval.eval_checkpoint --checkpoint bc_warmup.pt --episodes 50`
+3. Start curriculum training from BC warmup: `python -m training.ppo.train --curriculum True --checkpoint bc_warmup.pt --ent_coef 0.02 --total_timesteps 20000000`
+4. Monitor: each stage should win within 1-3M steps. If stuck, check which stage and why.

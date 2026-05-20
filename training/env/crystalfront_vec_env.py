@@ -64,11 +64,15 @@ class CrystalFrontVecEnv:
         opponent: str = "idle",
         save_replay_every: int = 0,
         startup_delay: float = 0.0,
+        config_overrides: dict | None = None,
+        max_ticks: int = 6000,
     ):
-        self.vec_size         = vec_size
-        self.opponent         = opponent
+        self.vec_size          = vec_size
+        self.opponent          = opponent
         self.save_replay_every = save_replay_every
-        self._startup_delay   = startup_delay
+        self._startup_delay    = startup_delay
+        self._config_overrides = config_overrides or {}
+        self._max_ticks        = max_ticks
         self._proc: subprocess.Popen | None = None
         self._last_legal_masks = [np.ones(ACTION_SPACE_SIZE, dtype=bool)] * vec_size
 
@@ -139,13 +143,17 @@ class CrystalFrontVecEnv:
 
         save_replays = [False] * self.vec_size
 
-        self._send({
+        msg: dict = {
             "type":             "reset_all",
             "seeds":            seeds,
             "opponents":        opponents,
             "save_replays":     save_replays,
             "save_replay_every": self.save_replay_every,
-        })
+            "max_ticks":        self._max_ticks,
+        }
+        if self._config_overrides:
+            msg["config_overrides"] = self._config_overrides
+        self._send(msg)
         msg = self._recv()
         assert msg["type"] == "ready", f"Expected 'ready', got {msg['type']}"
 
