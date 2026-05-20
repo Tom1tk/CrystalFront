@@ -1,6 +1,6 @@
 import { UNIT_DEFS, SIMULATION } from "@crystalfront/shared";
 import type { MatchState } from "../types.js";
-import { dist, buildSpatialGrid } from "./utils.js";
+import { dist, buildSpatialGrid, getRange } from "./utils.js";
 
 export function processMovement(match: MatchState, subStepMs: number = 100): void {
   const entities = Array.from(match.entities.values());
@@ -27,6 +27,27 @@ export function processMovement(match: MatchState, subStepMs: number = 100): voi
     const distance = Math.sqrt(dx * dx + dy * dy);
 
     if (distance <= arrivalThreshold) {
+      entity.moveTarget = undefined;
+      continue;
+    }
+
+    // Complete movement when within attack range of a large entity (crystal/building)
+    // at the moveTarget position. Prevents units piling up at a single center point —
+    // multiple units can arrive at different positions around the entity's surface.
+    let arrivedAtEntity = false;
+    for (const other of entities) {
+      if (other.id === entity.id) continue;
+      if (other.type !== "crystal" && other.type !== "building") continue;
+      const dTargetToOther = dist(entity.moveTarget.x, entity.moveTarget.y, other.x, other.y);
+      if (dTargetToOther <= other.radius) {
+        // The moveTarget is at/inside this large entity; arrive when in attack range
+        if (dist(entity.x, entity.y, other.x, other.y) <= getRange(entity) + other.radius) {
+          arrivedAtEntity = true;
+          break;
+        }
+      }
+    }
+    if (arrivedAtEntity) {
       entity.moveTarget = undefined;
       continue;
     }

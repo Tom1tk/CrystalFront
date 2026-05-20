@@ -1,12 +1,143 @@
 # Crystal Front — ML Bot Action Plan
 
 **Branch:** `CrystalFront-ML`
-**Status:** Phase 0 FAILED — v0.2.6-ML complete, upward trend at termination, flagged for review
+**Status:** Active training — v0.2.10-ML, Phase 0 (IdleBot), PID 715845, optimised pipeline + reward fixes
 **Last updated:** 2026-05-20
 
 ---
 
 ## Development Diary
+
+### 2026-05-20 — v0.2.10-ML: Reward overhaul — worker exploit removal + building incentives
+
+**Versions covered:** v0.2.8-ML (pipeline), v0.2.9-ML (exploit fix), v0.2.10-ML (building rewards)
+
+**Context:** After the pipeline optimisation (v0.2.8), three successive reward problems were discovered and fixed through replay analysis. v0.2.9 and v0.2.10 address the root cause of the agent never building a barracks.
+
+---
+
+#### Problem 1 — Worker-swarm exploit (diagnosed in v0.2.8-ML)
+
+Replay analysis revealed the agent was training 100+ workers, spamming them at the enemy base with `toggle_auto_attack`, and farming continuous kill/damage rewards from worker-vs-worker fights. This generated 50–100+ shaping reward per episode, completely dominating the one-time +5 barracks milestone.
+
+The exploit loop:
+1. Build supply depots → raise maxSupply
+2. Train more workers
+3. Send workers with auto_attack to enemy half → fight enemy workers
+4. Collect `+0.2/worker killed` + `+0.1 × healthFrac damage dealt` continuously
+
+**Fix (v0.2.9-ML):** Gated all kill/damage rewards on `ownCombatCurrCount > 0`. Workers can still fight but generate zero kill/damage reward unless at least one own combat unit is on the field. The rewards themselves were restored (earlier attempt to remove them outright was reverted per user instruction). Two lines changed in both `stdioRunner.ts` and `stdioVecRunner.ts`.
+
+---
+
+#### Problem 2 — Noop local optimum (diagnosed in v0.2.9-ML)
+
+After removing the worker-swarm exploit, the agent converged to 99% noop by update 79. Replay analysis showed it was doing almost nothing: train 1 worker, send starting workers to wander, then sit idle all game. This earned ep_rew ≈ −55 to −95 from passive mining + discovery + visibility trickle − 100 terminal.
+
+Root cause: the −100 terminal is a fixed unavoidable cost for an agent that hasn't learned to win. With V(s) ≈ −100 everywhere, the policy optimises shaping only — and the shaping optimum with kill/damage blocked is "do nothing". The barracks reward (+10×decay) was never earned because the near-deterministic noop policy (~0.037% chance of trying build_barracks per tick) never generated enough gradient to escape.
+
+**Fix (v0.2.10-ML):** Added per-tick bonuses for completed barracks and foundry buildings with diminishing returns capping at 3 of each:
+
+```
+Barracks: 1st +0.005/tick, 2nd +0.004/tick, 3rd +0.003/tick (cap)
+Foundry:  1st +0.002/tick, 2nd +0.0015/tick, 3rd +0.001/tick (cap)
+```
+
+Max combined: +0.0165/tick → ~+94 per episode for 3× barracks + 3× foundry from tick ~300.
+This shifts the "has buildings" ep_rew from ~−90 to ~+4 before any combat — enough for the value function to clearly learn the barracks path without having ever won a game.
+
+The one-time time-decayed barracks milestone (+10 × max(0.01, 1−tick/2000)) was retained from v0.2.9.
+
+Also fixed in this session: crystal arrival hitbox (movement.ts) — units now complete travel when they enter attack range of a large entity rather than requiring arrival at the exact center point. Multiple workers/units approaching the same crystal no longer pile up indefinitely.
+
+---
+
+#### Engine fix — movement.ts + combat.ts (v0.2.8-ML)
+
+Workers sent to `attack_move enemy_crystal` were permanently "committed" (never idle) because they all targeted the crystal's center point (single pixel) and collision resolution prevented any from reaching within 1px. Fixed in two places:
+
+- `movement.ts`: Units complete movement when within attack range of any crystal/building at their target position, using `getRange(entity) + entity.radius` as the arrival threshold.
+- `combat.ts`: Attack chase now clears `moveTarget` when unit is already in attack range, preventing repeated re-routing to center on each tick.
+
+---
+
+#### Reward state as of v0.2.10-ML
+
+| Signal | Value | Notes |
+|--------|-------|-------|
+| Per-tick barracks (×1/2/3) | +0.005/+0.009/+0.012 | New |
+| Per-tick foundry (×1/2/3) | +0.002/+0.0035/+0.0045 | New |
+| Barracks one-time (time-decay) | +10×max(0.01,1−t/2000) | v0.2.9 |
+| Kill/damage rewards | gated on ownCombat>0 | v0.2.9 |
+| Enemy worker kill | +0.2 (gated) | Restored |
+| Damage dealt (non-crystal) | +0.1/+0.05 (gated) | Restored |
+| Combat unit training | +1.0/+0.8/+0.6/+0.4/+0.2 | Unchanged |
+| Crystal damage (first hit) | +5.0 | Unchanged |
+| Crystal depth milestones | +3/+5/+8 | Unchanged |
+| Terminal (win/loss) | ±100 | Unchanged |
+
+**Training config (v0.2.10-ML):**
+- PID: 715845, log: `/tmp/train_v210.log`
+- Run: `crystalfront_ppo__0_2_10-ML__idle__1__1779279688`
+- num_envs=20, vec_size=4, num_steps=1536, ent_coef=0.10
+- Throughput: ~1,375 SPS (2.5× v0.2.7-ML baseline)
+
+**Early metrics (u59):** ep_rew=−156 with bld=1% appearing — better early trajectory than v0.2.9 which was already at 99% noop by u79.
+
+---
+
+### 2026-05-20 — v0.2.8-ML: Training pipeline optimisation — all report recommendations implemented
+
+**Context:** Following completion of the v0.2.7-ML run, an independent hardware profiling pass identified that the training loop was CPU-bound on a single Python thread while the GPU (RX 7900 XTX) sat at 18% utilisation. This entry documents all changes made to remedy that.
+
+**Hardware reality (measured):**
+- Container has 12 vCPUs (not 28 as documented — host limits the cgroup)
+- GPU at 18% busy, 4/24 GB VRAM used during v0.2.7-ML
+- Python trainer pegged at 100% on one core; 122 Node processes fighting for 12 vCPUs
+- Rollout had 1,536 GPU→CPU syncs per rollout (3 × .cpu().numpy() × 512 steps)
+
+**Changes implemented (commit a0d5d07):**
+
+*Infrastructure:*
+- **`headless/src/stdioVecRunner.ts`** (new): N games per Node process with autoreset. Uses pre-compiled `headless/dist/stdioVecRunner.js` — no tsx overhead at runtime.
+- **`training/env/crystalfront_vec_env.py`** (new): Python wrapper around the vec runner. One `CrystalFrontVecEnv(vec_size=4)` runs 4 games via one Node process.
+- Subprocess count: 122 → 7 (5 vec procs × 4 games + server + tensorboard)
+
+*GPU utilisation:*
+- **GPU rollout buffer**: `RolloutBuffer` now holds all tensors on device. No re-upload during the 24 PPO gradient steps per rollout.
+- **No per-tick GPU sync**: `logprobs_t` and `values_t` stored directly on device. Only `actions_t.cpu()` needed (for env stepping).
+- **GAE on GPU**: T-step loop over `(E,)` GPU tensors; eliminates the 512-iter numpy loop.
+- **bf16 autocast**: policy inference and PPO update wrapped in `torch.autocast(dtype=bfloat16)`. Value/return precision maintained as fp32.
+- **`torch.compile(reduce-overhead)`**: reduces kernel-launch overhead (main bottleneck at small batch sizes).
+
+*CPU/Python overhead:*
+- **`orjson`** for JSON encode/decode in both env wrappers.
+- **`np.bincount`** for action histograms (eliminates 30,720 Python dict accesses per rollout).
+- **`torch.set_float32_matmul_precision("high")`**: slightly faster GEMMs.
+- ROCm env vars: `PYTORCH_TUNABLEOP_ENABLED=1`, `MIOPEN_FIND_MODE=FAST`, `HSA_OVERRIDE_GFX_VERSION=11.0.0`.
+
+*Hyperparameters:*
+- `num_envs`: 60 → **20** (right-sized for 12 vCPUs)
+- `num_steps`: 512 → **1536** (better GAE horizon over 6000-tick episodes)
+- `num_minibatches`: 4 → **6** (5120 per minibatch; 24 gradient steps/rollout)
+- `mlp_hidden`: 256 → **384** (wider trunk; free SPS on this GPU at current scale)
+- Batch size preserved: 30,720
+
+**Observed before/after (first update, same curriculum):**
+| Metric | v0.2.7-ML | v0.2.8-ML | Change |
+|--------|-----------|-----------|--------|
+| GPU busy | 18% | 98% | +80pp |
+| Node procs | 122 | 7 | −94% |
+| Python CPU | 100% (one core) | 105% (mostly GPU wait) | ∼ |
+
+SPS after compile warmup: to be measured at update=2 (first reliable number post-JIT).
+
+**Training config:**
+- PID: 703671, log: `/tmp/train_v28.log`
+- Run: `crystalfront_ppo__0_2_8-ML__idle__1__1779267714`
+- Phase 0 criteria unchanged: cbt≥0.85, tmt≤0.10, crys_dmg>0%, no_pres≤0.10
+
+---
 
 ### 2026-05-18 — v0.2.0-ML: Major reset — course-corrected reward function, Phase 0 begins
 

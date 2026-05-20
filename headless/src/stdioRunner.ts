@@ -185,10 +185,17 @@ function computeReward(
   const enemyWorkersCurr = curr.entities.filter(e => e.owner === -1 && e.typeIndex === 1).length;
   const enemyWorkersKilled = Math.max(0, enemyWorkersPrev - enemyWorkersCurr);
 
+  // Own combat count needed here to gate rewards on combat units being present.
+  // Workers can fight but generate no kill/damage rewards — that incentive belongs to combat units.
+  const ownCombatPrevCount = prev.entities.filter(e => e.owner === 1 && e.typeIndex >= 2 && e.typeIndex <= 4).length;
+  const ownCombatCurrCount = curr.entities.filter(e => e.owner === 1 && e.typeIndex >= 2 && e.typeIndex <= 4).length;
+
   const oppSupplyDelta = prev.global.oppVisibleSupply - curr.global.oppVisibleSupply;
   const combatKillDelta = Math.max(0, oppSupplyDelta - enemyWorkersKilled);
-  if (combatKillDelta    > 0) r += 0.3  * combatKillDelta;
-  if (enemyWorkersKilled > 0) r += 0.2  * enemyWorkersKilled;
+  if (ownCombatCurrCount > 0) {
+    if (combatKillDelta    > 0) r += 0.3  * combatKillDelta;
+    if (enemyWorkersKilled > 0) r += 0.2  * enemyWorkersKilled;
+  }
 
   const ownWorkersPrev = prev.entities.filter(e => e.owner === 1 && e.typeIndex === 1).length;
   const ownWorkersCurr = curr.entities.filter(e => e.owner === 1 && e.typeIndex === 1).length;
@@ -196,26 +203,27 @@ function computeReward(
   if (ownWorkersLost > 0) r -= 0.1 * ownWorkersLost;
 
   // Own combat unit lost
-  const ownCombatPrevCount = prev.entities.filter(e => e.owner === 1 && e.typeIndex >= 2 && e.typeIndex <= 4).length;
-  const ownCombatCurrCount = curr.entities.filter(e => e.owner === 1 && e.typeIndex >= 2 && e.typeIndex <= 4).length;
   const ownCombatUnitsLost = Math.max(0, ownCombatPrevCount - ownCombatCurrCount);
   if (ownCombatUnitsLost > 0) r -= 0.15 * ownCombatUnitsLost;
 
   // ── Damage-dealt reward ───────────────────────────────────────────────────
-  // Fires only when actual HP damage lands. Excludes crystal (has its own signal).
+  // Fires only when actual HP damage lands AND own combat units are present.
+  // Workers can fight but don't generate this reward — prevents worker-swarm exploit.
   // Buildings rewarded at half rate. Coefficient per full healthFrac reduction:
   //   units/workers: 0.1 — buildings: 0.05
-  const prevEnemyHealth = new Map<string, number>();
-  for (const e of prev.entities) {
-    if (e.owner === -1) prevEnemyHealth.set(e.id, e.healthFrac);
-  }
-  for (const e of curr.entities) {
-    if (e.owner !== -1 || e.typeIndex === 0) continue;
-    const prevHP = prevEnemyHealth.get(e.id);
-    if (prevHP === undefined) continue;
-    const delta = prevHP - e.healthFrac;
-    if (delta <= 0) continue;
-    r += (e.typeIndex >= 6 ? 0.05 : 0.1) * delta;
+  if (ownCombatCurrCount > 0) {
+    const prevEnemyHealth = new Map<string, number>();
+    for (const e of prev.entities) {
+      if (e.owner === -1) prevEnemyHealth.set(e.id, e.healthFrac);
+    }
+    for (const e of curr.entities) {
+      if (e.owner !== -1 || e.typeIndex === 0) continue;
+      const prevHP = prevEnemyHealth.get(e.id);
+      if (prevHP === undefined) continue;
+      const delta = prevHP - e.healthFrac;
+      if (delta <= 0) continue;
+      r += (e.typeIndex >= 6 ? 0.05 : 0.1) * delta;
+    }
   }
 
   // ── Own building damage taken penalty ────────────────────────────────────
@@ -295,13 +303,33 @@ function computeReward(
   // ── Time penalty ─────────────────────────────────────────────────────────
   r -= 0.0005;
 
+  // ── Per-tick building bonuses (diminishing returns, cap at 3) ────────────
+  // Each completed building adds a per-tick bonus; additional buildings add less.
+  // 4th+ building of a type adds nothing. Incentivises 3 of each without hoarding.
+  // Barracks:  1st +0.005, 2nd +0.004, 3rd +0.003  → max +0.012/tick (~+68 per ep)
+  // Foundry:   1st +0.002, 2nd +0.0015, 3rd +0.001 → max +0.0045/tick (~+26 per ep)
+  {
+    const barracksBonuses = [0.005, 0.004, 0.003];
+    const barracksCount = curr.entities.filter(e => e.owner === 1 && e.typeIndex === 6 && e.constructionFrac >= 1).length;
+    for (let i = 0; i < Math.min(barracksCount, 3); i++) r += barracksBonuses[i];
+  }
+  {
+    const foundryBonuses = [0.002, 0.0015, 0.001];
+    const foundryCount = curr.entities.filter(e => e.owner === 1 && e.typeIndex === 7 && e.constructionFrac >= 1).length;
+    for (let i = 0; i < Math.min(foundryCount, 3); i++) r += foundryBonuses[i];
+  }
+
   // ── One-time milestone bonuses ────────────────────────────────────────────
 
   if (!milestones.hasBuiltBarracks) {
     const hadBarracks = prev.entities.some(e => e.owner === 1 && e.typeIndex === 6);
     const hasBarracks = curr.entities.some(e => e.owner === 1 && e.typeIndex === 6);
     if (!hadBarracks && hasBarracks) {
-      r += 5.0;
+      // 10.0 base reward, linearly scaled by how early it was built.
+      // Factor = 1.0 at tick 0, decays to floor 0.01 at tick ≥ 2000.
+      // Tick 500 → ×0.75 = 7.5,  tick 1000 → ×0.5 = 5.0,  tick 2000+ → ×0.01 = 0.1
+      const barracksTimeFactor = Math.max(0.01, 1.0 - curr.tick / 2000);
+      r += 10.0 * barracksTimeFactor;
       milestones.hasBuiltBarracks = true;
       milestones.firstBarracksTick = curr.tick;
     }
