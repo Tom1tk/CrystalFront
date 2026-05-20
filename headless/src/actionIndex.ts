@@ -20,6 +20,13 @@
  *     Allows workers to move freely between map zones (scout/reposition)
  *   Total: 66 → 71 actions
  *
+ * v0.2.7-ML changes:
+ *   + attack_move × all_idle_combat × 5 zones = 5 (indices 71-75)
+ *   + attack_move × idle_workers    × 5 zones = 5 (indices 76-80)
+ *     Idle-only variants: only issue commands to units with no active orders.
+ *     Cancel penalty never fires since all affected units are idle by definition.
+ *   Total: 71 → 81 actions
+ *
  * The order here is fixed — never reorder without bumping the spec version.
  */
 import type { MacroAction } from "./types.js";
@@ -34,6 +41,7 @@ const TARGET_TYPES      = ["nearest_threat", "nearest_enemy", "focus_weakest"] a
 const NEW_TARGET_TYPES  = ["targeting_friend", "spread_fire"] as const;
 const NODE_CHOICES  = ["nearest_safe", "nearest_contested", "richest_visible"] as const;
 const ALL_ZONES     = ["enemy_crystal", "midfield", "contested_node", "enemy_army", "defend_crystal"] as const;
+const IDLE_GROUPS   = ["all_idle_combat", "idle_workers"] as const;
 
 function buildAllActions(): MacroAction[] {
   const actions: MacroAction[] = [];
@@ -102,11 +110,18 @@ function buildAllActions(): MacroAction[] {
     actions.push({ type: "attack_move", group: "all_workers", targetZone });
   }
 
+  // 71–80: attack_move × idle groups × 5 zones = 10  [v0.2.7-ML]
+  for (const group of IDLE_GROUPS) {
+    for (const targetZone of ALL_ZONES) {
+      actions.push({ type: "attack_move", group, targetZone });
+    }
+  }
+
   return actions;
 }
 
 export const ALL_ACTIONS: ReadonlyArray<MacroAction> = buildAllActions();
-export const ACTION_SPACE_SIZE = ALL_ACTIONS.length;  // 71
+export const ACTION_SPACE_SIZE = ALL_ACTIONS.length;  // 81
 
 /**
  * Convert a MacroAction to its canonical integer index.

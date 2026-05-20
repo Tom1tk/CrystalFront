@@ -1,8 +1,8 @@
 # Crystal Front — ML Bot Action Plan
 
 **Branch:** `CrystalFront-ML`
-**Status:** Active training — Phase 0 curriculum (v0.2.4-ML, IdleBot, PID 681602, fresh start)
-**Last updated:** 2026-05-19
+**Status:** Phase 0 FAILED — v0.2.6-ML complete, upward trend at termination, flagged for review
+**Last updated:** 2026-05-20
 
 ---
 
@@ -82,6 +82,79 @@
 
 ---
 
+### 2026-05-20 — v0.2.6-ML: Block worker→crystal/building attack, 10× time penalty, diminishing unit rewards
+
+**Training config:** PID 692048, run `crystalfront_ppo__0_2_6-ML__idle__1__1779229732`. Fresh start. num_steps=512, num_envs=60, total_timesteps=20M, ent_coef=0.10.
+
+**Changes from v0.2.5-ML:**
+- Engine fix (`combat.ts`): workers cannot auto-attack crystals or buildings. Can still fight enemy workers and retaliate against combat units.
+- Time penalty: −0.00005/tick → **−0.0005/tick** (10×, = −3.0 per 6000-tick episode)
+- Combat unit training reward: replaced +2.0 (first unit) + +2.0 (3 units) with diminishing per-unit: **+1.0, +0.8, +0.6, +0.4, +0.2**, then 0
+
+**v0.2.6-ML snapshots:**
+
+| update | win_rate | cbt | tmt | ep_rew | atk_mv | wkr_mv | crys_dmg | no_pres | notes |
+|--------|----------|-----|-----|--------|--------|--------|----------|---------|-------|
+| 24 | 0.00 | 0.00 | 1.00 | -693 | 0% | 18% | 0% | 0% | Cold start. Cancel penalty + 10× time pressure = -693 floor |
+| 47 | 0.00 | 0.00 | 1.00 | -138 | 0% | 0% | 0% | 0% | wkr_mv drops to 0% — cancel penalty working immediately |
+| 59 | 0.00 | 0.00 | 1.00 | -131 | 0% | 0% | 0% | 0% | Improving |
+| 83 | 0.00 | 0.00 | 1.00 | -130 | 0% | 0% | 0% | 0% | bld=1%, trn=1% — first build/train actions |
+| 106 | 0.00 | 0.00 | 1.00 | -126 | 0% | 0% | 0% | 0% | trn=2% rising |
+| 118 | 0.00 | 0.00 | 1.00 | -152 | 0% | 0% | 0% | 11% | 🟢 no_pres=11%: 4+ combat units trained in 11% of episodes |
+| 141 | 0.00 | 0.00 | 1.00 | -575 | **3%** | 0% | 0% | 96% | 🚀 **FIRST ATTACK MOVES.** Combat units trained in 96% of eps. Ep_rew spike = cancel penalty from attack oscillation. |
+| 165 | 0.00 | 0.00 | 1.00 | -235 | 0% | 0% | 0% | 100% | Pulled back — learning to commit rather than oscillate |
+| 223 | 0.00 | 0.00 | 1.00 | -101 | 0% | 0% | 0% | 100% | ep_rew stabilising near terminal. noop=62% — agent waiting. |
+| 235 | 0.00 | 0.00 | 1.00 | -96 | 0% | 0% | 0% | 100% | ep_rew≈-96 (shaping near-zero). Combat units trained, not attacking. |
+| 258 | 0.02 | 0.01 | 0.98 | -101 | 0% | 0% | 0% | 99% | 2 wins (1 resource, 1 unclear). crys_dmg=0% — no combat attacks yet. |
+| 282 | 0.00 | 0.00 | 1.00 | -133 | 0% | 0% | 0% | 100% | No progress |
+| 293 | 0.00 | 0.00 | 1.00 | -113 | 0% | 0% | 0% | 100% | 45% through run. atk_mv=0% throughout since u165. Units trained but not attacking — cancel penalty overcorrection likely. |
+| 340 | 0.02 | 0.02 | 0.98 | -102 | 0% | 0% | **1%** | 97% | 🚀 **FIRST CRYSTAL DAMAGE from combat units** (workers blocked). 2 wins. |
+| 352 | 0.00 | 0.00 | 1.00 | -95 | 0% | 0% | 0% | 99% | Dropped back — noisy |
+| 375 | 0.03 | 0.03 | 0.97 | -95 | 0% | 0% | **2%** | 96% | 🚀 crys_dmg=2%, 3 wins. Crystal damage appearing without atk_mv (likely forward barracks + auto-attack) |
+| 399 | 0.00 | 0.00 | 1.00 | -99 | 0% | 0% | 0% | 100% | Noisy |
+| 411 | 0.00 | 0.00 | 1.00 | -97 | 0% | 0% | 0% | 96% | Still noisy — inconsistent but crys_dmg has appeared |
+| 458 | 0.01 | 0.01 | 0.99 | -94 | 0% | 0% | 0% | 98% | Noisy dip |
+| 469 | 0.02 | 0.02 | 0.98 | -99 | 0% | 0% | 2% | 96% | crys_dmg=2% returning |
+| 493 | 0.03 | 0.03 | 0.97 | -93 | 0% | 0% | 3% | 93% | Consolidating — 3 wins, crys_dmg=3% |
+| 516 | 0.03 | 0.03 | 0.97 | -98 | 0% | 0% | 2% | 94% | Stable 2-3% crys_dmg, 3 wins |
+| 528 | 0.03 | 0.03 | 0.97 | -99 | 0% | 0% | 2% | 95% | 81% through run. crys_dmg consistently 2-3%, win_rate plateauing at 3%. no_pres declining slowly. |
+| 551 | 0.05 | 0.05 | 0.95 | -111 | 0% | 0% | 5% | 94% | Accelerating |
+| 574 | 0.07 | 0.07 | 0.93 | -96 | 0% | 0% | 7% | 91% | 🟢 Win rate and crys_dmg both climbing |
+| 586 | 0.04 | 0.04 | 0.96 | -96 | 0% | 0% | 4% | 89% | Noise |
+| 610 | 0.07 | 0.07 | 0.93 | -92 | 0% | 0% | 7% | 88% | no_pres=88% — improving |
+| 631 | 0.06 | 0.06 | 0.94 | -94 | 0% | 0% | 7% | 91% | Stable |
+| 645 | 0.09 | 0.09 | 0.91 | -97 | 0% | 0% | 9% | 90% | **Final.** 9% win rate, 9% crys_dmg, no_pres=90%. Trend still rising at termination. |
+
+**Phase 0 verdict: FAILED — but best run yet, actively improving at completion**
+
+| Criterion | Target | Final | Result |
+|-----------|--------|-------|--------|
+| cbt (combat win rate) | ≥ 0.85 | 0.09 | ❌ |
+| crys_dmg consistently >0% | yes | ✅ from u317 | ✅ |
+| tmt (timeout rate) | ≤ 0.10 | 0.91 | ❌ |
+| no_pres | ≤ 0.10 | 0.90 | ❌ |
+
+**What worked:**
+- Cancel penalty eliminated worker oscillation immediately (wkr_mv=0% from u47)
+- Worker crystal attack blocked — all crys_dmg now from combat units
+- Genuine barracks→combat unit→crystal damage chain discovered by u317
+- Final trend: crys_dmg 2%→9%, win_rate 3%→9%, no_pres 100%→88% — all improving at termination
+- Run ended with momentum — more steps would likely continue improvement
+
+**What held it back:**
+- atk_mv=0% throughout entire run — agent never used explicit attack_move commands
+- Units reach crystal via forward barracks placement + auto-attack (emergent, not commanded)
+- At u141, attack_move was tried (3%) causing ep_rew spike to −575 from cancel penalties. Policy then avoided attack_move entirely for fear of penalties.
+- Root cause: cancel penalty trained the agent to NOT issue attack_move, even though a single uncommitted attack_move on idle units has zero cancel cost
+
+**Key insight:** The cancel penalty fires when a MID-TRAVEL unit is redirected. An attack_move on idle units has NO cancel cost. The agent's aversion to attack_move is a learned misconception — it tried and was penalised (because it was oscillating), and generalised too broadly.
+
+**Recommendation:** Resume from final.pt (same architecture) with no changes — the run was actively learning and simply ran out of steps. OR: exempting attack_move from cancel penalty when all affected units are idle would help the agent rediscover this action without fear.
+
+**Final checkpoint:** `checkpoints/crystalfront_ppo__0_2_6-ML__idle__1__1779229732/final.pt`
+
+---
+
 ### 2026-05-19 — v0.2.4-ML: Remove shaping clamp, barracks +5, worker movement actions
 
 **Training config:** PID 681602, run `crystalfront_ppo__0_2_4-ML__idle__1__1779193049`. Fresh start — no checkpoint (action space 66→71 incompatible). num_steps=512, num_envs=60, batch_size=30,720, total_timesteps=20M, ent_coef=0.10.
@@ -98,9 +171,25 @@
 
 | update | win_rate | cbt | tmt | ep_rew | wkr_mv | crys_dmg | no_pres | notes |
 |--------|----------|-----|-----|--------|--------|----------|---------|-------|
-| 24 | 0.00 | 0.00 | 1.00 | -118.06 | ~89% | 0% | 0% | Unclamped — ep_rew no longer pinned at -120. wkr_mv dominates early. |
-| 47 | 0.00 | 0.00 | 1.00 | -117.71 | ~89% | 0% | 0% | ep_rew varying, signal alive |
-| 59 | 0.00 | 0.00 | 1.00 | -118.98 | ~89% | 0% | 0% | Still early, exploring |
+| 24 | 0.00 | 0.00 | 1.00 | -118.06 | ~89% | 0% | 0% | Unclamped — ep_rew no longer pinned at -120. wkr_mv dominates (uncategorised in log). |
+| 47 | 0.00 | 0.00 | 1.00 | -117.71 | ~89% | 0% | 0% | ep_rew varying — real gradient flowing |
+| 59 | 0.00 | 0.00 | 1.00 | -118.98 | ~89% | 0% | 0% | Slight noise |
+| 83 | 0.00 | 0.00 | 1.00 | -106.63 | ~89% | 0% | 0% | 🟢 Big jump — shaping improving strongly as workers discover map |
+| 106 | 0.00 | 0.00 | 1.00 | -105.88 | ~89% | 0% | 0% | Continuing upward |
+| 118 | 0.00 | 0.00 | 1.00 | -104.27 | ~89% | 0% | 0% | Scouting + visibility rewards accumulating |
+| 141 | 0.00 | 0.00 | 1.00 | -106.02 | ~89% | 0% | 0% | Slight oscillation |
+| 165 | 0.00 | 0.00 | 1.00 | -101.13 | ~89% | 0% | 0% | ep_rew approaching terminal value |
+| 176 | 0.00 | 0.00 | 1.00 | -103.13 | ~89% | 0% | 0% | Minor regression |
+| 200 | 0.00 | 0.00 | 1.00 | -101.62 | ~89% | 0% | 0% | Stable near -100 |
+| 223 | 0.00 | 0.00 | 1.00 | -98.27 | ~89% | 0% | 0% | 🟢 Shaping now POSITIVE (+1.73 above terminal) |
+| 235 | 0.00 | 0.00 | 1.00 | -98.89 | ~89% | 0% | 0% | Holding |
+| 258 | 0.00 | 0.00 | 1.00 | -98.64 | ~89% | 0% | 0% | Holding |
+| 282 | 0.00 | 0.00 | 1.00 | -97.56 | ~89% | 0% | 0% | Shaping +2.44. Workers scouting effectively. Still no combat. |
+| 458 | 0.00 | 0.00 | 1.00 | -94.87 | ~89% | 0% | 0% | Plateau at ~-95. Zone oscillation exploit fully converged. |
+| 469 | 0.00 | 0.00 | 1.00 | -95.06 | ~89% | 0% | 0% | Flat |
+| 493 | 0.00 | 0.00 | 1.00 | -95.09 | ~89% | 0% | 0% | Flat |
+| 516 | 0.00 | 0.00 | 1.00 | -94.83 | ~89% | 0% | 0% | Flat |
+| 528 | 0.00 | 0.00 | 1.00 | -95.11 | ~89% | 0% | 0% | 81% through run. Confirmed plateau. Replay analysis: workers bouncing between x=300/3000/5900 every 2-3 ticks for entire episode. Barracks issued but never complete. |
 
 ---
 

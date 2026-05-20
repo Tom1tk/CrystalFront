@@ -123,6 +123,21 @@ export function getLegalActions(match: MatchState, playerId: string): MacroActio
     }
   }
 
+  // idle-only groups — legal whenever any idle unit of that type exists
+  const trueIdleCombat = combatUnits.filter(e => !e.moveTarget && !e.buildTargetId && !e.gatheringNodeId && !e.attackTargetId);
+  if (trueIdleCombat.length > 0) {
+    for (const targetZone of ["enemy_crystal", "midfield", "contested_node", "enemy_army", "defend_crystal"] as const) {
+      legal.push({ type: "attack_move", group: "all_idle_combat", targetZone });
+    }
+  }
+
+  const trueIdleWorkers = workers.filter(e => !e.moveTarget && !e.buildTargetId && !e.gatheringNodeId && !e.attackTargetId);
+  if (trueIdleWorkers.length > 0) {
+    for (const targetZone of ["enemy_crystal", "midfield", "contested_node", "enemy_army", "defend_crystal"] as const) {
+      legal.push({ type: "attack_move", group: "idle_workers", targetZone });
+    }
+  }
+
   // assign_workers — only "all_idle" variant
   if (idleWorkers.length > 0) {
     const hasNodes = match.resourceNodes.some(
