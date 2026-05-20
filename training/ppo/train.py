@@ -105,7 +105,10 @@ CURRICULUM: list[CurriculumStage] = [
     CurriculumStage("0b", map_width=800, crystal_health=50, starting_resources=200, max_ticks=2000, opponent="idle",
                     pre_place_barracks=True, pre_place_units=[],
                     promotion_threshold=0.70, max_steps=2_000_000),
-    # 0c: no scaffolding — full build chain, small map
+    # 0b5: no scaffolding, 200 resources — build immediately, no gathering needed yet
+    CurriculumStage("0b5", map_width=800, crystal_health=50, starting_resources=200, max_ticks=2000, opponent="idle",
+                    promotion_threshold=0.70, max_steps=2_000_000),
+    # 0c: no scaffolding, 50 resources — must gather before building
     CurriculumStage("0c", map_width=800,  crystal_health=50,  starting_resources=50,  max_ticks=2000, opponent="idle",        promotion_threshold=0.70, max_steps=2_000_000),
     CurriculumStage("1a", map_width=1500, crystal_health=100, starting_resources=50,  max_ticks=3000, opponent="idle",        promotion_threshold=0.70, max_steps=3_000_000),
     CurriculumStage("1b", map_width=1500, crystal_health=100, starting_resources=50,  max_ticks=3000, opponent="passive",     promotion_threshold=0.70, max_steps=3_000_000),
