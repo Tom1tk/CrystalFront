@@ -110,7 +110,9 @@ CURRICULUM: list[CurriculumStage] = [
                     promotion_threshold=0.70, max_steps=2_000_000),
     # 0c: no scaffolding, 50 resources — must gather before building
     CurriculumStage("0c", map_width=800,  crystal_health=50,  starting_resources=50,  max_ticks=2000, opponent="idle",        promotion_threshold=0.70, max_steps=2_000_000),
-    CurriculumStage("1a", map_width=1500, crystal_health=100, starting_resources=50,  max_ticks=3000, opponent="idle",        promotion_threshold=0.70, max_steps=3_000_000),
+    # Review §9.5 Day 5 exact config — the target breakthrough stage
+    CurriculumStage("day5", map_width=1500, crystal_health=200, starting_resources=50,  max_ticks=3000, opponent="idle",        promotion_threshold=0.50, max_steps=5_000_000),
+    CurriculumStage("1a",   map_width=1500, crystal_health=100, starting_resources=50,  max_ticks=3000, opponent="idle",        promotion_threshold=0.70, max_steps=3_000_000),
     CurriculumStage("1b", map_width=1500, crystal_health=100, starting_resources=50,  max_ticks=3000, opponent="passive",     promotion_threshold=0.70, max_steps=3_000_000),
     CurriculumStage("2a", map_width=3000, crystal_health=300, starting_resources=50,  max_ticks=5000, opponent="passive",     promotion_threshold=0.70, max_steps=4_000_000),
     CurriculumStage("2b", map_width=3000, crystal_health=300, starting_resources=50,  max_ticks=5000, opponent="rush_weak",   promotion_threshold=0.70, max_steps=5_000_000),

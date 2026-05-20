@@ -43,15 +43,16 @@ from training.ppo.policy import CrystalFrontAgent
 
 @dataclass
 class Config:
-    episodes:        int   = 500
-    epochs:          int   = 3
+    episodes:        int   = 1000     # review §4.10 recommends ~1000
+    epochs:          int   = 5
     batch_size:      int   = 256
     learning_rate:   float = 1e-3
     device:          str   = "cuda"
     output:          str   = "bc_warmup.pt"
-    demo_bot:        str   = "rush"    # blue player is driven by this scripted bot
-    opponent:        str   = "idle"    # red player
+    demo_bot:        str   = "rush"
+    opponent:        str   = "idle"
     seed:            int   = 42
+    noop_keep_frac:  float = 0.05    # keep only 5% of noop transitions (subtract redundant noops)
     # network dims — must match train.py defaults
     entity_d_model:  int   = 64
     entity_n_heads:  int   = 4
@@ -108,6 +109,23 @@ def train_bc(cfg: Config) -> None:
     obs_list, act_list = collect_demonstrations(cfg)
     N = len(obs_list)
 
+    actions_arr_full = np.array(act_list, dtype=np.int64)
+
+    # Subsample noop (action 0) transitions — keep only noop_keep_frac of them.
+    # Rule R1: subtraction. 95% noop labels drown the signal for the 5% that matter.
+    noop_indices    = np.where(actions_arr_full == 0)[0]
+    nonoop_indices  = np.where(actions_arr_full != 0)[0]
+    keep_noop = max(1, int(len(noop_indices) * cfg.noop_keep_frac))
+    rng = np.random.default_rng(cfg.seed)
+    kept_noop = rng.choice(noop_indices, size=keep_noop, replace=False)
+    keep_idx = np.sort(np.concatenate([nonoop_indices, kept_noop]))
+
+    obs_list   = [obs_list[i]   for i in keep_idx]
+    act_list   = [act_list[i]   for i in keep_idx]
+    N = len(obs_list)
+    print(f"  After noop subsampling: {N:,} transitions "
+          f"({len(nonoop_indices):,} non-noop + {keep_noop:,} noop)")
+
     globals_arr      = np.stack([o["global"]      for o in obs_list])
     entities_arr     = np.stack([o["entities"]    for o in obs_list])
     entity_masks_arr = np.stack([o["entity_mask"] for o in obs_list])
@@ -115,10 +133,10 @@ def train_bc(cfg: Config) -> None:
     node_masks_arr   = np.stack([o["node_mask"]   for o in obs_list])
     actions_arr      = np.array(act_list, dtype=np.int64)
 
-    # Log action distribution to sanity-check we got real bot behaviour
+    # Log action distribution
     unique, counts = np.unique(actions_arr, return_counts=True)
     top = sorted(zip(counts, unique), reverse=True)[:8]
-    print(f"\nTop demo actions (index: count):")
+    print(f"\nTop demo actions after subsampling:")
     for cnt, idx in top:
         print(f"  action {idx:3d}: {cnt:6d}  ({100*cnt/N:.1f}%)")
 
