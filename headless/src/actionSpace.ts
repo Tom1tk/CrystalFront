@@ -212,7 +212,11 @@ function getUnitGroup(match: MatchState, playerId: string, group: MacroAction["g
     if (group === "skirmishers" && e.type === "skirmisher") { results.push(e); continue; }
     if (group === "gunners"     && e.type === "gunner")     { results.push(e); continue; }
     if (group === "bruisers"    && e.type === "bruiser")    { results.push(e); continue; }
-    if (group === "all_workers" && e.type === "worker")     { results.push(e); continue; }
+    if (group === "all_workers"    && e.type === "worker")   { results.push(e); continue; }
+    // Idle-only variants — only include units with no active orders
+    const isIdle = !e.moveTarget && !e.buildTargetId && !e.gatheringNodeId && !e.attackTargetId;
+    if (group === "all_idle_combat" && isCombat && isIdle)   { results.push(e); continue; }
+    if (group === "idle_workers"    && e.type === "worker" && isIdle) { results.push(e); continue; }
   }
   return results;
 }

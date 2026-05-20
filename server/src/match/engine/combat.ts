@@ -22,6 +22,8 @@ export function processCombat(match: MatchState): Map<string, number> {
     let nearestId: string | undefined;
     for (const other of entities) {
       if (other.ownerId === entity.ownerId) continue;
+      // Workers cannot initiate combat on crystals or buildings — only workers and combat units
+      if (entity.type === "worker" && (other.type === "crystal" || other.type === "building")) continue;
       const range = getRange(entity);
       const d = dist(entity.x, entity.y, other.x, other.y);
       if (d <= range + other.radius && d < nearestDist) {

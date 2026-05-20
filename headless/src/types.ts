@@ -85,7 +85,7 @@ export interface MacroAction {
   xZone?: "near_crystal" | "mid_base" | "forward";
   yZone?: "top" | "middle" | "bottom";
   // attack_move / retreat / hold_position
-  group?: "all_combat" | "skirmishers" | "gunners" | "bruisers" | "all_workers";
+  group?: "all_combat" | "skirmishers" | "gunners" | "bruisers" | "all_workers" | "all_idle_combat" | "idle_workers";
   targetZone?: "enemy_crystal" | "midfield" | "contested_node" | "enemy_army" | "defend_crystal";
   // attack_targeted
   targetType?: "nearest_threat" | "nearest_enemy" | "focus_weakest" | "targeting_friend" | "spread_fire";

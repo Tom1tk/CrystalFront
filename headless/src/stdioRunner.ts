@@ -142,6 +142,9 @@ function freshMilestones(): Milestones {
 
 let milestones: Milestones = freshMilestones();
 
+// ── cancel penalty (set in handleStep, consumed in computeReward) ─────────────
+let tickCancelPenalty = 0;
+
 // ── per-episode shaping accumulator & diagnostic counters ─────────────────────
 let episodeShaping        = 0;
 let episodeOwnCombatCreated  = 0;
@@ -160,6 +163,10 @@ function computeReward(
   winType: string | null
 ): number {
   let r = 0;
+
+  // ── Order cancel penalty (computed in handleStep, consumed here) ──────────
+  r += tickCancelPenalty;
+  tickCancelPenalty = 0;
 
   // ── Crystal damage dealt / taken ──────────────────────────────────────────
   if (prev.global.oppCrystalHealthFrac > 0) {
@@ -286,7 +293,7 @@ function computeReward(
   }
 
   // ── Time penalty ─────────────────────────────────────────────────────────
-  r -= 0.00005;
+  r -= 0.0005;
 
   // ── One-time milestone bonuses ────────────────────────────────────────────
 
@@ -319,19 +326,25 @@ function computeReward(
     }
   }
 
-  if (!milestones.hasTrainedCombatUnit) {
-    if (ownCombatCurrCount > ownCombatPrevCount) {
-      r += 2.0;
-      milestones.hasTrainedCombatUnit = true;
-      milestones.firstCombatUnitTick = curr.tick;
+  // Diminishing reward per combat unit trained: +1.0, +0.8, +0.6, +0.4, +0.2, then 0
+  // episodeOwnCombatCreated holds count from prior ticks (updated in diagnostic section below)
+  {
+    const newUnits = Math.max(0, ownCombatCurrCount - ownCombatPrevCount);
+    if (newUnits > 0) {
+      const rewards = [1.0, 0.8, 0.6, 0.4, 0.2];
+      for (let i = 0; i < newUnits; i++) {
+        const idx = episodeOwnCombatCreated + i;
+        if (idx < rewards.length) r += rewards[idx];
+      }
+      if (!milestones.hasTrainedCombatUnit) {
+        milestones.hasTrainedCombatUnit = true;
+        milestones.firstCombatUnitTick = curr.tick;
+      }
+      if (!milestones.hasThreeCombatUnits && episodeOwnCombatCreated + newUnits >= 3) {
+        milestones.hasThreeCombatUnits = true;
+        milestones.firstThreeCombatUnitsTick = curr.tick;
+      }
     }
-  }
-
-  // First time army reaches 3 units
-  if (!milestones.hasThreeCombatUnits && ownCombat >= 3) {
-    r += 2.0;
-    milestones.hasThreeCombatUnits = true;
-    milestones.firstThreeCombatUnitsTick = curr.tick;
   }
 
   if (milestones.hasTrainedCombatUnit && !milestones.hasCombatUnitCrossedMidfield) {
@@ -476,9 +489,82 @@ let prevBlueObs: PlayerObservation | null = null;
 let saveReplay = false;
 let commandLog: Array<{ tick: number; playerId: string; command: Record<string, unknown> }> = [];
 
+// ── Cancel penalty helpers ────────────────────────────────────────────────────
+
+function cancelOrderState(e: import("../../server/src/match/types.js").MatchEntity, m: import("../../server/src/match/types.js").MatchState): "idle" | "mining" | "committed" {
+  if (!e.moveTarget && !e.buildTargetId && !e.gatheringNodeId && !e.attackTargetId) return "idle";
+  if (e.gatheringNodeId && !e.moveTarget) return "mining";
+  // Attack target no longer exists (killed) → idle
+  if (e.attackTargetId && !m.entities.has(e.attackTargetId)) return "idle";
+  return "committed";
+}
+
+function isTargetedByEnemy(entityId: string, m: import("../../server/src/match/types.js").MatchState): boolean {
+  for (const e of m.entities.values()) {
+    if (e.ownerId === BLUE_ID) continue;
+    if (e.attackTargetId === entityId) return true;
+  }
+  return false;
+}
+
+function cancelAffectedUnits(action: import("./types.js").MacroAction, m: import("../../server/src/match/types.js").MatchState): import("../../server/src/match/types.js").MatchEntity[] {
+  const own = [...m.entities.values()].filter(e => e.ownerId === BLUE_ID);
+  const isCombat = (e: import("../../server/src/match/types.js").MatchEntity) =>
+    ["skirmisher", "gunner", "bruiser", "medic"].includes(e.type);
+
+  switch (action.type) {
+    case "attack_move":
+    case "retreat":
+    case "attack_targeted":
+    case "hold_position": {
+      const g = action.group ?? "all_combat";
+      return own.filter(e => {
+        if (g === "all_workers") return e.type === "worker";
+        if (g === "all_combat")  return isCombat(e);
+        if (g === "skirmishers") return e.type === "skirmisher";
+        if (g === "gunners")     return e.type === "gunner";
+        if (g === "bruisers")    return e.type === "bruiser";
+        return false;
+      });
+    }
+    case "assign_workers":
+      return own.filter(e => e.type === "worker" && !e.buildTargetId && !e.gatheringNodeId && !e.attackTargetId);
+    case "build": {
+      const builder = own.find(e => e.type === "worker" && !e.buildTargetId);
+      return builder ? [builder] : [];
+    }
+    default:
+      return [];
+  }
+}
+
+function computeTickCancelPenalty(
+  action: import("./types.js").MacroAction,
+  m: import("../../server/src/match/types.js").MatchState,
+  prevObs: PlayerObservation
+): number {
+  const PENALTY = 0.5;
+
+  // Crystal actively under attack = HP dropped since last tick
+  const ownCrystal = [...m.entities.values()].find(e => e.type === "crystal" && e.ownerId === BLUE_ID);
+  const crystalUnderAttack = ownCrystal != null && ownCrystal.maxHealth > 0
+    && (ownCrystal.health / ownCrystal.maxHealth) < prevObs.global.ownCrystalHealthFrac - 0.0001;
+
+  let penalty = 0;
+  for (const unit of cancelAffectedUnits(action, m)) {
+    const state = cancelOrderState(unit, m);
+    if (state === "idle" || state === "mining") continue;   // free
+    if (crystalUnderAttack) continue;                       // all units free when crystal hit
+    if (isTargetedByEnemy(unit.id, m)) continue;           // this unit is targeted → free
+    penalty -= PENALTY;
+  }
+  return penalty;
+}
+
 function handleReset(seed?: number, opponent?: string, doSave = false): void {
   milestones = freshMilestones();
   episodeShaping         = 0;
+  tickCancelPenalty      = 0;
   episodeOwnCombatCreated  = 0;
   episodeOwnCombatLost     = 0;
   episodeCombatKilled      = 0;
@@ -523,6 +609,10 @@ function handleStep(actionIdx: number): void {
   const macroAction = indexToAction(actionIdx);
   episodeTotalActions++;
   episodeActionCounts[macroAction.type] = (episodeActionCounts[macroAction.type] ?? 0) + 1;
+
+  // Cancel penalty: check committed orders BEFORE commands are applied
+  tickCancelPenalty = computeTickCancelPenalty(macroAction, match, prevBlueObs);
+
   const blueCmds = expandMacroAction(macroAction, match, BLUE_ID);
   for (const cmd of blueCmds) {
     const result = engine.processCommand(match.id, BLUE_ID, cmd as Parameters<MatchEngine["processCommand"]>[2]);
