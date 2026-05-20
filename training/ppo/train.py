@@ -97,7 +97,11 @@ CURRICULUM: list[CurriculumStage] = [
     CurriculumStage("0a", map_width=800, crystal_health=50, starting_resources=200, max_ticks=2000, opponent="idle",
                     pre_place_barracks=True, pre_place_units=["skirmisher", "skirmisher"],
                     promotion_threshold=0.85, max_steps=2_000_000),
-    # 0b: pre-placed barracks — agent needs train_unit + attack_move
+    # 0a5: barracks + 1 skirmisher — removes one scaffold at a time (Rule R3)
+    CurriculumStage("0a5", map_width=800, crystal_health=50, starting_resources=200, max_ticks=2000, opponent="idle",
+                    pre_place_barracks=True, pre_place_units=["skirmisher"],
+                    promotion_threshold=0.70, max_steps=2_000_000),
+    # 0b: pre-placed barracks only — agent needs train_unit + attack_move
     CurriculumStage("0b", map_width=800, crystal_health=50, starting_resources=200, max_ticks=2000, opponent="idle",
                     pre_place_barracks=True, pre_place_units=[],
                     promotion_threshold=0.70, max_steps=2_000_000),
