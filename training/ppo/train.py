@@ -75,30 +75,41 @@ from training.ppo.league import LeagueManager, SCRIPTED_BOTS
 # map_width / crystal_health / starting_resources / max_ticks / opponent
 # 0 values → use game default.
 
-from dataclasses import dataclass as _dc
+from dataclasses import dataclass as _dc, field as _field
 
 @_dc
 class CurriculumStage:
     name:                str
-    map_width:           int   = 0
-    crystal_health:      int   = 0
-    starting_resources:  int   = 0
-    max_ticks:           int   = 3000
-    opponent:            str   = "idle"
-    promotion_threshold: float = 0.70
-    eval_window:         int   = 100
-    max_steps:           int   = 2_000_000   # steps before trying to regress
+    map_width:           int        = 0
+    crystal_health:      int        = 0
+    starting_resources:  int        = 0
+    max_ticks:           int        = 3000
+    opponent:            str        = "idle"
+    promotion_threshold: float      = 0.70
+    eval_window:         int        = 100
+    max_steps:           int        = 2_000_000
+    pre_place_barracks:  bool       = False
+    pre_place_units:     list[str]  = _field(default_factory=list)
 
 
 CURRICULUM: list[CurriculumStage] = [
-    CurriculumStage("0c", map_width=800,  crystal_health=50,   starting_resources=50,  max_ticks=2000, opponent="idle",        promotion_threshold=0.70, max_steps=2_000_000),
-    CurriculumStage("1a", map_width=1500, crystal_health=100,  starting_resources=50,  max_ticks=3000, opponent="idle",        promotion_threshold=0.70, max_steps=3_000_000),
-    CurriculumStage("1b", map_width=1500, crystal_health=100,  starting_resources=50,  max_ticks=3000, opponent="passive",     promotion_threshold=0.70, max_steps=3_000_000),
-    CurriculumStage("2a", map_width=3000, crystal_health=300,  starting_resources=50,  max_ticks=5000, opponent="passive",     promotion_threshold=0.70, max_steps=4_000_000),
-    CurriculumStage("2b", map_width=3000, crystal_health=300,  starting_resources=50,  max_ticks=5000, opponent="rush_weak",   promotion_threshold=0.70, max_steps=5_000_000),
-    CurriculumStage("3a", map_width=0,    crystal_health=0,    starting_resources=50,  max_ticks=6000, opponent="passive",     promotion_threshold=0.70, max_steps=5_000_000),
-    CurriculumStage("3b", map_width=0,    crystal_health=0,    starting_resources=50,  max_ticks=6000, opponent="rush_medium", promotion_threshold=0.50, max_steps=8_000_000),
-    CurriculumStage("4",  map_width=0,    crystal_health=0,    starting_resources=50,  max_ticks=6000, opponent="league",      promotion_threshold=0.60, max_steps=20_000_000),
+    # 0a: pre-placed barracks + 2 skirmishers — agent only needs attack_move
+    CurriculumStage("0a", map_width=800, crystal_health=50, starting_resources=200, max_ticks=2000, opponent="idle",
+                    pre_place_barracks=True, pre_place_units=["skirmisher", "skirmisher"],
+                    promotion_threshold=0.85, max_steps=2_000_000),
+    # 0b: pre-placed barracks — agent needs train_unit + attack_move
+    CurriculumStage("0b", map_width=800, crystal_health=50, starting_resources=200, max_ticks=2000, opponent="idle",
+                    pre_place_barracks=True, pre_place_units=[],
+                    promotion_threshold=0.70, max_steps=2_000_000),
+    # 0c: no scaffolding — full build chain, small map
+    CurriculumStage("0c", map_width=800,  crystal_health=50,  starting_resources=50,  max_ticks=2000, opponent="idle",        promotion_threshold=0.70, max_steps=2_000_000),
+    CurriculumStage("1a", map_width=1500, crystal_health=100, starting_resources=50,  max_ticks=3000, opponent="idle",        promotion_threshold=0.70, max_steps=3_000_000),
+    CurriculumStage("1b", map_width=1500, crystal_health=100, starting_resources=50,  max_ticks=3000, opponent="passive",     promotion_threshold=0.70, max_steps=3_000_000),
+    CurriculumStage("2a", map_width=3000, crystal_health=300, starting_resources=50,  max_ticks=5000, opponent="passive",     promotion_threshold=0.70, max_steps=4_000_000),
+    CurriculumStage("2b", map_width=3000, crystal_health=300, starting_resources=50,  max_ticks=5000, opponent="rush_weak",   promotion_threshold=0.70, max_steps=5_000_000),
+    CurriculumStage("3a", map_width=0,    crystal_health=0,   starting_resources=50,  max_ticks=6000, opponent="passive",     promotion_threshold=0.70, max_steps=5_000_000),
+    CurriculumStage("3b", map_width=0,    crystal_health=0,   starting_resources=50,  max_ticks=6000, opponent="rush_medium", promotion_threshold=0.50, max_steps=8_000_000),
+    CurriculumStage("4",  map_width=0,    crystal_health=0,   starting_resources=50,  max_ticks=6000, opponent="league",      promotion_threshold=0.60, max_steps=20_000_000),
 ]
 
 
@@ -343,21 +354,24 @@ def train(cfg: Config) -> None:
     cur_stage      = CURRICULUM[cur_stage_idx] if cfg.curriculum else None
     stage_step_start = 0  # global_step when current stage began
 
-    def _resolve_env_params() -> tuple[dict, int, str]:
-        """Return (config_overrides, max_ticks, opponent) for current stage or cfg defaults."""
+    def _resolve_env_params() -> tuple[dict, int, str, dict | None]:
+        """Return (config_overrides, max_ticks, opponent, pre_place) for current stage or cfg defaults."""
         if cur_stage is not None:
             ov: dict = {}
             if cur_stage.map_width          > 0: ov["mapWidth"]          = cur_stage.map_width
             if cur_stage.crystal_health     > 0: ov["crystalHealth"]     = cur_stage.crystal_health
             if cur_stage.starting_resources > 0: ov["startingResources"] = cur_stage.starting_resources
-            return ov, cur_stage.max_ticks, cur_stage.opponent
+            pp = None
+            if cur_stage.pre_place_barracks or cur_stage.pre_place_units:
+                pp = {"barracks": cur_stage.pre_place_barracks, "units": cur_stage.pre_place_units}
+            return ov, cur_stage.max_ticks, cur_stage.opponent, pp
         ov = {}
         if cfg.map_width          > 0: ov["mapWidth"]          = cfg.map_width
         if cfg.crystal_health     > 0: ov["crystalHealth"]     = cfg.crystal_health
         if cfg.starting_resources > 0: ov["startingResources"] = cfg.starting_resources
-        return ov, cfg.max_ticks, cfg.opponent
+        return ov, cfg.max_ticks, cfg.opponent, None
 
-    def _build_vec_envs(config_overrides: dict, max_ticks: int, opponent: str) -> list[CrystalFrontVecEnv]:
+    def _build_vec_envs(config_overrides: dict, max_ticks: int, opponent: str, pre_place: dict | None) -> list[CrystalFrontVecEnv]:
         _stagger = min(0.4, 15.0 / max(cfg.num_procs - 1, 1))
         return [
             CrystalFrontVecEnv(
@@ -367,17 +381,18 @@ def train(cfg: Config) -> None:
                 startup_delay=i * _stagger,
                 config_overrides=config_overrides or None,
                 max_ticks=max_ticks,
+                pre_place=pre_place,
             )
             for i in range(cfg.num_procs)
         ]
 
     # ── vectorised environments ───────────────────────────────────────────────
-    _cfg_overrides, _max_ticks, _opponent = _resolve_env_params()
+    _cfg_overrides, _max_ticks, _opponent, _pre_place = _resolve_env_params()
     if cur_stage:
         print(f"  Curriculum stage: {cur_stage.name}  (map={cur_stage.map_width or 'default'}, "
               f"crystal_hp={cur_stage.crystal_health or 'default'}, opp={cur_stage.opponent})", flush=True)
         writer.add_scalar("curriculum/stage", cur_stage_idx, 0)
-    vec_envs = _build_vec_envs(_cfg_overrides, _max_ticks, _opponent)
+    vec_envs = _build_vec_envs(_cfg_overrides, _max_ticks, _opponent, _pre_place)
 
     # ── agent & optimiser ─────────────────────────────────────────────────────
     agent = CrystalFrontAgent(
@@ -646,8 +661,8 @@ def train(cfg: Config) -> None:
                                           f"(map={cur_stage.map_width or 'default'}, opp={cur_stage.opponent}) ***\n", flush=True)
                                     writer.add_scalar("curriculum/stage", cur_stage_idx, global_step)
                                     for ve in vec_envs: ve.close()
-                                    _ov, _mt, _op = _resolve_env_params()
-                                    vec_envs = _build_vec_envs(_ov, _mt, _op)
+                                    _ov, _mt, _op, _pp = _resolve_env_params()
+                                    vec_envs = _build_vec_envs(_ov, _mt, _op, _pp)
                                     # Re-init obs by resetting all envs
                                     _init = list(executor.map(_do_reset_vec,
                                         [(vec_envs[k], k, [[{}]*cfg.vec_size][0]) for k in range(cfg.num_procs)]))
@@ -664,8 +679,8 @@ def train(cfg: Config) -> None:
                                 print(f"\n  *** CURRICULUM REGRESS → stage {cur_stage.name} (stuck) ***\n", flush=True)
                                 writer.add_scalar("curriculum/stage", cur_stage_idx, global_step)
                                 for ve in vec_envs: ve.close()
-                                _ov, _mt, _op = _resolve_env_params()
-                                vec_envs = _build_vec_envs(_ov, _mt, _op)
+                                _ov, _mt, _op, _pp = _resolve_env_params()
+                                vec_envs = _build_vec_envs(_ov, _mt, _op, _pp)
                                 _init = list(executor.map(_do_reset_vec,
                                     [(vec_envs[k], k, [[{}]*cfg.vec_size][0]) for k in range(cfg.num_procs)]))
                                 _flat = [r for batch in _init for r in batch]

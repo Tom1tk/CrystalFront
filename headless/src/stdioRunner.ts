@@ -73,6 +73,49 @@ function makeBot(name?: string): Agent {
 
 import type { MacroAction } from "./types.js";
 
+interface PrePlace { barracks: boolean; units: string[] }
+
+function performPreSetup(m: MatchState, eng: MatchEngine, pre: PrePlace): void {
+  if (!pre.barracks && pre.units.length === 0) return;
+  const pidx = m.players.findIndex(p => p?.playerId === BLUE_ID);
+  const econ = m.economy[pidx];
+  if (!econ) return;
+
+  // Grant enough resources and supply for the setup
+  econ.resources = 9999;
+  econ.maxSupply = Math.max(econ.maxSupply, 10 + pre.units.length * 2);
+
+  // Build barracks — reuse existing action expansion so position logic is correct
+  const buildCmds = expandMacroAction({ type: "build", buildingType: "barracks", xZone: "near_crystal" } as MacroAction, m, BLUE_ID);
+  for (const cmd of buildCmds) eng.processCommand(m.id, BLUE_ID, cmd as Parameters<MatchEngine["processCommand"]>[2]);
+
+  // Tick until barracks complete (buildTime ≈ 150 ticks)
+  for (let t = 0; t < 300 && m.phase === "playing"; t++) {
+    const done = [...m.entities.values()].find(e =>
+      e.ownerId === BLUE_ID && e.type === "building" && e.buildingType === "barracks" && e.constructionProgress >= 100
+    );
+    if (done) break;
+    eng.tick(m.id);
+  }
+
+  // Train each requested unit type one at a time
+  for (const unitType of pre.units) {
+    econ.resources = 9999;
+    const trainCmds = expandMacroAction({ type: "train_unit", unitType } as MacroAction, m, BLUE_ID);
+    for (const cmd of trainCmds) eng.processCommand(m.id, BLUE_ID, cmd as Parameters<MatchEngine["processCommand"]>[2]);
+
+    const prevCount = [...m.entities.values()].filter(e => e.ownerId === BLUE_ID && e.type === unitType).length;
+    for (let t = 0; t < 150 && m.phase === "playing"; t++) {
+      const currCount = [...m.entities.values()].filter(e => e.ownerId === BLUE_ID && e.type === unitType).length;
+      if (currCount > prevCount) break;
+      eng.tick(m.id);
+    }
+  }
+
+  // Restore economy to the configured starting amount
+  econ.resources = m.config.startingResources;
+}
+
 function send(msg: Record<string, unknown>): void {
   process.stdout.write(JSON.stringify(msg) + "\n");
 }
@@ -96,7 +139,7 @@ let prevBlueObs: PlayerObservation | null = null;
 let saveReplay = false;
 let commandLog: Array<{ tick: number; playerId: string; command: Record<string, unknown> }> = [];
 
-function handleReset(seed?: number, opponent?: string, doSave = false, configOverrides?: Partial<import("../../server/src/match/types.js").MatchConfig>, newMaxTicks?: number, demoBot?: string): void {
+function handleReset(seed?: number, opponent?: string, doSave = false, configOverrides?: Partial<import("../../server/src/match/types.js").MatchConfig>, newMaxTicks?: number, demoBot?: string, prePlace?: PrePlace): void {
   milestones = freshMilestones();
   episodeShaping      = 0;
   lastTerminalReturn  = 0;
@@ -123,6 +166,9 @@ function handleReset(seed?: number, opponent?: string, doSave = false, configOve
   // Demo mode: also drive blue with a scripted bot to collect demonstrations
   blueBot = demoBot ? makeBot(demoBot) : null;
   if (blueBot) blueBot.init(BLUE_ID, match);
+
+  // Pre-place scaffolding (Phase A/B curriculum stages)
+  if (prePlace) performPreSetup(match, engine, prePlace);
 
   commandLog = [];
   const obs  = buildObservation(match, BLUE_ID);
@@ -275,7 +321,7 @@ rl.on("line", (raw) => {
     const msg = JSON.parse(line);
     switch (msg.type) {
       case "reset":
-        handleReset(msg.seed, msg.opponent, msg.save_replay === true, msg.config_overrides ?? undefined, msg.max_ticks ?? undefined, msg.demo_bot ?? undefined);
+        handleReset(msg.seed, msg.opponent, msg.save_replay === true, msg.config_overrides ?? undefined, msg.max_ticks ?? undefined, msg.demo_bot ?? undefined, msg.pre_place ?? undefined);
         break;
       case "step":
         handleStep(msg.action as number);
