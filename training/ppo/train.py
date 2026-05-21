@@ -121,8 +121,11 @@ CURRICULUM: list[CurriculumStage] = [
     CurriculumStage("2a5", map_width=3000, crystal_health=300, starting_resources=200, max_ticks=5000, opponent="rush_weak",   promotion_threshold=0.50, max_steps=3_000_000),
     CurriculumStage("2a6", map_width=3000, crystal_health=300, starting_resources=75,  max_ticks=5000, opponent="rush_weak",   promotion_threshold=0.50, max_steps=3_000_000),
     CurriculumStage("2b", map_width=3000, crystal_health=300, starting_resources=50,  max_ticks=5000, opponent="rush_weak",   promotion_threshold=0.50, max_steps=5_000_000),
-    CurriculumStage("3a", map_width=0,    crystal_health=0,   starting_resources=50,  max_ticks=6000, opponent="passive",     promotion_threshold=0.70, max_steps=5_000_000),
-    CurriculumStage("3b", map_width=0,    crystal_health=0,   starting_resources=50,  max_ticks=6000, opponent="rush_medium", promotion_threshold=0.50, max_steps=8_000_000),
+    CurriculumStage("3a",  map_width=0, crystal_health=0, starting_resources=50,  max_ticks=6000, opponent="passive",     promotion_threshold=0.70, max_steps=5_000_000),
+    # Rule R3: same slider as 2b→2a5. 3b (50 res/rush_medium) fails at 0% wins.
+    # 3a5 (200 res) lets agent build+train immediately before rush_medium mobilises.
+    CurriculumStage("3a5", map_width=0, crystal_health=0, starting_resources=200, max_ticks=6000, opponent="rush_medium", promotion_threshold=0.50, max_steps=4_000_000),
+    CurriculumStage("3b",  map_width=0, crystal_health=0, starting_resources=50,  max_ticks=6000, opponent="rush_medium", promotion_threshold=0.50, max_steps=8_000_000),
     CurriculumStage("4",  map_width=0,    crystal_health=0,   starting_resources=50,  max_ticks=6000, opponent="league",      promotion_threshold=0.60, max_steps=20_000_000),
 ]
 
