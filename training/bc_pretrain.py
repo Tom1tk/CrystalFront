@@ -65,14 +65,18 @@ class Config:
     mlp_hidden:      int   = 384
 
 
-def collect_demonstrations(cfg: Config) -> tuple[list[dict], list[int]]:
+GAMMA = 0.995  # must match train.py
+
+def collect_demonstrations(cfg: Config) -> tuple[list[dict], list[int], list[float]]:
     """
     Run demo_bot as blue against opponent as red.
-    The Node process drives blue internally and returns info['demoAction']
-    at every tick — the macro-action index RushBot actually chose.
+    Returns (obs_list, act_list, value_targets) where value_targets[i] is the
+    discounted return from step i — used to pre-warm the critic so PPO starts
+    with meaningful advantages rather than random noise.
     """
-    obs_list: list[dict] = []
-    act_list: list[int]  = []
+    obs_list: list[dict]  = []
+    act_list: list[int]   = []
+    ret_list: list[float] = []   # discounted return targets for critic pre-training
 
     cfg_ov: dict = {}
     if cfg.map_width      > 0: cfg_ov["mapWidth"]      = cfg.map_width
@@ -86,14 +90,28 @@ def collect_demonstrations(cfg: Config) -> tuple[list[dict], list[int]]:
     while episodes_done < cfg.episodes:
         obs, info = env.reset(seed=random.randint(0, 2**31))
         done = False
+        ep_obs:  list[dict] = []
+        ep_acts: list[int]  = []
+        ep_rews: list[float] = []
+
         while not done:
-            # In demo mode the Node ignores the action we send.
-            # We send 0 (noop) as a placeholder; the bot's choice is in info.
             demo_action = info.get("demoAction", 0)
-            obs_list.append({k: v.copy() for k, v in obs.items()})
-            act_list.append(int(demo_action))
-            obs, _reward, terminated, truncated, info = env.step(0)
+            ep_obs.append({k: v.copy() for k, v in obs.items()})
+            ep_acts.append(int(demo_action))
+            obs, reward, terminated, truncated, info = env.step(0)
+            ep_rews.append(float(reward))
             done = terminated or truncated
+
+        # Compute discounted returns backwards from episode end
+        G = 0.0
+        ep_rets: list[float] = [0.0] * len(ep_rews)
+        for t in reversed(range(len(ep_rews))):
+            G = ep_rews[t] + GAMMA * G
+            ep_rets[t] = G
+
+        obs_list.extend(ep_obs)
+        act_list.extend(ep_acts)
+        ret_list.extend(ep_rets)
 
         episodes_done += 1
         if episodes_done % 50 == 0:
@@ -102,7 +120,7 @@ def collect_demonstrations(cfg: Config) -> tuple[list[dict], list[int]]:
 
     env.close()
     print(f"  Total transitions: {len(obs_list):,}")
-    return obs_list, act_list
+    return obs_list, act_list, ret_list
 
 
 def train_bc(cfg: Config) -> None:
@@ -112,13 +130,12 @@ def train_bc(cfg: Config) -> None:
 
     device = torch.device(cfg.device)
 
-    obs_list, act_list = collect_demonstrations(cfg)
+    obs_list, act_list, ret_list = collect_demonstrations(cfg)
     N = len(obs_list)
 
     actions_arr_full = np.array(act_list, dtype=np.int64)
 
-    # Subsample noop (action 0) transitions — keep only noop_keep_frac of them.
-    # Rule R1: subtraction. 95% noop labels drown the signal for the 5% that matter.
+    # Subsample noop transitions for actor training only.
     noop_indices    = np.where(actions_arr_full == 0)[0]
     nonoop_indices  = np.where(actions_arr_full != 0)[0]
     keep_noop = max(1, int(len(noop_indices) * cfg.noop_keep_frac))
@@ -126,9 +143,9 @@ def train_bc(cfg: Config) -> None:
     kept_noop = rng.choice(noop_indices, size=keep_noop, replace=False)
     keep_idx = np.sort(np.concatenate([nonoop_indices, kept_noop]))
 
-    obs_list   = [obs_list[i]   for i in keep_idx]
-    act_list   = [act_list[i]   for i in keep_idx]
-    N = len(obs_list)
+    obs_actor  = [obs_list[i] for i in keep_idx]
+    act_actor  = [act_list[i] for i in keep_idx]
+    N = len(obs_actor)
     print(f"  After noop subsampling: {N:,} transitions "
           f"({len(nonoop_indices):,} non-noop + {keep_noop:,} noop)")
 
@@ -139,12 +156,29 @@ def train_bc(cfg: Config) -> None:
     node_masks_arr   = np.stack([o["node_mask"]   for o in obs_list])
     actions_arr      = np.array(act_list, dtype=np.int64)
 
-    # Log action distribution
+    # Log action distribution (subsampled)
+    actions_arr = np.array(act_actor, dtype=np.int64)
     unique, counts = np.unique(actions_arr, return_counts=True)
     top = sorted(zip(counts, unique), reverse=True)[:8]
     print(f"\nTop demo actions after subsampling:")
     for cnt, idx in top:
         print(f"  action {idx:3d}: {cnt:6d}  ({100*cnt/N:.1f}%)")
+
+    globals_arr      = np.stack([o["global"]      for o in obs_actor])
+    entities_arr     = np.stack([o["entities"]    for o in obs_actor])
+    entity_masks_arr = np.stack([o["entity_mask"] for o in obs_actor])
+    nodes_arr        = np.stack([o["nodes"]       for o in obs_actor])
+    node_masks_arr   = np.stack([o["node_mask"]   for o in obs_actor])
+
+    # Full dataset for critic (all transitions, no noop filtering needed)
+    Nv = len(obs_list)
+    globals_v      = np.stack([o["global"]      for o in obs_list])
+    entities_v     = np.stack([o["entities"]    for o in obs_list])
+    emasks_v       = np.stack([o["entity_mask"] for o in obs_list])
+    nodes_v        = np.stack([o["nodes"]       for o in obs_list])
+    nmasks_v       = np.stack([o["node_mask"]   for o in obs_list])
+    returns_arr    = np.array(ret_list, dtype=np.float32)
+    print(f"  Critic targets: min={returns_arr.min():.1f}  mean={returns_arr.mean():.1f}  max={returns_arr.max():.1f}")
 
     agent = CrystalFrontAgent(
         entity_d_model=cfg.entity_d_model,
@@ -157,7 +191,8 @@ def train_bc(cfg: Config) -> None:
     optimizer = optim.Adam(agent.parameters(), lr=cfg.learning_rate)
     criterion = nn.CrossEntropyLoss()
 
-    print(f"\nTraining BC for {cfg.epochs} epochs over {N:,} transitions…")
+    # ── Phase 1: actor training (subsampled, noop-balanced) ───────────────────
+    print(f"\nActor BC training: {cfg.epochs} epochs over {N:,} transitions…")
     indices = np.arange(N)
 
     for epoch in range(1, cfg.epochs + 1):
@@ -179,7 +214,7 @@ def train_bc(cfg: Config) -> None:
             }
             mb_actions = torch.from_numpy(actions_arr[bidx]).to(device)
 
-            logits = agent.actor_head(agent._encode(mb_obs))  # (B, ACTION_SPACE_SIZE)
+            logits = agent.actor_head(agent._encode(mb_obs))
             loss   = criterion(logits, mb_actions)
 
             optimizer.zero_grad()
@@ -193,7 +228,44 @@ def train_bc(cfg: Config) -> None:
 
         avg_loss = total_loss / max(n_batches, 1)
         acc      = 100.0 * correct / N
-        print(f"  epoch {epoch}/{cfg.epochs}  loss={avg_loss:.4f}  acc={acc:.1f}%", flush=True)
+        print(f"  actor epoch {epoch}/{cfg.epochs}  loss={avg_loss:.4f}  acc={acc:.1f}%", flush=True)
+
+    # ── Phase 2: critic pretraining on discounted returns (full dataset) ──────
+    # PPO's advantages = R + γV(s') - V(s). If V starts random, advantages are
+    # garbage and 10 updates of noisy gradients wipe out the BC actor prior.
+    # Pretraining V on the demo returns gives PPO meaningful advantages from
+    # update 1, preserving the actor prior.
+    critic_opt = optim.Adam(agent.critic_head.parameters(), lr=cfg.learning_rate)
+    mse = nn.MSELoss()
+
+    print(f"\nCritic pretraining: 3 epochs over {Nv:,} full transitions…")
+    v_indices = np.arange(Nv)
+    for epoch in range(1, 4):
+        np.random.shuffle(v_indices)
+        total_vloss = 0.0
+        n_vbatches  = 0
+        for start in range(0, Nv, cfg.batch_size):
+            end  = min(start + cfg.batch_size, Nv)
+            bidx = v_indices[start:end]
+            mb_obs = {
+                "global":      torch.from_numpy(globals_v[bidx]).to(device),
+                "entities":    torch.from_numpy(entities_v[bidx]).to(device),
+                "entity_mask": torch.from_numpy(emasks_v[bidx]).to(device),
+                "nodes":       torch.from_numpy(nodes_v[bidx]).to(device),
+                "node_mask":   torch.from_numpy(nmasks_v[bidx]).to(device),
+            }
+            mb_rets = torch.from_numpy(returns_arr[bidx]).to(device)
+            with torch.no_grad():
+                hidden = agent._encode(mb_obs)
+            value = agent.critic_head(hidden).squeeze(-1)
+            vloss = mse(value, mb_rets)
+            critic_opt.zero_grad()
+            vloss.backward()
+            nn.utils.clip_grad_norm_(agent.critic_head.parameters(), 1.0)
+            critic_opt.step()
+            total_vloss += vloss.item()
+            n_vbatches  += 1
+        print(f"  critic epoch {epoch}/3  mse={total_vloss/max(n_vbatches,1):.4f}", flush=True)
 
     out_path = Path(cfg.output)
     torch.save({
