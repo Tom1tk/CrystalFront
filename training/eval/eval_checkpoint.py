@@ -47,6 +47,10 @@ class Config:
     device:        str        = "cuda"
     seed:          int        = 0
     deterministic: bool       = True    # greedy action selection (argmax)
+    # Map/env config overrides (0 = game default)
+    map_width:      int       = 0
+    crystal_health: int       = 0
+    max_ticks:      int       = 6000
     # Override network dims if needed (defaults match train.py)
     entity_d_model:  int = 64
     entity_n_heads:  int = 4
@@ -62,8 +66,12 @@ def eval_vs_opponent(
     device: torch.device,
     seed_offset: int,
     deterministic: bool,
+    config_overrides: dict | None = None,
+    max_ticks: int = 6000,
 ) -> dict:
-    env = CrystalFrontEnv(opponent=opponent)
+    env = CrystalFrontEnv(opponent=opponent,
+                          config_overrides=config_overrides or None,
+                          max_ticks=max_ticks)
     wins       = 0
     total_ticks: list[int]   = []
     crys_dmg:   list[float]  = []
@@ -138,6 +146,10 @@ def main(cfg: Config) -> None:
     print(f"\n{'opponent':<16} {'wins/total':<14} {'win_rate':>8}   {'avg_ticks':>9}   {'crys_dmg%':>9}")
     print("-" * 65)
 
+    cfg_ov: dict = {}
+    if cfg.map_width      > 0: cfg_ov["mapWidth"]     = cfg.map_width
+    if cfg.crystal_health > 0: cfg_ov["crystalHealth"] = cfg.crystal_health
+
     results = []
     for opp in cfg.opponents:
         r = eval_vs_opponent(
@@ -147,6 +159,8 @@ def main(cfg: Config) -> None:
             device=device,
             seed_offset=cfg.seed * 1000,
             deterministic=cfg.deterministic,
+            config_overrides=cfg_ov or None,
+            max_ticks=cfg.max_ticks,
         )
         results.append(r)
         print(
