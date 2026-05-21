@@ -115,11 +115,11 @@ CURRICULUM: list[CurriculumStage] = [
     CurriculumStage("1a",   map_width=1500, crystal_health=100, starting_resources=50,  max_ticks=3000, opponent="idle",        promotion_threshold=0.70, max_steps=3_000_000),
     CurriculumStage("1b", map_width=1500, crystal_health=100, starting_resources=50,  max_ticks=3000, opponent="passive",     promotion_threshold=0.70, max_steps=3_000_000),
     CurriculumStage("2a", map_width=3000, crystal_health=300, starting_resources=50,  max_ticks=5000, opponent="passive",     promotion_threshold=0.70, max_steps=4_000_000),
-    # Rule R3: one slider at a time. 2b (rush_weak) requires defense but the agent
-    # never learned to train units on passive stages. 2a5 keeps same map/crystal/opponent
-    # but gives starting_resources=200 so agent can build barracks immediately — head
-    # start before rush_weak's units arrive.
+    # Rule R3: one slider at a time. 2a5→2a6→2b slides starting_resources 200→75→50.
+    # 200: build immediately, no gathering. 75: build immediately, must gather for units.
+    # 50: must gather before building AND for units (full chain).
     CurriculumStage("2a5", map_width=3000, crystal_health=300, starting_resources=200, max_ticks=5000, opponent="rush_weak",   promotion_threshold=0.50, max_steps=3_000_000),
+    CurriculumStage("2a6", map_width=3000, crystal_health=300, starting_resources=75,  max_ticks=5000, opponent="rush_weak",   promotion_threshold=0.50, max_steps=3_000_000),
     CurriculumStage("2b", map_width=3000, crystal_health=300, starting_resources=50,  max_ticks=5000, opponent="rush_weak",   promotion_threshold=0.50, max_steps=5_000_000),
     CurriculumStage("3a", map_width=0,    crystal_health=0,   starting_resources=50,  max_ticks=6000, opponent="passive",     promotion_threshold=0.70, max_steps=5_000_000),
     CurriculumStage("3b", map_width=0,    crystal_health=0,   starting_resources=50,  max_ticks=6000, opponent="rush_medium", promotion_threshold=0.50, max_steps=8_000_000),
