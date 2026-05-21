@@ -1386,3 +1386,132 @@ An independent technical review of the full project history identified the root 
 2. Eval BC: `python -m training.eval.eval_checkpoint --checkpoint bc_warmup.pt --episodes 50`
 3. Start curriculum training from BC warmup: `python -m training.ppo.train --curriculum True --checkpoint bc_warmup.pt --ent_coef 0.02 --total_timesteps 20000000`
 4. Monitor: each stage should win within 1-3M steps. If stuck, check which stage and why.
+
+---
+
+### v0.3.1-ML — Behaviour cloning + curriculum training — first wins on real game map (2026-05-21)
+
+**Status:** Curriculum reached stage 3b (full 6000px map vs MediumRush). BC being retrained on full game config. Restarting.
+
+---
+
+#### Methodology
+
+The fundamental insight driving this entire session: **PPO alone cannot solve a task where the win signal is 3000+ ticks away from the first decision.** At gamma=0.995, the terminal reward is discounted to near-zero by the time the early build decisions are made. Shaping rewards don't fix this — they just create new exploits. The correct approach is:
+
+1. **Behaviour cloning (BC) warmup** — pre-train the policy on expert demonstrations to start PPO from a state where wins are already occurring. Without this, PPO has zero gradient signal and converges to noop.
+2. **Fine-grained curriculum** — start from a task so easy that the BC policy wins immediately (bootstrapping the value function), then remove one scaffold at a time until reaching full difficulty.
+
+The critical design rule for both: **one variable at a time.** Every time a training transition failed, the cause was removing too many scaffolds simultaneously.
+
+---
+
+#### BC warmup — iterations and lessons
+
+**BC v1 (failed — data quality):** Trained on 500 episodes of RushBot demonstrations but used a "rush-weighted random" policy as a proxy. The data was 95% noop, training achieved 95% accuracy, greedy policy got 0% wins. Accuracy was a lie — the model learned to noop everywhere.
+
+**BC v2 (failed — wrong map config):** Switched to real RushBot demo mode (Node runner drives blue with RushBot). Added 5% noop subsampling to reduce noop dominance. Achieved 63-70% accuracy. Still 0% greedy wins. Root cause: training data was on default 6000px map but PPO ran on 1500px stages — different observation distributions (xNorm values, node positions).
+
+**BC v3 (partial fix — correct map, missing critic):** Retrained on 1500px/200HP map matching the target Day 5 stage. 70.4% accuracy. 0% greedy wins, but PPO from BC immediately collapsed to noop=99% within 10 updates. Root cause: **the critic head starts randomly initialised**. Noisy value estimates → noisy advantages → policy gradient overwrites the BC actor prior within ~10 PPO updates.
+
+**BC v4 (working):** Added two additional fixes on top of v3:
+1. **Critic pretraining** — after actor BC training, train the critic head with MSE on discounted returns from the demonstration episodes. The critic learns V(s_t) ≈ γ^(T−t) × 100 (discounted win return), giving PPO meaningful advantages from update 1.
+2. **Don't load BC optimizer state into PPO** — BC trains at lr=1e-3 with cross-entropy objective. Loading that Adam momentum into PPO (lr=3e-4, RL objective) caused the first PPO gradient steps to fight the BC momentum. Fix: skip optimizer state restore for checkpoints with update=0.
+
+With these fixes: PPO from BC achieved **6% wins at update 10** on Day 5 config (1500px/200HP/50 resources, vs IdleBot, no scaffolding) — the first wins ever from an unscaffolded start in this project's history.
+
+**BC v5 (current, full game config):** Previous iterations used 1500px training data. The curriculum stages span 1500px, 3000px, and 6000px maps. The 1500px BC prior didn't transfer to 3000px stages (the policy that handled rush_weak on 1500px was ineffective on 3000px). Retraining on **default full game config (6000px/1000HP/50 resources)** to maximise generalization across all curriculum stages.
+
+**BC design rules learned:**
+- Use real bot demonstrations (not weighted random sampling)
+- Subsample noop transitions to ~50% of dataset (5% noop keep rate)
+- Train on the **same map config** as the target PPO stage, OR use the full game config for generalization across all stages
+- Always pretrain the critic on discounted returns from demonstrations
+- Never restore the BC optimizer state into PPO — create a fresh Adam optimizer
+
+---
+
+#### Curriculum design — progressive scaffolding
+
+The curriculum traversal works as follows: auto-promote on `win_rate ≥ threshold` over 100 episodes, auto-regress after `max_steps` if stuck. Each stage changes exactly **one variable** from the previous stage.
+
+The design principle proved itself repeatedly: every time a stage transition failed, it was because too many variables changed at once. The fix was always to add an intermediate stage that changed only one thing.
+
+**Final working curriculum (v0.3.1):**
+
+| Stage | Map | Crystal HP | Start resources | Opponent | Threshold |
+|-------|-----|-----------|-----------------|----------|-----------|
+| day5 | 1500px | 200HP | 50 | idle | 50% |
+| 1a | 1500px | 100HP | 50 | idle | 70% |
+| 1b | 1500px | 100HP | 50 | passive | 70% |
+| 2a | 3000px | 300HP | 50 | passive | 70% |
+| 2a5 | 3000px | 300HP | **200** | **rush_weak** | 50% |
+| 2a6 | 3000px | 300HP | **75** | rush_weak | 50% |
+| 2b | 3000px | 300HP | 50 | rush_weak | 50% |
+| 3a | **6000px** | **1000HP** | 50 | passive | 70% |
+| 3a5 | 6000px | 1000HP | **200** | **rush_medium** | 50% |
+| 3b | 6000px | 1000HP | 50 | rush_medium | 50% |
+| 4 | 6000px | 1000HP | 50 | league | 60% |
+
+**Key insight — the resource slider for active opponents:** Passive opponents can be beaten with a pure rush (agents never need to train defensive units). The first time an active opponent (rush_weak) was introduced, the policy converged to "send workers toward enemy crystal" because the value function had learned "units near enemy crystal = high value" from passive stages, but without combat units there was nothing useful to do there.
+
+The fix: introduce the active opponent with enough starting resources (200) that the agent can build barracks and train a skirmisher **before the opponent's units arrive**. This teaches the agent that building+training beats rushing with workers. Then progressively reduce starting resources: 200 → 75 → 50, each step forcing the agent to gather slightly more before building.
+
+**Why scaffolded stages (0a, 0a5, 0b) were abandoned:** Early attempts used pre-placed barracks and skirmishers to bootstrap the curriculum. These worked initially but created an unintended bias: the value function learned "any unit with high xNorm near enemy crystal = win coming." This caused workers to be sent to the enemy crystal uselessly whenever scaffolding was removed. The resource slider approach avoids this bias entirely.
+
+---
+
+#### Training progress
+
+**Run 1 (day5 breakthrough):** Starting from BC v4 warmup on 1500px/200HP config, `ent_coef=0.02`, curriculum stage `day5`:
+- Update 10: **6% wins** — first wins from unscaffolded start
+- Update 19: **65% wins** → promoted to 1a
+- Update 28: **71% wins** on 1a → promoted to 1b  
+- Update 35: **96% wins** on 1b (vs passive) → promoted to 2a
+- Update 44: **90% wins** on 2a → promoted to 2b
+
+Stages day5→2a cleared in ~1.35M steps. 2b (rush_weak/50 resources) failed at 5-20%.
+
+**2b solution (resource slider):** Adding 2a5 (rush_weak/200 resources) and 2a6 (rush_weak/75 resources) as intermediates:
+- 2a5: cleared at 55-93% wins with `bld=5-6%` emerging
+- 2a6: cleared at 65% wins
+- **2b: cleared at 69% wins** — first time beating rush_weak with full resource chain
+
+After 2b, the curriculum accelerated through:
+- 3a (6000px/passive): **100% wins**
+- 3b (6000px/rush_medium): entered, same bottleneck as 2b (trn=0%, crys_dmg=3-7%)
+
+**Total stages cleared in ~3M steps (from BC warmup):** day5, 1a, 1b, 2a, 2a5, 2a6, 2b, 3a → first time on real game map.
+
+**3b solution (pending):** Adding 3a5 (rush_medium/200 resources) as intermediate, same pattern as 2a5. BC being retrained on full game config first to fix the 3000px→6000px observation transfer gap.
+
+---
+
+#### Key failure modes encountered and fixes
+
+**Noop attractor (every stage transition):** Policy converges to noop whenever the task becomes too hard. Fix: smaller steps in the curriculum, and sufficient BC prior to provide initial gradient.
+
+**Worker-move (wkr_mv) attractor:** When scaffolding is removed but no combat units exist, the value function sends workers toward the crystal (useless). Fix: don't use pre-placed unit scaffolding; instead use the resource slider so the agent always builds its own units.
+
+**trn=0% against active opponents:** Policy learns "rush attack" and never trains defensive combat units. Fix: introduce opponent with starting_resources=200 so barracks is built and unit is trained before the opponent's first attack can kill the agent's crystal.
+
+**BC prior collapse after 10 PPO updates:** Random critic → noisy advantages → actor prior overwritten by noise. Fix: pretrain critic on demonstration returns.
+
+**BC optimizer fighting PPO:** Adam momentum from BC (lr=1e-3, CE loss) loaded into PPO (lr=3e-4, RL loss) causes gradient fights. Fix: skip optimizer state restore for BC checkpoints.
+
+**BC observation mismatch:** BC trained on map A, PPO runs on map B → different xNorm values → policy doesn't generalise. Fix: train BC on full game config (6000px) which is ≥ all curriculum map sizes.
+
+---
+
+#### Current state (2026-05-21)
+
+- BC v5 collecting: 1000 RushBot vs IdleBot episodes on default 6000px/1000HP/50 resources config
+- Next: start curriculum from `day5` (index 5 in CURRICULUM list)
+- Expected: early stages clear in ~3M steps; 3a5 and 3b are the next hard stages
+- 3b promotion requires ≥50% wins vs MediumRush on full game map
+
+**Command to run after BC completes:**
+```
+python -m training.ppo.train --curriculum --curriculum_stage 5 \
+  --checkpoint bc_warmup.pt --ent_coef 0.02 --total_timesteps 20000000
+```
