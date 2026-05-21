@@ -53,6 +53,10 @@ class Config:
     opponent:        str   = "idle"
     seed:            int   = 42
     noop_keep_frac:  float = 0.05    # keep only 5% of noop transitions (subtract redundant noops)
+    # Match the target training config so BC observations transfer directly
+    map_width:       int   = 1500    # Day 5 config (review §9.5)
+    crystal_health:  int   = 200     # Day 5 config
+    max_ticks:       int   = 3000    # Day 5 config
     # network dims — must match train.py defaults
     entity_d_model:  int   = 64
     entity_n_heads:  int   = 4
@@ -70,9 +74,11 @@ def collect_demonstrations(cfg: Config) -> tuple[list[dict], list[int]]:
     obs_list: list[dict] = []
     act_list: list[int]  = []
 
-    # CrystalFrontEnv wraps a single stdioRunner process.
-    # We pass demo_bot via options so the Node runner activates demo mode.
-    env = CrystalFrontEnv(opponent=cfg.opponent, demo_bot=cfg.demo_bot)
+    cfg_ov: dict = {}
+    if cfg.map_width      > 0: cfg_ov["mapWidth"]      = cfg.map_width
+    if cfg.crystal_health > 0: cfg_ov["crystalHealth"]  = cfg.crystal_health
+    env = CrystalFrontEnv(opponent=cfg.opponent, demo_bot=cfg.demo_bot,
+                          config_overrides=cfg_ov or None, max_ticks=cfg.max_ticks)
 
     print(f"Collecting {cfg.episodes} episodes of {cfg.demo_bot} demonstrations vs {cfg.opponent}…")
     episodes_done = 0
