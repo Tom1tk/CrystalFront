@@ -433,7 +433,10 @@ def train(cfg: Config) -> None:
 
     optimizer = optim.Adam(agent.parameters(), lr=cfg.learning_rate, eps=1e-5)
 
-    if _ckpt is not None:
+    if _ckpt is not None and int(_ckpt.get("update", 0)) > 0:
+        # Only restore optimizer state from PPO checkpoints (update > 0).
+        # BC warmup checkpoints (update=0) use a different optimizer config
+        # (lr=1e-3, CE objective) whose Adam momentum fights the PPO gradient.
         optimizer.load_state_dict(_ckpt["optimizer"])
 
     # ── thread pool ───────────────────────────────────────────────────────────
