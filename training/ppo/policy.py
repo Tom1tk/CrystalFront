@@ -32,6 +32,98 @@ import torch
 import torch.nn as nn
 from torch.distributions import Categorical
 
+
+# ── RND helpers ───────────────────────────────────────────────────────────────
+
+class RunningMeanStd(nn.Module):
+    """Online mean/variance estimator (Welford). Used for obs and reward normalisation."""
+
+    def __init__(self, shape: tuple = ()):
+        super().__init__()
+        self.register_buffer("mean",  torch.zeros(shape, dtype=torch.float64))
+        self.register_buffer("var",   torch.ones(shape,  dtype=torch.float64))
+        self.register_buffer("count", torch.tensor(1e-4, dtype=torch.float64))
+
+    @torch.no_grad()
+    def update(self, x: torch.Tensor) -> None:
+        batch = x.reshape(-1, *self.mean.shape).double()
+        batch_mean = batch.mean(0)
+        batch_var  = batch.var(0, unbiased=False)
+        batch_n    = batch.shape[0]
+
+        total = self.count + batch_n
+        delta = batch_mean - self.mean
+        new_mean = self.mean + delta * batch_n / total
+        m_a = self.var  * self.count
+        m_b = batch_var * batch_n
+        new_var  = (m_a + m_b + delta ** 2 * self.count * batch_n / total) / total
+        self.mean  = new_mean
+        self.var   = new_var
+        self.count = total
+
+    def normalise(self, x: torch.Tensor) -> torch.Tensor:
+        std = (self.var.float() + 1e-8).sqrt()
+        return (x.float() - self.mean.float()) / std
+
+
+class RNDModel(nn.Module):
+    """
+    Random Network Distillation — intrinsic exploration bonus.
+
+    Two networks operating on the 22-dim global observation:
+      target:    fixed random weights  (never updated)
+      predictor: trained to match target output
+
+    Intrinsic reward per step = ||predictor(obs_norm) - target(obs_norm)||²
+
+    After normalising observations (obs_rms) and rewards (rew_rms), the bonus
+    is ~1.0 for truly novel states and decays toward 0 for familiar ones.
+    """
+
+    def __init__(self, obs_dim: int = 22, embed_dim: int = 64):  # obs_dim matches GLOBAL_DIM
+        super().__init__()
+        self.obs_rms = RunningMeanStd(shape=(obs_dim,))
+        self.rew_rms = RunningMeanStd(shape=())
+
+        def _mlp(*dims) -> nn.Sequential:
+            layers: list[nn.Module] = []
+            for i in range(len(dims) - 1):
+                layers.append(nn.Linear(dims[i], dims[i + 1]))
+                if i < len(dims) - 2:
+                    layers.append(nn.ReLU())
+            return nn.Sequential(*layers)
+
+        # Target: 2-layer, fixed
+        self.target = _mlp(obs_dim, embed_dim, embed_dim)
+        for p in self.target.parameters():
+            p.requires_grad_(False)
+            nn.init.orthogonal_(p) if p.dim() >= 2 else nn.init.zeros_(p)
+
+        # Predictor: 3-layer, trained
+        self.predictor = _mlp(obs_dim, embed_dim, embed_dim, embed_dim)
+
+    def _norm_obs(self, global_obs: torch.Tensor) -> torch.Tensor:
+        return self.obs_rms.normalise(global_obs).clamp(-5.0, 5.0)
+
+    def intrinsic_reward(self, global_obs: torch.Tensor) -> torch.Tensor:
+        """
+        Compute per-step intrinsic reward (NOT normalised by rew_rms yet).
+        Shape: (B,)
+        """
+        o = self._norm_obs(global_obs)
+        with torch.no_grad():
+            t = self.target(o)
+        p = self.predictor(o)
+        return ((p - t) ** 2).mean(dim=-1)  # (B,)
+
+    def predictor_loss(self, global_obs: torch.Tensor) -> torch.Tensor:
+        """MSE loss to train the predictor. Call .backward() on the result."""
+        o = self._norm_obs(global_obs)
+        with torch.no_grad():
+            t = self.target(o)
+        p = self.predictor(o)
+        return ((p - t) ** 2).mean()
+
 # ── constants matching env/crystalfront_env.py ───────────────────────────────
 
 GLOBAL_DIM        = 22   # 18 base + 4 threat geometry (v0.1.57)
