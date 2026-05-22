@@ -1854,7 +1854,7 @@ console.log("\n--- legalActions: action-forcing (Option B) ---");
     assert(legal.some(a => a.type === "noop"), "forcing: noop present when no barracks AND no workers (neither mode fires)");
   }
 
-  // 6. All conditions met + scale=1.0: noop suppressed
+  // 6. Mode B Variant β': trainUnitStreak >= 200 + barracks + 0 units → noop AND attack_move suppressed
   {
     const { m } = forcingMatch();
     const pidx = m.players.findIndex(p => p?.playerId === "fb");
@@ -1863,13 +1863,31 @@ console.log("\n--- legalActions: action-forcing (Option B) ---");
     m.economy[pidx]!.supply = 0;
     m.entities.set("b1", { id: "b1", ownerId: "fb", type: "building", buildingType: "barracks",
       constructionProgress: 100, health: 500, maxHealth: 500, x: 200, y: 300, radius: 20, productionQueue: [] } as any);
-    // 0 combat units
-    const legal = getLegalActions(m, "fb", { noopStreak: 200, forcingScale: 1.0 });
-    assert(!legal.some(a => a.type === "noop"), "forcing: noop SUPPRESSED when all conditions met (scale=1.0)");
-    assert(legal.length > 0, "forcing: non-empty legal list when noop suppressed");
+    // 0 combat units — Mode B fires on trainUnitStreak, not noopStreak
+    const legal = getLegalActions(m, "fb", { trainUnitStreak: 200, forcingScale: 1.0 });
+    assert(!legal.some(a => a.type === "noop"), "forcing mode B: noop SUPPRESSED (trainUnitStreak=200, barracks ready, 0 units)");
+    assert(legal.length > 0, "forcing mode B: non-empty legal list when suppressed");
   }
 
-  // 7. Already 2 combat units: noop present (forcing condition not met)
+  // 6b. Mode B Variant β': attack_move also suppressed (prevents 1-unit-attack instead of training)
+  {
+    const { m } = forcingMatch();
+    const pidx = m.players.findIndex(p => p?.playerId === "fb");
+    m.economy[pidx]!.resources = 500;
+    m.economy[pidx]!.maxSupply = 20;
+    m.economy[pidx]!.supply = 2;
+    m.entities.set("b1", { id: "b1", ownerId: "fb", type: "building", buildingType: "barracks",
+      constructionProgress: 100, health: 500, maxHealth: 500, x: 200, y: 300, radius: 20, productionQueue: [] } as any);
+    m.entities.set("u1", { id: "u1", ownerId: "fb", type: "skirmisher",
+      health: 100, maxHealth: 100, x: 300, y: 300, radius: 8 } as any);
+    // 1 combat unit — classic failure case: policy attacks instead of training
+    const legal = getLegalActions(m, "fb", { trainUnitStreak: 200, forcingScale: 1.0 });
+    assert(!legal.some(a => a.type === "noop"), "forcing mode B: noop suppressed with 1 unit");
+    assert(!legal.some(a => a.type === "attack_move"), "forcing mode B: attack_move SUPPRESSED (Variant β' core fix)");
+    assert(legal.some(a => a.type === "train_unit"), "forcing mode B: train_unit still legal");
+  }
+
+  // 7. Already 2 combat units: neither mode fires (noop and attack_move both present)
   {
     const { m } = forcingMatch();
     const pidx = m.players.findIndex(p => p?.playerId === "fb");
@@ -1882,8 +1900,8 @@ console.log("\n--- legalActions: action-forcing (Option B) ---");
       health: 100, maxHealth: 100, x: 300, y: 300, radius: 8 } as any);
     m.entities.set("u2", { id: "u2", ownerId: "fb", type: "skirmisher",
       health: 100, maxHealth: 100, x: 320, y: 300, radius: 8 } as any);
-    const legal = getLegalActions(m, "fb", { noopStreak: 200, forcingScale: 1.0 });
-    assert(legal.some(a => a.type === "noop"), "forcing: noop present when >=2 combat units (condition not met)");
+    const legal = getLegalActions(m, "fb", { trainUnitStreak: 200, forcingScale: 1.0 });
+    assert(legal.some(a => a.type === "noop"), "forcing: noop present when >=2 combat units (Mode B condition not met)");
   }
 
   // 8. Mode A: no barracks, can afford → noop suppressed

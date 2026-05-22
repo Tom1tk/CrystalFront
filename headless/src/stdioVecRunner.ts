@@ -124,6 +124,7 @@ interface SlotState {
   episodeTotalActions: number;
   prePlace?: PrePlace;
   noopStreak: number;
+  trainUnitStreak: number;  // ticks since last train_unit action (Variant β')
 }
 
 function makeBot(name: string): Agent {
@@ -150,6 +151,7 @@ function resetSlot(slot: SlotState, seed: number | undefined, opponent: string, 
   slot.episodeActionCounts = {};
   slot.episodeTotalActions = 0;
   slot.noopStreak         = 0;
+  slot.trainUnitStreak    = 0;
   slot.opponentName       = opponent.toLowerCase();
   slot.saveReplay         = doSave;
   slot.commandLog         = [];
@@ -189,6 +191,7 @@ function stepSlot(slot: SlotState, actionIdx: number): {
   slot.episodeTotalActions++;
   slot.episodeActionCounts[macroAction.type] = (slot.episodeActionCounts[macroAction.type] ?? 0) + 1;
   slot.noopStreak = macroAction.type === "noop" ? slot.noopStreak + 1 : 0;
+  slot.trainUnitStreak = macroAction.type === "train_unit" ? 0 : slot.trainUnitStreak + 1;
 
   const blueCmds = expandMacroAction(macroAction, match, BLUE_ID);
   for (const cmd of blueCmds) {
@@ -277,14 +280,14 @@ function stepSlot(slot: SlotState, actionIdx: number): {
     const doNextSave = slot.saveReplayEvery > 0 && slot.episodeCount % slot.saveReplayEvery === 0;
     const nextObs    = resetSlot(slot, undefined, slot.opponentName, doNextSave, undefined, slot.prePlace);
     const forcingOpts: LegalActionsOpts = ACTION_FORCING_SCALE > 0
-      ? { noopStreak: slot.noopStreak, forcingScale: ACTION_FORCING_SCALE }
+      ? { noopStreak: slot.noopStreak, trainUnitStreak: slot.trainUnitStreak, forcingScale: ACTION_FORCING_SCALE }
       : {};
     const nextLegal  = getLegalActions(slot.match!, BLUE_ID, forcingOpts);
     return { obs: nextObs, legalMask: buildLegalMask(nextLegal), reward, done, info };
   }
 
   const forcingOpts: LegalActionsOpts = ACTION_FORCING_SCALE > 0
-    ? { noopStreak: slot.noopStreak, forcingScale: ACTION_FORCING_SCALE }
+    ? { noopStreak: slot.noopStreak, trainUnitStreak: slot.trainUnitStreak, forcingScale: ACTION_FORCING_SCALE }
     : {};
   const legal = getLegalActions(match, BLUE_ID, forcingOpts);
   return { obs: blueObs, legalMask: buildLegalMask(legal), reward, done, info };
@@ -334,6 +337,7 @@ rl.on("line", (raw) => {
             episodeActionCounts: {}, episodeTotalActions: 0,
             prePlace: prePlaceMsg,
             noopStreak: 0,
+            trainUnitStreak: 0,
           };
           const obs = resetSlot(slot, seeds[i], opponents[i], saveReplays[i], cfgOverrides, prePlaceMsg);
           slots.push(slot);
