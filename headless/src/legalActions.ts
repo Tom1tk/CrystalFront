@@ -4,7 +4,8 @@ import { BUILDING_DEFS, UNIT_DEFS, ECONOMY, MAP } from "@crystalfront/shared";
 
 export interface LegalActionsOpts {
   noopStreak?: number;
-  forcingScale?: number;  // 0.0 = off, 1.0 = always force when conditions met
+  trainUnitStreak?: number;  // ticks since last train_unit action (Variant β')
+  forcingScale?: number;     // 0.0 = off, 1.0 = always force when conditions met
 }
 
 /**
@@ -34,35 +35,44 @@ export function getLegalActions(match: MatchState, playerId: string, opts: Legal
 
   const ownEntities = [...match.entities.values()].filter(e => e.ownerId === playerId);
 
-  // Action-forcing: suppress noop when idle too long and a productive action is available.
-  // Two trigger modes (Option B curriculum injection — default forcingScale=0 is a no-op):
-  //   A) No barracks yet + can afford one → force building (early game responsiveness)
-  //   B) Barracks complete + <2 combat units + can afford unit → force training
+  // Action-forcing (Option B curriculum injection — forcingScale=0 is a no-op):
+  //   Mode A (noop_streak trigger): no barracks + idle worker + can afford → force build
+  //   Mode B (train_unit_streak trigger, Variant β'): barracks ready + <2 units + can afford
+  //     → suppress noop AND attack_move so the policy trains instead of attacking with 1 unit
   const forcingScale = opts.forcingScale ?? 0.0;
   let suppressNoop = false;
+  let suppressAttackMove = false;
+
   if (forcingScale > 0) {
+    const anyBarracks    = ownEntities.some(e => e.buildingType === "barracks");
+    const completedBarracks = ownEntities.filter(
+      e => e.type === "building" && e.buildingType === "barracks" && e.constructionProgress >= 100
+    );
+    const combatUnitsNow = ownEntities.filter(
+      e => ["skirmisher", "gunner", "bruiser", "medic"].includes(e.type)
+    );
+    const barracksBuilders = ownEntities.filter(e => e.type === "worker" && !e.buildTargetId);
+
+    // Mode A: noop_streak >= 30 + no barracks + idle worker + affordable → force build
     const noopStreak = opts.noopStreak ?? 0;
-    if (noopStreak >= 30) {
-      const anyBarracks = ownEntities.some(e => e.buildingType === "barracks");
-      const completedBarracks = ownEntities.filter(
-        e => e.type === "building" && e.buildingType === "barracks" && e.constructionProgress >= 100
-      );
-      const combatUnitsNow = ownEntities.filter(
-        e => ["skirmisher", "gunner", "bruiser", "medic"].includes(e.type)
-      );
-      const barracksBuilders = ownEntities.filter(e => e.type === "worker" && !e.buildTargetId);
-
-      // Mode A: force barracks construction if affordable and none exists/is being built
-      const modeA = !anyBarracks &&
+    if (noopStreak >= 30 &&
+        !anyBarracks &&
         barracksBuilders.length > 0 &&
-        economy.resources >= (BUILDING_DEFS.barracks?.cost ?? 75);
+        economy.resources >= (BUILDING_DEFS.barracks?.cost ?? 75)) {
+      if (Math.random() < forcingScale) suppressNoop = true;
+    }
 
-      // Mode B: force unit training if barracks ready and army is weak
-      const modeB = completedBarracks.length >= 1 &&
+    // Mode B (Variant β'): train_unit_streak >= 200 + barracks ready + <2 units + affordable
+    // Also suppresses attack_move: prevents "keep attacking with 1 unit instead of training 2nd"
+    const trainUnitStreak = opts.trainUnitStreak ?? 0;
+    if (trainUnitStreak >= 200 &&
+        completedBarracks.length >= 1 &&
         combatUnitsNow.length < 2 &&
-        economy.resources >= 50;
-
-      if ((modeA || modeB) && Math.random() < forcingScale) suppressNoop = true;
+        economy.resources >= 50) {
+      if (Math.random() < forcingScale) {
+        suppressNoop = true;
+        suppressAttackMove = true;
+      }
     }
   }
   if (!suppressNoop) legal.push({ type: "noop" });
@@ -118,8 +128,8 @@ export function getLegalActions(match: MatchState, playerId: string, opts: Legal
     }
   }
 
-  // attack_move (original zones)
-  if (combatUnits.length > 0) {
+  // attack_move (original zones) — gated by suppressAttackMove (Mode B Variant β')
+  if (combatUnits.length > 0 && !suppressAttackMove) {
     const groups: MacroAction["group"][] = ["all_combat"];
     if (combatUnits.some(e => e.type === "skirmisher")) groups.push("skirmishers");
     if (combatUnits.some(e => e.type === "gunner"))     groups.push("gunners");
@@ -129,19 +139,18 @@ export function getLegalActions(match: MatchState, playerId: string, opts: Legal
       for (const targetZone of ["enemy_crystal", "midfield", "contested_node"] as const) {
         legal.push({ type: "attack_move", group, targetZone });
       }
-      // New dynamic zones
       legal.push({ type: "attack_move", group, targetZone: "enemy_army" });
       legal.push({ type: "attack_move", group, targetZone: "defend_crystal" });
     }
   }
 
-  // retreat
+  // retreat — allowed even when attack_move is suppressed (bot can still fall back)
   if (combatUnits.length > 0) {
     legal.push({ type: "retreat", group: "all_combat" });
   }
 
-  // attack_targeted — requires combat units AND visible enemies
-  if (combatUnits.length > 0 && hasVisibleEnemy) {
+  // attack_targeted — gated by suppressAttackMove
+  if (combatUnits.length > 0 && hasVisibleEnemy && !suppressAttackMove) {
     const groups: MacroAction["group"][] = ["all_combat"];
     if (combatUnits.some(e => e.type === "skirmisher")) groups.push("skirmishers");
     if (combatUnits.some(e => e.type === "gunner"))     groups.push("gunners");
@@ -154,28 +163,28 @@ export function getLegalActions(match: MatchState, playerId: string, opts: Legal
     }
   }
 
-  // hold_position — requires combat units
-  if (combatUnits.length > 0) {
+  // hold_position — gated by suppressAttackMove
+  if (combatUnits.length > 0 && !suppressAttackMove) {
     legal.push({ type: "hold_position", group: "all_combat" });
   }
 
-  // move_workers — workers can be sent to any zone (scout / reposition)
-  if (workers.length > 0) {
+  // move_workers — gated by suppressAttackMove
+  if (workers.length > 0 && !suppressAttackMove) {
     for (const targetZone of ["enemy_crystal", "midfield", "contested_node", "enemy_army", "defend_crystal"] as const) {
       legal.push({ type: "attack_move", group: "all_workers", targetZone });
     }
   }
 
-  // idle-only groups — legal whenever any idle unit of that type exists
+  // idle-only combat groups — gated by suppressAttackMove
   const trueIdleCombat = combatUnits.filter(e => !e.moveTarget && !e.buildTargetId && !e.gatheringNodeId && !e.attackTargetId);
-  if (trueIdleCombat.length > 0) {
+  if (trueIdleCombat.length > 0 && !suppressAttackMove) {
     for (const targetZone of ["enemy_crystal", "midfield", "contested_node", "enemy_army", "defend_crystal"] as const) {
       legal.push({ type: "attack_move", group: "all_idle_combat", targetZone });
     }
   }
 
   const trueIdleWorkers = workers.filter(e => !e.moveTarget && !e.buildTargetId && !e.gatheringNodeId && !e.attackTargetId);
-  if (trueIdleWorkers.length > 0) {
+  if (trueIdleWorkers.length > 0 && !suppressAttackMove) {
     for (const targetZone of ["enemy_crystal", "midfield", "contested_node", "enemy_army", "defend_crystal"] as const) {
       legal.push({ type: "attack_move", group: "idle_workers", targetZone });
     }
