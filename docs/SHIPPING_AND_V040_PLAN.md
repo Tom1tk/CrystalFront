@@ -1120,6 +1120,24 @@ After the G3' gate passed at u171, the policy collapsed to 0-6% win rate at 3a_r
 
 **Decision gate at auto-regression (~update 310):** If win_rate still < 10% at the auto-regression point, escalate to §2.9 (Option γ). If win_rate ≥ 20% at any point, continue.
 
+**Option 1 result (threshold 200→50, 2026-05-22):**
+
+After reducing `trainUnitStreak` threshold from 200 → 50 and starting from the u300 checkpoint (first policy to show trn=1%):
+
+| Update | Win rate | trn% | noop% | Notes |
+|--------|----------|------|-------|-------|
+| 312 | 23% | **1%** | 51% | First update — trn=1% immediately |
+| 325 | 1% | **1%** | 45% | trn stable (was 0% in all prior runs) |
+| 337 | 2% | **1%** | 43% | ep_len=2038 (fast win episode) |
+| 349 | 1% | **1%** | 44% | noop stable at 43-45% |
+| 361 | 3% | **1%** | 45% | Holding |
+
+**Key finding: `trn=1%` is stable at every update.** All previous runs showed `trn=0%` throughout. The combination of threshold=50 + extended rewards + u300 starting point is producing a durable behavior change. `noop` stabilised at 43-45% (vs 52-56% in prior runs).
+
+**Win rate still 1-3%.** The bot is training more units but not converting them to wins. The next milestone is the auto-regression cycle at ~update 430. If after re-entry to 3a_rm_3k the trn increases to 2%+ and/or win_rate reaches 10%, proceed. Otherwise escalate to §2.9.
+
+**Current run:** PID 89714, log `/tmp/train_v040_from300.log`.
+
 **Steps:**
 
 1. **Resume the training** that smoke-tested successfully. Continue with `action_forcing_scale=1.0`. Total budget: 5M additional steps (~10 hours of compute).
