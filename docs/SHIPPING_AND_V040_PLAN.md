@@ -902,11 +902,20 @@ Break the `trn=0%` bottleneck via targeted action-masking (Option β from the th
    - **If wins with ≥ 2 trained units / total wins < 5%:** No detectable gradient signal. Action-masking is **mandatory** (not just an amplifier) — the agent has zero training-action exploration to leverage. Proceed but expect larger forcing windows.
    - **If train_unit_count is identically zero across ALL 100 episodes:** The action is dead. Action-masking will need to be aggressive (and may not be sufficient — consider escalating to B5.3 intrinsic motivation directly).
 
-**Acceptance:** G1' — diagnostic CSV exists and has been analysed.
+**Acceptance:** G1' — diagnostic CSV exists and has been analysed. ✅ COMPLETE (2026-05-22)
+
+**Results (u150 checkpoint):**
+
+| Opponent | Win rate | train_unit mean | train_unit max | max_noop_streak mean | Diagnosis |
+|----------|----------|-----------------|----------------|----------------------|-----------|
+| rush_weak_medium | 99% | 9.4 | 13 | 400 ticks (max 662) | 100% wins have >=2 trn — AMPLIFIER |
+| rush_medium | 0% | 13.2 | 17 | 337 ticks (max 440) | All episodes train units — not dead |
+
+**Key finding:** `trn=0%` in training logs is a rounding artefact (`int(0.3%)` = 0). The policy actively trains 9-17 units per episode. The problem is NOT training frequency — it is **timing and noop overhead**. The bot sits idle for 300-400 ticks between decisions. Action-forcing will reduce this by capping noop streaks at 30 ticks when conditions are met.
+
+CSVs saved to `docs/diag_u150_rwm.csv` and `docs/diag_u150_rm.csv`.
 
 **Rollback:** None. Pure investigation.
-
-**Time estimate:** 2 hours (write script + run + analyse).
 
 ### 2.4 Phase 1: Implement targeted action-masking
 
@@ -1007,11 +1016,16 @@ Break the `trn=0%` bottleneck via targeted action-masking (Option β from the th
    - With `forcingEnabled=true, noopStreak=30, barracksCount=1, resources=50, combat=0, forcingScale=1.0`, `noop` is absent.
    - With `forcingScale=0.0`, `noop` is always present (forcing off).
 
-**Acceptance:** G2' — unit tests for the new logic pass. The forcing can be turned on/off via the scale.
+**Acceptance:** G2' — unit tests for the new logic pass. The forcing can be turned on/off via the scale. ✅ COMPLETE (2026-05-22)
 
-**Rollback:** Revert both files. The default `forcingScale=0.0` is a no-op for existing training.
+**Implementation summary:**
+- `headless/src/legalActions.ts` + `headless/dist/legalActions.js`: added `LegalActionsOpts` interface; `getLegalActions(match, playerId, opts={})` now accepts `noopStreak` + `forcingScale`; suppresses noop when `streak>=30 && resources>=50 && completedBarracks>=1 && combatUnits<2 && Math.random()<forcingScale`.
+- `headless/src/stdioVecRunner.ts` + `.js`: added `ACTION_FORCING_SCALE` module var + `noopStreak` per-slot; reads `action_forcing_scale` from `reset_all` message; handles `set_forcing_scale` protocol message for mid-training updates; passes `LegalActionsOpts` to every `getLegalActions` call.
+- `training/env/crystalfront_vec_env.py`: `action_forcing_scale` param; `set_forcing_scale()` method for mid-training fade updates.
+- `training/ppo/train.py`: `--action_forcing_scale`, `--action_forcing_fade_start`, `--action_forcing_fade_end` flags; linear fade schedule in main loop; curriculum rebuilds inherit `_cur_forcing_scale`.
+- Tests: 451 passing (+8 forcing logic gate tests, including suppression/bypass/scale=0 cases).
 
-**Time estimate:** 6–8 hours. The implementation is small but the testing matters.
+**Rollback:** `forcingScale=0.0` default is identical to pre-implementation — zero behaviour change for v0.3.2-ML inference or eval.
 
 ### 2.5 Phase 2: Smoke-test training run
 
