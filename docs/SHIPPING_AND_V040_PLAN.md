@@ -1094,6 +1094,32 @@ CSVs saved to `docs/diag_u150_rwm.csv` and `docs/diag_u150_rm.csv`.
 
 **Goal:** With forcing active, train until the agent reliably wins `3a_rwm` (≥ 50%) with `trn ≥ 5%`.
 
+**Status (2026-05-22): In progress — see findings below.**
+
+**§2.6 Forcing iterations and root-cause analysis:**
+
+After the G3' gate passed at u171, the policy collapsed to 0-6% win rate at 3a_rm_3k across ALL forcing variants. Root causes discovered through iterative debugging:
+
+| Issue | Finding | Fix applied |
+|-------|---------|-------------|
+| noop_streak trigger broken | Bot alternates noop/attack_move; streak never reaches 30 | → Variant β': `trainUnitStreak >= 200` |
+| Policy picks attack_move over train_unit when forced | Even with noop suppressed, attack_move is selected | → Mode B also suppresses attack_move |
+| `combatUnits < 2` fires too late | 2 pre-placed units keep condition false until both die | → Threshold raised to `combatUnits < 3` |
+| No reward for units 3-4 | Forced training creates negative gradient (train→lose) | → Extended shaping: +2 unit 3, +1 unit 4 |
+| No barracks forcing | Bot noop-streaks in opening; barracks built late | → Mode A: noop_streak trigger for barracks |
+
+**Current best run (PID 85660, log: `/tmp/train_v040_ent05.log`):**
+- Configuration: `ent_coef=0.05, forcingScale=1.0, combatUnits<3, trainUnitStreak>=200, extended rewards`
+- Stage: 3a_rm_3k (rush_medium, 3000px, 2 pre-placed skirmishers), curriculum stage 14
+- Checkpoint from: u150
+- Last observed: u210, win_rate=3%, ep_rew=-84 (vs -97 baseline), noop=53%
+
+**Key signal: `ep_rew` stabilised at -84 (vs -97 before extended rewards).** This ~13-point improvement is from the +2+1 shaping for units 3+4 being collected. The policy IS training 3-4 units per episode. Win rate 1-3% — not collapsing to 0% as in earlier runs.
+
+**Curriculum budget**: 3a_rm_3k has max_steps=4M before auto-regression. With `total_timesteps=15M`, there are ~337 more updates (10M from global_step 4.6M). The curriculum will cycle through 3a_rwm → 3a_rm_3k multiple times. Each cycle at 3a_rm_3k now has more gradient signal for training.
+
+**Decision gate at auto-regression (~update 310):** If win_rate still < 10% at the auto-regression point, escalate to §2.9 (Option γ). If win_rate ≥ 20% at any point, continue.
+
 **Steps:**
 
 1. **Resume the training** that smoke-tested successfully. Continue with `action_forcing_scale=1.0`. Total budget: 5M additional steps (~10 hours of compute).
