@@ -63,7 +63,7 @@ from training.env.crystalfront_vec_env import (
     MAX_ENTITIES, MAX_NODES, ACTION_SPACE_SIZE,
 )
 from training.env.crystalfront_env import CrystalFrontEnv  # kept for legacy checkpoint compat
-from training.ppo.policy import CrystalFrontAgent
+from training.ppo.policy import CrystalFrontAgent, RNDModel
 from training.ppo.league import LeagueManager, SCRIPTED_BOTS
 
 
@@ -212,6 +212,10 @@ class Config:
     action_forcing_scale:      float = 0.0  # 0.0 = off, 1.0 = always force when conditions met
     action_forcing_fade_start: int   = 0    # global step to begin linear fade (0 = no fade)
     action_forcing_fade_end:   int   = 0    # global step where scale reaches 0.0
+
+    # RND intrinsic motivation (Option γ)
+    rnd_coef:       float = 0.0   # 0.0 = off; try 0.01 for Option γ
+    rnd_embed_dim:  int   = 64    # embedding size for both target and predictor networks
 
     # League (Phase 4)
     league:               bool  = False
@@ -464,6 +468,16 @@ def train(cfg: Config) -> None:
 
     optimizer = optim.Adam(agent.parameters(), lr=cfg.learning_rate, eps=1e-5)
 
+    # ── RND (Option γ) ────────────────────────────────────────────────────────
+    rnd_model: RNDModel | None = None
+    rnd_optimizer = None
+    if cfg.rnd_coef > 0:
+        rnd_model = RNDModel(embed_dim=cfg.rnd_embed_dim).to(device)
+        rnd_optimizer = optim.Adam(rnd_model.predictor.parameters(), lr=cfg.learning_rate, eps=1e-5)
+        if _ckpt is not None and "rnd" in _ckpt:
+            rnd_model.load_state_dict(_ckpt["rnd"])
+        print(f"  RND enabled: rnd_coef={cfg.rnd_coef}, embed_dim={cfg.rnd_embed_dim}", flush=True)
+
     if _ckpt is not None and int(_ckpt.get("update", 0)) > 0:
         # Only restore optimizer state from PPO checkpoints (update > 0).
         # BC warmup checkpoints (update=0) use a different optimizer config
@@ -693,7 +707,8 @@ def train(cfg: Config) -> None:
                             f"cbt={cbt_rate:.2f} tmt={tmt_rate:.2f} | "
                             f"ep_len={episode_lengths[i]:4d} | ep_rew={episode_rewards[i]:.2f} ep_ret={ep_ret_mean} | "
                             f"atk_mv={pct_atk_mv}% tgt={pct_atk_tgt}% bld={pct_bld}% trn={pct_trn}% wkr_mv={pct_wkr_mv}% noop={pct_noop}% | "
-                            f"crys_dmg={ecd_mean}% no_pres={no_pres_pct}%",
+                            f"crys_dmg={ecd_mean}% no_pres={no_pres_pct}%"
+                            + (f" | rnd={rnd_loss_val:.4f}" if rnd_model is not None else ""),
                             flush=True
                         )
                         wins_last_window = 0; window_episodes = 0
@@ -751,6 +766,16 @@ def train(cfg: Config) -> None:
                     episode_lengths[i] = 0
                     # VecRunner autoreset: next_obs_list[i] already contains fresh-episode obs
                     # No explicit env.reset() call needed
+
+            # ── RND intrinsic reward ──────────────────────────────────────────
+            if rnd_model is not None:
+                with torch.no_grad():
+                    global_obs_t = obs_t["global"].float()
+                    rnd_model.obs_rms.update(global_obs_t)
+                    r_i = rnd_model.intrinsic_reward(global_obs_t).cpu().numpy()
+                    rnd_model.rew_rms.update(torch.tensor(r_i))
+                    r_i_norm = r_i / (rnd_model.rew_rms.var.item() ** 0.5 + 1e-8)
+                    rewards_np = rewards_np + cfg.rnd_coef * r_i_norm.astype(np.float32)
 
             buffer.add(step, obs_list, legal_masks_np, actions_t, logprobs_t.float(),
                        rewards_np, dones_np, values_t)
@@ -843,6 +868,22 @@ def train(cfg: Config) -> None:
                 nn.utils.clip_grad_norm_(agent.parameters(), cfg.max_grad_norm)
                 optimizer.step()
 
+        # ── RND predictor update (after PPO epochs) ───────────────────────────
+        rnd_loss_val = 0.0
+        if rnd_model is not None and rnd_optimizer is not None:
+            # Use the full rollout batch (no minibatch split needed for predictor)
+            all_global = buffer.globals.reshape(-1, buffer.globals.shape[-1])  # (T*N, GLOBAL_DIM)
+            rnd_optimizer.zero_grad()
+            rnd_loss = rnd_model.predictor_loss(all_global.float())
+            rnd_loss.backward()
+            rnd_optimizer.step()
+            rnd_loss_val = rnd_loss.item()
+            writer.add_scalar("rnd/predictor_loss", rnd_loss_val, global_step)
+            # Log mean intrinsic reward this update (before normalisation)
+            with torch.no_grad():
+                r_i_batch = rnd_model.intrinsic_reward(all_global.float())
+                writer.add_scalar("rnd/intrinsic_reward_mean", r_i_batch.mean().item(), global_step)
+
         # ── logging ───────────────────────────────────────────────────────────
         sps = int(global_step / (time.time() - start_time))
         writer.add_scalar("training/learning_rate",     optimizer.param_groups[0]["lr"], global_step)
@@ -870,13 +911,16 @@ def train(cfg: Config) -> None:
         # ── checkpoint ────────────────────────────────────────────────────────
         if update % cfg.save_interval == 0:
             path = ckpt_path / f"update_{update:06d}.pt"
-            torch.save({
+            save_dict = {
                 "update":      update,
                 "global_step": global_step,
                 "agent":       agent.state_dict(),
                 "optimizer":   optimizer.state_dict(),
                 "config":      cfg,
-            }, path)
+            }
+            if rnd_model is not None:
+                save_dict["rnd"] = rnd_model.state_dict()
+            torch.save(save_dict, path)
             print(f"  [checkpoint] saved → {path}", flush=True)
 
         # ── league step ───────────────────────────────────────────────────────
