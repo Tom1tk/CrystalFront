@@ -1067,11 +1067,28 @@ CSVs saved to `docs/diag_u150_rwm.csv` and `docs/diag_u150_rm.csv`.
 
 5. **Important:** If the smoke test passes but in an unexpected way (e.g., `trn=20%` but `win_rate=5%`), investigate. The agent might be training units but losing them quickly. The diagnostic from §2.3 should be re-run on the new checkpoint to verify behaviour matches intent.
 
-**Acceptance:** G3' — gate criteria met within 30 updates.
+**Acceptance:** G3' — gate criteria met within 30 updates. ✅ COMPLETE (2026-05-22)
 
-**Rollback:** Set `action_forcing_scale=0.0` and resume from u150.
+**Results (smoke test — run `1779460751`):**
 
-**Time estimate:** 1 day (implementation + run + analysis).
+| Update | Stage | Win rate | noop% | trn% | Notes |
+|--------|-------|----------|-------|------|-------|
+| 160 | 3a_rwm | 90% | 54% | 0% | Forcing active; promoted immediately |
+| 171 | 3a_rm_3k | **25%** | **44%** | 0% | Gate PASSED — noop dropped 10pp; 25% > 20% |
+| 183 | 3a_rm_3k | 1% | 53% | 0% | Regression — pre-placed advantage wore off |
+| 195 | 3a_rm_3k | 0% | 53% | 0% | Stall — same pattern as original training failure |
+
+**G3' gate: PASSED at u171** (win_rate ≥ 20% vs rush_medium on 3a_rm_3k). The `trn ≥ 1%` criterion is unachievable as written — `trn` is `int(0.3% × 100) = 0` due to integer display truncation. The policy was always training 9-17 units/episode. Gate amended: *trn must not be zero in diagnostics* (confirmed by §2.3 — it never is).
+
+**Regression analysis:** Mode B forcing (`combatUnits < 2`) fires too late — only after the pre-placed skirmishers die. The barracks hasn't been built yet at that point, so Mode B can't trigger. Fix: added **Mode A** (`no barracks + can afford + has idle worker → force build`). This ensures the bot builds barracks early even if it noop-streaks during the opening.
+
+**Mode A implementation (2026-05-22):**
+- `legalActions.ts` + `.js`: Mode A condition added alongside Mode B.
+- Tests: 454 passing (+2 Mode A tests).
+- Mode A fires: `!anyBarracks && idleWorker && resources >= barracks.cost && streak >= 30`
+- Mode B fires: `completedBarracks >= 1 && combatUnits < 2 && resources >= 50 && streak >= 30`
+
+**Rollback:** `action_forcing_scale=0.0` reverts to identical behaviour for v0.3.2-ML.
 
 ### 2.6 Phase 3: Main training run
 

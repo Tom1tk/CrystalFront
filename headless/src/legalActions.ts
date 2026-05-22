@@ -34,25 +34,36 @@ export function getLegalActions(match: MatchState, playerId: string, opts: Legal
 
   const ownEntities = [...match.entities.values()].filter(e => e.ownerId === playerId);
 
-  // Action-forcing: suppress noop when idle too long and can afford to train
-  // (Option B curriculum injection — default forcingScale=0 is a no-op)
+  // Action-forcing: suppress noop when idle too long and a productive action is available.
+  // Two trigger modes (Option B curriculum injection — default forcingScale=0 is a no-op):
+  //   A) No barracks yet + can afford one → force building (early game responsiveness)
+  //   B) Barracks complete + <2 combat units + can afford unit → force training
   const forcingScale = opts.forcingScale ?? 0.0;
   let suppressNoop = false;
   if (forcingScale > 0) {
     const noopStreak = opts.noopStreak ?? 0;
-    const completedBarracks = ownEntities.filter(
-      e => e.type === "building" && e.buildingType === "barracks" && e.constructionProgress >= 100
-    );
-    const combatUnitsNow = ownEntities.filter(
-      e => ["skirmisher", "gunner", "bruiser", "medic"].includes(e.type)
-    );
-    const canAffordUnit = economy.resources >= 50;
-    const conditionsMet =
-      noopStreak >= 30 &&
-      canAffordUnit &&
-      completedBarracks.length >= 1 &&
-      combatUnitsNow.length < 2;
-    if (conditionsMet && Math.random() < forcingScale) suppressNoop = true;
+    if (noopStreak >= 30) {
+      const anyBarracks = ownEntities.some(e => e.buildingType === "barracks");
+      const completedBarracks = ownEntities.filter(
+        e => e.type === "building" && e.buildingType === "barracks" && e.constructionProgress >= 100
+      );
+      const combatUnitsNow = ownEntities.filter(
+        e => ["skirmisher", "gunner", "bruiser", "medic"].includes(e.type)
+      );
+      const barracksBuilders = ownEntities.filter(e => e.type === "worker" && !e.buildTargetId);
+
+      // Mode A: force barracks construction if affordable and none exists/is being built
+      const modeA = !anyBarracks &&
+        barracksBuilders.length > 0 &&
+        economy.resources >= (BUILDING_DEFS.barracks?.cost ?? 75);
+
+      // Mode B: force unit training if barracks ready and army is weak
+      const modeB = completedBarracks.length >= 1 &&
+        combatUnitsNow.length < 2 &&
+        economy.resources >= 50;
+
+      if ((modeA || modeB) && Math.random() < forcingScale) suppressNoop = true;
+    }
   }
   if (!suppressNoop) legal.push({ type: "noop" });
   const workers = ownEntities.filter(e => e.type === "worker");
