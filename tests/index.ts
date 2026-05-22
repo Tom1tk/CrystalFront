@@ -1841,13 +1841,17 @@ console.log("\n--- legalActions: action-forcing (Option B) ---");
     assert(legal.some(a => a.type === "noop"), "forcing: noop present when resources < 50");
   }
 
-  // 5. No barracks: noop present
+  // 5. No barracks AND no workers (Mode A can't fire, Mode B can't fire) → noop present
   {
     const { m } = forcingMatch();
     const pidx = m.players.findIndex(p => p?.playerId === "fb");
     m.economy[pidx]!.resources = 500;
+    // Remove all workers so Mode A can't fire
+    for (const [id, e] of m.entities) {
+      if (e.ownerId === "fb" && e.type === "worker") m.entities.delete(id);
+    }
     const legal = getLegalActions(m, "fb", { noopStreak: 200, forcingScale: 1.0 });
-    assert(legal.some(a => a.type === "noop"), "forcing: noop present when no completed barracks");
+    assert(legal.some(a => a.type === "noop"), "forcing: noop present when no barracks AND no workers (neither mode fires)");
   }
 
   // 6. All conditions met + scale=1.0: noop suppressed
@@ -1880,6 +1884,38 @@ console.log("\n--- legalActions: action-forcing (Option B) ---");
       health: 100, maxHealth: 100, x: 320, y: 300, radius: 8 } as any);
     const legal = getLegalActions(m, "fb", { noopStreak: 200, forcingScale: 1.0 });
     assert(legal.some(a => a.type === "noop"), "forcing: noop present when >=2 combat units (condition not met)");
+  }
+
+  // 8. Mode A: no barracks, can afford → noop suppressed
+  {
+    const { m } = forcingMatch();
+    const pidx = m.players.findIndex(p => p?.playerId === "fb");
+    m.economy[pidx]!.resources = 500;
+    // Add an idle worker (needed for Mode A to fire)
+    m.entities.set("w1", { id: "w1", ownerId: "fb", type: "worker",
+      health: 50, maxHealth: 50, x: 200, y: 300, radius: 5,
+      buildTargetId: undefined, gatheringNodeId: undefined, attackTargetId: undefined } as any);
+    // No barracks, no combat units
+    const legal = getLegalActions(m, "fb", { noopStreak: 200, forcingScale: 1.0 });
+    assert(!legal.some(a => a.type === "noop"), "forcing mode A: noop SUPPRESSED when no barracks and can afford + idle worker");
+    assert(legal.length > 0, "forcing mode A: non-empty legal list");
+  }
+
+  // 9. Mode A does not fire when barracks already exists (even if not complete)
+  {
+    const { m } = forcingMatch();
+    const pidx = m.players.findIndex(p => p?.playerId === "fb");
+    m.economy[pidx]!.resources = 500;
+    m.entities.set("w1", { id: "w1", ownerId: "fb", type: "worker",
+      health: 50, maxHealth: 50, x: 200, y: 300, radius: 5,
+      buildTargetId: undefined, gatheringNodeId: undefined, attackTargetId: undefined } as any);
+    // Barracks in progress (not complete)
+    m.entities.set("b1", { id: "b1", ownerId: "fb", type: "building", buildingType: "barracks",
+      constructionProgress: 50, health: 200, maxHealth: 500, x: 200, y: 300, radius: 20, productionQueue: [] } as any);
+    const legal = getLegalActions(m, "fb", { noopStreak: 200, forcingScale: 1.0 });
+    // Mode A fires only if anyBarracks is false; with an in-progress barracks, anyBarracks=true → mode A off
+    // Mode B: completedBarracks=0 → also off. So noop should be present.
+    assert(legal.some(a => a.type === "noop"), "forcing mode A: noop present when barracks in progress (anyBarracks=true)");
   }
 }
 
