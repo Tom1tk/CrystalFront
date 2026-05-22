@@ -1,12 +1,13 @@
 {
   "name": "@crystalfront/headless",
-  "version": "0.3.0-ML",
+  "version": "0.3.2-ML",
   "private": true,
   "type": "module",
   "scripts": {
     "match": "tsx src/cli.ts"
   },
   "dependencies": {
-    "@crystalfront/shared": "*"
+    "@crystalfront/shared": "*",
+    "onnxruntime-node": "^1.26.0"
   }
 }

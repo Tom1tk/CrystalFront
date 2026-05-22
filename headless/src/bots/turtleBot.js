@@ -13,15 +13,12 @@ export class TurtleBot {
     playerId = "";
     lastAssignTick = -50;
     lastBuildTick = -60;
-    turretYZones = ["top", "bottom", "middle"];
-    turretBaseZone = 0; // increments when a turret is destroyed
     prevTurretCount = 0;
     init(playerId, _match) {
         this.playerId = playerId;
         this.lastAssignTick = -50;
         this.lastBuildTick = -60;
         this.prevTurretCount = 0;
-        this.turretBaseZone = Math.floor(Math.random() * 3); // vary starting position
     }
     step(obs, legal) {
         const actions = [];
@@ -31,10 +28,6 @@ export class TurtleBot {
         const ownWorkers = entities.filter(e => e.owner === 1 && e.typeIndex === 1).length;
         const turretCount = entities.filter(e => e.owner === 1 && e.typeIndex === 9 && e.constructionFrac >= 1).length;
         const oppArmy = global.oppVisibleSupply ?? 0;
-        // Detect turret destroyed → shift base zone so next replacement lands elsewhere
-        if (turretCount < this.prevTurretCount) {
-            this.turretBaseZone = (this.turretBaseZone + 1) % this.turretYZones.length;
-        }
         this.prevTurretCount = turretCount;
         // ── Gathering ──────────────────────────────────────────────────────────
         if (tick - this.lastAssignTick >= 40) {
@@ -62,11 +55,7 @@ export class TurtleBot {
         }
         // ── Build turrets for defence ──────────────────────────────────────────
         if (tick - this.lastBuildTick >= 60 && turretCount < 3) {
-            // Cycle y-zone by count so each turret lands at a different position
-            const zoneIdx = (this.turretBaseZone + turretCount) % this.turretYZones.length;
-            const yZone = this.turretYZones[zoneIdx];
-            const build = legal.find(a => a.type === "build" && a.buildingType === "turret" &&
-                a.xZone === "forward" && a.yZone === yZone);
+            const build = legal.find(a => a.type === "build" && a.buildingType === "turret" && a.xZone === "forward");
             if (build) {
                 actions.push(build);
                 this.lastBuildTick = tick;

@@ -3,14 +3,29 @@ import { FCT, FctFrame, FctPanel, FctBtn, Refract, HEX_CLIP } from "../design/fa
 
 declare const __APP_VERSION__: string;
 
+const BOT_OPTIONS: { name: string; label: string; sub: string; type: "ml" | "scripted" }[] = [
+  { name: "ml",               label: "ML Bot",         sub: "v0.3.2 · trained policy",   type: "ml"       },
+  { name: "idle",             label: "Idle",            sub: "does nothing",               type: "scripted" },
+  { name: "passive",          label: "Passive",         sub: "builds, never attacks",      type: "scripted" },
+  { name: "rush_weak",        label: "Weak Rush",       sub: "4 units · push @400",        type: "scripted" },
+  { name: "rush_weak_medium", label: "Weak-Med Rush",   sub: "6 units · push @300",        type: "scripted" },
+  { name: "rush_medium",      label: "Medium Rush",     sub: "unlimited · push @200",      type: "scripted" },
+  { name: "rush",             label: "Rush",            sub: "fast aggressive",            type: "scripted" },
+  { name: "turtle",           label: "Turtle",          sub: "heavy defence",              type: "scripted" },
+  { name: "macro",            label: "Macro",           sub: "economy focus",              type: "scripted" },
+  { name: "heavy",            label: "Heavy",           sub: "bruiser spam",               type: "scripted" },
+];
+
 interface MainMenuProps {
   onHost: (username: string) => void;
   onJoin: (code: string, username: string) => void;
   onSoloTest: (username: string) => void;
+  onBotGame: (username: string, bot: string) => void;
+  onBotSelect: (username: string) => void;
   onReplays: () => void;
 }
 
-export default function MainMenu({ onHost, onJoin, onSoloTest, onReplays }: MainMenuProps) {
+export default function MainMenu({ onHost, onJoin, onSoloTest, onBotGame: _onBotGame, onBotSelect, onReplays }: MainMenuProps) {
   const [username, setUsername] = useState("");
   const [lobbyCode, setLobbyCode] = useState("");
   const [error, setError] = useState("");
@@ -240,6 +255,18 @@ export default function MainMenu({ onHost, onJoin, onSoloTest, onReplays }: Main
               }}
             >
               ▷ Join Game
+            </FctBtn>
+            <FctBtn
+              full
+              sub="SELECT OPPONENT"
+              onClick={() => {
+                setError("");
+                if (!username.trim()) { setError("Enter a username to continue."); return; }
+                if (username.trim().length > 20) { setError("Username too long."); return; }
+                onBotSelect(username.trim());
+              }}
+            >
+              ▷ Play vs Bot
             </FctBtn>
             <FctBtn
               full

@@ -42,7 +42,7 @@ class Config:
     checkpoint:    str        = ""
     episodes:      int        = 100
     opponents:     list[str]  = field(default_factory=lambda: [
-        "idle", "passive", "rush_weak", "rush_medium", "rush", "turtle", "macro",
+        "idle", "passive", "rush_weak", "rush_weak_medium", "rush_medium", "rush", "turtle", "macro",
     ])
     device:        str        = "cuda"
     seed:          int        = 0
@@ -134,7 +134,10 @@ def main(cfg: Config) -> None:
 
     if cfg.checkpoint:
         ckpt = torch.load(cfg.checkpoint, map_location=device, weights_only=False)
-        agent.load_state_dict(ckpt["agent"])
+        state = ckpt["agent"]
+        if any(k.startswith("_orig_mod.") for k in state):
+            state = {k.replace("_orig_mod.", ""): v for k, v in state.items()}
+        agent.load_state_dict(state)
         update = ckpt.get("update", "?")
         step   = ckpt.get("global_step", 0)
         print(f"Loaded: {cfg.checkpoint}  (update={update}, step={step:,})")

@@ -12,6 +12,16 @@ export interface GlobalFeatures {
     oppResourcesWinFrac: number;
     ownLifetimeResourcesFrac: number;
     oppLifetimeResourcesFrac: number;
+    enemyWorkerCount: number;
+    enemySkirmisherCount: number;
+    enemyBruiserCount: number;
+    enemyBarracksCount: number;
+    enemyTurretCount: number;
+    enemyForwardUnitFrac: number;
+    nearestEnemyToCrystalDistNorm: number;
+    ownCombatInOwnHalf: number;
+    enemyCombatInOwnHalf: number;
+    totalVisibleEnemyCombat: number;
 }
 export interface EntityFeature {
     id: string;
@@ -26,6 +36,7 @@ export interface EntityFeature {
     isGathering: boolean;
     isBuilding: boolean;
     attackCooldownNorm: number;
+    inAttackRange: boolean;
 }
 export interface NodeFeature {
     id: string;
@@ -42,15 +53,16 @@ export interface PlayerObservation {
     playerId: string;
     tick: number;
 }
-export type MacroActionType = "noop" | "train_worker" | "train_unit" | "build" | "attack_move" | "retreat" | "assign_workers" | "set_rally";
+export type MacroActionType = "noop" | "train_worker" | "train_unit" | "build" | "attack_move" | "attack_targeted" | "hold_position" | "retreat" | "assign_workers" | "set_rally";
 export interface MacroAction {
     type: MacroActionType;
     unitType?: "skirmisher" | "gunner" | "bruiser" | "medic";
     buildingType?: "barracks" | "foundry" | "supply_depot" | "turret";
     xZone?: "near_crystal" | "mid_base" | "forward";
     yZone?: "top" | "middle" | "bottom";
-    group?: "all_combat" | "skirmishers" | "gunners" | "bruisers" | "all_workers";
-    targetZone?: "enemy_crystal" | "midfield" | "contested_node";
+    group?: "all_combat" | "skirmishers" | "gunners" | "bruisers" | "all_workers" | "all_idle_combat" | "idle_workers";
+    targetZone?: "enemy_crystal" | "midfield" | "contested_node" | "enemy_army" | "defend_crystal";
+    targetType?: "nearest_threat" | "nearest_enemy" | "focus_weakest" | "targeting_friend" | "spread_fire";
     nodeChoice?: "nearest_safe" | "nearest_contested" | "richest_visible";
     workerCount?: 1 | 2 | 3 | "all_idle";
 }

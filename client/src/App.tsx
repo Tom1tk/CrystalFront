@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useWebSocket } from "./hooks/useWebSocket";
 import MainMenu from "./components/MainMenu";
+import BotSelectMenu from "./components/BotSelectMenu";
 import LobbyScreen from "./components/LobbyScreen";
 import GameShell from "./components/GameShell";
 import MatchEndScreen from "./components/MatchEndScreen";
@@ -11,6 +12,7 @@ import { FCT } from "./design/facet";
 function useScreenFlow() {
   const [screen, setScreen] = useState<Screen>("menu");
   const [isHost, setIsHost] = useState(false);
+  const [botSelectUsername, setBotSelectUsername] = useState("");
   const [replayTotalTicks, setReplayTotalTicks] = useState<number | undefined>(undefined);
   const hasLobbyStateRef = useRef(false);
 
@@ -118,6 +120,26 @@ function useScreenFlow() {
     },
     [ws.startSoloTest]
   );
+
+  const handleBotGame = useCallback(
+    (name: string, bot: string) => {
+      ws.startBotGame(name, bot);
+      setIsHost(true);
+    },
+    [ws.startBotGame]
+  );
+
+  const handleShowBotSelect = useCallback(
+    (name: string) => {
+      setBotSelectUsername(name);
+      setScreen("bot_select");
+    },
+    []
+  );
+
+  const handleBotSelectBack = useCallback(() => {
+    setScreen("menu");
+  }, []);
 
   const handleOpenReplays = useCallback(() => {
     setScreen("replays");
@@ -241,6 +263,10 @@ function useScreenFlow() {
     handleDebugWin,
     handleDebugSpawn,
     handleGameCommand,
+    handleBotGame,
+    handleShowBotSelect,
+    handleBotSelectBack,
+    botSelectUsername,
   };
 }
 
@@ -273,6 +299,10 @@ export default function App() {
     handleDebugWin,
     handleDebugSpawn,
     handleGameCommand,
+    handleBotGame,
+    handleShowBotSelect,
+    handleBotSelectBack,
+    botSelectUsername,
   } = useScreenFlow();
 
   const player = getCurrentPlayer();
@@ -281,7 +311,14 @@ export default function App() {
   return (
     <div style={styles.container}>
       {screen === "menu" && (
-        <MainMenu onHost={handleHost} onJoin={handleJoin} onSoloTest={handleSoloTest} onReplays={handleOpenReplays} />
+        <MainMenu onHost={handleHost} onJoin={handleJoin} onSoloTest={handleSoloTest} onBotGame={handleBotGame} onBotSelect={handleShowBotSelect} onReplays={handleOpenReplays} />
+      )}
+      {screen === "bot_select" && (
+        <BotSelectMenu
+          username={botSelectUsername}
+          onSelect={(bot) => handleBotGame(botSelectUsername, bot)}
+          onBack={handleBotSelectBack}
+        />
       )}
       {screen === "replays" && (
         <ReplayBrowser onBack={handleBackFromReplays} onWatch={handleWatchReplay} />

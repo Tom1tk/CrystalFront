@@ -43,16 +43,19 @@ from training.ppo.policy import CrystalFrontAgent
 
 @dataclass
 class Config:
-    episodes:        int   = 1000     # review §4.10 recommends ~1000
+    episodes:        int   = 1000     # review §4.10 recommends ~1000. WARNING: full game config (map_width=0)
+                                     # produces ~3000 ticks/ep → ~3M transitions at 1000 eps → OOM on 24GB.
+                                     # Use ≤300 for full game config; 1000 is safe only for 1500px config.
     epochs:          int   = 5
     batch_size:      int   = 256
     learning_rate:   float = 1e-3
     device:          str   = "cuda"
     output:          str   = "bc_warmup.pt"
     demo_bot:        str   = "rush"
-    opponent:        str   = "idle"
+    opponent:        str   = "idle"   # comma-separated list for mixed sampling, e.g. "rush_weak,rush_medium,passive"
     seed:            int   = 42
     noop_keep_frac:  float = 0.05    # keep only 5% of noop transitions (subtract redundant noops)
+    min_train_actions: int = 0       # filter: only keep episodes with >= N train_unit actions (0 = no filter)
     # Match the target training config so BC observations transfer directly
     map_width:       int   = 1500    # Day 5 config (review §9.5)
     crystal_health:  int   = 200     # Day 5 config
@@ -78,16 +81,31 @@ def collect_demonstrations(cfg: Config) -> tuple[list[dict], list[int], list[flo
     act_list: list[int]   = []
     ret_list: list[float] = []   # discounted return targets for critic pre-training
 
+    # Support comma-separated opponent list for mixed sampling (§A6.2 second review)
+    opponents = [o.strip() for o in cfg.opponent.split(",")]
+    # Train-action indices 2-5 are train_unit per actionIndex.ts
+    TRAIN_UNIT_INDICES = set(range(2, 6))
+
     cfg_ov: dict = {}
     if cfg.map_width      > 0: cfg_ov["mapWidth"]      = cfg.map_width
     if cfg.crystal_health > 0: cfg_ov["crystalHealth"]  = cfg.crystal_health
-    env = CrystalFrontEnv(opponent=cfg.opponent, demo_bot=cfg.demo_bot,
-                          config_overrides=cfg_ov or None, max_ticks=cfg.max_ticks)
 
-    print(f"Collecting {cfg.episodes} episodes of {cfg.demo_bot} demonstrations vs {cfg.opponent}…")
+    # Build one env per distinct opponent; sample round-robin with env rotation
+    envs = {opp: CrystalFrontEnv(opponent=opp, demo_bot=cfg.demo_bot,
+                                  config_overrides=cfg_ov or None, max_ticks=cfg.max_ticks)
+            for opp in opponents}
+
+    opp_label = cfg.opponent if len(opponents) == 1 else f"mixed({cfg.opponent})"
+    filter_label = f", filter≥{cfg.min_train_actions} train_unit" if cfg.min_train_actions > 0 else ""
+    print(f"Collecting {cfg.episodes} episodes of {cfg.demo_bot} vs {opp_label}{filter_label}…")
     episodes_done = 0
+    episodes_kept = 0
 
     while episodes_done < cfg.episodes:
+        # Rotate through opponents uniformly
+        opp = opponents[episodes_done % len(opponents)]
+        env = envs[opp]
+
         obs, info = env.reset(seed=random.randint(0, 2**31))
         done = False
         ep_obs:  list[dict] = []
@@ -102,6 +120,14 @@ def collect_demonstrations(cfg: Config) -> tuple[list[dict], list[int], list[flo
             ep_rews.append(float(reward))
             done = terminated or truncated
 
+        episodes_done += 1
+
+        # Optional filter: skip episodes that don't contain enough train_unit actions
+        if cfg.min_train_actions > 0:
+            n_train = sum(1 for a in ep_acts if a in TRAIN_UNIT_INDICES)
+            if n_train < cfg.min_train_actions:
+                continue
+
         # Compute discounted returns backwards from episode end
         G = 0.0
         ep_rets: list[float] = [0.0] * len(ep_rews)
@@ -112,14 +138,15 @@ def collect_demonstrations(cfg: Config) -> tuple[list[dict], list[int], list[flo
         obs_list.extend(ep_obs)
         act_list.extend(ep_acts)
         ret_list.extend(ep_rets)
+        episodes_kept += 1
 
-        episodes_done += 1
         if episodes_done % 50 == 0:
-            print(f"  collected {episodes_done}/{cfg.episodes} episodes  "
+            print(f"  collected {episodes_done} episodes, kept {episodes_kept}  "
                   f"({len(obs_list):,} transitions)", flush=True)
 
-    env.close()
-    print(f"  Total transitions: {len(obs_list):,}")
+    for env in envs.values():
+        env.close()
+    print(f"  Total transitions: {len(obs_list):,} from {episodes_kept} kept episodes")
     return obs_list, act_list, ret_list
 
 

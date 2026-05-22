@@ -13,8 +13,12 @@ import { LobbyManager } from "./lobby/lobbyManager.js";
 import { MatchEngine } from "./match/matchEngine.js";
 import { LiveMatchRunner } from "./match/liveMatchRunner.js";
 import { BotPlayer } from "./match/botPlayer.js";
-import { IdleBot, RushBot, TurtleBot, MacroBot } from "../../headless/src/bots/index.js";
-import { ReplayRunner, listReplays, getReplay, ensureReplaysDir } from "./match/replayRunner.js";
+import {
+  MlBot, IdleBot, PassiveBot, WeakRushBot, WeakMediumRushBot,
+  MediumRushBot, RushBot, TurtleBot, MacroBot, HeavyBot,
+} from "../../headless/src/bots/index.js";
+import type { Agent } from "../../headless/src/types.js";
+import { ReplayRunner, listReplays, getReplay, ensureReplaysDir, saveReplay } from "./match/replayRunner.js";
 import type { MatchEntity, MatchState, PlayerSlot, ResourceNode, PlayerEconomy } from "./match/types.js";
 import {
   CLIENT_MSG,
@@ -47,6 +51,26 @@ ensureReplaysDir();
 
 const lobbyManager = new LobbyManager();
 const matchEngine = new MatchEngine();
+
+// Pre-load MlBot ONNX session at startup so first game has no latency.
+let mlBotSession: MlBot | null = null;
+MlBot.create().then(bot => { mlBotSession = bot; console.log("[server] MlBot ONNX session ready"); }).catch(e => console.warn("[server] MlBot failed to load:", e));
+
+function createBotAgent(name: string): Agent {
+  switch (name) {
+    case "ml":               return mlBotSession ?? new IdleBot(); // fallback if still loading
+    case "idle":             return new IdleBot();
+    case "passive":          return new PassiveBot();
+    case "rush_weak":        return new WeakRushBot();
+    case "rush_weak_medium": return new WeakMediumRushBot();
+    case "rush_medium":      return new MediumRushBot();
+    case "rush":             return new RushBot();
+    case "turtle":           return new TurtleBot();
+    case "macro":            return new MacroBot();
+    case "heavy":            return new HeavyBot();
+    default:                 return new MacroBot();
+  }
+}
 const replayRunner = new ReplayRunner();
 
 // Track which WS connection is watching which replay matchId
@@ -70,12 +94,38 @@ matchEngine.setMatchEndCallback((matchId: string, winner: string) => {
   const code = matchLobbyMap.get(matchId);
   if (code) {
     broadcastMatchEnd(code, winner);
-    // Record the win for score tracking
     const lobby = lobbyManager.getLobby(code);
     if (lobby) {
       const winnerSlot = winner === lobby.players[0]?.id ? "player1" : "player2";
       lobbyManager.recordWin(code, winnerSlot);
     }
+
+    // Save replay for every completed match (pvp and vs-bot).
+    try {
+      const match = matchEngine.getMatch(matchId);
+      if (match) {
+        const bluePlayer = lobby?.players.find(p => p?.color === "blue");
+        const redPlayer  = lobby?.players.find(p => p?.color === "red");
+        const winnerPlayer = lobby?.players.find(p => p?.id === winner);
+        saveReplay({
+          matchId,
+          seed:         match.seed ?? 0,
+          blue:         bluePlayer?.username  ?? "Blue",
+          red:          redPlayer?.username   ?? "Red",
+          bluePlayerId: bluePlayer?.id  ?? "headless-blue",
+          redPlayerId:  redPlayer?.id   ?? "headless-red",
+          ticks:        match.tick,
+          winner:       winnerPlayer?.color   ?? null,
+          winnerName:   winnerPlayer?.username ?? null,
+          winType:      match.result?.winType  ?? null,
+          commandLog:   match.commandLog       ?? [],
+          version:      GAME_VERSION,
+        });
+      }
+    } catch (e) {
+      console.error("[server] Failed to save replay:", e);
+    }
+
     // Reset ready states and broadcast so both players see updated scores + un-ready status
     lobbyManager.resetReadyStates(code);
     broadcastLobbyStateForCode(code);
@@ -471,6 +521,59 @@ wss.on("connection", (ws) => {
             },
           };
           sendWS(ws, matchStartMsg);
+        }
+        break;
+      }
+
+    case CLIENT_MSG.START_BOT_GAME: {
+        const { username: bgUsername, bot: botName } = msg.payload as { username: string; bot: string };
+        const { code, player } = lobbyManager.createLobby(bgUsername);
+
+        playerId = player.id;
+        playerLobbyMap.set(playerId, { playerId, code, ws });
+        sendWS(ws, { type: SERVER_EVT.CONNECTED, payload: { playerId: player.id } });
+
+        const botPlayer = lobbyManager.addBotToLobby(code);
+        if (!botPlayer) {
+          sendWS(ws, { type: SERVER_EVT.ERROR, payload: { message: "Failed to create bot game." } });
+          return;
+        }
+        playerLobbyMap.set(botPlayer.id, { playerId: botPlayer.id, code, ws, isBot: true });
+
+        lobbyManager.toggleReady(code, player.id);
+        lobbyManager.toggleReady(code, botPlayer.id);
+
+        // Send LOBBY_STATE before creating the match — client requires ws.lobbyState
+        // to be populated so getCurrentPlayer() and getCurrentLobby() return non-null,
+        // which GameShell requires to render. Without this, screen transitions to "game"
+        // but GameShell is blank because lobby && player are falsy.
+        broadcastLobbyState(ws, code);
+
+        const lobby = lobbyManager.getLobby(code);
+        if (lobby?.players[0]?.ready && lobby?.players[1]?.ready) {
+          const players: [PlayerSlot | null, PlayerSlot | null] = [
+            toPlayerSlot(lobby.players[0]!),
+            toPlayerSlot(lobby.players[1]!),
+          ];
+          const match = matchEngine.createMatch(code, players);
+          lobbyMatchMap.set(code, match.id);
+          matchEngine.startMatch(match.id);
+          liveRunner.start(match.id);
+          matchLobbyMap.set(match.id, code);
+
+          const botAgent = createBotAgent(botName);
+          const bot = new BotPlayer(botAgent, botPlayer.id, match.id, matchEngine);
+          bot.init();
+          botPlayers.set(match.id, bot);
+
+          for (const p of lobby.players) {
+            if (p) { const s = playerLobbyMap.get(p.id); if (s) s.matchId = match.id; }
+          }
+
+          sendWS(ws, {
+            type: SERVER_EVT.MATCH_START,
+            payload: { match: buildMatchStatePayload(match, undefined, playerId) },
+          });
         }
         break;
       }

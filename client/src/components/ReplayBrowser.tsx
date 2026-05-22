@@ -8,7 +8,7 @@ interface ReplayMeta {
   seed: number;
   blue: string;
   red: string;
-  outcome: { winner: string | null; winType?: string | null; ticks: number };
+  outcome: { winner: string | null; winnerName?: string | null; winType?: string | null; ticks: number };
   durationSecs: number;
   version: string;
   timestamp: number;
@@ -60,9 +60,12 @@ function formatDuration(secs: number): string {
 function outcomeLabel(r: ReplayMeta) {
   const w = r.outcome.winner;
   if (!w) return { text: "Draw", color: FCT.inkDim };
-  return w.includes("blue")
-    ? { text: `${r.blue} wins`, color: FCT.ice }
-    : { text: `${r.red} wins`,  color: FCT.red };
+  const isBlueWin = w === "blue" || w.includes("blue");
+  // Prefer explicit winnerName; fall back to username lookup by color
+  const name = r.outcome.winnerName ?? (isBlueWin ? r.blue : r.red);
+  return isBlueWin
+    ? { text: `${name} wins`, color: FCT.ice }
+    : { text: `${name} wins`, color: FCT.red };
 }
 function winTypeBadge(wt: string | null | undefined) {
   if (!wt)               return { text: "—",          color: FCT.inkFaint };

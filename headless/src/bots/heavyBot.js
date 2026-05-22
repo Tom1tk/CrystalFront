@@ -18,8 +18,6 @@ export class HeavyBot {
     lastAssignTick = -50;
     lastBuildTick = -60;
     lastPushTick = -60;
-    turretYZones = ["middle", "top", "bottom"];
-    turretBaseZone = 0;
     prevTurretCount = 0;
     init(playerId, _match) {
         this.playerId = playerId;
@@ -28,7 +26,6 @@ export class HeavyBot {
         this.lastBuildTick = -60;
         this.lastPushTick = -60;
         this.prevTurretCount = 0;
-        this.turretBaseZone = Math.floor(Math.random() * 3);
     }
     step(obs, legal) {
         const actions = [];
@@ -42,9 +39,6 @@ export class HeavyBot {
         const medics = entities.filter(e => e.owner === 1 && e.typeIndex === 5).length;
         const gunners = entities.filter(e => e.owner === 1 && e.typeIndex === 3).length;
         const turretCount = entities.filter(e => e.owner === 1 && e.typeIndex === 9 && e.constructionFrac >= 1).length;
-        if (turretCount < this.prevTurretCount) {
-            this.turretBaseZone = (this.turretBaseZone + 1) % this.turretYZones.length;
-        }
         this.prevTurretCount = turretCount;
         // Phase transitions
         if (this.phase === "eco" && hasFoundry)
@@ -94,10 +88,7 @@ export class HeavyBot {
             }
             // 2 forward turrets for early defence
             if (!built && turretCount < 2) {
-                const zoneIdx = (this.turretBaseZone + turretCount) % this.turretYZones.length;
-                const yZone = this.turretYZones[zoneIdx];
-                const b = legal.find(a => a.type === "build" && a.buildingType === "turret" &&
-                    a.xZone === "forward" && a.yZone === yZone);
+                const b = legal.find(a => a.type === "build" && a.buildingType === "turret" && a.xZone === "forward");
                 if (b) {
                     actions.push(b);
                     built = true;
@@ -152,12 +143,6 @@ export class HeavyBot {
             const train = legal.find(a => a.type === "train_unit" && a.unitType === "gunner");
             if (train)
                 actions.push(train);
-        }
-        // ── Rally forward once army is forming ────────────────────────────────
-        if ((this.phase === "mass" || this.phase === "push") && tick % 300 === 0) {
-            const rally = legal.find(a => a.type === "set_rally" && a.targetZone === "midfield");
-            if (rally)
-                actions.push(rally);
         }
         // ── Attack: only commit with a full heavy force ────────────────────────
         if (armySize >= 8 && tick - this.lastPushTick >= 60) {
