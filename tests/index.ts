@@ -1887,7 +1887,7 @@ console.log("\n--- legalActions: action-forcing (Option B) ---");
     assert(legal.some(a => a.type === "train_unit"), "forcing mode B: train_unit still legal");
   }
 
-  // 7. Already 2 combat units: neither mode fires (noop and attack_move both present)
+  // 7. 2 combat units: Mode B fires (< 3 threshold) → noop + attack_move suppressed
   {
     const { m } = forcingMatch();
     const pidx = m.players.findIndex(p => p?.playerId === "fb");
@@ -1901,7 +1901,26 @@ console.log("\n--- legalActions: action-forcing (Option B) ---");
     m.entities.set("u2", { id: "u2", ownerId: "fb", type: "skirmisher",
       health: 100, maxHealth: 100, x: 320, y: 300, radius: 8 } as any);
     const legal = getLegalActions(m, "fb", { trainUnitStreak: 200, forcingScale: 1.0 });
-    assert(legal.some(a => a.type === "noop"), "forcing: noop present when >=2 combat units (Mode B condition not met)");
+    // 2 units < 3 threshold → Mode B fires
+    assert(!legal.some(a => a.type === "noop"), "forcing: noop SUPPRESSED when 2 units (< 3 threshold, Mode B fires)");
+    assert(!legal.some(a => a.type === "attack_move"), "forcing: attack_move SUPPRESSED when 2 units (< 3)");
+  }
+
+  // 7b. Already 3 combat units: Mode B condition not met → noop and attack_move both present
+  {
+    const { m } = forcingMatch();
+    const pidx = m.players.findIndex(p => p?.playerId === "fb");
+    m.economy[pidx]!.resources = 500;
+    m.economy[pidx]!.maxSupply = 20;
+    m.economy[pidx]!.supply = 6;
+    m.entities.set("b1", { id: "b1", ownerId: "fb", type: "building", buildingType: "barracks",
+      constructionProgress: 100, health: 500, maxHealth: 500, x: 200, y: 300, radius: 20, productionQueue: [] } as any);
+    for (const id of ["u1","u2","u3"]) {
+      m.entities.set(id, { id, ownerId: "fb", type: "skirmisher",
+        health: 100, maxHealth: 100, x: 300, y: 300, radius: 8 } as any);
+    }
+    const legal = getLegalActions(m, "fb", { trainUnitStreak: 200, forcingScale: 1.0 });
+    assert(legal.some(a => a.type === "noop"), "forcing: noop present when >=3 units (Mode B not met)");
   }
 
   // 8. Mode A: no barracks, can afford → noop suppressed
