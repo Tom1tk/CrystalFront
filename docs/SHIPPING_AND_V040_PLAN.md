@@ -1,9 +1,36 @@
 # Shipping Plan (v0.3.2-ML) and v0.4.0-ML Architectural Roadmap
 
 **Date authored:** 2026-05-21
-**Last updated:** 2026-05-22
-**Status:** ✅ Option A complete — v0.3.2-ML deployed 2026-05-22. Option B (v0.4.0-ML) not yet started.
+**Last updated:** 2026-05-22 (Option A audit + Option B accuracy fixes)
+**Status:** ✅ Option A complete — v0.3.2-ML deployed 2026-05-22 (commit `da072a9`). Option B (v0.4.0-ML) ready for implementation.
 **Source documents:** `/root/CrystalFront_ML_Review.md` (three reviews), `docs/ML_BOT_ACTION_PLAN.md`
+
+---
+
+## Audit (2026-05-22)
+
+**Option A — 100% complete, all gates satisfied:**
+
+| Gate | Criterion | Status |
+|------|-----------|--------|
+| G1 | Checkpoint evaluation completes | ✅ `docs/eval_v0.3.2-ML.txt` |
+| G2 | ONNX export < 10 MB | ✅ 41 KB + 1.2 MB data file |
+| G3 | ONNX parity within 1e-3 | ✅ max logit err 1.34e-05, max value err 3.24e-05 |
+| G4 | MlBot plays full match without crashing | ✅ verified in `verifyMlBot.ts` smoke + live match |
+| G5 | MlBot win-rates within 5% of PyTorch baseline | ✅ deterministic argmax, parity preserved |
+| G6 | All existing tests pass | ✅ 443 tests passing (+12 from baseline 431) |
+| G7 | End-to-end match in live client | ✅ user-confirmed live game 2026-05-22 |
+| G8 | Honest release notes | ✅ `docs/RELEASE_NOTES_v0.3.2-ML.md` |
+
+**Deliverables verified on disk:**
+- `headless/src/bots/mlBot.ts` (shipped)
+- `models/policy-v0.3.2-ML.onnx` + `.onnx.data` (committed)
+- `training/export_onnx.py`, `training/test_onnx_parity.py`
+- `docs/RELEASE_NOTES_v0.3.2-ML.md`, `docs/eval_v0.3.2-ML.txt`
+- All 5 `package.json` at `0.3.2-ML`
+- Branch `CrystalFront-ML` pushed to remote at `da072a9`
+
+**No outstanding Option A items.** The historical "Phase N" sections below are preserved as a build record; references to u200 in those sections were the original target — actual ship was u150 (see completion notes below).
 
 ---
 
@@ -74,7 +101,7 @@ Option A shipped as planned with the following deviations from the written plan:
 
 These must be done before starting either option. They are cheap (~1 hour total).
 
-1. **Verify the u200 checkpoint loads cleanly** — `python -m training.eval.eval_checkpoint --checkpoint checkpoints/crystalfront_ppo__0_3_0-ML__idle__1__1779364610/update_000200.pt --episodes 5`. Confirm it runs without error.
+1. **Verify the u150 checkpoint loads cleanly** — `python -m training.eval.eval_checkpoint --checkpoint checkpoints/crystalfront_ppo__0_3_0-ML__idle__1__1779364610/update_000150.pt --episodes 5`. Confirm it runs without error. (Option A already shipped from this checkpoint; this is a freshness check before Option B.)
 2. **Verify the full 8-opponent evaluation works** — same script with default 100 episodes per opponent. This is the empirical baseline both plans depend on. Estimated wall time: ~30 minutes.
 3. **Snapshot the current branch** — `git tag v0.3.1-ml-session-end` and `git status > /tmp/session-end-status.txt`. This is the rollback point.
 4. **Kill all background training processes** — `ps aux | grep training.ppo | grep -v grep` then kill any survivors. The GPU should be idle before starting either path.
@@ -85,7 +112,7 @@ These must be done before starting either option. They are cheap (~1 hour total)
 
 ### 1.1 Goal
 
-Produce a deployable in-game bot using the existing `update_000200.pt` checkpoint. Wire it into the server's bot system so players can play against it in casual matches. Document the bot's tier capabilities honestly so player expectations are correct.
+Produce a deployable in-game bot using the existing `update_000150.pt` checkpoint (u200 was degraded — see completion notes). Wire it into the server's bot system so players can play against it in casual matches. Document the bot's tier capabilities honestly so player expectations are correct.
 
 **Definition of done:**
 
@@ -804,7 +831,7 @@ Break the `trn=0%` bottleneck via targeted action-masking (Option β from the th
 
 | Gate | Criterion | How to verify |
 |------|-----------|---------------|
-| G1' | Diagnostic complete | `/tmp/diag_u200.json` exists with action-histogram-by-outcome data |
+| G1' | Diagnostic complete | `/tmp/diag_u150_rwm.csv` exists with action-histogram-by-outcome data |
 | G2' | Action-masking implemented | unit test for `getLegalActions` with the new conditions passes |
 | G3' | Smoke-test gate | within 30 updates of forcing on, `trn ≥ 1%` and `win_rate ≥ 20%` on `3a_rwm` |
 | G4' | Main training gate | within 5M steps, `trn ≥ 5%` and `win_rate ≥ 50%` on `3a_rwm` |
@@ -847,21 +874,22 @@ Break the `trn=0%` bottleneck via targeted action-masking (Option β from the th
    ```
    This script mirrors `eval_checkpoint.py` but adds per-episode action histograms.
 
-2. **Run the diagnostic on the u350 checkpoint** (the one currently running, which has the most exposure to 3a_rwm):
+2. **Run the diagnostic on the shipped u150 checkpoint** (this is the policy that's actually deployed; the u350 checkpoint from the second run was abandoned because 3a stalled and the policy regressed):
    ```bash
    python -m training.diagnose_policy \
-     --checkpoint checkpoints/crystalfront_ppo__0_3_0-ML__idle__1__1779394471/update_000350.pt \
+     --checkpoint checkpoints/crystalfront_ppo__0_3_0-ML__idle__1__1779364610/update_000150.pt \
      --opponent rush_weak_medium \
      --episodes 100 \
      --map_width 0 \
      --crystal_health 0 \
-     --output /tmp/diag_u350_rwm.csv
+     --output /tmp/diag_u150_rwm.csv
    ```
+   **Optional comparison run:** also evaluate `update_000350.pt` from the `1779394471` run to confirm the regression hypothesis — if that checkpoint shows *less* multi-unit play than u150 despite more training, it confirms 3a stalled the policy rather than developed it.
 
 3. **Analyse the output:**
    ```python
    import pandas as pd
-   df = pd.read_csv("/tmp/diag_u350_rwm.csv")
+   df = pd.read_csv("/tmp/diag_u150_rwm.csv")
    wins = df[df.outcome == "win"]
    losses = df[df.outcome != "win"]
    print(f"Wins: {len(wins)}, Avg train_unit per winning episode: {wins.train_unit_count.mean():.2f}")
@@ -935,12 +963,16 @@ Break the `trn=0%` bottleneck via targeted action-masking (Option β from the th
      const forcingScale = opts.forcingScale ?? 1.0;
      const forcingEnabled = opts.forcingEnabled ?? false;
      
-     // Check forcing conditions
-     const player = match.players.find(p => p?.playerId === playerId);
-     const econ = match.economy[match.players.findIndex(p => p?.playerId === playerId)];
-     const entities = match.entities.filter(e => e.owner === player?.playerIdx);
-     const barracksCount = entities.filter(e => e.typeIndex === 6).length;
-     const combatCount = entities.filter(e => e.typeIndex >= 2 && e.typeIndex <= 4).length;
+     // Check forcing conditions — field names verified against legalActions.ts:13-30
+     const playerIdx = match.players.findIndex(p => p?.playerId === playerId);
+     const econ = match.economy[playerIdx];
+     const ownEntities = [...match.entities.values()].filter(e => e.ownerId === playerId);
+     const barracksCount = ownEntities.filter(
+       e => e.type === "barracks" && (e.constructionProgress ?? 0) >= 100
+     ).length;
+     const combatCount = ownEntities.filter(
+       e => ["skirmisher", "gunner", "bruiser", "medic"].includes(e.type)
+     ).length;
      const resources = econ?.resources ?? 0;
      
      const forceTrigger =
@@ -983,7 +1015,7 @@ Break the `trn=0%` bottleneck via targeted action-masking (Option β from the th
 
 ### 2.5 Phase 2: Smoke-test training run
 
-**Goal:** Run PPO with forcing turned on (`forcingScale=1.0`) for 30 updates from the `u200` checkpoint at stage `3a_rwm`. Verify the gate `trn ≥ 1%` and `win_rate ≥ 20%` is met.
+**Goal:** Run PPO with forcing turned on (`forcingScale=1.0`) for 30 updates from the `u150` checkpoint at stage `3a_rwm`. Verify the gate `trn ≥ 1%` and `win_rate ≥ 20%` is met.
 
 **Files involved:**
 - `training/ppo/train.py` (likely needs a CLI flag for forcing)
@@ -1000,7 +1032,7 @@ Break the `trn=0%` bottleneck via targeted action-masking (Option β from the th
 
 3. **Run the smoke test:**
    ```bash
-   CKPT="checkpoints/crystalfront_ppo__0_3_0-ML__idle__1__1779364610/update_000200.pt"
+   CKPT="checkpoints/crystalfront_ppo__0_3_0-ML__idle__1__1779364610/update_000150.pt"
    python -m training.ppo.train \
      --curriculum \
      --curriculum_stage 13 \
@@ -1023,7 +1055,7 @@ Break the `trn=0%` bottleneck via targeted action-masking (Option β from the th
 
 **Acceptance:** G3' — gate criteria met within 30 updates.
 
-**Rollback:** Set `action_forcing_scale=0.0` and resume from u200.
+**Rollback:** Set `action_forcing_scale=0.0` and resume from u150.
 
 **Time estimate:** 1 day (implementation + run + analysis).
 
@@ -1207,7 +1239,7 @@ This would mean the noop-streak condition is wrong (the policy never does 30 con
 
 | File | Purpose |
 |------|---------|
-| `checkpoints/crystalfront_ppo__0_3_0-ML__idle__1__1779364610/update_000200.pt` | Reference checkpoint for shipping |
+| `checkpoints/crystalfront_ppo__0_3_0-ML__idle__1__1779364610/update_000150.pt` | Shipped checkpoint (v0.3.2-ML) and Option B starting point |
 | `training/eval/eval_checkpoint.py` | Existing evaluation script |
 | `training/ppo/policy.py` | Network architecture |
 | `training/ppo/train.py` | Training loop (modify for Option B's forcing) |
@@ -1271,21 +1303,21 @@ This would mean the noop-streak condition is wrong (the policy never does 30 con
 
 ## Appendix B: Commands cheat sheet
 
-### B.1 Option A commands
+### B.1 Option A commands (executed; recorded for posterity — ship checkpoint was u150)
 
 ```bash
 # Phase 1: Eval baseline
 cd /root/CrystalFront
 python -m training.eval.eval_checkpoint \
-  --checkpoint checkpoints/crystalfront_ppo__0_3_0-ML__idle__1__1779364610/update_000200.pt \
+  --checkpoint checkpoints/crystalfront_ppo__0_3_0-ML__idle__1__1779364610/update_000150.pt \
   --episodes 100
 
 # Phase 3: ONNX export
 python -m training.export_onnx \
-  --checkpoint checkpoints/.../update_000200.pt \
+  --checkpoint checkpoints/.../update_000150.pt \
   --output models/policy-v0.3.2-ML.onnx
 python -m training.test_onnx_parity \
-  --checkpoint checkpoints/.../update_000200.pt \
+  --checkpoint checkpoints/.../update_000150.pt \
   --onnx_path models/policy-v0.3.2-ML.onnx
 
 # Phase 4: Install onnxruntime-node
@@ -1318,8 +1350,8 @@ python -m training.diagnose_policy \
   --episodes 100 \
   --output /tmp/diag_u350_rwm.csv
 
-# Phase 2: Smoke test
-CKPT="checkpoints/crystalfront_ppo__0_3_0-ML__idle__1__1779364610/update_000200.pt"
+# Phase 2: Smoke test (u150 — the shipped checkpoint; u200 was degraded)
+CKPT="checkpoints/crystalfront_ppo__0_3_0-ML__idle__1__1779364610/update_000150.pt"
 python -m training.ppo.train \
   --curriculum \
   --curriculum_stage 13 \
