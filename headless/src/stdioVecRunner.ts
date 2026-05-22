@@ -51,6 +51,7 @@ import type { MatchState, MatchEntity } from "../../server/src/match/types.js";
 import type { PlayerSlot } from "../../server/src/match/types.js";
 import { buildObservation } from "./observation.js";
 import { getLegalActions } from "./legalActions.js";
+import type { LegalActionsOpts } from "./legalActions.js";
 import { expandMacroAction } from "./actionSpace.js";
 import { indexToAction, legalMask as buildLegalMask } from "./actionIndex.js";
 import { IdleBot, RushBot, WeakRushBot, MediumRushBot, PassiveBot, TurtleBot, MacroBot, HeavyBot } from "./bots/index.js";
@@ -102,6 +103,7 @@ const REPLAYS_DIR = resolve(REPO_ROOT, "replays");
 const BLUE_ID        = "headless-blue";
 const RED_ID         = "headless-red";
 let MAX_TICKS        = 6000;
+let ACTION_FORCING_SCALE = 0.0;  // read from reset_all; 0 = forcing off
 
 // ── per-slot state ────────────────────────────────────────────────────────────
 
@@ -121,6 +123,7 @@ interface SlotState {
   episodeActionCounts: Record<string, number>;
   episodeTotalActions: number;
   prePlace?: PrePlace;
+  noopStreak: number;
 }
 
 function makeBot(name: string): Agent {
@@ -146,6 +149,7 @@ function resetSlot(slot: SlotState, seed: number | undefined, opponent: string, 
   slot.lastTerminalReturn = 0;
   slot.episodeActionCounts = {};
   slot.episodeTotalActions = 0;
+  slot.noopStreak         = 0;
   slot.opponentName       = opponent.toLowerCase();
   slot.saveReplay         = doSave;
   slot.commandLog         = [];
@@ -184,6 +188,7 @@ function stepSlot(slot: SlotState, actionIdx: number): {
   const macroAction = indexToAction(actionIdx);
   slot.episodeTotalActions++;
   slot.episodeActionCounts[macroAction.type] = (slot.episodeActionCounts[macroAction.type] ?? 0) + 1;
+  slot.noopStreak = macroAction.type === "noop" ? slot.noopStreak + 1 : 0;
 
   const blueCmds = expandMacroAction(macroAction, match, BLUE_ID);
   for (const cmd of blueCmds) {
@@ -271,11 +276,17 @@ function stepSlot(slot: SlotState, actionIdx: number): {
     slot.episodeCount++;
     const doNextSave = slot.saveReplayEvery > 0 && slot.episodeCount % slot.saveReplayEvery === 0;
     const nextObs    = resetSlot(slot, undefined, slot.opponentName, doNextSave, undefined, slot.prePlace);
-    const nextLegal  = getLegalActions(slot.match!, BLUE_ID);
+    const forcingOpts: LegalActionsOpts = ACTION_FORCING_SCALE > 0
+      ? { noopStreak: slot.noopStreak, forcingScale: ACTION_FORCING_SCALE }
+      : {};
+    const nextLegal  = getLegalActions(slot.match!, BLUE_ID, forcingOpts);
     return { obs: nextObs, legalMask: buildLegalMask(nextLegal), reward, done, info };
   }
 
-  const legal = getLegalActions(match, BLUE_ID);
+  const forcingOpts: LegalActionsOpts = ACTION_FORCING_SCALE > 0
+    ? { noopStreak: slot.noopStreak, forcingScale: ACTION_FORCING_SCALE }
+    : {};
+  const legal = getLegalActions(match, BLUE_ID, forcingOpts);
   return { obs: blueObs, legalMask: buildLegalMask(legal), reward, done, info };
 }
 
@@ -304,6 +315,7 @@ rl.on("line", (raw) => {
         const cfgOverrides = msg.config_overrides as Partial<import("../../server/src/match/types.js").MatchConfig> | undefined;
         const prePlaceMsg  = msg.pre_place as PrePlace | undefined;
         if (msg.max_ticks !== undefined) MAX_TICKS = msg.max_ticks as number;
+        if (msg.action_forcing_scale !== undefined) ACTION_FORCING_SCALE = msg.action_forcing_scale as number;
 
         slots = [];
         const readySlots: { obs: PlayerObservation; legalMask: boolean[] }[] = [];
@@ -321,6 +333,7 @@ rl.on("line", (raw) => {
             lastTerminalReturn: 0,
             episodeActionCounts: {}, episodeTotalActions: 0,
             prePlace: prePlaceMsg,
+            noopStreak: 0,
           };
           const obs = resetSlot(slot, seeds[i], opponents[i], saveReplays[i], cfgOverrides, prePlaceMsg);
           slots.push(slot);
@@ -339,6 +352,12 @@ rl.on("line", (raw) => {
         }
         const resultSlots = slots.map((slot, i) => stepSlot(slot, actions[i]));
         send({ type: "step_result", slots: resultSlots });
+        break;
+      }
+
+      case "set_forcing_scale": {
+        ACTION_FORCING_SCALE = (msg.scale as number) ?? 0.0;
+        send({ type: "ack_forcing_scale", scale: ACTION_FORCING_SCALE });
         break;
       }
 
