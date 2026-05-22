@@ -1259,8 +1259,22 @@ This would mean the noop-streak condition is wrong (the policy never does 30 con
 
 **If both variants fail:** Escalate to one of:
 - **Option α (hierarchical action space)**, per third review §B5.1. ETA: 3–5 weeks.
-- **Option γ (intrinsic motivation / RND)**, per §B5.3. ETA: 2–3 weeks.
+- **Option γ (intrinsic motivation / RND)**, per §B5.3. ETA: 2–3 weeks. ← **IN PROGRESS**
 - **Stop and ship Option A.** This is a legitimate outcome.
+
+**Option γ status (2026-05-22):**
+
+Implementation: `training/ppo/policy.py` — `RNDModel` + `RunningMeanStd` classes. `training/ppo/train.py` — `--rnd_coef` + `--rnd_embed_dim` flags, per-step intrinsic reward, predictor training per PPO update, checkpoint save/restore.
+
+Architecture: 22-dim global obs → target(22→64→64, fixed) + predictor(22→64→64→64, trained). Intrinsic reward = ||predictor(obs_norm) - target(obs_norm)||². Normalised by `rew_rms` running std before scaling.
+
+Calibration finding: `rnd_coef=0.01` provides only +0.001/step — negligible vs ±100 terminal. Must use `rnd_coef=0.5` for meaningful signal (+0.29/novel step, +5-17 per novel episode).
+
+Key insight: RND alone doesn't work — policy never visits novel states (p(train_unit)≈0). Must combine with Variant β' forcing to mechanically bootstrap visits to novel states. RND then rewards the novel multi-unit states reached via forcing.
+
+**Current run (PID 101428, log `/tmp/train_v040_rnd05.log`):**
+`rnd_coef=0.5, action_forcing_scale=1.0, ent_coef=0.05, curriculum_stage=14, total_timesteps=15M`
+Started from u150. Decision gate: auto-regression cycle at ~u300. If trn≥2% or win_rate≥10% on re-entry to 3a_rm_3k, approach is working.
 
 ### 2.10 Phase 7: v0.4.0-ML release
 
