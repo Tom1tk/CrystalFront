@@ -62,11 +62,12 @@ export function getLegalActions(match: MatchState, playerId: string, opts: Legal
       if (Math.random() < forcingScale) suppressNoop = true;
     }
 
-    // Mode B (Variant β'): train_unit_streak >= 200 + barracks ready + <3 units + affordable
+    // Mode B (Variant β'): train_unit_streak >= 50 + barracks ready + <3 units + affordable
     // <3 threshold: force training WHILE 2 pre-placed units still alive (not just after they die)
     // Also suppresses attack_move: prevents "keep attacking with 2 units instead of training 3rd"
+    // threshold=50: 4× more frequent than 200, targets trn≥5% for G4'
     const trainUnitStreak = opts.trainUnitStreak ?? 0;
-    if (trainUnitStreak >= 200 &&
+    if (trainUnitStreak >= 50 &&
         completedBarracks.length >= 1 &&
         combatUnitsNow.length < 3 &&
         economy.resources >= 50) {

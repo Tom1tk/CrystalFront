@@ -1923,6 +1923,26 @@ console.log("\n--- legalActions: action-forcing (Option B) ---");
     assert(legal.some(a => a.type === "noop"), "forcing: noop present when >=3 units (Mode B not met)");
   }
 
+  // 7c. Mode B boundary: trainUnitStreak=50 (at threshold) fires; trainUnitStreak=49 does not
+  {
+    const setup = () => {
+      const { m } = forcingMatch();
+      const pidx = m.players.findIndex(p => p?.playerId === "fb");
+      m.economy[pidx]!.resources = 500;
+      m.economy[pidx]!.maxSupply = 20;
+      m.economy[pidx]!.supply = 2;
+      m.entities.set("b1", { id: "b1", ownerId: "fb", type: "building", buildingType: "barracks",
+        constructionProgress: 100, health: 500, maxHealth: 500, x: 200, y: 300, radius: 20, productionQueue: [] } as any);
+      m.entities.set("u1", { id: "u1", ownerId: "fb", type: "skirmisher",
+        health: 100, maxHealth: 100, x: 300, y: 300, radius: 8 } as any);
+      return m;
+    };
+    assert(!getLegalActions(setup(), "fb", { trainUnitStreak: 50, forcingScale: 1.0 }).some(a => a.type === "noop"),
+      "forcing threshold=50: noop suppressed at trainUnitStreak=50");
+    assert(getLegalActions(setup(), "fb", { trainUnitStreak: 49, forcingScale: 1.0 }).some(a => a.type === "noop"),
+      "forcing threshold=50: noop present at trainUnitStreak=49 (below threshold)");
+  }
+
   // 8. Mode A: no barracks, can afford → noop suppressed
   {
     const { m } = forcingMatch();
