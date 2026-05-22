@@ -2,19 +2,29 @@ import type { MacroAction } from "./types.js";
 import type { MatchState } from "../../server/src/match/types.js";
 import { BUILDING_DEFS, UNIT_DEFS, ECONOMY, MAP } from "@crystalfront/shared";
 
+export interface LegalActionsOpts {
+  noopStreak?: number;
+  forcingScale?: number;  // 0.0 = off, 1.0 = always force when conditions met
+}
+
 /**
  * Returns the set of macro-actions that are currently legal for the given player.
  * "Legal" means the action is structurally possible (enough resources, supply,
  * correct buildings exist, etc.) — not that it's necessarily wise.
+ *
+ * When opts.forcingScale > 0, noop may be suppressed when the policy has been
+ * idle for too long and could afford to train a combat unit (action-masking
+ * injection for Option B curriculum). Default behaviour (forcingScale=0) is
+ * identical to the original function.
  */
-export function getLegalActions(match: MatchState, playerId: string): MacroAction[] {
-  const legal: MacroAction[] = [{ type: "noop" }];
+export function getLegalActions(match: MatchState, playerId: string, opts: LegalActionsOpts = {}): MacroAction[] {
+  const legal: MacroAction[] = [];
 
   const playerIdx = match.players.findIndex(p => p?.playerId === playerId);
-  if (playerIdx < 0) return legal;
+  if (playerIdx < 0) { legal.push({ type: "noop" }); return legal; }
 
   const economy = match.economy[playerIdx];
-  if (!economy) return legal;
+  if (!economy) { legal.push({ type: "noop" }); return legal; }
 
   const isBlue = match.players[playerIdx]?.color === "blue";
   const mid = MAP.width / 2;
@@ -23,6 +33,28 @@ export function getLegalActions(match: MatchState, playerId: string): MacroActio
   const visibleIds: Set<string> = match.visibilityData?.get(playerId)?.entityIds ?? new Set();
 
   const ownEntities = [...match.entities.values()].filter(e => e.ownerId === playerId);
+
+  // Action-forcing: suppress noop when idle too long and can afford to train
+  // (Option B curriculum injection — default forcingScale=0 is a no-op)
+  const forcingScale = opts.forcingScale ?? 0.0;
+  let suppressNoop = false;
+  if (forcingScale > 0) {
+    const noopStreak = opts.noopStreak ?? 0;
+    const completedBarracks = ownEntities.filter(
+      e => e.type === "building" && e.buildingType === "barracks" && e.constructionProgress >= 100
+    );
+    const combatUnitsNow = ownEntities.filter(
+      e => ["skirmisher", "gunner", "bruiser", "medic"].includes(e.type)
+    );
+    const canAffordUnit = economy.resources >= 50;
+    const conditionsMet =
+      noopStreak >= 30 &&
+      canAffordUnit &&
+      completedBarracks.length >= 1 &&
+      combatUnitsNow.length < 2;
+    if (conditionsMet && Math.random() < forcingScale) suppressNoop = true;
+  }
+  if (!suppressNoop) legal.push({ type: "noop" });
   const workers = ownEntities.filter(e => e.type === "worker");
   const idleWorkers = workers.filter(e => !e.buildTargetId && !e.gatheringNodeId && !e.attackTargetId);
   const availableBuilders = workers.filter(e => !e.buildTargetId);

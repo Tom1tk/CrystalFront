@@ -1790,6 +1790,99 @@ console.log("\n--- Replay round-trip: playerIds survive save/load ---");
   if (_existsSync(path)) _unlinkSync(path);
 }
 
+// ---- legalActions action-forcing (Option B §2.4) ----
+console.log("\n--- legalActions: action-forcing (Option B) ---");
+{
+  function forcingMatch() {
+    const e = new MatchEngine();
+    const m = e.createMatch("FORCE-TEST", [
+      { playerId: "fb", username: "Blue", color: "blue", score: 0 },
+      { playerId: "fr", username: "Red",  color: "red",  score: 0 },
+    ]);
+    m.phase = "playing";
+    return { e, m };
+  }
+
+  // 1. Default: noop always present
+  {
+    const { m } = forcingMatch();
+    const legal = getLegalActions(m, "fb");
+    assert(legal.some(a => a.type === "noop"), "forcing default: noop present with no opts");
+  }
+
+  // 2. forcingScale=0 + big streak: noop still present
+  {
+    const { m } = forcingMatch();
+    const legal = getLegalActions(m, "fb", { noopStreak: 9999, forcingScale: 0.0 });
+    assert(legal.some(a => a.type === "noop"), "forcing off (scale=0): noop present even with huge streak");
+  }
+
+  // 3. Below streak threshold: noop present
+  {
+    const { m } = forcingMatch();
+    const pidx = m.players.findIndex(p => p?.playerId === "fb");
+    m.economy[pidx]!.resources = 500;
+    m.economy[pidx]!.maxSupply = 20;
+    m.economy[pidx]!.supply = 0;
+    m.entities.set("b1", { id: "b1", ownerId: "fb", type: "building", buildingType: "barracks",
+      constructionProgress: 100, health: 500, maxHealth: 500, x: 200, y: 300, radius: 20, productionQueue: [] } as any);
+    const legal = getLegalActions(m, "fb", { noopStreak: 29, forcingScale: 1.0 });
+    assert(legal.some(a => a.type === "noop"), "forcing: noop present when streak < 30");
+  }
+
+  // 4. No resources: noop present (can't afford)
+  {
+    const { m } = forcingMatch();
+    const pidx = m.players.findIndex(p => p?.playerId === "fb");
+    m.economy[pidx]!.resources = 0;
+    m.entities.set("b1", { id: "b1", ownerId: "fb", type: "building", buildingType: "barracks",
+      constructionProgress: 100, health: 500, maxHealth: 500, x: 200, y: 300, radius: 20, productionQueue: [] } as any);
+    const legal = getLegalActions(m, "fb", { noopStreak: 200, forcingScale: 1.0 });
+    assert(legal.some(a => a.type === "noop"), "forcing: noop present when resources < 50");
+  }
+
+  // 5. No barracks: noop present
+  {
+    const { m } = forcingMatch();
+    const pidx = m.players.findIndex(p => p?.playerId === "fb");
+    m.economy[pidx]!.resources = 500;
+    const legal = getLegalActions(m, "fb", { noopStreak: 200, forcingScale: 1.0 });
+    assert(legal.some(a => a.type === "noop"), "forcing: noop present when no completed barracks");
+  }
+
+  // 6. All conditions met + scale=1.0: noop suppressed
+  {
+    const { m } = forcingMatch();
+    const pidx = m.players.findIndex(p => p?.playerId === "fb");
+    m.economy[pidx]!.resources = 500;
+    m.economy[pidx]!.maxSupply = 20;
+    m.economy[pidx]!.supply = 0;
+    m.entities.set("b1", { id: "b1", ownerId: "fb", type: "building", buildingType: "barracks",
+      constructionProgress: 100, health: 500, maxHealth: 500, x: 200, y: 300, radius: 20, productionQueue: [] } as any);
+    // 0 combat units
+    const legal = getLegalActions(m, "fb", { noopStreak: 200, forcingScale: 1.0 });
+    assert(!legal.some(a => a.type === "noop"), "forcing: noop SUPPRESSED when all conditions met (scale=1.0)");
+    assert(legal.length > 0, "forcing: non-empty legal list when noop suppressed");
+  }
+
+  // 7. Already 2 combat units: noop present (forcing condition not met)
+  {
+    const { m } = forcingMatch();
+    const pidx = m.players.findIndex(p => p?.playerId === "fb");
+    m.economy[pidx]!.resources = 500;
+    m.economy[pidx]!.maxSupply = 20;
+    m.economy[pidx]!.supply = 4;
+    m.entities.set("b1", { id: "b1", ownerId: "fb", type: "building", buildingType: "barracks",
+      constructionProgress: 100, health: 500, maxHealth: 500, x: 200, y: 300, radius: 20, productionQueue: [] } as any);
+    m.entities.set("u1", { id: "u1", ownerId: "fb", type: "skirmisher",
+      health: 100, maxHealth: 100, x: 300, y: 300, radius: 8 } as any);
+    m.entities.set("u2", { id: "u2", ownerId: "fb", type: "skirmisher",
+      health: 100, maxHealth: 100, x: 320, y: 300, radius: 8 } as any);
+    const legal = getLegalActions(m, "fb", { noopStreak: 200, forcingScale: 1.0 });
+    assert(legal.some(a => a.type === "noop"), "forcing: noop present when >=2 combat units (condition not met)");
+  }
+}
+
 console.log(`\n${"=".repeat(40)}`);
 console.log(`Results: ${passed} passed, ${failed} failed`);
 console.log("=".repeat(40) + "\n");

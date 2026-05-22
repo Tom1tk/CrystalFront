@@ -208,6 +208,11 @@ class Config:
     curriculum:           bool  = False
     curriculum_stage:     int   = 0    # index into CURRICULUM list (0 = first stage)
 
+    # Action forcing (Option B — suppress noop when idle during training)
+    action_forcing_scale:      float = 0.0  # 0.0 = off, 1.0 = always force when conditions met
+    action_forcing_fade_start: int   = 0    # global step to begin linear fade (0 = no fade)
+    action_forcing_fade_end:   int   = 0    # global step where scale reaches 0.0
+
     # League (Phase 4)
     league:               bool  = False
     league_pfsp_temp:     float = 0.5
@@ -403,7 +408,8 @@ def train(cfg: Config) -> None:
         if cfg.starting_resources > 0: ov["startingResources"] = cfg.starting_resources
         return ov, cfg.max_ticks, cfg.opponent, None
 
-    def _build_vec_envs(config_overrides: dict, max_ticks: int, opponent: str, pre_place: dict | None) -> list[CrystalFrontVecEnv]:
+    def _build_vec_envs(config_overrides: dict, max_ticks: int, opponent: str, pre_place: dict | None,
+                        forcing_scale: float = 0.0) -> list[CrystalFrontVecEnv]:
         _stagger = min(0.4, 15.0 / max(cfg.num_procs - 1, 1))
         return [
             CrystalFrontVecEnv(
@@ -414,6 +420,7 @@ def train(cfg: Config) -> None:
                 config_overrides=config_overrides or None,
                 max_ticks=max_ticks,
                 pre_place=pre_place,
+                action_forcing_scale=forcing_scale,
             )
             for i in range(cfg.num_procs)
         ]
@@ -424,7 +431,8 @@ def train(cfg: Config) -> None:
         print(f"  Curriculum stage: {cur_stage.name}  (map={cur_stage.map_width or 'default'}, "
               f"crystal_hp={cur_stage.crystal_health or 'default'}, opp={cur_stage.opponent})", flush=True)
         writer.add_scalar("curriculum/stage", cur_stage_idx, 0)
-    vec_envs = _build_vec_envs(_cfg_overrides, _max_ticks, _opponent, _pre_place)
+    vec_envs = _build_vec_envs(_cfg_overrides, _max_ticks, _opponent, _pre_place,
+                               forcing_scale=cfg.action_forcing_scale)
 
     # ── agent & optimiser ─────────────────────────────────────────────────────
     agent = CrystalFrontAgent(
@@ -484,8 +492,9 @@ def train(cfg: Config) -> None:
 
     # ── bookkeeping ───────────────────────────────────────────────────────────
     buffer = RolloutBuffer(cfg.num_steps, cfg.num_envs, device)
-    num_updates         = cfg.total_timesteps // cfg.batch_size
-    global_step         = 0
+    num_updates          = cfg.total_timesteps // cfg.batch_size
+    global_step          = 0
+    _cur_forcing_scale   = cfg.action_forcing_scale  # tracks current live scale for fade
     episode_rewards     = [0.0] * cfg.num_envs
     episode_lengths     = [0]   * cfg.num_envs
     completed_episodes  = 0
@@ -520,6 +529,22 @@ def train(cfg: Config) -> None:
         if cfg.anneal_lr:
             frac = 1.0 - (update - 1) / num_updates
             optimizer.param_groups[0]["lr"] = cfg.learning_rate * frac
+
+        # ── action forcing fade schedule ──────────────────────────────────────
+        if cfg.action_forcing_scale > 0 and cfg.action_forcing_fade_start > 0:
+            ss, fs = cfg.action_forcing_fade_start, cfg.action_forcing_fade_end
+            if global_step < ss:
+                new_scale = cfg.action_forcing_scale
+            elif fs > ss and global_step < fs:
+                new_scale = cfg.action_forcing_scale * (1.0 - (global_step - ss) / (fs - ss))
+            else:
+                new_scale = 0.0
+            new_scale = round(new_scale, 4)
+            if new_scale != _cur_forcing_scale:
+                _cur_forcing_scale = new_scale
+                for ve in vec_envs:
+                    ve.set_forcing_scale(_cur_forcing_scale)
+            writer.add_scalar("training/action_forcing_scale", _cur_forcing_scale, global_step)
 
         # ── rollout collection ────────────────────────────────────────────────
         for step in range(cfg.num_steps):
@@ -697,7 +722,7 @@ def train(cfg: Config) -> None:
                                     writer.add_scalar("curriculum/stage", cur_stage_idx, global_step)
                                     for ve in vec_envs: ve.close()
                                     _ov, _mt, _op, _pp = _resolve_env_params()
-                                    vec_envs = _build_vec_envs(_ov, _mt, _op, _pp)
+                                    vec_envs = _build_vec_envs(_ov, _mt, _op, _pp, forcing_scale=_cur_forcing_scale)
                                     # Re-init obs by resetting all envs
                                     _init = list(executor.map(_do_reset_vec,
                                         [(vec_envs[k], k, [[{}]*cfg.vec_size][0]) for k in range(cfg.num_procs)]))
@@ -715,7 +740,7 @@ def train(cfg: Config) -> None:
                                 writer.add_scalar("curriculum/stage", cur_stage_idx, global_step)
                                 for ve in vec_envs: ve.close()
                                 _ov, _mt, _op, _pp = _resolve_env_params()
-                                vec_envs = _build_vec_envs(_ov, _mt, _op, _pp)
+                                vec_envs = _build_vec_envs(_ov, _mt, _op, _pp, forcing_scale=_cur_forcing_scale)
                                 _init = list(executor.map(_do_reset_vec,
                                     [(vec_envs[k], k, [[{}]*cfg.vec_size][0]) for k in range(cfg.num_procs)]))
                                 _flat = [r for batch in _init for r in batch]

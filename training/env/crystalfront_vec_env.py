@@ -67,14 +67,16 @@ class CrystalFrontVecEnv:
         config_overrides: dict | None = None,
         max_ticks: int = 6000,
         pre_place: dict | None = None,
+        action_forcing_scale: float = 0.0,
     ):
-        self.vec_size          = vec_size
-        self.opponent          = opponent
-        self.save_replay_every = save_replay_every
-        self._startup_delay    = startup_delay
-        self._config_overrides = config_overrides or {}
-        self._max_ticks        = max_ticks
-        self._pre_place        = pre_place
+        self.vec_size              = vec_size
+        self.opponent              = opponent
+        self.save_replay_every     = save_replay_every
+        self._startup_delay        = startup_delay
+        self._config_overrides     = config_overrides or {}
+        self._max_ticks            = max_ticks
+        self._pre_place            = pre_place
+        self._action_forcing_scale = action_forcing_scale
         self._proc: subprocess.Popen | None = None
         self._last_legal_masks = [np.ones(ACTION_SPACE_SIZE, dtype=bool)] * vec_size
 
@@ -157,6 +159,8 @@ class CrystalFrontVecEnv:
             msg["config_overrides"] = self._config_overrides
         if self._pre_place:
             msg["pre_place"] = self._pre_place
+        if self._action_forcing_scale > 0.0:
+            msg["action_forcing_scale"] = self._action_forcing_scale
         self._send(msg)
         msg = self._recv()
         assert msg["type"] == "ready", f"Expected 'ready', got {msg['type']}"
@@ -168,6 +172,13 @@ class CrystalFrontVecEnv:
             self._last_legal_masks[i] = mask
             results.append((obs, {"legal_mask": mask.copy()}))
         return results
+
+    def set_forcing_scale(self, scale: float) -> None:
+        """Update action-forcing scale mid-training (for fade-out schedule)."""
+        self._action_forcing_scale = scale
+        self._send({"type": "set_forcing_scale", "scale": scale})
+        msg = self._recv()
+        assert msg["type"] == "ack_forcing_scale", f"Expected ack_forcing_scale, got {msg['type']}"
 
     def step(self, actions: list[int]):
         """
