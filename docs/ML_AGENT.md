@@ -1,12 +1,12 @@
 # Crystal Front — ML Agent
 
-A reinforcement learning bot for Crystal Front RTS. Trains via self-play and league competition, ships as an in-game opponent, and acts as a permanent balance analysis instrument.
+A reinforcement learning bot for Crystal Front RTS. Trains via PPO + curriculum learning + behaviour cloning, ships as an in-game opponent, and acts as a permanent balance analysis instrument.
 
 **Branch:** `CrystalFront-ML`  
-**Algorithm:** PPO (Proximal Policy Optimisation)  
-**Current phase:** Phase 5++ — Reward calibration + training optimisation ✅  
-**Current version:** `0.1.47-ML`  
-**Active run:** `crystalfront_ppo__idle__1__1778855546` (agent v2, vs idle, 3M steps)
+**Algorithm:** PPO (Proximal Policy Optimisation) + Behaviour Cloning warmup  
+**Current phase:** Phase 6 — Production integration ✅ (v0.3.2-ML shipped 2026-05-22)  
+**Current version:** `0.3.2-ML`  
+**Shipped model:** `models/policy-v0.3.2-ML.onnx` (checkpoint u150, ~1.3 MB)
 
 ---
 
@@ -469,16 +469,39 @@ message to the server so frames arrive faster.
 
 ---
 
-### Phase 6 — Production bot integration 🔲 Not started
+### Phase 6 — Production bot integration ✅ Complete (v0.3.2-ML)
 
 **Goal:** Trained policy ships in the live game as a player option.
 
-**Tasks:**
-- ONNX export from PyTorch (`training/eval/export_onnx.py`)
-- ONNX runtime in Node (`onnxruntime-node`) — `BotPlayer` loads `.onnx` file
-- Three difficulty tiers: early / mid / late training checkpoints
-- "Play vs Bot" lobby UI with difficulty selector
-- In-process driver: bot commands enter via `processCommand`, no WebSocket needed
+| Task | Status |
+|------|--------|
+| ONNX export pipeline (`training/export_onnx.py`) | ✅ |
+| ONNX runtime in Node (`onnxruntime-node`) | ✅ `headless/src/bots/mlBot.ts` |
+| Model file (`models/policy-v0.3.2-ML.onnx` + `.onnx.data`) | ✅ ~1.3 MB |
+| Server pre-loads ONNX session at startup | ✅ `mlBotSession` singleton in `server/src/index.ts` |
+| `createBotAgent()` factory routing bot name → Agent instance | ✅ |
+| `BotSelectMenu.tsx` — separate "Play vs Bot" screen | ✅ SCRIPTED / ML sections |
+| xNorm mirroring when bot plays as RED | ✅ `mx = isRed ? (x => 1-x) : (x => x)` |
+| All matches (PvP + vs-bot) saved as replays | ✅ with both player usernames |
+| Replay playback shows actual gameplay | ✅ bluePlayerId/redPlayerId UUID fix |
+| 443 tests passing | ✅ |
+
+**Shipped capability (u150 checkpoint, 100 deterministic games per opponent):**
+
+| Opponent | Win rate |
+|----------|----------|
+| idle | 100% |
+| passive | 100% |
+| rush_weak | 86% |
+| rush_weak_medium | 99% |
+| macro | 99% |
+| rush_medium | 0% |
+| rush | 1% |
+| turtle | 0% |
+
+**Key design note — async inference:** `BotPlayer.tick()` is synchronous. `MlBot.step()` returns the cached `lastAction` immediately and fires `session.run().then(result => { this.lastAction = ... })` in the background. The 1-tick action lag is imperceptible at the game's tick rate.
+
+**Key design note — xNorm mirroring:** The policy was trained exclusively as BLUE (left side, xNorm near 0 = own crystal). When the bot plays RED, the observation must be mirrored by flipping `1 - xNorm` on all entity and node positions before feeding the policy. `isRed` is detected in `init()` by reading `match.players[idx].color`.
 
 ---
 
@@ -496,11 +519,11 @@ This is the steady-state the previous phases build toward. After every meaningfu
 
 ## 5. Observation specification
 
-> **Version 1.0** — locked for initial training run. Changes require a version bump.
+> **Version 0.3.2-ML** — reflects the shipped policy. Source of truth: `headless/src/observation.ts` and `headless/src/bots/mlBot.ts`.
 
 The observation fed to the agent each tick has three parts. Fog-of-war is applied before building the observation: the agent only sees entities its own units have vision on.
 
-### 5.1 Global features — `vec[12]`
+### 5.1 Global features — `vec[22]`
 
 | Index | Name | Range | Notes |
 |-------|------|--------|-------|
@@ -510,20 +533,30 @@ The observation fed to the agent each tick has three parts. Fog-of-war is applie
 | 3 | `oppVisibleSupply` | [0, 1] | Enemy supply fraction; 0 if no enemies visible |
 | 4 | `tick` | [0, 1] | tick / 6000 |
 | 5 | `scoreDiff` | (−∞, ∞) | own score − opponent score |
-| 6 | `ownCrystalHealthFrac` | [0, 1] | Own crystal hp / 1000 |
-| 7 | `oppCrystalHealthFrac` | [0, 1] | Enemy crystal hp / 1000; 0 if not visible |
+| 6 | `ownCrystalHealthFrac` | [0, 1] | Own crystal hp / maxHp |
+| 7 | `oppCrystalHealthFrac` | [0, 1] | Enemy crystal hp / maxHp; 0 if not visible |
 | 8 | `ownResourcesWinFrac` | [0, 1] | Held resources / passiveWinThreshold |
 | 9 | `oppResourcesWinFrac` | [0, 1] | Enemy held resources / threshold; 0 if not visible |
 | 10 | `ownLifetimeResourcesFrac` | [0, 1] | Total mined / (threshold × 2) — mining rate signal |
 | 11 | `oppLifetimeResourcesFrac` | [0, 1] | 0 if unknown |
+| 12 | `enemyWorkerCount` | [0, ∞) | Visible enemy workers |
+| 13 | `enemySkirmisherCount` | [0, ∞) | Visible enemy skirmishers |
+| 14 | `enemyBruiserCount` | [0, ∞) | Visible enemy bruisers |
+| 15 | `enemyBarracksCount` | [0, ∞) | Visible enemy barracks |
+| 16 | `enemyTurretCount` | [0, ∞) | Visible enemy turrets |
+| 17 | `enemyForwardUnitFrac` | [0, 1] | Fraction of visible enemy units in own half |
+| 18 | `nearestEnemyToCrystalDistNorm` | [0, 1] | Normalised distance of nearest enemy to own crystal |
+| 19 | `ownCombatInOwnHalf` | [0, ∞) | Own combat units in own half (defensive signal) |
+| 20 | `enemyCombatInOwnHalf` | [0, ∞) | Visible enemy combat units in own half |
+| 21 | `totalVisibleEnemyCombat` | [0, ∞) | Total visible enemy combat units |
 
-### 5.2 Entity features — `vec[11]` per entity (up to 64)
+### 5.2 Entity features — `vec[12]` per entity (up to 64)
 
 | Index | Name | Range | Notes |
 |-------|------|--------|-------|
 | 0 | `typeIndex` | [0, 9] | Index into ENTITY_TYPES (see below) |
 | 1 | `owner` | {1, −1} | 1 = mine, −1 = enemy |
-| 2 | `xNorm` | [0, 1] | x / mapWidth |
+| 2 | `xNorm` | [0, 1] | x / mapWidth — **mirrored (1−x) when bot plays RED** |
 | 3 | `yNorm` | [0, 1] | y / mapHeight |
 | 4 | `healthFrac` | [0, 1] | health / maxHealth |
 | 5 | `constructionFrac` | [0, 1] | construction progress (buildings); 1 otherwise |
@@ -532,6 +565,7 @@ The observation fed to the agent each tick has three parts. Fog-of-war is applie
 | 8 | `isGathering` | {0, 1} | Assigned to resource node |
 | 9 | `isBuilding` | {0, 1} | Worker with active build target |
 | 10 | `attackCooldownNorm` | [0, 1] | attackCooldown / 25 |
+| 11 | `inAttackRange` | {0, 1} | Enemy entity within attack range of own unit |
 
 **ENTITY_TYPES index mapping:**
 ```
@@ -542,7 +576,7 @@ The observation fed to the agent each tick has three parts. Fog-of-war is applie
 4: bruiser           9: building_turret
 ```
 
-In the policy network, `typeIndex` is passed through a learned 16-dimensional embedding before being concatenated with the other features (total entity input dim: 26).
+In the policy network, `typeIndex` is passed through a learned embedding before concatenation.
 
 ### 5.3 Node features — `vec[5]` per node (up to 8)
 
@@ -558,9 +592,9 @@ In the policy network, `typeIndex` is passed through a learned 16-dimensional em
 
 ## 6. Action space
 
-> **Version 1.0** — 73 actions total. Integer indices are stable and must not be reordered without a version bump.
+> **Version 0.3.2-ML** — 81 actions total. See `headless/src/actionIndex.ts` for the canonical integer mapping.
 
-Actions are **hierarchical macro-actions**. The PPO policy outputs a single integer `a ∈ [0, 72]`. `indexToAction()` converts it to a structured `MacroAction`; `expandMacroAction()` converts that to raw engine commands. Illegal actions are masked to −∞ before sampling — the agent can never select an action it cannot execute.
+Actions are **hierarchical macro-actions**. The PPO policy outputs a single integer `a ∈ [0, 80]`. `indexToAction()` converts it to a structured `MacroAction`; `expandMacroAction()` converts that to raw engine commands. Illegal actions are masked to −∞ before sampling — the agent can never select an action it cannot execute.
 
 ### Full action table
 
@@ -574,7 +608,9 @@ Actions are **hierarchical macro-actions**. The PPO policy outputs a single inte
 | 54–57 | `retreat` | 4 groups | 4 |
 | 58–69 | `assign_workers` | 3 node choices × 4 counts | 12 |
 | 70–72 | `set_rally` | 3 target zones | 3 |
-| **Total** | | | **73** |
+| 71–75 | `attack_move` | all_idle_combat × 5 zones | 5 |
+| 76–80 | `attack_move` | idle_workers × 5 zones | 5 |
+| **Total** | | | **81** |
 
 ### Sub-field values
 
@@ -858,39 +894,62 @@ CrystalFront/
 │   ├── runMatch.ts                     # Single-match entry point (no WebSockets)
 │   ├── observation.ts                  # Fog-filtered observation builder
 │   ├── actionSpace.ts                  # MacroAction → raw engine commands
-│   ├── actionIndex.ts                  # Integer ↔ MacroAction mapping (PPO interface)
+│   ├── actionIndex.ts                  # Integer ↔ MacroAction mapping (81 actions)
 │   ├── legalActions.ts                 # Legal-action enumerator + mask
+│   ├── reward.ts                       # Reward computation (single source of truth)
 │   ├── stdioRunner.ts                  # Node subprocess: reward computation + protocol
+│   ├── stdioVecRunner.ts               # Vectorised runner (N games per process)
 │   ├── cli.ts                          # Manual match runner + replay saver
 │   └── bots/
+│       ├── mlBot.ts                    # ✅ SHIPPED — ONNX policy via onnxruntime-node
 │       ├── idleBot.ts                  # Gathers resources, nothing else
+│       ├── passiveBot.ts               # Economy only, never attacks
 │       ├── rushBot.ts                  # Early barracks, mass-skirmisher push
+│       ├── weakRushBot.ts              # Slower rush, fewer units
+│       ├── weakMediumRushBot.ts        # Intermediate between weak and medium rush
+│       ├── mediumRushBot.ts            # Timed push with 3+ skirmishers
 │       ├── turtleBot.ts                # 7 workers + 3 turrets + resource accumulation win
 │       ├── macroBot.ts                 # Economy + foundry tech + mixed army
 │       └── heavyBot.ts                 # Slow foundry build → heavy bruiser/medic push
 │
-├── server/src/match/                   # Game simulation
-│   ├── matchEngine.ts                  # Authoritative engine (pure, no setInterval)
-│   ├── liveMatchRunner.ts              # setInterval driver for production server
-│   ├── replayRunner.ts                 # Replay playback + versioned balance + metadata
-│   ├── botPlayer.ts                    # In-process bot driver for live game
-│   └── engine/
-│       ├── rng.ts                      # Seedable mulberry32 PRNG
-│       └── idGen.ts                    # Monotonic entity ID counter
+├── server/src/
+│   ├── index.ts                        # Server entry; createBotAgent() factory; mlBotSession
+│   └── match/
+│       ├── matchEngine.ts              # Authoritative engine (pure, no setInterval)
+│       ├── liveMatchRunner.ts          # setInterval driver for production server
+│       ├── replayRunner.ts             # Replay save/load + versioned balance + metadata
+│       ├── botPlayer.ts                # In-process bot driver for live game
+│       └── engine/
+│           ├── rng.ts                  # Seedable mulberry32 PRNG
+│           └── idGen.ts                # Monotonic entity ID counter
+│
+├── client/src/
+│   └── components/
+│       ├── BotSelectMenu.tsx           # ✅ SHIPPED — "Play vs Bot" screen (SCRIPTED + ML)
+│       ├── ReplayBrowser.tsx           # Replay browser with pagination + filters
+│       └── ...
 │
 ├── shared/src/
 │   ├── gameBalance.ts                  # Live balance values (worker cost, speeds, etc.)
 │   └── balanceHistory.ts              # Versioned balance snapshots for replay accuracy
 │
+├── models/                             # Exported ONNX policies (gitignored — large files)
+│   ├── policy-v0.3.2-ML.onnx          # ✅ SHIPPED — 81-action policy (u150 checkpoint)
+│   └── policy-v0.3.2-ML.onnx.data    # External data tensor file (required alongside .onnx)
+│
 ├── training/                           # Python PPO training pipeline
 │   ├── env/
-│   │   └── crystalfront_env.py         # Gymnasium wrapper (per-reset opponent, startup stagger)
+│   │   ├── crystalfront_env.py         # Gymnasium wrapper (single game per process)
+│   │   └── crystalfront_vec_env.py     # Vectorised wrapper (N games per process)
 │   ├── ppo/
 │   │   ├── policy.py                   # SetTransformer + CrystalFrontAgent
-│   │   ├── train.py                    # PPO training loop (league + single-opponent + GPU)
+│   │   ├── train.py                    # PPO training loop (curriculum + GPU)
 │   │   └── league.py                   # LeagueManager + PFSP sampling
+│   ├── eval/
+│   │   └── eval_checkpoint.py          # Load .pt, run N games vs each bot, print win table
+│   ├── export_onnx.py                  # ✅ PyTorch → ONNX export (_OnnxWrapper + dynamo)
+│   ├── bc_pretrain.py                  # Behaviour cloning warmup from bot demonstrations
 │   ├── test_env.py                     # End-to-end smoke test
-│   ├── balance_report.py               # Batch match runner + balance report generator
 │   └── requirements.txt
 │
 ├── replays/                            # Saved match replays (gitignored)
@@ -898,7 +957,10 @@ CrystalFront/
 ├── checkpoints/                        # Policy checkpoints (gitignored)
 │
 └── docs/
-    └── ML_AGENT.md                     # This document
+    ├── ML_AGENT.md                     # This document
+    ├── ML_BOT_ACTION_PLAN.md           # Training diary + phase status
+    ├── SHIPPING_AND_V040_PLAN.md       # v0.3.2 ship plan (complete) + v0.4.0 roadmap
+    └── eval_v0.3.2-ML.txt              # Captured win-rate evaluation output
 ```
 
 ---

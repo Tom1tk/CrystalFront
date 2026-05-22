@@ -9,3 +9,4 @@ checkpoints/
 runs/
 tunableop_results*.csv
 headless/src/**/*.d.ts
+*.pt

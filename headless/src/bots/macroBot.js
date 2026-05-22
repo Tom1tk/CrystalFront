@@ -16,11 +16,7 @@ export class MacroBot {
     lastAssignTick = -50;
     lastBuildTick = -60;
     lastPushTick = -60;
-    // Adaptive build zones
-    barracksYZone = "middle";
     prevBarracksCount = 0;
-    barracksYZones = ["middle", "top", "bottom"];
-    barracksZoneIdx = 0;
     init(playerId, _match) {
         this.playerId = playerId;
         this.phase = "expand";
@@ -28,8 +24,6 @@ export class MacroBot {
         this.lastBuildTick = -60;
         this.lastPushTick = -60;
         this.prevBarracksCount = 0;
-        this.barracksZoneIdx = Math.floor(Math.random() * 3);
-        this.barracksYZone = this.barracksYZones[this.barracksZoneIdx];
     }
     step(obs, legal) {
         const actions = [];
@@ -84,8 +78,7 @@ export class MacroBot {
                 }
             }
             if (!built && !hasBarracks) {
-                const b = legal.find(a => a.type === "build" && a.buildingType === "barracks" &&
-                    a.xZone === "mid_base" && a.yZone === this.barracksYZone);
+                const b = legal.find(a => a.type === "build" && a.buildingType === "barracks" && a.xZone === "mid_base");
                 if (b) {
                     actions.push(b);
                     built = true;
@@ -135,12 +128,6 @@ export class MacroBot {
                 if (train)
                     actions.push(train);
             }
-        }
-        // ── Rally to midfield once army starts forming ─────────────────────────
-        if ((this.phase === "army" || this.phase === "push") && tick % 200 === 0) {
-            const rally = legal.find(a => a.type === "set_rally" && a.targetZone === "midfield");
-            if (rally)
-                actions.push(rally);
         }
         // ── Attack: drip from ≥4 units, full-rate in push phase ───────────────
         const pushInterval = this.phase === "push" ? 40 : 80;

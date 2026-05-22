@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { WebSocket } from "ws";
 import { MatchEngine } from "./matchEngine.js";
@@ -10,9 +10,16 @@ const REPLAYS_DIR = resolve(process.cwd(), "replays");
 export interface ReplayMeta {
   id: string;        // filename without .json
   seed: number;
-  blue: string;
-  red: string;
-  outcome: { winner: string | null; winType?: string | null; ticks: number };
+  blue: string;      // blue player username
+  red: string;       // red player username
+  bluePlayerId?: string;  // actual playerId used in match (needed for command-log replay)
+  redPlayerId?: string;
+  outcome: {
+    winner: string | null;     // "blue" | "red" | null
+    winnerName: string | null; // winning player's username
+    winType?: string | null;
+    ticks: number;
+  };
   durationSecs: number;
   version: string;
   timestamp: number;
@@ -34,6 +41,45 @@ export interface ReplayFile extends ReplayMeta {
 
 export function ensureReplaysDir(): void {
   if (!existsSync(REPLAYS_DIR)) mkdirSync(REPLAYS_DIR, { recursive: true });
+}
+
+export interface SaveReplayArgs {
+  matchId:      string;
+  seed:         number;
+  blue:         string;        // username
+  red:          string;        // username
+  bluePlayerId: string;        // actual playerId used in the match (for command log replay)
+  redPlayerId:  string;        // actual playerId used in the match
+  ticks:        number;
+  winner:       string | null; // "blue" | "red" | null
+  winnerName:   string | null; // username of winner
+  winType:      string | null;
+  commandLog:   Array<{ tick: number; playerId: string; command: Record<string, unknown> }>;
+  version:      string;
+}
+
+export function saveReplay(args: SaveReplayArgs): string {
+  ensureReplaysDir();
+  const id = `${Date.now()}-${Math.floor(Math.random() * 0xFFFFFFFF).toString(16)}`;
+  const payload = {
+    id,
+    seed:          args.seed,
+    blue:          args.blue,
+    red:           args.red,
+    bluePlayerId:  args.bluePlayerId,   // stored so ReplayRunner uses correct IDs
+    redPlayerId:   args.redPlayerId,
+    version:       args.version,
+    timestamp:     Date.now(),
+    outcome: {
+      winner:     args.winner,
+      winnerName: args.winnerName,
+      winType:    args.winType,
+      ticks:   args.ticks,
+    },
+    commandLog: args.commandLog,
+  };
+  writeFileSync(join(REPLAYS_DIR, `${id}.json`), JSON.stringify(payload));
+  return id;
 }
 
 /**
@@ -160,10 +206,13 @@ export function listReplays(): ReplayMeta[] {
         seed: raw.seed,
         blue: raw.blue ?? "?",
         red: raw.red ?? "?",
+        bluePlayerId: raw.bluePlayerId,
+        redPlayerId:  raw.redPlayerId,
         outcome: {
-          winner: outcome.winner ?? null,
-          winType: outcome.winType ?? null,
-          ticks: outcome.ticks ?? 0,
+          winner:     outcome.winner     ?? null,
+          winnerName: outcome.winnerName ?? null,
+          winType:    outcome.winType    ?? null,
+          ticks:      outcome.ticks      ?? 0,
         },
         durationSecs: ((outcome.ticks ?? 0) * SIMULATION.tickIntervalMs) / 1000,
         version: raw.version ?? "?",
@@ -197,7 +246,14 @@ export function getReplay(id: string): ReplayFile | null {
       seed: raw.seed,
       blue: raw.blue ?? "?",
       red: raw.red ?? "?",
-      outcome: raw.outcome ?? { winner: null, ticks: 0 },
+      bluePlayerId: raw.bluePlayerId,
+      redPlayerId:  raw.redPlayerId,
+      outcome: {
+        winner:     raw.outcome?.winner     ?? null,
+        winnerName: raw.outcome?.winnerName ?? null,
+        winType:    raw.outcome?.winType    ?? null,
+        ticks:      raw.outcome?.ticks      ?? 0,
+      },
       durationSecs: ((raw.outcome?.ticks ?? 0) * SIMULATION.tickIntervalMs) / 1000,
       version: raw.version ?? "?",
       timestamp: raw.timestamp ?? 0,

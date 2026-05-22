@@ -1,8 +1,8 @@
 # Crystal Front — ML Bot Action Plan
 
 **Branch:** `CrystalFront-ML`
-**Status:** Active training — v0.2.10-ML, Phase 0 (IdleBot), PID 715845, optimised pipeline + reward fixes
-**Last updated:** 2026-05-20
+**Status:** v0.3.2-ML deployed — ML bot live in production. Option B (v0.4.0-ML) pending.
+**Last updated:** 2026-05-22
 
 ---
 
@@ -1234,15 +1234,18 @@ Each phase has a clear definition of done. Don't move to the next phase until th
 
 **Estimated effort:** 3–4 days.
 
-**Status (2026-05-18): ⚠️ Infrastructure half-done — blocked on Phase 4**
-- ✅ `BotPlayer` in-process driver (`server/src/match/botPlayer.ts`) — takes any `Agent`, calls `.tick()` each game tick
-- ✅ Difficulty selector in lobby UI (easy/medium/hard) wired into `START_SOLO_TEST`
-- ✅ Easy/Medium/Hard currently serve scripted bots (IdleBot / MacroBot / RushBot)
-- ❌ `training/eval/export_onnx.py` — not written
-- ❌ ONNX policy loader in Node (`onnxruntime-node`) not implemented
-- ❌ Trained policy cannot yet serve as the hard bot; all difficulty tiers are scripted
+**Status (2026-05-22): ✅ Complete — v0.3.2-ML shipped**
+- ✅ `BotPlayer` in-process driver (`server/src/match/botPlayer.ts`)
+- ✅ `MlBot` class (`headless/src/bots/mlBot.ts`) — ONNX policy via `onnxruntime-node`
+- ✅ ONNX export pipeline (`training/export_onnx.py`)
+- ✅ Model at `models/policy-v0.3.2-ML.onnx` + `.onnx.data`
+- ✅ Server pre-loads ONNX session at startup (`mlBotSession` singleton)
+- ✅ `BotSelectMenu.tsx` — dedicated "Play vs Bot" screen with SCRIPTED / ML sections
+- ✅ All matches (PvP + vs-bot) saved as replays with both player usernames
+- ✅ Replay playback shows actual gameplay (UUID playerId bugs fixed)
+- ✅ 443 tests passing
 
-**What remains:** Once Phase C converges (stable >70% vs passive_bot), ONNX export + Node loader is ~2 days. Not worth starting until a policy worth shipping exists.
+See diary entry "v0.3.2-ML — SHIPPED" above for full implementation notes.
 
 ---
 
@@ -1515,3 +1518,153 @@ After 2b, the curriculum accelerated through:
 python -m training.ppo.train --curriculum --curriculum_stage 5 \
   --checkpoint bc_warmup.pt --ent_coef 0.02 --total_timesteps 20000000
 ```
+
+---
+
+### v0.3.2-ML — SHIPPED: ML bot live in production (2026-05-22)
+
+**Status:** ✅ Deployed and verified. First live human vs ML bot game played successfully.
+
+---
+
+#### What was shipped
+
+Option A from `docs/SHIPPING_AND_V040_PLAN.md` completed in full:
+
+- **Checkpoint:** `update_000150.pt` (not u200 as planned — u200 was degraded by 40 updates of 0% rush_medium stall during a failed 3a curriculum attempt after the training run in the section below)
+- **ONNX export:** `training/export_onnx.py` using the dynamo exporter. Produces two files: `policy-v0.3.2-ML.onnx` + `policy-v0.3.2-ML.onnx.data` (~1.3 MB total). The `_OnnxWrapper` module flattens the forward signature to `(g, e, em, n, nm) -> (logits, value)` so ONNX can trace it.
+- **MlBot TypeScript:** `headless/src/bots/mlBot.ts` — implements `Agent` interface, loads ONNX via `onnxruntime-node`. Async inference with 1-tick lag pattern (return `lastAction` immediately, update on `.then()`).
+- **Server integration:** `MlBot.create()` called once at server startup; `createBotAgent()` factory function routes bot name strings to instances.
+- **Client:** `BotSelectMenu.tsx` — separate screen (not inline panel) with MACHINE LEARNING and SCRIPTED sections. Accessible from main menu via "Play vs Bot" button.
+- **Replays:** All matches (PvP and vs-bot) now saved with both player usernames and outcome.
+
+**Empirical win-rates (100 deterministic episodes, full 6000px map, u150 checkpoint):**
+
+| Opponent | Win rate |
+|----------|----------|
+| idle | 100% |
+| passive | 100% |
+| rush_weak | 86% |
+| rush_weak_medium | 99% |
+| rush_medium | 0% |
+| rush | 1% |
+| turtle | 0% |
+| macro | 99% |
+
+Intended tier: **easy/medium** — beats passive and weak-rush reliably, loses to full-strength rush and turtle.
+
+---
+
+#### Critical bugs found and fixed during implementation
+
+**1. xNorm mirroring (ML bot doing nothing)**
+
+Policy was trained exclusively as BLUE (left side, low xNorm). When the bot plays RED in a live match, the xNorm coordinates are flipped — its own crystal is at xNorm≈1, the enemy crystal at xNorm≈0. Without mirroring, the policy receives an observation that looks like it is playing from the wrong side of the map and makes no coherent actions.
+
+Fix in `headless/src/bots/mlBot.ts::_buildFeeds()`:
+```typescript
+const mx = this.isRed ? (x: number) => 1 - x : (x: number) => x;
+entityArr[base + 2] = mx(e.xNorm ?? 0);   // index 2: xNorm
+nodeArr[base + 0]   = mx(nd.xNorm ?? 0);  // index 0: xNorm
+```
+
+`isRed` is detected in `init()` by looking up the player's color in `match.players`. The `.ts` file is what `tsx` loads at runtime — initially the fix was only applied to the compiled `.js` dist file, which was used by the verification script but not the live server. Both files must stay in sync.
+
+**2. Replay playback showing no gameplay (bluePlayerId field typo)**
+
+`saveReplay()` in `server/src/index.ts` called `bluePlayer?.playerId` and `redPlayer?.playerId`. The `Player` interface (from `shared/src/types.ts`) only has `.id`, not `.playerId`. The field was always `undefined`, so the fallback `"headless-blue"` / `"headless-red"` always fired. The replay runner then created a match with those literal IDs, but the `commandLog` stored real UUID playerIds — every `processCommand` call was silently rejected, producing a replay that showed no gameplay.
+
+Fix: `bluePlayer?.id` / `redPlayer?.id`.
+
+**3. Replay playback showing no gameplay (ReplayMeta interface missing fields)**
+
+`bluePlayerId` and `redPlayerId` were stored in the JSON on disk correctly, but `getReplay()` constructed its return object field-by-field from the parsed JSON. Fields not declared in the `ReplayMeta` interface were dropped on return. The `ReplayRunner` then read `(replay as { bluePlayerId? }).bluePlayerId` → `undefined` → fell back to `"headless-blue"`.
+
+Fix: added `bluePlayerId?: string` and `redPlayerId?: string` to `ReplayMeta`, `listReplays()`, and `getReplay()`.
+
+**4. START_BOT_GAME blank screen**
+
+`GameShell` only renders when `ws.lobbyState` is populated (it reads `getCurrentPlayer()` and `getCurrentLobby()` which both return null without a LOBBY_STATE message). The `START_BOT_GAME` handler was sending `MATCH_START` without first sending a `LOBBY_STATE` message.
+
+Fix: added `broadcastLobbyState(ws, code)` before `sendWS(ws, { type: MATCH_START ... })`.
+
+---
+
+#### Verification
+
+12 new round-trip tests added to `tests/index.ts` covering:
+- `saveReplay()` → `listReplays()` → `getReplay()` round-trip with UUID playerIds preserved
+- `commandLog` playerIds match stored `bluePlayerId`/`redPlayerId`
+- `outcome.winner` preserved as color string ("blue"/"red"), not username
+
+All 443 tests passing at ship.
+
+---
+
+### v0.3.2-ML — Full curriculum run: BC v5 + 0a→0b direct chain (2026-05-21)
+
+**Status (as of ~4.9M steps):** Stage 3a5 (full-size map, rush_medium/200 resources). 13 stages cleared.
+
+---
+
+#### Key change from v0.3.1: 0a→0b direct chain
+
+The 0a5 intermediate stage (single pre-placed skirmisher) was removed. The review's curriculum design goes 0a (Phase A: 2 pre-placed skirmishers) → 0b (Phase B: no scaffolding) directly, with 0b inheriting 0a's full value function.
+
+Previous attempts with 0a5 failed: the single skirmisher couldn't beat IdleBot workers in a damage race, and the value function received contradictory signals about whether units near the enemy crystal were good or bad. Removing 0a5 gave 0b a clean value function — 0a at 100% wins means V(train_barracks → train_unit → attack) is maximally high from the start of 0b, providing a strong gradient on the very first 0b updates.
+
+---
+
+#### Training run — full stage log
+
+PID 791519, started from BC v5 warmup (1000 episodes, full game config 6000px/1000HP/50 resources).
+
+| Stage | Map | Opponent | Win% (at promote) | Update | Steps |
+|-------|-----|----------|-------------------|--------|-------|
+| 0a | 800px | idle | 87% | u11 | 312k |
+| 0b | 800px | idle | 83% | u52 | 1.57M |
+| 0b5 | 800px | idle | 71% | u90 | 2.76M |
+| 0c | 800px | idle | 78% | u97 | 2.95M |
+| day5 | 1500px | idle | 96% | u103 | 3.16M |
+| 1a | 1500px | idle | 100% | u109 | 3.34M |
+| 1b | 1500px | passive | 99% | u116 | 3.55M |
+| 2a | 3000px | passive | 100% | u125 | 3.82M |
+| 2a5 | 3000px | rush_weak | 75% | u134 | 4.09M |
+| 2a6 | 3000px | rush_weak | 91% | u143 | 4.37M |
+| 2b | 3000px | rush_weak | 93% | u152 | 4.64M |
+| 3a | full | passive | 100% | u160 | 4.90M |
+| **3a5** | full | **rush_medium** | — | — | — |
+
+**Notable observations:**
+- `wkr_mv=0%` at every single stage — the wkr_mv attractor never formed. Full-config BC provides a strong prior that workers do not belong near the enemy crystal.
+- `trn=0%` persists throughout — the agent never trains additional combat units. It wins via pure first-skirmisher rush. This held up through rush_weak (93%) and passive on full map (100%). Whether it holds against rush_medium is the open question.
+- Stages day5 through 3a all cleared in exactly 1 evaluation window (first measurement after entering stage). The BC v5 prior transferred cleanly across all map sizes.
+- `atk_mv` climbed from 12% to 45% over the run as the policy became more aggressive. `noop` dropped from 86% to 53%.
+
+---
+
+#### Assessment against plan
+
+**Predicted by the review, confirmed:**
+1. 0a→0b direct chain unlocks 0b — confirmed. 0b hit 83% after stalling at 47% in prior run with 0a5 present.
+2. BC critic pretraining prevents noop collapse — confirmed. Zero noop attractor episodes in this run.
+3. Resource slider (200→75→50) bridges passive→rush transition — confirmed. 2a5/2a6/2b all cleared cleanly.
+4. Full-config BC generalises across map sizes — confirmed. day5→2a cleared in single windows despite 1500px/3000px differences.
+
+**Not yet tested:**
+- `trn=0%` bottleneck against rush_medium on full map. The agent has never needed to train a second unit. Stage 3a5 (rush_medium/200 resources) and 3b (rush_medium/50 resources) are the first tests where a single skirmisher may not be sufficient.
+- League activation (stage 4). Review says to activate only after 3b is solved.
+
+**On track?** Yes — ahead of schedule. The review estimated 6 weeks to reach stage 3b. The run is at stage 3a5 with ~4.9M steps used of a 20M budget, having taken ~5-6 hours of wall time. The curriculum structure is validated; the remaining risk is concentrated at 3b.
+
+---
+
+#### Next hard stage: 3b
+
+3b is the graduation test: full game map (6000px), 1000HP crystal, 50 start resources, vs MediumRush. MediumRush sends 3+ skirmishers which can kill one defending skirmisher. The agent needs to either:
+- Rush fast enough to win before the opponent's attack lands (pure aggression, risky), or
+- Train a second defensive unit before attacking (requires `trn > 0%`)
+
+If `trn=0%` causes a 3b stall, the fix is the same as the 2b resource-slider solution: introduce 3a5 (rush_medium/200 resources) so the agent has time to build two barracks units before the rush arrives. This stage is already in the curriculum.
+
+**3b promotion criterion:** `win_rate ≥ 0.50` over 100 episodes.

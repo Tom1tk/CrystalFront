@@ -2,11 +2,12 @@
  * Shared reward module — single source of truth for computeReward.
  * Imported by both stdioRunner.ts and stdioVecRunner.ts to prevent drift.
  *
- * Reward components (6 total):
+ * Reward components (7 total):
  *   +5 × crystal healthFrac delta dealt   (continuous)
  *   -2 × crystal healthFrac delta taken   (continuous)
  *   +10 one-time first barracks built
- *   +5  one-time first combat unit trained
+ *   +5  one-time first combat unit trained   (bootstrap shaping)
+ *   +3  one-time second combat unit trained  (bootstrap shaping — tested on 3a_rwm with 10-37% win context)
  *   -0.001/tick time penalty
  *   ±100 terminal (win/loss)
  */
@@ -18,6 +19,7 @@ export interface Milestones {
   firstBarracksTick: number;
   hasTrainedCombatUnit: boolean;
   firstCombatUnitTick: number;
+  hasTrainedSecondCombatUnit: boolean;
   firstAttackTick: number;
   minOppCrystalHealthFrac: number;
   minOwnCrystalHealthFrac: number;
@@ -29,6 +31,7 @@ export function freshMilestones(): Milestones {
     firstBarracksTick: -1,
     hasTrainedCombatUnit: false,
     firstCombatUnitTick: -1,
+    hasTrainedSecondCombatUnit: false,
     firstAttackTick: -1,
     minOppCrystalHealthFrac: 1.0,
     minOwnCrystalHealthFrac: 1.0,
@@ -74,14 +77,19 @@ export function computeReward(
     }
   }
 
-  // First combat unit trained (+5 one-time)
-  if (!milestones.hasTrainedCombatUnit) {
+  // First and second combat unit trained (+5 / +3 one-time bootstrap shaping)
+  if (!milestones.hasTrainedCombatUnit || !milestones.hasTrainedSecondCombatUnit) {
     const prevCombat = prev.entities.filter(e => e.owner === 1 && e.typeIndex >= 2 && e.typeIndex <= 4).length;
     const currCombat = curr.entities.filter(e => e.owner === 1 && e.typeIndex >= 2 && e.typeIndex <= 4).length;
     if (currCombat > prevCombat) {
-      r += 5.0;
-      milestones.hasTrainedCombatUnit = true;
-      milestones.firstCombatUnitTick = curr.tick;
+      if (!milestones.hasTrainedCombatUnit) {
+        r += 5.0;
+        milestones.hasTrainedCombatUnit = true;
+        milestones.firstCombatUnitTick = curr.tick;
+      } else if (!milestones.hasTrainedSecondCombatUnit) {
+        r += 3.0;
+        milestones.hasTrainedSecondCombatUnit = true;
+      }
     }
   }
 

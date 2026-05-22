@@ -36,7 +36,9 @@ export function processCombat(match) {
         if (nearestId)
             entity.attackTargetId = nearestId;
     }
-    // Attack chase: units with attackTargetId move toward target if out of range
+    // Attack chase: units with attackTargetId move toward target if out of range.
+    // When already in range, clear moveTarget so the unit holds position rather than
+    // continuing to drift toward the exact center (which causes crowding on large targets).
     for (const entity of entities) {
         if (!entity.attackTargetId)
             continue;
@@ -51,6 +53,9 @@ export function processCombat(match) {
         const d = dist(entity.x, entity.y, target.x, target.y);
         if (d > range + target.radius) {
             entity.moveTarget = { x: target.x, y: target.y };
+        }
+        else {
+            entity.moveTarget = undefined;
         }
     }
     // Medic follow behavior
