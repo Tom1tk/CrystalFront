@@ -2,12 +2,14 @@
  * Shared reward module — single source of truth for computeReward.
  * Imported by both stdioRunner.ts and stdioVecRunner.ts to prevent drift.
  *
- * Reward components (7 total):
+ * Reward components (9 total):
  *   +5 × crystal healthFrac delta dealt   (continuous)
  *   -2 × crystal healthFrac delta taken   (continuous)
  *   +10 one-time first barracks built
  *   +5  one-time first combat unit trained   (bootstrap shaping)
- *   +3  one-time second combat unit trained  (bootstrap shaping — tested on 3a_rwm with 10-37% win context)
+ *   +3  one-time second combat unit trained  (bootstrap shaping)
+ *   +2  one-time third combat unit trained   (bootstrap shaping — needed for rush_medium)
+ *   +1  one-time fourth combat unit trained  (bootstrap shaping — needed for rush_medium)
  *   -0.001/tick time penalty
  *   ±100 terminal (win/loss)
  */
@@ -20,6 +22,8 @@ export interface Milestones {
   hasTrainedCombatUnit: boolean;
   firstCombatUnitTick: number;
   hasTrainedSecondCombatUnit: boolean;
+  hasTrainedThirdCombatUnit: boolean;
+  hasTrainedFourthCombatUnit: boolean;
   firstAttackTick: number;
   minOppCrystalHealthFrac: number;
   minOwnCrystalHealthFrac: number;
@@ -32,6 +36,8 @@ export function freshMilestones(): Milestones {
     hasTrainedCombatUnit: false,
     firstCombatUnitTick: -1,
     hasTrainedSecondCombatUnit: false,
+    hasTrainedThirdCombatUnit: false,
+    hasTrainedFourthCombatUnit: false,
     firstAttackTick: -1,
     minOppCrystalHealthFrac: 1.0,
     minOwnCrystalHealthFrac: 1.0,
@@ -77,8 +83,12 @@ export function computeReward(
     }
   }
 
-  // First and second combat unit trained (+5 / +3 one-time bootstrap shaping)
-  if (!milestones.hasTrainedCombatUnit || !milestones.hasTrainedSecondCombatUnit) {
+  // Combat units trained — one-time bootstrap shaping (5/3/2/1 for units 1/2/3/4)
+  const allUnitMilestonesFired = milestones.hasTrainedCombatUnit &&
+    milestones.hasTrainedSecondCombatUnit &&
+    milestones.hasTrainedThirdCombatUnit &&
+    milestones.hasTrainedFourthCombatUnit;
+  if (!allUnitMilestonesFired) {
     const prevCombat = prev.entities.filter(e => e.owner === 1 && e.typeIndex >= 2 && e.typeIndex <= 4).length;
     const currCombat = curr.entities.filter(e => e.owner === 1 && e.typeIndex >= 2 && e.typeIndex <= 4).length;
     if (currCombat > prevCombat) {
@@ -89,6 +99,12 @@ export function computeReward(
       } else if (!milestones.hasTrainedSecondCombatUnit) {
         r += 3.0;
         milestones.hasTrainedSecondCombatUnit = true;
+      } else if (!milestones.hasTrainedThirdCombatUnit) {
+        r += 2.0;
+        milestones.hasTrainedThirdCombatUnit = true;
+      } else if (!milestones.hasTrainedFourthCombatUnit) {
+        r += 1.0;
+        milestones.hasTrainedFourthCombatUnit = true;
       }
     }
   }
