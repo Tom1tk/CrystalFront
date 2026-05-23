@@ -1,48 +1,33 @@
-# Crystal Front — ML Agent
+# Crystal Front — ML Agent (technical reference)
 
-A reinforcement learning bot for Crystal Front RTS. Trains via PPO + curriculum learning + behaviour cloning, ships as an in-game opponent, and acts as a permanent balance analysis instrument.
+Reinforcement-learning bot for the Crystal Front RTS. This document is the **technical reference** — architecture, observation/action/reward specs, training commands, and module reference for v0.4.0-ML additions (RND, action-forcing).
 
-**Branch:** `CrystalFront-ML`  
-**Algorithm:** PPO (Proximal Policy Optimisation) + Behaviour Cloning warmup  
-**Current phase:** Phase 6 — Production integration ✅ (v0.3.2-ML shipped 2026-05-22)  
-**Current version:** `0.3.2-ML`  
-**Shipped model:** `models/policy-v0.3.2-ML.onnx` (checkpoint u150, ~1.3 MB)
+For project history, decisions, and the current handoff state, see **`ML_BOT_ACTION_PLAN.md`**.
+
+**Branch:** `CrystalFront-ML`
+**Algorithm:** PPO + Behaviour Cloning warmup + curriculum learning
+**Current shipped version:** `0.3.2-ML` — `models/policy-v0.3.2-ML.onnx` (u150 checkpoint, ~1.3 MB)
+**Code version:** `0.4.0-ML` (v0.4.0-ML modules merged, default-off; see `ML_BOT_ACTION_PLAN.md` handoff)
 
 ---
 
 ## Table of contents
 
-1. [Goals](#1-goals)
-2. [Architecture overview](#2-architecture-overview)
-3. [Design decisions](#3-design-decisions)
-4. [Implementation phases](#4-implementation-phases)
-5. [Observation specification](#5-observation-specification)
-6. [Action space](#6-action-space)
-7. [Reward specification](#7-reward-specification)
+1. [Architecture overview](#1-architecture-overview)
+2. [Observation specification](#2-observation-specification)
+3. [Action space](#3-action-space)
+4. [Reward specification](#4-reward-specification)
+5. [Curriculum stages](#5-curriculum-stages)
+6. [Action-forcing module (v0.4.0-ML)](#6-action-forcing-module-v040-ml)
+7. [RND intrinsic motivation module (v0.4.0-ML)](#7-rnd-intrinsic-motivation-module-v040-ml)
 8. [Training guide](#8-training-guide)
-9. [TensorBoard reference](#9-tensorboard-reference)
-10. [File structure](#10-file-structure)
-11. [Risks and mitigations](#11-risks-and-mitigations)
-12. [Resources](#12-resources)
+9. [Evaluation tooling](#9-evaluation-tooling)
+10. [TensorBoard reference](#10-tensorboard-reference)
+11. [File structure](#11-file-structure)
 
 ---
 
-## 1. Goals
-
-Three parallel objectives, all pursued through the same work:
-
-**1. Balance instrument.**  
-A policy trained to play well becomes a microscope on the game's design. Run it after every balance change to discover dominant strategies, dead map regions, broken unit counters, and economic exploits before human players do.
-
-**2. Player opponent.**  
-A shippable AI opponent with multiple difficulty tiers (easy / medium / hard), so players can experience the game without a human opponent. Difficulty maps to training checkpoint age: older checkpoints for easy, newest for hard.
-
-**3. Learning project.**  
-Hands-on education in reinforcement learning — PPO, reward shaping, self-play, training pipelines, replay analysis — built from scratch and understood end-to-end. The goal is genuine understanding, not just running someone else's black box.
-
----
-
-## 2. Architecture overview
+## 1. Architecture overview
 
 ```
                     ┌─────────────────────────────┐
@@ -50,26 +35,23 @@ Hands-on education in reinforcement learning — PPO, reward shaping, self-play,
                     │  ┌──────────────────────┐   │
                     │  │  PPO trainer         │   │
                     │  │  (CleanRL-style)     │   │
-                    │  │        ↑             │   │
-                    │  │  rewards/obs         │   │
-                    │  │        ↓             │   │
-                    │  │  Env wrapper         │   │
-                    │  │  (N parallel sims)   │   │
+                    │  │  + RND predictor     │   │
+                    │  │  + BC warmup         │   │
                     │  └──────────┬───────────┘   │
                     └─────────────┼───────────────┘
                                   │ stdio JSON-line protocol
-                                  │ (one Node subprocess per sim)
+                                  │ (one Node subprocess per vec_size games)
                     ┌─────────────┼──────────────────┐
                     │             ↓                  │
-                    │  headless/src/stdioRunner.ts   │
+                    │  headless/src/stdioVecRunner   │
                     │  ┌──────────────────────────┐  │
                     │  │  MatchEngine (pure)      │  │  ← same engine as live game
                     │  │  - deterministic         │  │
                     │  │  - seedable RNG          │  │
-                    │  │  - step(commands) → state│  │
                     │  └──────────────────────────┘  │
                     │  + observation builder         │
                     │  + legal-action enumerator     │
+                    │    (with optional forcing)     │
                     │  + reward computation          │
                     │  + scripted opponents          │
                     └────────────────────────────────┘
@@ -79,465 +61,43 @@ Hands-on education in reinforcement learning — PPO, reward shaping, self-play,
                     │  ┌──────────────────────────┐  │
                     │  │  MatchEngine (same code) │  │
                     │  │  + LiveMatchRunner       │  │
-                    │  │    (setInterval driver)  │  │
                     │  │  + BotPlayer             │  │
-                    │  │    (in-process agent)    │  │
+                    │  │    (drives any Agent)    │  │
+                    │  │  + MlBot                 │  │
                     │  │    - loads ONNX policy   │  │
-                    │  │    - picks difficulty    │  │
-                    │  └──────────────────────────┘  │
-                    └────────────────────────────────┘
-
-                    ┌────────────────────────────────┐
-                    │  Replay viewer                 │
-                    │  ┌──────────────────────────┐  │
-                    │  │  seed + command log      │  │
-                    │  │       ↓                  │  │
-                    │  │  MatchEngine in playback │  │
-                    │  │       ↓                  │  │
-                    │  │  Existing client render  │  │
+                    │  │    - xNorm-mirrors RED   │  │
+                    │  │    - 1-tick async lag    │  │
                     │  └──────────────────────────┘  │
                     └────────────────────────────────┘
 ```
 
-**Key principle:** The `MatchEngine` is the single source of truth, shared between the live game, the headless training harness, and the replay viewer. They differ only in what drives the tick loop and who decides actions each tick.
+**Single source of truth.** `MatchEngine` is shared between training, live play, and replay playback. The reward function lives in `headless/src/reward.ts` (the `computeReward()` function) and is the only place rewards are computed — both runners import from it to prevent drift (regression hardened against in v0.3.0-ML).
+
+**Symmetry handling.** Policy was trained exclusively as BLUE. When `MlBot` plays as RED, the observation is mirrored (`xNorm → 1 − xNorm` on every entity and node) so the policy "sees" itself on the left side. `isRed` is detected once in `MlBot.init()` from `match.players[idx].color`.
+
+**Determinism.** Seeded `Rng` (mulberry32) + monotonic `IdGen` + no `Math.random()` in the engine + a CI determinism test (`same seed × 500 ticks → same state hash`). Replays save only seed + commandLog (~20–50 KB/match).
 
 ---
 
-## 3. Design decisions
+## 2. Observation specification
 
-These ten decisions are the foundation of the project. Any major deviation requires explicit reconsideration.
+> Source of truth: `headless/src/observation.ts`. Built once per tick after applying fog-of-war.
 
-### D1 — Bot brain location
+### 2.1 Global features — `vec[22]` (GLOBAL_DIM)
 
-**Decision: Both — Python for training, Node.js in-process for live play.**
-
-Python has the ML ecosystem (PyTorch, CleanRL, TensorBoard); Node has the game engine already. Training runs in Python subprocesses; the shipped bot loads a compiled ONNX policy and runs in-process alongside the game server, adding no network latency.
-
-### D2 — Action granularity
-
-**Decision: Hierarchical macro-actions (~73 total, with sub-options per action).**
-
-Raw pixel/command actions require enormous compute for an RTS — the space is too large for PPO to explore efficiently. Macro-actions collapse "attack all units toward the left side of midfield" into a single index. Sub-options (which group, which zone, which building type, etc.) give the agent strategic breadth while keeping the total action space tractable. See [§6](#6-action-space) for the full enumeration.
-
-### D3 — Training opponents
-
-**Decision: League — scripted bots first, then self-play with checkpoints.**
-
-Scripted bots provide stable baselines and predictable difficulty ramps. Self-play alone suffers from cycles (the agent forgets how to beat strategies it used to beat). The league mixes current policy, historical checkpoints, and scripted bots, with sampling weighted toward close-skill matchups.
-
-### D4 — Fog of war during training
-
-**Decision: Fog of war only — same constraints as a real player.**
-
-Training with full map vision would produce a bot that behaves differently from the shipped product. Fog is a core part of the game's strategy; the agent must learn to scout, infer opponent actions, and play under uncertainty. This reduces sample efficiency but produces genuine strategic behaviour.
-
-### D5 — One bot or two
-
-**Decision: One bot, plays both sides.**
-
-The map is symmetric. The observation is mirrored left-to-right when the agent plays as red, so it always "thinks" it is blue. This doubles the training signal per match at zero cost. Difficulty tiers are implemented as older (easier) vs newer (harder) checkpoints of the same single model.
-
-### D6 — Observation format
-
-**Decision: Entity-list (set-based), no vision model.**
-
-The game state is described as a variable-length list of entities, each encoded as a feature vector. No image rendering or CNN. This is:
-- Efficient — no wasted compute on blank map space
-- Natural — entity count varies as units are built and die
-- Fog-compatible — fog is applied by filtering the list before it reaches the agent
-- Permutation-invariant — a set-transformer encoder handles variable ordering
-
-### D7 — Reward signal
-
-**Decision: Shaped rewards, starting simple and expanding iteratively.**
-
-Per-tick signals (crystal damage, mining rate, army advantage, worker behaviour, forward pressure, time penalty) guide early learning. Terminal rewards (+10/−10 for win/loss/draw) dominate the signal once the agent starts reaching end states. Reward weights are treated as tunable parameters — expect several iterations before the agent stops finding degenerate strategies. See [§7](#7-reward-specification) for the current full specification and version history.
-
-### D8 — Hardware
-
-**Decision: AMD RX 7900 XTX GPU via ROCm, with 20 parallel CPU simulators.**
-
-The GPU (ROCm/HIP) handles the neural network forward passes and PPO updates. 20 parallel Node.js simulation subprocesses feed it observations via ThreadPoolExecutor stepping. Expected throughput: ~1100–1200 steps per second. The 28-core Xeon handles the simulation load; the GPU handles the ML load. ROCm requires `TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1` for flash attention — set automatically at train startup.
-
-### D9 — Algorithm
-
-**Decision: PPO (Proximal Policy Optimisation), CleanRL implementation.**
-
-PPO is the industry standard for game AI at this scale (OpenAI Five, AlphaStar foundation). It's stable, well-documented, and has excellent learning resources. CleanRL's single-file reference implementation is specifically recommended — it's readable, correct, and good for understanding the algorithm from first principles.
-
-### D10 — Success criteria
-
-**Four milestones in order:**
-1. Bot beats all scripted bots >90% of the time
-2. Bot provides a genuine challenge to a human player at hard difficulty
-3. Bot discovers at least one strategy or exploit the developer did not anticipate
-4. Bot becomes a permanent development instrument — re-run after every balance change
-
----
-
-## 4. Implementation phases
-
-### Phase 0 — Engine refactors ✅ Complete
-
-**Goal:** Make the engine deterministic, time-independent, and modular. No behaviour change to the live game.
-
-| Task | Status |
-|------|--------|
-| Seedable `Rng` class (mulberry32) | ✅ `server/src/match/engine/rng.ts` |
-| Monotonic `IdGen` class | ✅ `server/src/match/engine/idGen.ts` |
-| Replace all `Math.random()` / `randomUUID()` | ✅ |
-| Extract tick loop → `LiveMatchRunner` | ✅ `server/src/match/liveMatchRunner.ts` |
-| `MatchEngine` is now pure: no `setInterval` | ✅ |
-| `match.commandLog` — append-only per-command log | ✅ |
-| Fix resource node symmetry (`CONTESTED_NODE_OFFSETS`) | ✅ |
-| Remove legacy aliases in `gameBalance.ts` | ✅ |
-| Determinism test (same seed → identical state hash) | ✅ |
-
-**Definition of done:** ✅ All tests pass, live game unaffected, two runs with the same seed produce identical states.
-
----
-
-### Phase 1 — Headless runner + scripted bots ✅ Complete
-
-**Goal:** Run full matches outside of WebSockets. Deliver scripted bot opponents and a replay system.
-
-| Task | Status |
-|------|--------|
-| `headless/` workspace | ✅ |
-| `runMatch(agentBlue, agentRed, options)` | ✅ `headless/src/runMatch.ts` |
-| `Agent` interface (init / step) | ✅ `headless/src/types.ts` |
-| Observation builder (fog-filtered) | ✅ `headless/src/observation.ts` |
-| Action space / macro-action expander | ✅ `headless/src/actionSpace.ts` |
-| Legal-action enumerator | ✅ `headless/src/legalActions.ts` |
-| `IdleBot` — gathers only | ✅ |
-| `RushBot` — early barracks, mass skirmisher | ✅ |
-| `TurtleBot` — turrets + resource accumulation win | ✅ |
-| `MacroBot` — economy expansion + gunner/bruiser/medic army | ✅ |
-| `HeavyBot` — slow bruiser/medic/gunner army, steamrolls late | ✅ |
-| CLI: `tsx headless/src/cli.ts --blue rush --red idle` | ✅ |
-| Replay save format (seed + commandLog) | ✅ |
-| Replay browser UI (Bot Replays menu) | ✅ |
-| Replay viewer (real-time playback in client) | ✅ |
-| `BotPlayer` in live game (START_SOLO_TEST) | ✅ |
-| Passive win condition (hold ≥2500 resources = win) | ✅ |
-
-**Definition of done:** ✅ CLI runs a match in <5 seconds. All 5 scripted bots play full matches without crashing. Replays save to disk and play back in the browser. "vs Bot" works in the live UI.
-
----
-
-### Phase 2 — Observation, action, and reward specifications ✅ Complete
-
-**Goal:** Lock down the exact interface between game and agent. Everything downstream depends on this contract.
-
-| Task | Status |
-|------|--------|
-| Observation spec (12 global + 11 entity + 5 node features) | ✅ This document §5 |
-| Action space spec (73 actions, stable integer index) | ✅ This document §6 |
-| Reward spec (per-tick signals + terminal outcomes) | ✅ This document §7 |
-| `headless/src/actionIndex.ts` — action ↔ integer mapping | ✅ |
-| `legalMask()` — boolean[73] for PPO action masking | ✅ |
-| Unit tests: every action category → valid commands | ✅ 388 tests passing |
-| Crystal health + lifetime resources in observation | ✅ |
-
-**Definition of done:** ✅ Three specs are complete and reflected in code. All 73 actions are tested. Legal mask correctly zeros illegal actions.
-
----
-
-### Phase 3 — Python training pipeline ✅ Complete
-
-**Goal:** A working PPO training loop with parallel Node simulators.
-
-| Task | Status |
-|------|--------|
-| `headless/src/stdioRunner.ts` — Node subprocess | ✅ |
-| JSON-line protocol (RESET / STEP / CLOSE) | ✅ |
-| Reward computation in Node (state deltas → scalar) | ✅ |
-| `training/env/crystalfront_env.py` — Gymnasium wrapper | ✅ |
-| `training/ppo/policy.py` — SetTransformer + PPO agent | ✅ |
-| `training/ppo/train.py` — CleanRL-style training loop | ✅ |
-| Legal-action masking in policy network | ✅ |
-| TensorBoard logging | ✅ |
-| Checkpoint saving | ✅ |
-| GPU support via ROCm (AMD RX 7900 XTX) | ✅ |
-| Parallel env stepping with `ThreadPoolExecutor` | ✅ |
-| Startup stagger (0.5s × env index) to prevent RAM spike | ✅ |
-| `--checkpoint` flag for curriculum / resume | ✅ |
-| End-to-end smoke test | ✅ |
-
-**Definition of done:** ✅ `python training/ppo/train.py --opponent idle` runs without error. GPU detected and used. ~1100–1200 SPS with 20 envs.
-
----
-
-### Phase 4 — League training + checkpoints ✅ Complete
-
-**Goal:** Real training campaign with league-based opponent sampling using Prioritised Fictitious Self-Play (PFSP).
-
-| Task | Status |
-|------|--------|
-| `training/ppo/league.py` — LeagueManager with PFSP sampling | ✅ |
-| PFSP opponent sampling: priority ∝ (1 − win_rate)^{temp} | ✅ |
-| Per-opponent win-rate matrix logged to TensorBoard | ✅ |
-| Checkpoint opponents registered in league pool | ✅ |
-| League state save/load (resumable training) | ✅ |
-| Per-reset opponent override in env (`options["opponent"]`) | ✅ |
-| `--league` flag in `train.py` with PFSP config options | ✅ |
-
-**How it works (PFSP):**
-
-Prioritised Fictitious Self-Play samples opponents with probability
-proportional to `(1 − win_rate)^temperature`.  Opponents the agent
-struggles against are picked more often, creating an automatic
-curriculum.  A minimum-priority floor (0.01) ensures every active
-opponent gets some play.
-
-The league pool starts with all five scripted bots (`idle`, `rush`,
-`turtle`, `macro`, `heavy`).  Historical policy checkpoints are added to
-the pool as *inactive* entries — they activate in Phase 6 (ONNX export)
-so the agent can play against past versions of itself.
-
-**Usage:**
-
-```bash
-# League mode: PFSP sampling across all scripted bots
-python3 training/ppo/train.py --league --num_envs 20 --total_timesteps 10000000
-
-# Customise PFSP temperature (higher = more focus on hard opponents)
-python3 training/ppo/train.py --league --league_pfsp_temp 1.0 --num_envs 20
-
-# Control checkpoint registration interval
-python3 training/ppo/train.py --league --league_add_interval 50 --num_envs 20
-
-# Resume training from previous league state
-python3 training/ppo/train.py --league --league_state checkpoints/.../league_state.json
-```
-
-**Key config options:**
-
-| Option | Default | Purpose |
-|--------|---------|---------|
-| `--league` | `False` | Enable league mode |
-| `--league_pfsp_temp` | `0.5` | PFSP temperature (higher = focus on hard opponents) |
-| `--league_add_interval` | `100` | Add current policy as opponent every N updates (0 = off) |
-| `--league_state` | auto-generated | Path to league state JSON for resume |
-
-**TensorBoard charts (league mode):**
-
-| Chart | Content |
-|-------|---------|
-| `league/win_vs_idle` | Win rate vs IdleBot |
-| `league/win_vs_rush` | Win rate vs RushBot |
-| `league/win_vs_turtle` | Win rate vs TurtleBot |
-| `league/win_vs_macro` | Win rate vs MacroBot |
-| `league/win_vs_heavy` | Win rate vs HeavyBot |
-| `league/win_rate_matrix` | Full matrix text (update number + all win rates) |
-
-**Definition of done:** ✅ PFSP sampling produces correct distribution.  Win-rate matrix logged per update.  League state round-trips through JSON correctly.
-
----
-
-### Phase 5 — Replay tools + balance analysis ✅ Complete
-
-**Goal:** Turn replays into a permanent balance analysis instrument with enriched metadata, filtering, auto-flagging, and batch match reporting.
-
-| Task | Status |
-|------|--------|
-| Replay index with enriched metadata (unit counts, buildings, build orders) | ✅ `server/src/match/replayRunner.ts` |
-| Replay browser filtering/sorting (winner, win type, bot search, flags, pagination) | ✅ `client/src/components/ReplayBrowser.tsx` |
-| Balance report generator (batch match runner + win-rate matrix + build orders) | ✅ `training/balance_report.py` |
-| Auto-flagging: fast, lopsided, resource_win, scrappy | ✅ flags array in `ReplayMeta` |
-| Comparison reports: "before vs after this balance change" | ✅ `--compare` mode |
-| Versioned balance history (`shared/src/balanceHistory.ts`) | ✅ |
-| Replay playback controls: pause, 1×/4×/8× forward, 1×/4×/8× reverse | ✅ |
-| Client-side frame buffering for smooth seek/rewind | ✅ |
-
-**── Enriched replay metadata**
-
-`analyzeReplay()` in `replayRunner.ts` performs a single pass over each
-replay's `commandLog` and extracts:
-
-| Field | Source | Example |
-|-------|--------|---------|
-| `winType` | `outcome.winType` | `"combat"`, `"resource"`, `"timeout"` |
-| `blueUnits` / `redUnits` | `train_unit` + `train_worker` commands | `{ skirmisher: 6, worker: 4 }` |
-| `blueBuildings` / `redBuildings` | `build` commands | `{ barracks: 1, supply_depot: 2 }` |
-| `buildOrderBlue` / `buildOrderRed` | First 6 `build` commands, in order | `["supply_depot", "barracks"]` |
-| `firstCombatTick` | First tick any combat unit was trained | `454` |
-| `flags` | Auto-calculated | `["lopsided", "scrappy"]` |
-
-**── Auto-flagging rules**
-
-| Flag | Condition | Badge |
-|------|-----------|-------|
-| `fast` | Game ended ≤ 600 ticks | ⚡ Fast |
-| `lopsided` | Unit count disparity ≥ 6 | ⚔ Lopsided |
-| `resource_win` | Win by resource accumulation | 💰 Econ Win |
-| `scrappy` | Total combat units trained across both sides ≥ 20 | 💥 Scrappy |
-
-**── Versioned balance history**
-
-Every replay stores its game version string. When a replay is watched,
-`replayRunner.ts` calls `getBalanceForVersion()` from `balanceHistory.ts`
-to look up the unit stats that were active when the game was recorded —
-worker cost, speeds, damage, passive win threshold. This ensures old
-replays play back accurately after balance changes. `BALANCE_HISTORY` in
-`shared/src/balanceHistory.ts` is the authoritative registry; add a new
-entry whenever a balance-affecting value changes.
-
-**── Replay playback controls**
-
-The replay viewer has a full playback bar centred below the scoreboard:
-
-| Control | Behaviour |
-|---------|-----------|
-| `◀◀◀ 8×` / `◀◀ 4×` / `◀ 1×` | Reverse through buffered frames at that speed; server pauses |
-| `⏸` | Pause — freeze on current frame |
-| `▶ 1×` / `▶▶ 4×` / `▶▶▶ 8×` | Forward play; server speeds up to match |
-| `✕ STOP` | Return to replay browser |
-| `● LIVE` indicator | Lit amber when at the live edge of the buffer |
-
-All incoming `game_state` frames are buffered client-side. Reverse always
-works on already-received frames. Forward speeds send a `replay_speed`
-message to the server so frames arrive faster.
-
-**Definition of done:** ✅ Enriched metadata served at `/api/replays`.  Replay browser has working filters, sort, pagination, flag filter.  Balance report generator runs end-to-end.  Versioned balance history registry implemented.  Playback controls working with all speeds.  388 tests passing.
-
----
-
-### Phase 5+ — Bot overhaul + reward calibration ✅ Complete
-
-**Goal:** Make scripted opponents realistic, varied, and strategically distinct — improving training data quality and the live-game experience simultaneously.
-
-| Task | Status |
-|------|--------|
-| Engine: combat units spawn with `autoAttackEnabled = true` | ✅ |
-| Engine: build positions jitter to avoid same-coordinate overlaps | ✅ |
-| Balance: contested nodes 300 cap, safe nodes 100 cap | ✅ |
-| Balance: worker cost 50 (was 25), worker speed 1.7 (was 2.0) | ✅ |
-| Balance: skirmisher speed 3.0 (was 2.5), damage 12 (was 15) | ✅ |
-| Balance: passive win threshold 3000 resources, regen 0.2/tick | ✅ |
-| `TurtleBot` redesign: resource-accumulation strategy, 7 workers, turrets only | ✅ |
-| `MacroBot` redesign: gunners + bruisers + medics, per-group retreat at 30% health | ✅ |
-| `RushBot`: randomised barracks y-zone per game | ✅ |
-| `HeavyBot`: foundry-first, 8+ unit push threshold, retreat at 35% | ✅ |
-| All bots: depot only when near supply cap | ✅ |
-| `training/ppo/league.py`: `heavy` bot added to league pool | ✅ |
-
-**Scripted bot overview:**
-
-| Bot | Strategy | Win condition | Pushes at | Retreats |
-|-----|----------|--------------|-----------|---------|
-| Idle | Safe node gathering only | Combat (rarely) | Never | No |
-| Rush | Fast barracks → skirmisher flood | Combat | 3+ skirmishers | No |
-| Turtle | 7 workers, 3 turrets, accumulate resources | **Resource** (3000 held) | Never | No |
-| Macro | Economy + gunners/bruisers/medics | Combat | 4+ units | Yes (30% avg health) |
-| Heavy | Slow foundry build → 8+ bruisers/medics/gunners | Combat | 8+ units | Yes (35% avg heavy health) |
-
-**Definition of done:** ✅ All 5 bots produce decisive outcomes against idle. Auto-attack fires by default. 388 tests passing.
-
----
-
-### Phase 5++ — Reward overhaul + training optimisation ✅ Complete
-
-**Goal:** Fix observed agent misbehaviours through reward signal redesign. Start fresh agent training from a clean slate.
-
-| Task | Status |
-|------|--------|
-| Reward: forward pressure signal (+0.0005 per combat unit past midfield) | ✅ |
-| Reward: worker kill/death split (combat vs worker, different rates) | ✅ |
-| Reward: gathering reward (+0.0003 per actively-gathering worker/tick) | ✅ |
-| Reward: idle worker penalty (−0.0005 per idle worker/tick) | ✅ |
-| Reward: depot headroom penalty (−0.005 × headroom surplus) | ✅ |
-| Reward: draw/timeout penalty = −10.0 (same as loss) | ✅ |
-| TensorBoard: renamed all metrics to human-readable group/name format | ✅ |
-| GPU: ROCm flash attention enabled at startup | ✅ |
-| Training: `ThreadPoolExecutor` parallel env stepping (~2× SPS vs sequential) | ✅ |
-| Training: 0.5s startup stagger per env to prevent RAM spike | ✅ |
-| Training: `--checkpoint` flag for curriculum learning / resume | ✅ |
-| Agent v2: fresh training run from scratch with all reward changes | ✅ |
-
-**Why these changes were made:**
-
-- **Not attacking:** The agent was farming resources and drawing. The enemy crystal is hidden behind fog-of-war until units push forward, so the crystal damage reward was never being triggered — the agent had no incentive to advance. Forward pressure reward gives a small continuous signal for having units past the halfway point, bootstrapping the fog-reveal chain.
-
-- **Too many supply depots:** The idle worker penalty caused the agent to assign workers to building tasks to avoid the penalty — building excessive depots kept workers in `isBuilding` state (exempt from the penalty). Fixed with a headroom-based depot penalty: if you have completed depots but your supply isn't near the cap, you're penalised per excess headroom. Building depots only when you actually need them is now rewarded by penalty-absence.
-
-- **Worker bodyguard incentive:** Separated enemy kills into combat kills (+0.5/supply) vs worker kills (+0.2 each). Combat kills being 2.5× more rewarding means the agent learns to intercept units attacking workers rather than ignoring the threat.
-
-- **Draw exploitation:** The previous reward gave ~0 for draws (only per-tick signal accumulated). With a 6000-tick timeout game, turtling and drawing was nearly free. Draw is now penalised identically to a loss (−10.0) — there is no "safe" outcome for the agent that isn't win or try.
-
-**Definition of done:** ✅ Agent v2 training run started (`crystalfront_ppo__idle__1__1778855546`). All reward changes in `stdioRunner.ts`. 388 tests passing.
-
----
-
-### Phase 6 — Production bot integration ✅ Complete (v0.3.2-ML)
-
-**Goal:** Trained policy ships in the live game as a player option.
-
-| Task | Status |
-|------|--------|
-| ONNX export pipeline (`training/export_onnx.py`) | ✅ |
-| ONNX runtime in Node (`onnxruntime-node`) | ✅ `headless/src/bots/mlBot.ts` |
-| Model file (`models/policy-v0.3.2-ML.onnx` + `.onnx.data`) | ✅ ~1.3 MB |
-| Server pre-loads ONNX session at startup | ✅ `mlBotSession` singleton in `server/src/index.ts` |
-| `createBotAgent()` factory routing bot name → Agent instance | ✅ |
-| `BotSelectMenu.tsx` — separate "Play vs Bot" screen | ✅ SCRIPTED / ML sections |
-| xNorm mirroring when bot plays as RED | ✅ `mx = isRed ? (x => 1-x) : (x => x)` |
-| All matches (PvP + vs-bot) saved as replays | ✅ with both player usernames |
-| Replay playback shows actual gameplay | ✅ bluePlayerId/redPlayerId UUID fix |
-| 443 tests passing | ✅ |
-
-**Shipped capability (u150 checkpoint, 100 deterministic games per opponent):**
-
-| Opponent | Win rate |
-|----------|----------|
-| idle | 100% |
-| passive | 100% |
-| rush_weak | 86% |
-| rush_weak_medium | 99% |
-| macro | 99% |
-| rush_medium | 0% |
-| rush | 1% |
-| turtle | 0% |
-
-**Key design note — async inference:** `BotPlayer.tick()` is synchronous. `MlBot.step()` returns the cached `lastAction` immediately and fires `session.run().then(result => { this.lastAction = ... })` in the background. The 1-tick action lag is imperceptible at the game's tick rate.
-
-**Key design note — xNorm mirroring:** The policy was trained exclusively as BLUE (left side, xNorm near 0 = own crystal). When the bot plays RED, the observation must be mirrored by flipping `1 - xNorm` on all entity and node positions before feeding the policy. `isRed` is detected in `init()` by reading `match.players[idx].color`.
-
----
-
-### Phase 7 — Permanent instrument (ongoing)
-
-This is the steady-state the previous phases build toward. After every meaningful change to `gameBalance.ts` or the action space:
-
-1. Re-run a training campaign (can be short — fine-tune from previous checkpoint)
-2. Generate a fresh balance report
-3. Compare against previous reports — did a dominant strategy emerge? Did anything break?
-4. Watch a sample of replays from outlier games
-5. If something is off, adjust balance or design, repeat
-
----
-
-## 5. Observation specification
-
-> **Version 0.3.2-ML** — reflects the shipped policy. Source of truth: `headless/src/observation.ts` and `headless/src/bots/mlBot.ts`.
-
-The observation fed to the agent each tick has three parts. Fog-of-war is applied before building the observation: the agent only sees entities its own units have vision on.
-
-### 5.1 Global features — `vec[22]`
-
-| Index | Name | Range | Notes |
-|-------|------|--------|-------|
-| 0 | `ownResources` | [0, ∞) norm /1000 | Current bank / 1000 |
-| 1 | `ownSupply` | [0, 1] | supply / maxSupply |
-| 2 | `ownMaxSupply` | int | Absolute max supply |
+| Idx | Name | Range | Notes |
+|-----|------|-------|-------|
+| 0 | `ownResources` | [0, ∞) / 1000 | Current resource bank, normalised |
+| 1 | `ownSupply` | [0, 1] | `supply / maxSupply` |
+| 2 | `ownMaxSupply` | int | Absolute supply cap |
 | 3 | `oppVisibleSupply` | [0, 1] | Enemy supply fraction; 0 if no enemies visible |
-| 4 | `tick` | [0, 1] | tick / 6000 |
+| 4 | `tick` | [0, 1] | `tick / 6000` |
 | 5 | `scoreDiff` | (−∞, ∞) | own score − opponent score |
 | 6 | `ownCrystalHealthFrac` | [0, 1] | Own crystal hp / maxHp |
 | 7 | `oppCrystalHealthFrac` | [0, 1] | Enemy crystal hp / maxHp; 0 if not visible |
 | 8 | `ownResourcesWinFrac` | [0, 1] | Held resources / passiveWinThreshold |
-| 9 | `oppResourcesWinFrac` | [0, 1] | Enemy held resources / threshold; 0 if not visible |
-| 10 | `ownLifetimeResourcesFrac` | [0, 1] | Total mined / (threshold × 2) — mining rate signal |
+| 9 | `oppResourcesWinFrac` | [0, 1] | Same for enemy; 0 if unknown |
+| 10 | `ownLifetimeResourcesFrac` | [0, 1] | Mining rate signal |
 | 11 | `oppLifetimeResourcesFrac` | [0, 1] | 0 if unknown |
 | 12 | `enemyWorkerCount` | [0, ∞) | Visible enemy workers |
 | 13 | `enemySkirmisherCount` | [0, ∞) | Visible enemy skirmishers |
@@ -545,29 +105,29 @@ The observation fed to the agent each tick has three parts. Fog-of-war is applie
 | 15 | `enemyBarracksCount` | [0, ∞) | Visible enemy barracks |
 | 16 | `enemyTurretCount` | [0, ∞) | Visible enemy turrets |
 | 17 | `enemyForwardUnitFrac` | [0, 1] | Fraction of visible enemy units in own half |
-| 18 | `nearestEnemyToCrystalDistNorm` | [0, 1] | Normalised distance of nearest enemy to own crystal |
-| 19 | `ownCombatInOwnHalf` | [0, ∞) | Own combat units in own half (defensive signal) |
-| 20 | `enemyCombatInOwnHalf` | [0, ∞) | Visible enemy combat units in own half |
-| 21 | `totalVisibleEnemyCombat` | [0, ∞) | Total visible enemy combat units |
+| 18 | `nearestEnemyToCrystalDistNorm` | [0, 1] | Threat geometry |
+| 19 | `ownCombatInOwnHalf` | [0, ∞) | Defensive signal |
+| 20 | `enemyCombatInOwnHalf` | [0, ∞) | Threat in own half |
+| 21 | `totalVisibleEnemyCombat` | [0, ∞) | Total visible combat units |
 
-### 5.2 Entity features — `vec[12]` per entity (up to 64)
+### 2.2 Entity features — `vec[12]` per entity (up to MAX_E = 64)
 
-| Index | Name | Range | Notes |
-|-------|------|--------|-------|
-| 0 | `typeIndex` | [0, 9] | Index into ENTITY_TYPES (see below) |
+| Idx | Name | Range | Notes |
+|-----|------|-------|-------|
+| 0 | `typeIndex` | [0, 9] | Index into ENTITY_TYPES — passed through learned 16-dim embedding |
 | 1 | `owner` | {1, −1} | 1 = mine, −1 = enemy |
-| 2 | `xNorm` | [0, 1] | x / mapWidth — **mirrored (1−x) when bot plays RED** |
-| 3 | `yNorm` | [0, 1] | y / mapHeight |
+| 2 | `xNorm` | [0, 1] | **Mirrored (1 − x) when bot plays RED in MlBot** |
+| 3 | `yNorm` | [0, 1] | |
 | 4 | `healthFrac` | [0, 1] | health / maxHealth |
-| 5 | `constructionFrac` | [0, 1] | construction progress (buildings); 1 otherwise |
-| 6 | `isAttacking` | {0, 1} | Has active attack target |
-| 7 | `isMoving` | {0, 1} | Has move target |
-| 8 | `isGathering` | {0, 1} | Assigned to resource node |
+| 5 | `constructionFrac` | [0, 1] | Construction progress (buildings); 1 otherwise |
+| 6 | `isAttacking` | {0, 1} | |
+| 7 | `isMoving` | {0, 1} | |
+| 8 | `isGathering` | {0, 1} | |
 | 9 | `isBuilding` | {0, 1} | Worker with active build target |
 | 10 | `attackCooldownNorm` | [0, 1] | attackCooldown / 25 |
 | 11 | `inAttackRange` | {0, 1} | Enemy entity within attack range of own unit |
 
-**ENTITY_TYPES index mapping:**
+ENTITY_TYPES index:
 ```
 0: crystal           5: medic
 1: worker            6: building_barracks
@@ -576,379 +136,544 @@ The observation fed to the agent each tick has three parts. Fog-of-war is applie
 4: bruiser           9: building_turret
 ```
 
-In the policy network, `typeIndex` is passed through a learned embedding before concatenation.
+### 2.3 Node features — `vec[5]` per node (up to MAX_N = 8)
 
-### 5.3 Node features — `vec[5]` per node (up to 8)
-
-| Index | Name | Range |
-|-------|------|--------|
-| 0 | `xNorm` | [0, 1] |
+| Idx | Name | Range |
+|-----|------|-------|
+| 0 | `xNorm` | [0, 1] (mirrored for RED) |
 | 1 | `yNorm` | [0, 1] |
 | 2 | `remainingFrac` | [0, 1] |
 | 3 | `gathererCount` | [0, 3] |
 | 4 | `isContested` | {0, 1} |
 
+### 2.4 Padding and masks
+
+Entities and nodes are zero-padded to fixed-length tensors. Two boolean masks accompany them:
+- `entity_mask: (MAX_E,)` — True for valid slot, False for padding
+- `node_mask: (MAX_N,)` — same convention
+
+The Set-transformer encoders use these masks for both attention (`src_key_padding_mask`) and the final masked-mean pool.
+
 ---
 
-## 6. Action space
+## 3. Action space
 
-> **Version 0.3.2-ML** — 81 actions total. See `headless/src/actionIndex.ts` for the canonical integer mapping.
+> Source of truth: `headless/src/actionIndex.ts`. ACTION_SPACE_SIZE = 81.
 
-Actions are **hierarchical macro-actions**. The PPO policy outputs a single integer `a ∈ [0, 80]`. `indexToAction()` converts it to a structured `MacroAction`; `expandMacroAction()` converts that to raw engine commands. Illegal actions are masked to −∞ before sampling — the agent can never select an action it cannot execute.
+The policy outputs a single integer `a ∈ [0, 80]`. `indexToAction(a)` converts to a structured `MacroAction`; `expandMacroAction()` emits raw engine commands. Illegal actions are masked to −1e9 before sampling.
 
-### Full action table
+### 3.1 Action table
 
 | Range | Type | Sub-options | Count |
 |-------|------|-------------|-------|
 | 0 | `noop` | — | 1 |
 | 1 | `train_worker` | — | 1 |
 | 2–5 | `train_unit` | skirmisher / gunner / bruiser / medic | 4 |
-| 6–41 | `build` | 4 building types × 3 x-zones × 3 y-zones | 36 |
-| 42–53 | `attack_move` | 4 groups × 3 target zones | 12 |
+| 6–41 | `build` | 4 types × 3 x-zones × 3 y-zones | 36 |
+| 42–53 | `attack_move` | 4 groups × 3 zones | 12 |
 | 54–57 | `retreat` | 4 groups | 4 |
 | 58–69 | `assign_workers` | 3 node choices × 4 counts | 12 |
-| 70–72 | `set_rally` | 3 target zones | 3 |
-| 71–75 | `attack_move` | all_idle_combat × 5 zones | 5 |
-| 76–80 | `attack_move` | idle_workers × 5 zones | 5 |
+| 70–75 | `set_rally` / `attack_move(all_idle_combat)` | 6 zones | 6 |
+| 76–80 | `attack_move(idle_workers)` | 5 zones | 5 |
 | **Total** | | | **81** |
 
-### Sub-field values
+### 3.2 Sub-field values
 
-**`group`:** `all_combat` · `skirmishers` · `gunners` · `bruisers`
+- **`group`:** `all_combat`, `skirmishers`, `gunners`, `bruisers`
+- **`targetZone`:** `enemy_crystal`, `midfield`, `contested_node`, `enemy_army`, `defend_crystal`
+- **`xZone`:** `near_crystal`, `mid_base`, `forward`
+- **`yZone`:** `top`, `middle`, `bottom`
+- **`nodeChoice`:** `nearest_safe`, `nearest_contested`, `richest_visible`
+- **`workerCount`:** `1`, `2`, `3`, `all_idle`
 
-**`targetZone`:** `enemy_crystal` · `midfield` · `contested_node`
-
-**`xZone`** (within player's build half): `near_crystal` · `mid_base` · `forward`
-
-**`yZone`:** `top` · `middle` · `bottom`
-
-**`nodeChoice`:** `nearest_safe` · `nearest_contested` · `richest_visible`
-
-**`workerCount`:** `1` · `2` · `3` · `all_idle`
-
-### Legality rules
+### 3.3 Legality rules (`headless/src/legalActions.ts`)
 
 | Action | Legal when |
 |--------|-----------|
-| `noop` | Always |
-| `train_worker` | `resources ≥ 25` AND `supply + 1 ≤ maxSupply` |
-| `train_unit(T)` | `resources ≥ cost[T]` AND supply headroom AND building that produces T exists |
-| `build(B, ...)` | `resources ≥ cost[B]` AND at least one idle worker |
-| `attack_move(group, ...)` | At least one unit of that group type exists |
+| `noop` | Always — unless forcing is active and conditions met (§6) |
+| `train_worker` | `resources ≥ workerTrainCost` AND supply headroom |
+| `train_unit(T)` | `resources ≥ cost[T]` AND supply headroom AND a producing building exists |
+| `build(B, …)` | `resources ≥ cost[B]` AND at least one idle worker AND zone valid |
+| `attack_move(group, …)` | At least one unit of `group` exists — unless forcing-suppressed (§6) |
 | `retreat(group)` | Same as attack_move |
-| `assign_workers(...)` | At least one idle worker AND at least one available node |
-| `set_rally(...)` | At least one completed building exists |
+| `assign_workers(…)` | At least one idle worker AND at least one available node |
+| `set_rally(…)` | At least one completed building exists |
 
 ---
 
-## 7. Reward specification
+## 4. Reward specification
 
-> **Current version: 0.1.47-ML.** See version history below.
+> **Source of truth: `headless/src/reward.ts` — `computeReward()`.**
+> Both runners (`stdioRunner.ts`, `stdioVecRunner.ts`) import this function. Last extended in v0.4.0-ML (units 3, 4 bootstrap shaping).
 
-Rewards are computed in `headless/src/stdioRunner.ts` by comparing consecutive observations. The Node simulation computes the scalar reward and passes it to Python alongside each observation.
+### 4.1 Per-step components
 
-### 7.1 Per-tick rewards
+| Signal | Magnitude | When |
+|--------|-----------|------|
+| Crystal damage dealt | `+5.0 × delta_healthFrac` | enemy crystal visible (both prev and curr > 0) |
+| Crystal damage taken | `−2.0 × delta_healthFrac` | every tick |
+| First barracks built | `+10.0` | one-time |
+| First combat unit trained | `+5.0` | one-time |
+| Second combat unit trained | `+3.0` | one-time (v0.4.0-ML+) |
+| Third combat unit trained | `+2.0` | one-time (v0.4.0-ML+) |
+| Fourth combat unit trained | `+1.0` | one-time (v0.4.0-ML+) |
+| Time penalty | `−0.001` | every tick (−6 over a 6000-tick episode) |
 
-| Signal | Formula | Purpose |
-|--------|---------|---------|
-| Crystal damage dealt | `+0.001 × damage` (only when enemy crystal was visible last tick) | Primary win signal; fog-gated to require scouting first |
-| Crystal damage taken | `−0.001 × damage` | Penalise getting hit |
-| Mining | `+0.0001 × miningDelta × (passiveWinThreshold × 2)` | Reward gathering via lifetime resources delta (spending doesn't reduce it) |
-| Army supply advantage | `+0.0005 × (ownSupply − oppVisibleSupply)` | Encourage fielding a larger visible force |
-| Combat unit kill | `+0.5 × supply points removed` | Enemy skirmisher/gunner/bruiser/medic killed |
-| Enemy worker kill | `+0.2 per worker` | Less than combat kill — creates bodyguard incentive |
-| Own worker lost | `−0.8 per worker` | Workers are economically critical; losing them is punished more than killing them is rewarded |
-| Gathering workers | `+0.0003 per gathering worker` | Reward assigning workers to nodes rather than leaving them idle |
-| Idle workers | `−0.0005 per idle worker` | Workers doing nothing cost a small per-tick drain |
-| Depot headroom | `−0.005 × (headroom − 1)` when completed depots exist and headroom > 1 | Prevents building depots far ahead of supply cap |
-| Forward pressure | `+0.0005 per combat unit with xNorm > 0.5` | Bootstraps fog-reveal chain; agent must push past midfield to see the enemy crystal |
-| Time penalty | `−0.00005 per tick` | Mild stall discouragement |
+**Max achievable shaping per episode:** ~+26 (crystal dmg full + barracks + 4 unit milestones) − 6 time. Terminal still dominates.
 
-Per-tick magnitudes are intentionally small (order 10⁻⁴ to 10⁻³) — terminal rewards dominate the signal.
+### 4.2 Terminal
 
-### 7.2 Terminal rewards
+```
+done && winner == blueId && winType != "resource"  → +100.0
+otherwise (loss, draw, timeout, resource-win)      → −100.0
+```
 
-| Outcome | Reward | Notes |
-|---------|--------|-------|
-| Win (any condition) | `+10.0` | Combat win or resource win — both equally valued |
-| Loss (any condition) | `−10.0` | |
-| Draw (6000 ticks, no winner) | `−10.0` | Same as loss — the agent must engage or die trying |
+**Draw = loss.** Refusing to engage cannot be the optimal strategy. Resource wins are also penalised — the bot is a combat agent, not an accountant.
 
-**Draw = loss** is a deliberate design choice. A draw is the agent refusing to interact with the game. Turtling until timeout must be the worst possible strategy, not a safe fallback.
+### 4.3 Why the shape changed (v0.3.0-ML and beyond)
 
-### 7.3 Win conditions
+v0.3.0-ML simplified the reward from ~20 components (which had accumulated to ~+150 shaping/ep, masking the terminal) to 6 components capped at ~+14 shaping. v0.4.0-ML added three more one-time milestones (+3, +2, +1 for units 2/3/4) specifically to provide a positive signal for multi-unit play. The extended milestones did **not** rescue rush_medium performance — see `ML_BOT_ACTION_PLAN.md` for the post-mortem.
 
-- **Combat win:** destroy the enemy crystal
-- **Resource win:** hold ≥ 3,000 resources simultaneously (`ECONOMY.passiveWinThreshold`)
+### 4.4 Milestones struct
 
-### 7.4 Reward version history
+```typescript
+interface Milestones {
+  hasBuiltBarracks: boolean;
+  firstBarracksTick: number;
+  hasTrainedCombatUnit: boolean;
+  firstCombatUnitTick: number;
+  hasTrainedSecondCombatUnit: boolean;
+  hasTrainedThirdCombatUnit: boolean;
+  hasTrainedFourthCombatUnit: boolean;
+  firstAttackTick: number;
+  minOppCrystalHealthFrac: number;  // diagnostic only
+  minOwnCrystalHealthFrac: number;  // diagnostic only
+}
+```
 
-| Version | Key changes |
-|---------|-------------|
-| 0.1.43-ML | Initial reward: crystal damage, mining, army advantage, unit kill, time penalty |
-| 0.1.44-ML | Balance patch (worker cost/speed, skirmisher stats) — reward unchanged |
-| 0.1.45-ML | Added: forward pressure, worker kill/death split, gathering reward, idle penalty, depot headroom penalty |
-| 0.1.46-ML | Draw penalty introduced (−10.0 = same as loss) |
-| 0.1.47-ML | Agent v2 fresh start — all 0.1.46 rewards carried forward |
+Reset via `freshMilestones()` at episode start.
 
-### 7.5 Tuning guidance
+---
 
-| Observed behaviour | Likely cause | Adjustment |
-|-------------------|--------------|-----------|
-| Gathers forever, never attacks | Mining reward too high or forward pressure too low | Increase forward pressure weight or reduce mining weight |
-| Builds endless supply depots | Depot headroom penalty too weak | Increase penalty multiplier |
-| Leaves workers idle | Idle penalty too weak or gathering reward too low | Increase idle penalty / gathering reward |
-| Never attacks even with army built | Forward pressure too weak | Increase +0.0005 weight |
-| Suicides units into crystal | Terminal reward dominates too early in training | Lower terminal or increase per-tick shaping |
-| Games always hit 6000 ticks (draws) | Draw penalty not felt yet, or agent is still early in training | Wait; if persistent, increase draw penalty magnitude |
-| Loses workers recklessly | Own worker death penalty too low | Increase from −0.8 |
-| Policy diverges | Rewards too large | Scale all per-tick signals down ×0.1 |
+## 5. Curriculum stages
+
+> Defined in `training/ppo/train.py` `CURRICULUM` list. Auto-promote on `win_rate ≥ threshold` over 100 episodes; auto-regress after `max_steps` if stuck.
+
+| Idx | Stage | Map | Crystal HP | Resources | Opponent | Notes |
+|-----|-------|-----|------------|-----------|----------|-------|
+| 0 | 0a | 800px | 50HP | 200 | idle | 2 pre-placed skirmishers (Phase A) |
+| 1 | 0b | 800px | 50HP | 200 | idle | No scaffolding |
+| 2 | 0b5 | 800px | 100HP | 200 | idle | |
+| 3 | 0c | 800px | 100HP | 50 | idle | Resource slider step 1 |
+| 4 | day5 | 1500px | 200HP | 50 | idle | |
+| 5 | 1a | 1500px | 100HP | 50 | idle | |
+| 6 | 1b | 1500px | 100HP | 50 | passive | |
+| 7 | 2a | 3000px | 300HP | 50 | passive | |
+| 8 | 2a5 | 3000px | 300HP | **200** | **rush_weak** | Resource slider for active opponent |
+| 9 | 2a6 | 3000px | 300HP | 75 | rush_weak | |
+| 10 | 2b | 3000px | 300HP | 50 | rush_weak | |
+| 11 | 3a | 6000px | 1000HP | 50 | passive | **Full game map** |
+| 12 | 3a5 | 6000px | 1000HP | 200 | rush_medium | |
+| 13 | 3a_rwm | 3000px | 300HP | 50 | rush_weak_medium | (used in v0.4.0-ML) |
+| 14 | 3a_rm_3k | 3000px | 300HP | 50 | rush_medium + 2 pre-placed skirmishers | **The wall — never cleared** |
+| 15 | 3b | 6000px | 1000HP | 50 | rush_medium | Graduation gate |
+| 16 | 4 | 6000px | 1000HP | 50 | league | PFSP self-play |
+
+**v0.3.2-ML cleared up to stage 11 (3a).** Stages 12–16 remain ungated. Stage 14 (`3a_rm_3k`) is the trn=0% ceiling — see `ML_BOT_ACTION_PLAN.md` for details.
+
+---
+
+## 6. Action-forcing module (v0.4.0-ML)
+
+> **Default-off.** Specified by `LegalActionsOpts.forcingScale = 0.0`. Setting `> 0` injects a curriculum-style action mask.
+> Source: `headless/src/legalActions.ts`, integrated in `headless/src/stdioVecRunner.ts`.
+
+### 6.1 Interface
+
+```typescript
+export interface LegalActionsOpts {
+  noopStreak?: number;        // ticks since last noop reset
+  trainUnitStreak?: number;   // ticks since last train_unit action (Variant β')
+  forcingScale?: number;      // 0.0 = off, 1.0 = always force when conditions met
+}
+
+getLegalActions(match, playerId, opts?: LegalActionsOpts)
+```
+
+### 6.2 Mode A — early barracks forcing
+
+Fires when:
+- `noopStreak >= 30`
+- no barracks exists yet for this player
+- at least one idle worker available
+- `resources >= BUILDING_DEFS.barracks.cost`
+- `Math.random() < forcingScale`
+
+Effect: `noop` is removed from the legal-action list. The policy must sample some other action; the most economically rational is `build(barracks)`.
+
+### 6.3 Mode B — multi-unit forcing (Variant β')
+
+Fires when:
+- `trainUnitStreak >= 50`
+- at least one completed barracks exists
+- `combatUnits < 3` (note: threshold is `< 3` not `< 2` — fires while pre-placed skirmishers still alive)
+- `resources >= 50`
+- `Math.random() < forcingScale`
+
+Effect: **both** `noop` and `attack_move(*, *)` are removed. Forces the policy to either train, build, retreat, or move workers — preventing the "attack with 1 unit while ignoring train_unit" failure mode.
+
+### 6.4 Runner integration
+
+`stdioVecRunner.ts` tracks per-slot `noopStreak` and `trainUnitStreak`:
+
+```typescript
+slot.noopStreak       = macroAction.type === "noop"       ? slot.noopStreak + 1       : 0;
+slot.trainUnitStreak  = macroAction.type === "train_unit" ? 0 : slot.trainUnitStreak + 1;
+```
+
+`ACTION_FORCING_SCALE` is read from the `reset_all` protocol message; mid-training fade is supported via a `set_forcing_scale` message (called by the trainer when crossing `--action_forcing_fade_start/--action_forcing_fade_end`).
+
+### 6.5 Why forcing did not break the rush_medium ceiling
+
+Per the v0.4.0-ML post-mortem in `ML_BOT_ACTION_PLAN.md`: forced `train_unit` actions in losing episodes create a negative gradient (`train_unit → −100 terminal`). The policy learned to retreat from any state where forcing could trigger (noop rose to 65–68% before auto-regression). The mechanism worked; the gradient sign was wrong.
+
+---
+
+## 7. RND intrinsic motivation module (v0.4.0-ML)
+
+> **Default-off.** Specified by `train.py --rnd_coef 0.0`. Enabled only when `rnd_coef > 0`.
+> Source: `training/ppo/policy.py` — `RNDModel`, `RunningMeanStd`.
+
+### 7.1 Architecture
+
+Two networks operating on the 22-dim global observation:
+
+```
+target    = MLP(22 → 64 → 64)   # fixed random weights, requires_grad=False
+predictor = MLP(22 → 64 → 64 → 64)   # trained via MSE to match target
+```
+
+`RunningMeanStd` (Welford online estimator) normalises both observations and per-step intrinsic rewards.
+
+### 7.2 Intrinsic reward computation
+
+Each step, before the rollout buffer write:
+
+```python
+o = obs_rms.normalise(global_obs).clamp(-5.0, 5.0)
+with torch.no_grad():
+    t = target(o)
+p = predictor(o)
+r_intrinsic = ((p - t) ** 2).mean(dim=-1)  # (B,)
+
+# Update running stats
+obs_rms.update(global_obs)
+rew_rms.update(r_intrinsic)
+
+# Normalise and scale
+r_norm = r_intrinsic / (rew_rms.var.sqrt() + 1e-8)
+rewards = extrinsic_rewards + rnd_coef * r_norm
+```
+
+### 7.3 Predictor training
+
+After every PPO update, the predictor is trained for one epoch over the full rollout batch:
+
+```python
+loss = ((predictor(obs_norm) - target(obs_norm)) ** 2).mean()
+predictor_optimizer.step()
+```
+
+### 7.4 Checkpoint persistence
+
+```python
+ckpt["rnd"] = rnd_model.state_dict()   # save
+rnd_model.load_state_dict(ckpt["rnd"]) # restore
+```
+
+### 7.5 Calibration finding
+
+`rnd_coef=0.01` provides only **+0.001/step** (buried by ±100 terminal). Use `rnd_coef=0.5` for **+0.06–0.29/novel step** (~+5–17 per novel-state episode).
+
+### 7.6 RND alone is insufficient
+
+If the policy never visits novel states (p(`train_unit`) ≈ 0), RND never fires. Must be combined with action-forcing (§6) so train_unit is mechanically sampled, then RND rewards the novel multi-unit state reached. Even combined, the net per-episode incentive for "train units then lose" (~−83) vs "noop and lose" (−100) was not enough to flip the gradient sign — see post-mortem.
 
 ---
 
 ## 8. Training guide
 
-### Prerequisites
+### 8.1 Prerequisites
 
 ```bash
-# Install Python dependencies (from repo root)
 pip install -r training/requirements.txt
+npm install                            # Node deps for headless
 ```
 
-The Node dependencies are already installed via the main `npm install`.
-
-### Quick start
+### 8.2 Quick smoke test
 
 ```bash
-# Verify the pipeline works first (should take ~5 seconds)
-python3 training/test_env.py
-
-# Start training vs the idle bot (easiest — confirms pipeline is working)
-python3 training/ppo/train.py --opponent idle --num_envs 4 --total_timesteps 500000
-
-# Monitor in TensorBoard (run in a second terminal)
-tensorboard --logdir /root/CrystalFront/runs --bind_all
+python -m training.test_env            # ~5s end-to-end pipeline check
 ```
 
-### Current training command (agent v2)
+### 8.3 BC warmup (mandatory before curriculum)
 
 ```bash
-python3 training/ppo/train.py \
-  --opponent idle \
-  --num_envs 20 \
-  --total_timesteps 3000000 \
-  --ent_coef 0.05
+python -m training.bc_pretrain \
+  --episodes 1000 \
+  --output bc_warmup.pt \
+  --map_width 0 \
+  --crystal_health 0 \
+  --noop_keep 0.05
 ```
 
-Expected throughput: ~1100–1200 SPS. At 3M steps this takes roughly 45–60 minutes wall-clock.
+BC warmup runs RushBot vs IdleBot on full game config (6000px/1000HP/50 res), subsamples noop to 5% of dataset, trains the actor for 5 epochs with cross-entropy, then pretrains the critic on discounted returns. Output checkpoint includes both actor and critic state, **but not optimizer state** (it would fight PPO).
 
-### Recommended training progression
-
-| Stage | Command | Target | Expected steps |
-|-------|---------|--------|----------------|
-| Sanity check | `--opponent idle --num_envs 4` | 100% win rate | ~100k |
-| vs Rush | `--opponent rush --num_envs 20 --checkpoint <idle_final.pt>` | >90% win rate | ~1M |
-| vs Turtle | `--opponent turtle --num_envs 20 --checkpoint <rush_final.pt>` | >80% win rate | ~2M |
-| vs Macro | `--opponent macro --num_envs 20 --checkpoint <turtle_final.pt>` | >70% win rate | ~5M |
-| vs Heavy | `--opponent heavy --num_envs 20 --checkpoint <macro_final.pt>` | >70% win rate | ~3M |
-| League | `--league --num_envs 20 --checkpoint <heavy_final.pt>` | >90% vs all bots | ~10M |
-
-Move to the next stage once win rate stays above the target for at least 200k consecutive steps. Use `--checkpoint` to carry knowledge forward — don't start each stage from scratch.
-
-### Resume from checkpoint
+### 8.4 Standard curriculum training (v0.3.2-ML recipe)
 
 ```bash
-# Continue training from a specific update checkpoint
-python3 training/ppo/train.py \
-  --opponent rush \
-  --num_envs 20 \
-  --checkpoint checkpoints/<run_name>/update_000150.pt
+python -m training.ppo.train \
+  --curriculum --curriculum_stage 0 \
+  --checkpoint bc_warmup.pt \
+  --ent_coef 0.02 \
+  --num_envs 20 --vec_size 4 \
+  --total_timesteps 20000000
 ```
 
-### League training
+Expected throughput: ~1100–1375 SPS on RX 7900 XTX / 12-vCPU container. 20M steps = ~4–5h wall time.
+
+### 8.5 Resume from a specific checkpoint
 
 ```bash
-# Start a league training campaign
-python3 training/ppo/train.py --league --num_envs 20 --total_timesteps 10000000
-
-# Resume from a previous league state
-python3 training/ppo/train.py \
-  --league \
-  --league_state checkpoints/.../league_state.json \
-  --num_envs 20
+python -m training.ppo.train \
+  --curriculum --curriculum_stage 11 \
+  --checkpoint checkpoints/<run>/update_000150.pt \
+  --total_timesteps 10000000
 ```
 
-### Generating balance reports
+The trainer restores actor, critic, RND state, and the update counter (LR schedule continues correctly). Optimizer state is skipped if the checkpoint is from BC (`update=0`).
+
+### 8.6 Option B training — action-masking forcing (v0.4.0-ML, default-off)
 
 ```bash
-# Run 100 matches per bot-pair and print JSON report
-python3 training/balance_report.py --matches 100
-
-# Compare before/after a balance change
-python3 training/balance_report.py --matches 500 --out baseline.json
-# … edit shared/src/gameBalance.ts, rebuild, deploy …
-python3 training/balance_report.py --matches 500 --out after.json
-python3 training/balance_report.py --compare "baseline.json after.json"
+python -m training.ppo.train \
+  --curriculum --curriculum_stage 14 \
+  --checkpoint <ckpt> \
+  --ent_coef 0.05 \
+  --action_forcing_scale 1.0 \
+  --action_forcing_fade_start 5000000 \
+  --action_forcing_fade_end 10000000 \
+  --total_timesteps 15000000
 ```
 
-### Key hyperparameters
+Fade is linear from `_start` to `_end` in env-step units. `scale=0` after `_end`.
+
+### 8.7 Option γ training — RND (v0.4.0-ML, default-off)
+
+```bash
+python -m training.ppo.train \
+  --curriculum --curriculum_stage 14 \
+  --checkpoint <ckpt> \
+  --rnd_coef 0.5 --rnd_embed_dim 64 \
+  --action_forcing_scale 1.0 \
+  --ent_coef 0.05 \
+  --total_timesteps 15000000
+```
+
+RND must be combined with forcing — §7.6.
+
+### 8.8 League mode (PFSP self-play, never activated for v0.3.2-ML)
+
+```bash
+python -m training.ppo.train --league \
+  --league_pfsp_temp 0.5 \
+  --league_add_interval 100 \
+  --num_envs 20 --total_timesteps 10000000
+```
+
+Per third review §7.10 + R11: do **not** activate league mode until stage 3b is cleared.
+
+### 8.9 Key hyperparameters
 
 | Flag | Default | Notes |
 |------|---------|-------|
-| `--num_envs` | 20 | Parallel simulators. 20 is the sweet spot for this hardware. |
-| `--num_steps` | 512 | Rollout length per env. Decrease for faster feedback, increase for more stable gradients. |
-| `--gamma` | 0.995 | Discount factor. High values suit long episodes (up to 6000 ticks). |
-| `--ent_coef` | 0.01 | Entropy bonus. Use 0.05 to prevent early policy collapse. |
-| `--save_interval` | 50 | Checkpoint every N policy updates. |
-| `--save_replay_every` | 10 | Save a training replay every N episodes. |
+| `--num_envs` | 20 | Parallel simulators. 20 is the sweet spot for 12 vCPUs. |
+| `--vec_size` | 4 | Games per Node subprocess. 5 procs × 4 = 20 envs. |
+| `--num_steps` | 1536 | Rollout horizon; tuned for 6000-tick episodes. |
+| `--num_minibatches` | 6 | 5120 per minibatch with 30720 total. |
+| `--update_epochs` | 4 | |
+| `--gamma` | 0.995 | Effective horizon ~200 ticks. |
+| `--ent_coef` | 0.02 | 0.05 used for v0.4.0-ML forcing/RND runs. |
+| `--mlp_hidden` | 384 | Trunk width. |
+| `--save_interval` | 50 | Checkpoint every N updates. |
+| `--save_replay_every` | 0 | Disable training-replay saves (was polluting browser). |
+| `--action_forcing_scale` | 0.0 | Off by default. |
+| `--rnd_coef` | 0.0 | Off by default. |
 
-### Stop-the-line conditions
+### 8.10 Stop-the-line conditions
 
-Pause and diagnose if any of these occur:
-
-- **Training vs IdleBot never reaches 100% win rate** — the pipeline has a bug, not a tuning problem. Don't proceed.
-- **Win rate vs scripted bots stalls <60% after 20M steps** — action space, reward, or observation needs rework. Don't throw more compute at it.
-- **Entropy collapses to 0 within the first 100k steps** — policy collapsed; increase `--ent_coef` or reduce `--learning_rate`.
-- **Episode length stays at 6000 throughout** — agent is still drawing; the draw penalty should resolve this within 500k steps if reward is correct.
-- **Bot found a strategy that exploits a simulation bug** — fix the bug; retrain from scratch. Don't keep the exploiting checkpoint.
+- vs IdleBot stage never reaches 100% within 100k steps → pipeline bug.
+- vs scripted-bot win rate <60% after 20M steps → reward/action/observation needs rework, not more compute.
+- Entropy < 0.3 in first 500k steps → policy collapsed; increase `--ent_coef` or restart.
+- noop% rising monotonically above 60% during forcing → forcing is making things worse; halt and re-evaluate.
+- ep_len locked at 6000 → agent is drawing; check the draw=−100 penalty wired up.
 
 ---
 
-## 9. TensorBoard reference
+## 9. Evaluation tooling
 
-Launch TensorBoard:
+### 9.1 `training/eval/eval_checkpoint.py`
+
+Loads any `.pt` and plays N deterministic matches vs each scripted bot, prints a win-rate table.
+
+```bash
+python -m training.eval.eval_checkpoint \
+  --checkpoint checkpoints/<run>/update_NNN.pt \
+  --episodes 100 \
+  --opponents passive rush_weak rush_weak_medium rush_medium turtle macro
+```
+
+Note: `--opponents` is space-separated (tyro convention), not comma-separated.
+
+### 9.2 `training/diagnose_policy.py` (v0.4.0-ML)
+
+Per-episode action histogram. Records `train_unit_count`, `max_noop_streak`, outcome per episode. Output: CSV.
+
+```bash
+python -m training.diagnose_policy \
+  --checkpoint <ckpt> \
+  --opponent rush_medium \
+  --episodes 100 \
+  --output /tmp/diag.csv
+```
+
+This script revealed the v0.4.0-ML rounding artefact: the policy actively trains 9–17 units per episode in eval, even when training logs report `trn=0%` (which is `int(0.3%)` = 0).
+
+### 9.3 ONNX export + parity
+
+```bash
+python -m training.export_onnx --checkpoint <ckpt> --output models/policy-vX.onnx
+python -m training.test_onnx_parity --checkpoint <ckpt> --onnx_path models/policy-vX.onnx
+```
+
+Produces `policy-vX.onnx` (~41 KB) + `policy-vX.onnx.data` (~1.2 MB external tensors). Parity test asserts max logit error <1e-3, max value error <1e-3.
+
+---
+
+## 10. TensorBoard reference
+
 ```bash
 tensorboard --logdir /root/CrystalFront/runs --bind_all
 ```
 
-TensorBoard run names follow the format: `crystalfront_ppo__{opponent}__{seed}__{timestamp}`
+Run names: `crystalfront_ppo__{version}__{opponent}__{seed}__{timestamp}`.
 
-To compare runs: open the TensorBoard UI, select which runs to include in the left-hand panel. Deselect all old runs and keep only the current one unless you want explicit before/after comparison.
+### 10.1 `game/` — agent behaviour
 
----
+- **`game/win_rate`** — rolling 100-episode win rate. Primary metric.
+- **`game/episode_reward`** — full reward (terminal + shaping).
+- **`game/episode_terminal_return`** — `±100` only; reveals shaping-hacking when it diverges from `episode_reward`.
+- **`game/episode_length_ticks`** — leading indicator. Drops before win_rate moves.
 
-### `game/` — what the agent is actually doing in-game
+### 10.2 `training/` — process health
 
-These are the metrics that tell you whether the agent is learning to *play the game well*. Check these first.
+- **`training/learning_rate`** — linear anneal from 2.5e-4 to 0. Flat = schedule bug.
+- **`training/steps_per_second`** — expect ~1100–1375 with 20 envs. Sudden drop = hanging subprocess.
 
-**`game/win_rate`**  
-Fraction of the last 100 completed games the agent won (rolling window). This is the number you care most about. Should climb over time. If it plateaus around 50% the agent has found a local optimum. If it collapses after a peak, entropy has probably dropped too low and the policy has overfit to a brittle strategy. Target: >90% vs idle before moving to the next stage.
+### 10.3 `ppo/` — algorithm internals
 
-**`game/episode_reward`**  
-Total reward accumulated over one complete game — all the small per-tick signals summed, plus the terminal ±10. A game where the agent wins quickly scores higher than a late win, because the time penalty (−0.00005/tick) chips away. Useful for tracking quality of wins, not just whether they happened. A clean win in 1000 ticks will score noticeably higher than a grinding win at 5800 ticks.
+- **`ppo/policy_gradient_loss`** — small negative. Blow-up = LR too high.
+- **`ppo/value_function_loss`** — should trend down. Persistent high = reward too sparse.
+- **`ppo/entropy_bonus`** — keep > 0.3 in first 500k steps.
+- **`ppo/clip_fraction`** — healthy 0.05–0.20. >0.3 = updates too large.
+- **`ppo/approx_kl_divergence`** — > 0.02 consistently = unstable.
 
-**`game/episode_length_ticks`**  
-How many ticks the game lasted, out of a maximum of 6000. This is a leading indicator — it moves before win_rate does. High values (near 6000) mean draws or very late wins; the agent is stalling. Should trend downward as the agent learns to close out games decisively. If this stays at 6000 for thousands of updates, the agent is still drawing — check that the draw penalty is wired up correctly.
+### 10.4 `rnd/` (v0.4.0-ML, only when `--rnd_coef > 0`)
 
----
+- **`rnd/predictor_loss`** — MSE of predictor vs target. Decreasing = predictor learning known states.
+- **`rnd/intrinsic_reward_mean`** — Per-batch average intrinsic reward. Decays as states become familiar; small spikes when novel states are visited.
 
-### `training/` — training process health
+### 10.5 `league/` (only when `--league`)
 
-These confirm the training loop is running correctly. They don't tell you about game quality, just whether the machinery is healthy.
-
-**`training/learning_rate`**  
-How large each weight update step is. We use a linear decay schedule — starts at ~2.5×10⁻⁴ and shrinks toward zero by the end of the total timestep budget. A flat line here means the schedule isn't running (check `--total_timesteps`). Not something you'd normally diagnose problems with — just confirms the schedule.
-
-**`training/steps_per_second`**  
-How many environment steps are processed per second across all envs. With 20 envs on this hardware, expect ~1100–1200. If it drops significantly below that, something is bottlenecking — typically the Node subprocesses (simulation latency) rather than the GPU. A sudden drop mid-run can indicate a hanging subprocess.
-
----
-
-### `ppo/` — algorithm internals
-
-These describe the PPO algorithm's own health. They don't directly tell you if the agent is playing well, but they tell you if the learning process itself is stable or broken.
-
-**`ppo/policy_gradient_loss`**  
-How much the policy (the action probability distribution) changed this update. Should fluctuate around a small negative number. If it trends strongly negative or blows up in magnitude, updates are too aggressive — lower `--learning_rate`. If it's exactly zero every update, something is wrong with the gradient flow.
-
-**`ppo/value_function_loss`**  
-How wrong the agent's *predictions of future reward* were. The agent has two outputs: what action to take (policy) and how good the current position is (value). This loss measures the value prediction error. Should decrease over time as the agent gets better at evaluating positions. If it stays high throughout training, the agent cannot model the game well enough to estimate outcomes — this is a signal that the reward is too sparse or noisy.
-
-**`ppo/entropy_bonus`**  
-How random and exploratory the policy currently is. High entropy means the agent is trying many different actions. Low entropy means it's very confident (possibly overconfident — locked onto a single strategy). We pay `--ent_coef 0.05` to keep this elevated and prevent premature collapse. If entropy drops to near zero in the first 500k steps, the agent has committed to a strategy before it has seen enough of the game — the previous v1 agent did exactly this, locking onto idle-farming and never recovering. Watch this closely early in training. As long as it stays above ~0.5, exploration is healthy.
-
-**`ppo/clip_fraction`**  
-How often PPO's clipping mechanism intervened during updates. PPO limits how far the policy can shift per update; when the proposed update is larger than the clip threshold, the clip fires. Healthy range is roughly 0.05–0.20. Consistently above 0.3 means updates are too large and the policy is thrashing — lower `--learning_rate`. Consistently near zero means the learning rate is too conservative and updates are tiny. A rising clip fraction combined with falling win rate usually means the policy is destabilising.
-
-**`ppo/approx_kl_divergence`**  
-A statistical measure of how different the new policy is from the old one after an update — roughly, "how much did this update change what the agent would do in any given situation?". Values consistently above ~0.02 would indicate unstable updates. Tracks closely with clip fraction; they usually move together. Useful mainly as a double-check on clip fraction.
+- **`league/win_vs_idle`** etc. — per-opponent rolling win rate.
+- **`league/win_rate_matrix`** — full text matrix logged each update.
 
 ---
 
-### `league/` — per-opponent win rates (league mode only)
-
-Only populated when running with `--league`. One chart per opponent in the pool.
-
-**`league/win_vs_idle`**, **`league/win_vs_rush`**, etc.  
-Win rate against that specific opponent over recent games. Tells you which bots the agent has mastered and which it's still struggling against. In PFSP mode, opponents with lower win rates get sampled more often — so you'd expect these to roughly equalise over time as the agent improves everywhere. If one bot's win rate is stuck near zero for millions of steps, that matchup has a fundamental problem (reward doesn't provide enough signal, or the scripted bot exploits a bug).
-
----
-
-## 10. File structure
+## 11. File structure
 
 ```
 CrystalFront/
 │
 ├── headless/src/                       # TypeScript headless match runner
 │   ├── types.ts                        # Agent interface, MacroAction, PlayerObservation
-│   ├── runMatch.ts                     # Single-match entry point (no WebSockets)
+│   ├── runMatch.ts                     # Single-match entry (no WebSockets)
 │   ├── observation.ts                  # Fog-filtered observation builder
 │   ├── actionSpace.ts                  # MacroAction → raw engine commands
 │   ├── actionIndex.ts                  # Integer ↔ MacroAction mapping (81 actions)
-│   ├── legalActions.ts                 # Legal-action enumerator + mask
-│   ├── reward.ts                       # Reward computation (single source of truth)
-│   ├── stdioRunner.ts                  # Node subprocess: reward computation + protocol
-│   ├── stdioVecRunner.ts               # Vectorised runner (N games per process)
+│   ├── legalActions.ts                 # Legal-action enumerator + LegalActionsOpts forcing
+│   ├── reward.ts                       # SINGLE SOURCE OF TRUTH for computeReward()
+│   ├── stdioRunner.ts                  # Per-game subprocess (older path)
+│   ├── stdioVecRunner.ts               # Vectorised subprocess (N games), supports forcing
 │   ├── cli.ts                          # Manual match runner + replay saver
 │   └── bots/
 │       ├── mlBot.ts                    # ✅ SHIPPED — ONNX policy via onnxruntime-node
-│       ├── idleBot.ts                  # Gathers resources, nothing else
+│       ├── idleBot.ts
 │       ├── passiveBot.ts               # Economy only, never attacks
-│       ├── rushBot.ts                  # Early barracks, mass-skirmisher push
-│       ├── weakRushBot.ts              # Slower rush, fewer units
-│       ├── weakMediumRushBot.ts        # Intermediate between weak and medium rush
-│       ├── mediumRushBot.ts            # Timed push with 3+ skirmishers
-│       ├── turtleBot.ts                # 7 workers + 3 turrets + resource accumulation win
-│       ├── macroBot.ts                 # Economy + foundry tech + mixed army
-│       └── heavyBot.ts                 # Slow foundry build → heavy bruiser/medic push
+│       ├── rushBot.ts
+│       ├── weakRushBot.ts
+│       ├── weakMediumRushBot.ts        # Added during v0.3.2-ML ship
+│       ├── mediumRushBot.ts
+│       ├── turtleBot.ts
+│       ├── macroBot.ts
+│       └── heavyBot.ts
+│
+├── headless/dist/                      # Compiled mirrors (loaded by runtime — keep in sync)
 │
 ├── server/src/
-│   ├── index.ts                        # Server entry; createBotAgent() factory; mlBotSession
+│   ├── index.ts                        # Server entry; createBotAgent() factory; mlBotSession pre-load
 │   └── match/
-│       ├── matchEngine.ts              # Authoritative engine (pure, no setInterval)
-│       ├── liveMatchRunner.ts          # setInterval driver for production server
-│       ├── replayRunner.ts             # Replay save/load + versioned balance + metadata
-│       ├── botPlayer.ts                # In-process bot driver for live game
+│       ├── matchEngine.ts              # Pure engine (no setInterval)
+│       ├── liveMatchRunner.ts          # Production tick driver
+│       ├── replayRunner.ts             # Replay save/load + analyzeReplay
+│       ├── botPlayer.ts                # In-process bot driver
 │       └── engine/
-│           ├── rng.ts                  # Seedable mulberry32 PRNG
-│           └── idGen.ts                # Monotonic entity ID counter
+│           ├── rng.ts                  # mulberry32 PRNG (seedable)
+│           ├── idGen.ts                # Monotonic entity ID counter
+│           ├── movement.ts
+│           ├── combat.ts
+│           ├── gathering.ts
+│           ├── repair.ts
+│           ├── visibility.ts
+│           └── utils.ts
 │
-├── client/src/
-│   └── components/
-│       ├── BotSelectMenu.tsx           # ✅ SHIPPED — "Play vs Bot" screen (SCRIPTED + ML)
-│       ├── ReplayBrowser.tsx           # Replay browser with pagination + filters
-│       └── ...
+├── client/src/components/
+│   ├── BotSelectMenu.tsx               # ✅ "Play vs Bot" screen (SCRIPTED + ML sections)
+│   ├── ReplayBrowser.tsx               # Filterable, paginated replay index
+│   └── …
 │
 ├── shared/src/
-│   ├── gameBalance.ts                  # Live balance values (worker cost, speeds, etc.)
-│   └── balanceHistory.ts              # Versioned balance snapshots for replay accuracy
+│   ├── gameBalance.ts                  # Current balance values
+│   └── balanceHistory.ts               # Versioned snapshots — replays use historical values
 │
-├── models/                             # Exported ONNX policies (gitignored — large files)
-│   ├── policy-v0.3.2-ML.onnx          # ✅ SHIPPED — 81-action policy (u150 checkpoint)
-│   └── policy-v0.3.2-ML.onnx.data    # External data tensor file (required alongside .onnx)
+├── models/
+│   ├── policy-v0.3.2-ML.onnx           # ✅ SHIPPED (u150) — 81-action policy
+│   └── policy-v0.3.2-ML.onnx.data      # External tensors (required alongside .onnx)
 │
-├── training/                           # Python PPO training pipeline
+├── training/
 │   ├── env/
 │   │   ├── crystalfront_env.py         # Gymnasium wrapper (single game per process)
-│   │   └── crystalfront_vec_env.py     # Vectorised wrapper (N games per process)
+│   │   └── crystalfront_vec_env.py     # Vectorised wrapper + action_forcing_scale + set_forcing_scale
 │   ├── ppo/
-│   │   ├── policy.py                   # SetTransformer + CrystalFrontAgent
-│   │   ├── train.py                    # PPO training loop (curriculum + GPU)
-│   │   └── league.py                   # LeagueManager + PFSP sampling
+│   │   ├── policy.py                   # SetTransformer + CrystalFrontAgent + RNDModel + RunningMeanStd
+│   │   ├── train.py                    # PPO loop (curriculum + GPU + forcing + RND fade)
+│   │   └── league.py                   # PFSP sampling — not activated for production
 │   ├── eval/
-│   │   └── eval_checkpoint.py          # Load .pt, run N games vs each bot, print win table
-│   ├── export_onnx.py                  # ✅ PyTorch → ONNX export (_OnnxWrapper + dynamo)
-│   ├── bc_pretrain.py                  # Behaviour cloning warmup from bot demonstrations
+│   │   └── eval_checkpoint.py          # Win-rate table generator
+│   ├── export_onnx.py                  # PyTorch → ONNX (dynamo exporter, _OnnxWrapper)
+│   ├── test_onnx_parity.py             # ONNX vs PyTorch parity check
+│   ├── diagnose_policy.py              # NEW v0.4.0-ML — per-episode action histogram CSV
+│   ├── bc_pretrain.py                  # Behaviour cloning warmup
 │   ├── test_env.py                     # End-to-end smoke test
 │   └── requirements.txt
 │
@@ -957,42 +682,18 @@ CrystalFront/
 ├── checkpoints/                        # Policy checkpoints (gitignored)
 │
 └── docs/
-    ├── ML_AGENT.md                     # This document
-    ├── ML_BOT_ACTION_PLAN.md           # Training diary + phase status
-    ├── SHIPPING_AND_V040_PLAN.md       # v0.3.2 ship plan (complete) + v0.4.0 roadmap
-    └── eval_v0.3.2-ML.txt              # Captured win-rate evaluation output
+    ├── ML_BOT_ACTION_PLAN.md           # Project history + handoff (read first)
+    ├── ML_AGENT.md                     # This file (technical reference)
+    ├── RELEASE_NOTES_v0.3.2-ML.md      # Shipped release notes
+    ├── eval_v0.3.2-ML.txt              # Captured eval output (u150)
+    ├── diag_u150_rwm.csv               # Diagnostic CSV (rush_weak_medium)
+    └── diag_u150_rm.csv                # Diagnostic CSV (rush_medium)
 ```
 
 ---
 
-## 11. Risks and mitigations
+## See also
 
-| Risk | Mitigation |
-|------|-----------|
-| **Reward hacking** — bot finds degenerate strategies (mine forever, build endless depots, draw by turtling) | Watch replays of outlier games. The draw penalty eliminates the "safe draw" fallback. Add shaped penalties for any new exploit observed. |
-| **Entropy collapse** — policy locks onto one strategy too early, stops exploring | Use `--ent_coef 0.05`. Watch `ppo/entropy_bonus` — if it drops below 0.3 in first 500k steps, something is wrong. Start fresh rather than trying to rescue a collapsed policy (agent v1 lesson). |
-| **Training instability** — PPO diverges, win rates collapse after peaking | Use CleanRL reference hyperparameters. Don't tune until baseline is reproducible. Save checkpoints often. `ppo/clip_fraction` above 0.3 is the early warning. |
-| **Game design churn** — balance changes invalidate trained policy | Treat training as cheap and re-runnable. The versioned balance history ensures old replays still play correctly even after patches. Don't over-invest in any single checkpoint before balance is stable. |
-| **Action space too large** | Current space is 73 actions — small enough for PPO. Resist expanding until baseline works. Keep the spec versioned. |
-| **Determinism drift** | Caught by CI test: same seed × 500 ticks → identical state hash. Any `Math.random()` regression fails immediately. |
-| **RAM spike on startup** | 20 tsx processes compiling TypeScript simultaneously caused host reboots. Fixed with 0.5s startup stagger per env (`startup_delay = i * 0.5`). Do not remove this. |
-
----
-
-## 12. Resources
-
-Materials specifically relevant to this project's architecture:
-
-- **CleanRL PPO** — [github.com/vwxyzjn/cleanrl](https://github.com/vwxyzjn/cleanrl)  
-  Read the single-file `ppo.py` implementation before modifying `training/ppo/train.py`. The training loop here is a direct adaptation.
-
-- **Set Transformer** — [arxiv.org/abs/1810.00825](https://arxiv.org/abs/1810.00825)  
-  The encoder used in `training/ppo/policy.py`. Explains the permutation-invariant pooling mechanism.
-
-- **OpenAI Five blog posts** — overview of how a real multi-agent game AI was built. Useful for vocabulary and scale intuition, though the problem setting is much larger.
-
-- **AlphaStar (Nature paper)** — the architecture Crystal Front's design roughly models: set-transformer over entities, auto-regressive action head, league training. Worth reading once the baseline is working.
-
-- **Hugging Face Deep RL course** — free, well-paced, covers PPO with practical examples. Good companion while working through the training code.
-
-- **PettingZoo docs** — multi-agent Gymnasium variant; relevant if self-play is eventually formalised into a two-agent environment.
+- **`ML_BOT_ACTION_PLAN.md`** — project history, current handoff state, decisions, full development diary (chronological).
+- **`RELEASE_NOTES_v0.3.2-ML.md`** — shipped release notes with empirical win-rate table.
+- **`CrystalFront_ML_Review.md`** *(root of repo)* — three independent technical reviews; the source of the Option α / β / γ taxonomy.

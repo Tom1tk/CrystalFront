@@ -1,736 +1,152 @@
 # Crystal Front — ML Bot Action Plan
 
 **Branch:** `CrystalFront-ML`
-**Status:** v0.3.2-ML deployed — ML bot live in production. Option B (v0.4.0-ML) pending.
-**Last updated:** 2026-05-22
+**Status:** v0.3.2-ML **SHIPPED** (2026-05-22). v0.4.0-ML **HALTED** (2026-05-23) — Option B action-masking and Option γ RND both failed to break `trn=0%` ceiling.
+**Last updated:** 2026-05-23
 
 ---
 
-## Development Diary
+## Current handoff state (2026-05-23) — START HERE
 
-### 2026-05-20 — v0.2.10-ML: Reward overhaul — worker exploit removal + building incentives
+This section is the orientation point for any agent picking up the project. Everything else in this file is either reference (sections 1–11) or chronological development history (section 12).
 
-**Versions covered:** v0.2.8-ML (pipeline), v0.2.9-ML (exploit fix), v0.2.10-ML (building rewards)
+### Where we are
 
-**Context:** After the pipeline optimisation (v0.2.8), three successive reward problems were discovered and fixed through replay analysis. v0.2.9 and v0.2.10 address the root cause of the agent never building a barracks.
+- **v0.3.2-ML is live in production** as the deployable ML bot. Checkpoint `update_000150.pt` from run `crystalfront_ppo__0_3_0-ML__idle__1__1779364610`. Exported to ONNX at `models/policy-v0.3.2-ML.onnx`. Wired into the live server via `MlBot` + `BotPlayer`. See diary entry `2026-05-22 — v0.3.2-ML SHIPPED`.
+- **v0.4.0-ML was attempted and halted.** Two architectural approaches were exhausted: Option B (action-masking forcing) and Option γ (Random Network Distillation intrinsic motivation). Both produced the same failure mode: the policy regressed to high-noop play at `3a_rm_3k` (rush_medium on 3000px). See `2026-05-22 — v0.4.0-ML Option B` and `2026-05-23 — v0.4.0-ML Option γ post-mortem + halt`.
+- **All v0.4.0-ML code is committed on `CrystalFront-ML`** (`c783d54` — RND calibration; `d2f3c58` — RND implementation; `79c340e` — Mode B threshold 200→50; …). The implementation works, the policy training does not. The v0.3.2-ML production model is unaffected — it runs on `models/policy-v0.3.2-ML.onnx` and was trained before any forcing/RND code paths existed.
 
----
+### What's deployable, what's not
 
-#### Problem 1 — Worker-swarm exploit (diagnosed in v0.2.8-ML)
+| Asset | State | Path |
+|-------|-------|------|
+| **Production ML bot** | ✅ Live (v0.3.2-ML, u150) | `models/policy-v0.3.2-ML.onnx` (+ `.onnx.data`) |
+| Source checkpoint | ✅ Clean | `checkpoints/crystalfront_ppo__0_3_0-ML__idle__1__1779364610/update_000150.pt` |
+| Option B code (action-forcing) | ⚠️ Merged, default-off | `forcingScale=0.0` default — zero behaviour change. Gated by CLI flag `--action_forcing_scale`. |
+| Option γ code (RND) | ⚠️ Merged, default-off | `rnd_coef=0.0` default — RND module instantiated only when coef > 0. |
+| v0.4.0-ML checkpoints | ❌ Catastrophically forgetting | `checkpoints/crystalfront_ppo__0_4_0-ML__idle__1__1779487674/*.pt` — do **not** ship. |
 
-Replay analysis revealed the agent was training 100+ workers, spamming them at the enemy base with `toggle_auto_attack`, and farming continuous kill/damage rewards from worker-vs-worker fights. This generated 50–100+ shaping reward per episode, completely dominating the one-time +5 barracks milestone.
+The repository compiles, tests pass (461+ tests), and the live bot is unaffected by any halted experiment. Any agent inheriting this state can either continue v0.4.0-ML research from the fallback options below or treat v0.3.2-ML as the long-term ceiling.
 
-The exploit loop:
-1. Build supply depots → raise maxSupply
-2. Train more workers
-3. Send workers with auto_attack to enemy half → fight enemy workers
-4. Collect `+0.2/worker killed` + `+0.1 × healthFrac damage dealt` continuously
+### What was learned about why v0.4.0-ML failed
 
-**Fix (v0.2.9-ML):** Gated all kill/damage rewards on `ownCombatCurrCount > 0`. Workers can still fight but generate zero kill/damage reward unless at least one own combat unit is on the field. The rewards themselves were restored (earlier attempt to remove them outright was reverted per user instruction). Two lines changed in both `stdioRunner.ts` and `stdioVecRunner.ts`.
+The `trn=0%` ceiling against `rush_medium` is **not** an exploration problem — diagnostic `training/diagnose_policy.py` showed the policy actively trains 9–17 units per winning episode against weaker opponents. The display `trn=0%` is a rounding artefact of `int(0.3%)` = 0.
 
----
+The real problem is gradient sign. In a losing episode against rush_medium:
 
-#### Problem 2 — Noop local optimum (diagnosed in v0.2.9-ML)
+- `train_unit` actions contribute to a trajectory that ends in a −100 terminal
+- The +5/+3/+2/+1 bootstrap shaping for units 1–4 sums to +11, not enough to flip sign
+- The policy therefore learns that `train_unit` correlates with losing → suppresses it
+- The fix needs to come from somewhere upstream of the terminal, not from intrinsic rewards or masking
 
-After removing the worker-swarm exploit, the agent converged to 99% noop by update 79. Replay analysis showed it was doing almost nothing: train 1 worker, send starting workers to wander, then sit idle all game. This earned ep_rew ≈ −55 to −95 from passive mining + discovery + visibility trickle − 100 terminal.
+Both Option B (forcing the action) and Option γ (rewarding novelty) tried to make `train_unit` happen mechanically. The policy responded by making everything *else* happen less — `noop` rose to 65–68% as the policy retreated from any state where forcing might trigger. RND novelty bonuses decayed to ~0.01 by update 431; they became background noise against the ±100 terminal.
 
-Root cause: the −100 terminal is a fixed unavoidable cost for an agent that hasn't learned to win. With V(s) ≈ −100 everywhere, the policy optimises shaping only — and the shaping optimum with kill/damage blocked is "do nothing". The barracks reward (+10×decay) was never earned because the near-deterministic noop policy (~0.037% chance of trying build_barracks per tick) never generated enough gradient to escape.
+The fallback options that remain unexplored:
 
-**Fix (v0.2.10-ML):** Added per-tick bonuses for completed barracks and foundry buildings with diminishing returns capping at 3 of each:
+**Option α — hierarchical action space** (per third review §B5.1). Add a high-level policy that decides "what to train next" (skirmisher / gunner / bruiser / barracks / nothing), and a separate low-level policy that handles execution. Train the high-level policy via imitation on *winning episodes from a stronger reference policy* — sidesteps the gradient-sign problem because every demonstrated `train_unit` action is from a winning trajectory. **ETA: 3–5 weeks.** Highest expected value, highest implementation cost.
 
+**Curriculum redesign — gradient-direction approach.** Build a training regime where multi-unit play *causes* wins, then transfer. Candidate stages:
+- Stage `3a_def`: 3000px map, passive opponent with **5 pre-placed skirmishers** in the centre. The bot *cannot* win with just one unit; it must train 3+. Wins here reinforce `train_unit → positive terminal`. Once the policy reliably wins, remove pre-placed enemies one at a time.
+- This is the same "one-variable-at-a-time" principle that worked for v0.3.1 (resource slider). The variable being changed is "minimum units required to win" rather than "starting resources".
+- **ETA: 1 week to define and run.** No new code required — only curriculum table edits in `train.py` and `passiveBot.ts` variant.
+
+**Accept the v0.3.2-ML ceiling.** A bot that beats `passive`, `rush_weak`, `rush_weak_medium`, and `macro` reliably is a legitimate product. The release notes already document the `rush_medium`/`turtle`/`rush` losses as known limitations. Effort can be redirected to features that benefit from RL only marginally (e.g., difficulty tier UI, more scripted bots, playtest replay analysis). **ETA: zero.**
+
+**Combined recommendation** if work resumes: try curriculum redesign first (cheap, may unlock gradient signal); escalate to Option α only if that fails. Do not attempt action-masking or intrinsic motivation again without first proving the gradient-sign problem has been solved — both Option B and Option γ failed for the same root cause.
+
+### Files an agent should read next
+
+| If you want to | Read |
+|----------------|------|
+| Architecture, specs, training commands, RND/forcing reference | `docs/ML_AGENT.md` |
+| Historical training arc | Section 12 below (chronological) |
+| Current reward function | `headless/src/reward.ts` (single source of truth) |
+| Current action-forcing logic | `headless/src/legalActions.ts` (`LegalActionsOpts`) |
+| RND implementation | `training/ppo/policy.py` (`RNDModel` class) |
+| Per-episode action histogram diagnostic | `training/diagnose_policy.py` |
+| Evaluation results (ship checkpoint) | `docs/eval_v0.3.2-ML.txt`, `docs/diag_u150_rwm.csv`, `docs/diag_u150_rm.csv` |
+| Release notes for shipped bot | `docs/RELEASE_NOTES_v0.3.2-ML.md` |
+
+### Key commands cheat sheet
+
+```bash
+# Evaluate any checkpoint against all opponents
+python -m training.eval.eval_checkpoint \
+  --checkpoint checkpoints/<run>/update_NNN.pt \
+  --episodes 100
+
+# Per-episode action histogram diagnostic
+python -m training.diagnose_policy \
+  --checkpoint checkpoints/<run>/update_NNN.pt \
+  --opponent rush_medium \
+  --episodes 100 \
+  --output /tmp/diag.csv
+
+# Re-export ONNX (parity-tested)
+python -m training.export_onnx --checkpoint <ckpt> --output models/policy-X.onnx
+python -m training.test_onnx_parity --checkpoint <ckpt> --onnx_path models/policy-X.onnx
+
+# Continue training (forcing OFF by default — same as v0.3.2-ML baseline)
+python -m training.ppo.train --curriculum --curriculum_stage 5 \
+  --checkpoint bc_warmup.pt --ent_coef 0.02 --total_timesteps 20000000
+
+# Restart Option B (action-masking)
+python -m training.ppo.train --curriculum --curriculum_stage 13 \
+  --checkpoint <ckpt> --action_forcing_scale 1.0 --total_timesteps 5000000
+
+# Restart Option γ (RND, must combine with forcing)
+python -m training.ppo.train --curriculum --curriculum_stage 14 \
+  --checkpoint <ckpt> --rnd_coef 0.5 --action_forcing_scale 1.0 \
+  --ent_coef 0.05 --total_timesteps 15000000
+
+# Bump all 5 package.json (mandatory on any training/reward/config change)
+for f in package.json server/package.json headless/package.json shared/package.json client/package.json; do
+  sed -i 's/"version": "0\.X\.X-ML"/"version": "0.Y.Y-ML"/' "$f"
+done
 ```
-Barracks: 1st +0.005/tick, 2nd +0.004/tick, 3rd +0.003/tick (cap)
-Foundry:  1st +0.002/tick, 2nd +0.0015/tick, 3rd +0.001/tick (cap)
-```
 
-Max combined: +0.0165/tick → ~+94 per episode for 3× barracks + 3× foundry from tick ~300.
-This shifts the "has buildings" ep_rew from ~−90 to ~+4 before any combat — enough for the value function to clearly learn the barracks path without having ever won a game.
+### Files modified for v0.4.0-ML (all default-off in code)
 
-The one-time time-decayed barracks milestone (+10 × max(0.01, 1−tick/2000)) was retained from v0.2.9.
+| File | Change |
+|------|--------|
+| `headless/src/legalActions.ts` + `.js` | `LegalActionsOpts` interface (`noopStreak`, `trainUnitStreak`, `forcingScale`); Mode A + Mode B suppression |
+| `headless/src/stdioVecRunner.ts` + `.js` | Per-slot `noopStreak`/`trainUnitStreak`; `set_forcing_scale` protocol; `ACTION_FORCING_SCALE` env var |
+| `headless/src/reward.ts` + `.js` | Extended `Milestones` (units 3, 4); +2/+1 shaping for units 3/4 |
+| `training/env/crystalfront_vec_env.py` | `action_forcing_scale` constructor param; `set_forcing_scale()` method |
+| `training/ppo/policy.py` | `RunningMeanStd`, `RNDModel` classes |
+| `training/ppo/train.py` | `--action_forcing_scale`, `--action_forcing_fade_*`, `--rnd_coef`, `--rnd_embed_dim` flags |
+| `training/diagnose_policy.py` | New — per-episode action histogram |
+| `package.json × 5` | 0.3.2-ML → 0.4.0-ML |
 
-Also fixed in this session: crystal arrival hitbox (movement.ts) — units now complete travel when they enter attack range of a large entity rather than requiring arrival at the exact center point. Multiple workers/units approaching the same crystal no longer pile up indefinitely.
+All changes are gated by their respective scalar flags. `forcingScale=0.0` and `rnd_coef=0.0` produce behaviour identical to v0.3.2-ML.
 
----
+### Open commitments
 
-#### Engine fix — movement.ts + combat.ts (v0.2.8-ML)
-
-Workers sent to `attack_move enemy_crystal` were permanently "committed" (never idle) because they all targeted the crystal's center point (single pixel) and collision resolution prevented any from reaching within 1px. Fixed in two places:
-
-- `movement.ts`: Units complete movement when within attack range of any crystal/building at their target position, using `getRange(entity) + entity.radius` as the arrival threshold.
-- `combat.ts`: Attack chase now clears `moveTarget` when unit is already in attack range, preventing repeated re-routing to center on each tick.
-
----
-
-#### Reward state as of v0.2.10-ML
-
-| Signal | Value | Notes |
-|--------|-------|-------|
-| Per-tick barracks (×1/2/3) | +0.005/+0.009/+0.012 | New |
-| Per-tick foundry (×1/2/3) | +0.002/+0.0035/+0.0045 | New |
-| Barracks one-time (time-decay) | +10×max(0.01,1−t/2000) | v0.2.9 |
-| Kill/damage rewards | gated on ownCombat>0 | v0.2.9 |
-| Enemy worker kill | +0.2 (gated) | Restored |
-| Damage dealt (non-crystal) | +0.1/+0.05 (gated) | Restored |
-| Combat unit training | +1.0/+0.8/+0.6/+0.4/+0.2 | Unchanged |
-| Crystal damage (first hit) | +5.0 | Unchanged |
-| Crystal depth milestones | +3/+5/+8 | Unchanged |
-| Terminal (win/loss) | ±100 | Unchanged |
-
-**Training config (v0.2.10-ML):**
-- PID: 715845, log: `/tmp/train_v210.log`
-- Run: `crystalfront_ppo__0_2_10-ML__idle__1__1779279688`
-- num_envs=20, vec_size=4, num_steps=1536, ent_coef=0.10
-- Throughput: ~1,375 SPS (2.5× v0.2.7-ML baseline)
-
-**Early metrics (u59):** ep_rew=−156 with bld=1% appearing — better early trajectory than v0.2.9 which was already at 99% noop by u79.
+| Commitment | Status |
+|------------|--------|
+| Ship v0.3.2-ML bot | ✅ Live in production (commit `da072a9`) |
+| Run pre-flight diagnostic for Option B | ✅ Done (`docs/diag_u150_*.csv`) |
+| Implement action-masking forcing | ✅ Merged, default-off |
+| Implement RND intrinsic motivation | ✅ Merged, default-off |
+| Reach `win_rate ≥ 30%` vs rush_medium for v0.4.0-ML | ❌ Failed (peaked 15%, regressed to 0%) |
+| Decide v0.4.0-ML path forward | 🔄 Halted; awaiting human direction |
 
 ---
 
-### 2026-05-20 — v0.2.8-ML: Training pipeline optimisation — all report recommendations implemented
-
-**Context:** Following completion of the v0.2.7-ML run, an independent hardware profiling pass identified that the training loop was CPU-bound on a single Python thread while the GPU (RX 7900 XTX) sat at 18% utilisation. This entry documents all changes made to remedy that.
-
-**Hardware reality (measured):**
-- Container has 12 vCPUs (not 28 as documented — host limits the cgroup)
-- GPU at 18% busy, 4/24 GB VRAM used during v0.2.7-ML
-- Python trainer pegged at 100% on one core; 122 Node processes fighting for 12 vCPUs
-- Rollout had 1,536 GPU→CPU syncs per rollout (3 × .cpu().numpy() × 512 steps)
-
-**Changes implemented (commit a0d5d07):**
-
-*Infrastructure:*
-- **`headless/src/stdioVecRunner.ts`** (new): N games per Node process with autoreset. Uses pre-compiled `headless/dist/stdioVecRunner.js` — no tsx overhead at runtime.
-- **`training/env/crystalfront_vec_env.py`** (new): Python wrapper around the vec runner. One `CrystalFrontVecEnv(vec_size=4)` runs 4 games via one Node process.
-- Subprocess count: 122 → 7 (5 vec procs × 4 games + server + tensorboard)
-
-*GPU utilisation:*
-- **GPU rollout buffer**: `RolloutBuffer` now holds all tensors on device. No re-upload during the 24 PPO gradient steps per rollout.
-- **No per-tick GPU sync**: `logprobs_t` and `values_t` stored directly on device. Only `actions_t.cpu()` needed (for env stepping).
-- **GAE on GPU**: T-step loop over `(E,)` GPU tensors; eliminates the 512-iter numpy loop.
-- **bf16 autocast**: policy inference and PPO update wrapped in `torch.autocast(dtype=bfloat16)`. Value/return precision maintained as fp32.
-- **`torch.compile(reduce-overhead)`**: reduces kernel-launch overhead (main bottleneck at small batch sizes).
-
-*CPU/Python overhead:*
-- **`orjson`** for JSON encode/decode in both env wrappers.
-- **`np.bincount`** for action histograms (eliminates 30,720 Python dict accesses per rollout).
-- **`torch.set_float32_matmul_precision("high")`**: slightly faster GEMMs.
-- ROCm env vars: `PYTORCH_TUNABLEOP_ENABLED=1`, `MIOPEN_FIND_MODE=FAST`, `HSA_OVERRIDE_GFX_VERSION=11.0.0`.
-
-*Hyperparameters:*
-- `num_envs`: 60 → **20** (right-sized for 12 vCPUs)
-- `num_steps`: 512 → **1536** (better GAE horizon over 6000-tick episodes)
-- `num_minibatches`: 4 → **6** (5120 per minibatch; 24 gradient steps/rollout)
-- `mlp_hidden`: 256 → **384** (wider trunk; free SPS on this GPU at current scale)
-- Batch size preserved: 30,720
-
-**Observed before/after (first update, same curriculum):**
-| Metric | v0.2.7-ML | v0.2.8-ML | Change |
-|--------|-----------|-----------|--------|
-| GPU busy | 18% | 98% | +80pp |
-| Node procs | 122 | 7 | −94% |
-| Python CPU | 100% (one core) | 105% (mostly GPU wait) | ∼ |
-
-SPS after compile warmup: to be measured at update=2 (first reliable number post-JIT).
-
-**Training config:**
-- PID: 703671, log: `/tmp/train_v28.log`
-- Run: `crystalfront_ppo__0_2_8-ML__idle__1__1779267714`
-- Phase 0 criteria unchanged: cbt≥0.85, tmt≤0.10, crys_dmg>0%, no_pres≤0.10
-
----
-
-### 2026-05-18 — v0.2.0-ML: Major reset — course-corrected reward function, Phase 0 begins
-
-**Version bump rationale:** Fresh start to reflect the complete reward function overhaul. Previous versions (0.1.x-ML) used fundamentally broken reward shaping — a +50 first_combat_unit spike that caused V(s) oscillation, passive army-ownership trickles that rewarded doing nothing, and ±30 terminal rewards that could be offset by accumulated shaping. All now corrected.
-
-**Key reward function changes (vs 0.1.75-ML):**
-- Terminal rewards: ±30 → **±100** (combat win / all losses)
-- Shaping clamp: none → **clamp(total_shaping, −20, +20)** at episode end
-- `first_combat_unit` milestone: +50 → **+2** (was causing V(s) overshoot)
-- Standing force trickle (+0.005×army): **removed** (passive ownership reward)
-- Crystal damage per HP: +0.005 → **+0.01** (doubled)
-- Own crystal damage penalty: −0.002 → **−0.003**
-- Barracks-idle trickle: −0.015 → **−0.003** (was too punitive before barracks economy)
-- New milestones: army reaches 3 units (+2.0), enemy quarter entry (+3.0)
-- Crystal depth milestones: +1/+2/+5 → **+3/+5/+8**
-- First crystal hit: +3 → **+5**
-- Removed passive signals: gathering workers trickle, supply advantage, survival reward, friendly-vs-enemy presence, forward scout trickle
-- Added 3 anti-passivity penalties (army idle with advantage, no crystal pressure, late-game no-damage)
-
-**Game config reverted to full defaults:**
-- Map: 6000×600px (was 1000px training map)
-- Crystal HP: 1000 (was 100)
-- Max ticks: 6000 (was 3000)
-- Starting resources: 50 (was 500)
-- passiveWinThreshold: 4500 (was 999999)
-
-**Training setup:**
-- PID: 554458, log: `/tmp/train_v76.log`
-- Phase 0: `idle` opponent (IdleBot — never attacks, easy first target)
-- 60 parallel envs, ent_coef=0.05, gamma=0.995
-- Starting from scratch — no checkpoint (reward function incompatible with all prior runs)
-
-**Phase 0 exit criteria (from PPO_AGENT_TRAINING_PHASES.md):**
-- Combat win rate ≥ 85%
-- First enemy crystal hit rate ≥ 90%
-- Timeout rate ≤ 10%
-- Episodes with 4+ combat units but 0 crystal damage ≤ 10%
-
-**Early snapshots:**
-
-| update | win_rate | cbt | tmt | crys_dmg | trn% | notes |
-|--------|----------|-----|-----|----------|------|-------|
-| 24 | 0.00 | 0.00 | 1.00 | 0% | 2% | Baseline (old run flush) — all timeouts, floor reward -120 confirmed |
-| 47 | 0.00 | 0.00 | 1.00 | 0% | 2% | bld 1%→4%, noop 94%→91%, no_pres=1% (first episode with 4+ units!) |
-| 59 | 0.00 | 0.00 | 1.00 | 0% | 2% | bld 13%, noop 79%, atk_mv 1%, no_pres=11% — build chain firing consistently! Units trained but not attacking yet. |
-| ~80 | 0.00 | 0.00 | 1.00 | 0% | 2% | bld 18%, noop 73%, atk_mv 2%, no_pres=22% — army building but not attacking. From TB during print-buffering period. |
-| — | — | — | — | — | — | **Final config: num_steps=2048, ent_coef=0.10, total_timesteps=20M, save_interval=25. PID 587601, run crystalfront_ppo__0_2_0-ML__idle__1__1779126770. ~163 updates, ~20 eps/update, ~5.5h est.** |
-| 6 | 0.00 | 0.00 | 1.00 | 0% | 2% | bld=9%, noop=85%, no_pres=7% |
-| 12 | 0.00 | 0.00 | 1.00 | 0% | 2% | bld=15%, noop=79%, no_pres=7% |
-| 15 | 0.00 | 0.00 | 1.00 | 0% | 2% | bld=17%, noop=77%, no_pres=6% |
-| 21 | 0.00 | 0.00 | 1.00 | 0% | 2% | bld=26%, noop=67%, no_pres=6% — bld rising fast |
-| 27 | 0.00 | 0.00 | 1.00 | 0% | 2% | bld=24%, noop=70%, no_pres=3% ⚠️ no_pres falling |
-| 30 | 0.00 | 0.00 | 1.00 | 0% | 2% | bld=24%, noop=70%, no_pres=1% 🔴 near-zero. 60 replays saved. |
-| 36 | 0.00 | 0.00 | 1.00 | 0% | 2% | bld=17%, noop=77%, no_pres=3% — stabilising |
-| 42 | 0.00 | 0.00 | 1.00 | 0% | 2% | bld=16%, noop=78%, no_pres=3% |
-| 50 | 0.00 | 0.00 | 1.00 | 0% | 2% | bld=17%, noop=77%, no_pres=4% — slow recovery |
-| 56 | 0.00 | 0.00 | 1.00 | 0% | 2% | bld=16%, atk_mv=1%, no_pres=11% 🟡 RECOVERY — first attack moves! 120 replays saved. |
-| 59 | 0.00 | 0.00 | 1.00 | 0% | 2% | bld=14%, atk_mv=0%, no_pres=9% — recovery holding, atk_mv flickering |
-| — | — | — | — | — | — | **v0.2.1-ML restart. PID 602231, run crystalfront_ppo__0_2_1-ML__idle__1__1779136130, resumed from u75. Fixes: fightingBack→inAttackRange, approaching reward +0.0003, wrong-building penalty -0.003** |
-| 6 (v0.2.1) | 0.00 | 0.00 | 1.00 | 0% | 1% | atk_mv=3%, no_pres=23% 🟢 Immediate improvement vs prior run |
-| 12 | 0.00 | 0.00 | 1.00 | 0% | 1% | atk_mv=4%, no_pres=22%, bld=10% — stable |
-| 15 | 0.00 | 0.00 | 1.00 | 0% | 2% | atk_mv=4%, no_pres=24%, bld=11% |
-| 21 | 0.00 | 0.00 | 1.00 | 0% | 1% | atk_mv=5%, tgt=1%, no_pres=29% — tgt attacks emerging |
-| 27 | 0.00 | 0.00 | 1.00 | 0% | 2% | atk_mv=5%, tgt=1%, no_pres=30% |
-| 30 | 0.00 | 0.00 | 1.00 | 0% | 1% | atk_mv=8%, tgt=1%, no_pres=36% 🔥 Accelerating |
-| 36 | 0.01 | 0.00 | 0.99 | 0% | 1% | atk_mv=9%, no_pres=40% — FIRST WIN (resource win, not combat). cbt=0.00. |
-| 42 | 0.02 | 0.00 | 0.98 | 0% | 1% | atk_mv=17%, no_pres=61% 🚀 atk_mv surge. But crys_dmg=0% — units attacking but not reaching crystal. Resource wins only. |
-| 44 | 0.00 | 0.00 | 1.00 | 0% | 2% | atk_mv=10%, no_pres=47% |
-| 50 | 0.00 | 0.00 | 1.00 | 0% | 1% | atk_mv=15%, no_pres=49% |
-| 56 | 0.00 | 0.00 | 1.00 | 0% | 1% | atk_mv=22%, no_pres=78% — accelerating hard |
-| 59 | 0.00 | 0.00 | 1.00 | 0% | 1% | atk_mv=27%, no_pres=86% |
-| 65 | 0.01 | 0.00 | 0.99 | 0% | 1% | atk_mv=30%, no_pres=89% 🔴 CONFIRMED EXPLOITATION. 30% attack-moves, 89% unit episodes, crys_dmg=0% throughout. Approaching reward driving oscillation — units bouncing between targets, never committing. 240 replays. |
-
----
-
-### 2026-05-20 — v0.2.6-ML: Block worker→crystal/building attack, 10× time penalty, diminishing unit rewards
-
-**Training config:** PID 692048, run `crystalfront_ppo__0_2_6-ML__idle__1__1779229732`. Fresh start. num_steps=512, num_envs=60, total_timesteps=20M, ent_coef=0.10.
-
-**Changes from v0.2.5-ML:**
-- Engine fix (`combat.ts`): workers cannot auto-attack crystals or buildings. Can still fight enemy workers and retaliate against combat units.
-- Time penalty: −0.00005/tick → **−0.0005/tick** (10×, = −3.0 per 6000-tick episode)
-- Combat unit training reward: replaced +2.0 (first unit) + +2.0 (3 units) with diminishing per-unit: **+1.0, +0.8, +0.6, +0.4, +0.2**, then 0
-
-**v0.2.6-ML snapshots:**
-
-| update | win_rate | cbt | tmt | ep_rew | atk_mv | wkr_mv | crys_dmg | no_pres | notes |
-|--------|----------|-----|-----|--------|--------|--------|----------|---------|-------|
-| 24 | 0.00 | 0.00 | 1.00 | -693 | 0% | 18% | 0% | 0% | Cold start. Cancel penalty + 10× time pressure = -693 floor |
-| 47 | 0.00 | 0.00 | 1.00 | -138 | 0% | 0% | 0% | 0% | wkr_mv drops to 0% — cancel penalty working immediately |
-| 59 | 0.00 | 0.00 | 1.00 | -131 | 0% | 0% | 0% | 0% | Improving |
-| 83 | 0.00 | 0.00 | 1.00 | -130 | 0% | 0% | 0% | 0% | bld=1%, trn=1% — first build/train actions |
-| 106 | 0.00 | 0.00 | 1.00 | -126 | 0% | 0% | 0% | 0% | trn=2% rising |
-| 118 | 0.00 | 0.00 | 1.00 | -152 | 0% | 0% | 0% | 11% | 🟢 no_pres=11%: 4+ combat units trained in 11% of episodes |
-| 141 | 0.00 | 0.00 | 1.00 | -575 | **3%** | 0% | 0% | 96% | 🚀 **FIRST ATTACK MOVES.** Combat units trained in 96% of eps. Ep_rew spike = cancel penalty from attack oscillation. |
-| 165 | 0.00 | 0.00 | 1.00 | -235 | 0% | 0% | 0% | 100% | Pulled back — learning to commit rather than oscillate |
-| 223 | 0.00 | 0.00 | 1.00 | -101 | 0% | 0% | 0% | 100% | ep_rew stabilising near terminal. noop=62% — agent waiting. |
-| 235 | 0.00 | 0.00 | 1.00 | -96 | 0% | 0% | 0% | 100% | ep_rew≈-96 (shaping near-zero). Combat units trained, not attacking. |
-| 258 | 0.02 | 0.01 | 0.98 | -101 | 0% | 0% | 0% | 99% | 2 wins (1 resource, 1 unclear). crys_dmg=0% — no combat attacks yet. |
-| 282 | 0.00 | 0.00 | 1.00 | -133 | 0% | 0% | 0% | 100% | No progress |
-| 293 | 0.00 | 0.00 | 1.00 | -113 | 0% | 0% | 0% | 100% | 45% through run. atk_mv=0% throughout since u165. Units trained but not attacking — cancel penalty overcorrection likely. |
-| 340 | 0.02 | 0.02 | 0.98 | -102 | 0% | 0% | **1%** | 97% | 🚀 **FIRST CRYSTAL DAMAGE from combat units** (workers blocked). 2 wins. |
-| 352 | 0.00 | 0.00 | 1.00 | -95 | 0% | 0% | 0% | 99% | Dropped back — noisy |
-| 375 | 0.03 | 0.03 | 0.97 | -95 | 0% | 0% | **2%** | 96% | 🚀 crys_dmg=2%, 3 wins. Crystal damage appearing without atk_mv (likely forward barracks + auto-attack) |
-| 399 | 0.00 | 0.00 | 1.00 | -99 | 0% | 0% | 0% | 100% | Noisy |
-| 411 | 0.00 | 0.00 | 1.00 | -97 | 0% | 0% | 0% | 96% | Still noisy — inconsistent but crys_dmg has appeared |
-| 458 | 0.01 | 0.01 | 0.99 | -94 | 0% | 0% | 0% | 98% | Noisy dip |
-| 469 | 0.02 | 0.02 | 0.98 | -99 | 0% | 0% | 2% | 96% | crys_dmg=2% returning |
-| 493 | 0.03 | 0.03 | 0.97 | -93 | 0% | 0% | 3% | 93% | Consolidating — 3 wins, crys_dmg=3% |
-| 516 | 0.03 | 0.03 | 0.97 | -98 | 0% | 0% | 2% | 94% | Stable 2-3% crys_dmg, 3 wins |
-| 528 | 0.03 | 0.03 | 0.97 | -99 | 0% | 0% | 2% | 95% | 81% through run. crys_dmg consistently 2-3%, win_rate plateauing at 3%. no_pres declining slowly. |
-| 551 | 0.05 | 0.05 | 0.95 | -111 | 0% | 0% | 5% | 94% | Accelerating |
-| 574 | 0.07 | 0.07 | 0.93 | -96 | 0% | 0% | 7% | 91% | 🟢 Win rate and crys_dmg both climbing |
-| 586 | 0.04 | 0.04 | 0.96 | -96 | 0% | 0% | 4% | 89% | Noise |
-| 610 | 0.07 | 0.07 | 0.93 | -92 | 0% | 0% | 7% | 88% | no_pres=88% — improving |
-| 631 | 0.06 | 0.06 | 0.94 | -94 | 0% | 0% | 7% | 91% | Stable |
-| 645 | 0.09 | 0.09 | 0.91 | -97 | 0% | 0% | 9% | 90% | **Final.** 9% win rate, 9% crys_dmg, no_pres=90%. Trend still rising at termination. |
-
-**Phase 0 verdict: FAILED — but best run yet, actively improving at completion**
-
-| Criterion | Target | Final | Result |
-|-----------|--------|-------|--------|
-| cbt (combat win rate) | ≥ 0.85 | 0.09 | ❌ |
-| crys_dmg consistently >0% | yes | ✅ from u317 | ✅ |
-| tmt (timeout rate) | ≤ 0.10 | 0.91 | ❌ |
-| no_pres | ≤ 0.10 | 0.90 | ❌ |
-
-**What worked:**
-- Cancel penalty eliminated worker oscillation immediately (wkr_mv=0% from u47)
-- Worker crystal attack blocked — all crys_dmg now from combat units
-- Genuine barracks→combat unit→crystal damage chain discovered by u317
-- Final trend: crys_dmg 2%→9%, win_rate 3%→9%, no_pres 100%→88% — all improving at termination
-- Run ended with momentum — more steps would likely continue improvement
-
-**What held it back:**
-- atk_mv=0% throughout entire run — agent never used explicit attack_move commands
-- Units reach crystal via forward barracks placement + auto-attack (emergent, not commanded)
-- At u141, attack_move was tried (3%) causing ep_rew spike to −575 from cancel penalties. Policy then avoided attack_move entirely for fear of penalties.
-- Root cause: cancel penalty trained the agent to NOT issue attack_move, even though a single uncommitted attack_move on idle units has zero cancel cost
-
-**Key insight:** The cancel penalty fires when a MID-TRAVEL unit is redirected. An attack_move on idle units has NO cancel cost. The agent's aversion to attack_move is a learned misconception — it tried and was penalised (because it was oscillating), and generalised too broadly.
-
-**Recommendation:** Resume from final.pt (same architecture) with no changes — the run was actively learning and simply ran out of steps. OR: exempting attack_move from cancel penalty when all affected units are idle would help the agent rediscover this action without fear.
-
-**Final checkpoint:** `checkpoints/crystalfront_ppo__0_2_6-ML__idle__1__1779229732/final.pt`
-
----
-
-### 2026-05-19 — v0.2.4-ML: Remove shaping clamp, barracks +5, worker movement actions
-
-**Training config:** PID 681602, run `crystalfront_ppo__0_2_4-ML__idle__1__1779193049`. Fresh start — no checkpoint (action space 66→71 incompatible). num_steps=512, num_envs=60, batch_size=30,720, total_timesteps=20M, ent_coef=0.10.
-
-**Changes from v0.2.3-ML:**
-- Shaping clamp (±20) fully removed — agent now feels full magnitude of all decisions in both directions. Terminal (±100) still dominates.
-- Barracks milestone: +3.0 → +5.0 (stronger nudge toward the build→combat→attack chain)
-- Added: worker movement actions — `attack_move × all_workers × 5 zones` (indices 66–70). Workers can now be explicitly sent to enemy_crystal, midfield, contested_node, enemy_army, defend_crystal. Previously workers could only move to resource nodes or build sites.
-- Action space: 66 → 71
-
-**Why fresh start:** Action space change (66→71) requires new policy architecture.
-
-**v0.2.4-ML snapshots:**
-
-| update | win_rate | cbt | tmt | ep_rew | wkr_mv | crys_dmg | no_pres | notes |
-|--------|----------|-----|-----|--------|--------|----------|---------|-------|
-| 24 | 0.00 | 0.00 | 1.00 | -118.06 | ~89% | 0% | 0% | Unclamped — ep_rew no longer pinned at -120. wkr_mv dominates (uncategorised in log). |
-| 47 | 0.00 | 0.00 | 1.00 | -117.71 | ~89% | 0% | 0% | ep_rew varying — real gradient flowing |
-| 59 | 0.00 | 0.00 | 1.00 | -118.98 | ~89% | 0% | 0% | Slight noise |
-| 83 | 0.00 | 0.00 | 1.00 | -106.63 | ~89% | 0% | 0% | 🟢 Big jump — shaping improving strongly as workers discover map |
-| 106 | 0.00 | 0.00 | 1.00 | -105.88 | ~89% | 0% | 0% | Continuing upward |
-| 118 | 0.00 | 0.00 | 1.00 | -104.27 | ~89% | 0% | 0% | Scouting + visibility rewards accumulating |
-| 141 | 0.00 | 0.00 | 1.00 | -106.02 | ~89% | 0% | 0% | Slight oscillation |
-| 165 | 0.00 | 0.00 | 1.00 | -101.13 | ~89% | 0% | 0% | ep_rew approaching terminal value |
-| 176 | 0.00 | 0.00 | 1.00 | -103.13 | ~89% | 0% | 0% | Minor regression |
-| 200 | 0.00 | 0.00 | 1.00 | -101.62 | ~89% | 0% | 0% | Stable near -100 |
-| 223 | 0.00 | 0.00 | 1.00 | -98.27 | ~89% | 0% | 0% | 🟢 Shaping now POSITIVE (+1.73 above terminal) |
-| 235 | 0.00 | 0.00 | 1.00 | -98.89 | ~89% | 0% | 0% | Holding |
-| 258 | 0.00 | 0.00 | 1.00 | -98.64 | ~89% | 0% | 0% | Holding |
-| 282 | 0.00 | 0.00 | 1.00 | -97.56 | ~89% | 0% | 0% | Shaping +2.44. Workers scouting effectively. Still no combat. |
-| 458 | 0.00 | 0.00 | 1.00 | -94.87 | ~89% | 0% | 0% | Plateau at ~-95. Zone oscillation exploit fully converged. |
-| 469 | 0.00 | 0.00 | 1.00 | -95.06 | ~89% | 0% | 0% | Flat |
-| 493 | 0.00 | 0.00 | 1.00 | -95.09 | ~89% | 0% | 0% | Flat |
-| 516 | 0.00 | 0.00 | 1.00 | -94.83 | ~89% | 0% | 0% | Flat |
-| 528 | 0.00 | 0.00 | 1.00 | -95.11 | ~89% | 0% | 0% | 81% through run. Confirmed plateau. Replay analysis: workers bouncing between x=300/3000/5900 every 2-3 ticks for entire episode. Barracks issued but never complete. |
-
----
-
-### 2026-05-19 — v0.2.3-ML: STOPPED at u235 — worker spam exploitation
-
-**Training config:** PID 676184, run `crystalfront_ppo__0_2_3-ML__idle__1__1779184406`. Fresh start. Killed at update 235/651 (36% complete) after replay analysis confirmed the failure mode.
-
-**Changes from v0.2.2-ML (all carried forward to v0.2.4):**
-- `actionSpace.ts`: `enemy_army` fallback midfield → enemy crystal position (bug fix)
-- All 3 anti-passivity penalties removed
-- Cross-midfield and enemy-quarter milestone rewards removed (tracking only)
-- Removed: /tick in-range and in-range-attacking rewards
-- Added: damage-dealt reward — `0.1 × healthFrac_delta` for units/workers, `0.05` for buildings
-- Added: own building damage penalty — `−0.04 × healthFrac_delta`
-- Added: map visibility reward — `visibleAreaFraction × 0.001` per tick
-- Worker kill: +0.15 → +0.20; own crystal damage: −0.003 → −0.01 per HP
-- Removed: idle combat, barracks-idle, reactive barracks penalties/rewards
-- Action space: 58 → 66 (targeting_friend, spread_fire × 4 groups)
-
-**Failure analysis:**
-
-ep_rew pinned at exactly −120.00 for all 235 updates. Replay analysis showed every episode: 127–168 `train_worker`, 56–65 `build:supply_depot`, 2–4 `build:turret`, zero barracks, zero combat units.
-
-Root cause (two interacting issues):
-1. **attack_move is gated on combat units** — `legalActions.ts` only adds attack_move to the legal mask when `combatUnits.length > 0`. Since the agent never trained a combat unit, ALL attack actions were permanently illegal. atk_mv=0% was not a policy choice — it was a legal mask constraint.
-2. **Wrong-building-first + defenseless penalties hit the shaping clamp floor** — building depots before barracks costs −0.003/tick (−18/ep), no-barracks defenseless costs −0.002/tick (−11/ep) = −29/ep raw. The ±20 clamp flattened this to −20 regardless of how many depots were built, removing all marginal gradient. The agent couldn't distinguish "somewhat bad" from "catastrophically bad."
-3. **Map visibility reward** was incidentally boosting the worker spam: 100+ workers spread across the map → near-100% coverage → ~+6/ep from visibility. Not enough to escape the -20 floor but a competing gradient against building barracks.
-
-**v0.2.3-ML snapshots (killed):**
-
-| update | win_rate | cbt | tmt | ep_rew | atk_mv | noop | crys_dmg | no_pres | notes |
-|--------|----------|-----|-----|--------|--------|------|----------|---------|-------|
-| 24 | 0.00 | 0.00 | 1.00 | -120.00 | 0% | 91% | 0% | 1% | Cold start |
-| 83 | 0.00 | 0.00 | 1.00 | -120.00 | 0% | 82% | 0% | 0% | Pinned at floor |
-| 165 | 0.00 | 0.00 | 1.00 | -120.00 | 0% | 83% | 0% | 1% | No movement |
-| 235 | 0.00 | 0.00 | 1.00 | -120.00 | 0% | 84% | 0% | 1% | Killed — same pattern as all prior runs, no path to barracks |
-
----
-
-### 2026-05-19 — v0.2.2-ML: Remove approaching reward + idle penalties, fix barracks milestone, add foundry milestone
-
-**Context:** v0.2.1-ML confirmed exploitation of approaching reward (+0.0003/unit/tick). Removed it plus idle_worker_penalty and supply_headroom_waste to eliminate worker spam loop. Barracks milestone changed from time-decaying `1.5×max(0,(600-tick)/600)` to flat +3.0 (time-decay gave 0 reward when barracks built after tick 600). Added foundry milestone +2.0. Reverted to num_steps=512 (same as successful 0.1.xx runs). Resumed from v0.2.1-ML update_000075.
-
-**Training config:** PID 615692, run `crystalfront_ppo__0_2_2-ML__idle__1__1779144843`, num_steps=512, num_envs=60, batch_size=30,720, total_timesteps=20M, ent_coef=0.10, save_interval=25, save_replay_every=10. ~651 updates total (resumed at step 9,216,000, ~351 remaining).
-
-**v0.2.2-ML early snapshots:**
-
-| update | win_rate | cbt | tmt | ep_rew | atk_mv | noop | crys_dmg | no_pres | notes |
-|--------|----------|-----|-----|--------|--------|------|----------|---------|-------|
-| 24 | 0.00 | 0.00 | 1.00 | -101.10 | 36% | 53% | 0% | 28% | First update logged. All timeouts, no wins. |
-| 47 | 0.00 | 0.00 | 1.00 | -108.55 | 31% | 56% | 0% | 71% | no_pres rising rapidly — same pattern as v0.2.1 emerging |
-| 59 | 0.00 | 0.00 | 1.00 | -99.87 | 41% | 45% | 0% | 94% | 🔴 no_pres=94%. Units being trained but not reaching crystal. |
-| 83 | 0.00 | 0.00 | 1.00 | -101.45 | 45% | 37% | 0% | 99% | 🔴🔴 no_pres=99%. 13% through run. Midfield-attractor pattern confirmed. |
-| 106 | 0.00 | 0.00 | 1.00 | -102.74 | 47% | 33% | 0% | 99% | atk_mv still climbing, noop falling, no recovery in crys_dmg |
-| 118 | 0.00 | 0.00 | 1.00 | -101.45 | 52% | 25% | 0% | 99% | atk_mv=52%: agent spamming attack_move, never reaching crystal |
-| 141 | 0.00 | 0.00 | 1.00 | -102.32 | 52% | 28% | 0% | 99% | No change |
-| 165 | 0.00 | 0.00 | 1.00 | -99.26 | 54% | 28% | 0% | 100% | no_pres hits 100% |
-| 176 | 0.00 | 0.00 | 1.00 | -94.34 | 59% | 24% | 0% | 100% | ep_rew improving slightly (milestone rewards accumulating), crys_dmg still 0% |
-| 200 | 0.00 | 0.00 | 1.00 | -95.52 | 57% | 26% | 0% | 100% | Stable at bad local optimum |
-| 223 | 0.00 | 0.00 | 1.00 | -100.22 | 58% | 25% | 0% | 100% | 34% through run. no_pres=100%, crys_dmg=0%. No recovery in sight. |
-| 235 | 0.00 | 0.00 | 1.00 | -98.87 | 55% | 29% | 0% | 100% | No change |
-| 258 | 0.00 | 0.00 | 1.00 | -98.37 | 58% | 26% | 0% | 100% | 40% through run. Fully stuck. |
-| 282 | 0.00 | 0.00 | 1.00 | -94.95 | 62% | 22% | 0% | 100% | atk_mv climbing toward 62% |
-| 293 | 0.00 | 0.00 | 1.00 | -92.42 | 60% | 23% | 0% | 100% | ep_rew improves slightly but crys_dmg still 0% |
-| 317 | 0.00 | 0.00 | 1.00 | -96.13 | 62% | 22% | 0% | 100% | No change |
-| 340 | 0.00 | 0.00 | 1.00 | -96.06 | 62% | 22% | 0% | 100% | No change |
-| 352 | 0.00 | 0.00 | 1.00 | -95.62 | 62% | 23% | 0% | 100% | 54% through run. Fully converged to bad local optimum. |
-| 375 | 0.00 | 0.00 | 1.00 | -94.54 | 61% | 22% | 0% | 100% | Flat |
-| 399 | 0.00 | 0.00 | 1.00 | -95.99 | 62% | 21% | 0% | 100% | 61% through run. No change. |
-| 411 | 0.00 | 0.00 | 1.00 | -94.83 | 63% | 21% | 0% | 100% | Flat |
-| 434 | 0.00 | 0.00 | 1.00 | -94.74 | 61% | 22% | 0% | 100% | Flat |
-| 458 | 0.00 | 0.00 | 1.00 | -95.26 | 62% | 21% | 0% | 100% | Flat |
-| 469 | 0.00 | 0.00 | 1.00 | -96.55 | 63% | 21% | 0% | 100% | Flat |
-| 493 | 0.00 | 0.00 | 1.00 | -95.78 | 61% | 22% | 0% | 100% | 76% through run. Completely stuck. |
-| 516 | 0.00 | 0.00 | 1.00 | -96.32 | 63% | 21% | 0% | 100% | Flat |
-| 528 | 0.00 | 0.00 | 1.00 | -95.54 | 63% | 20% | 0% | 100% | 81% through run. No change. |
-| 551 | 0.00 | 0.00 | 1.00 | -95.73 | 64% | 20% | 0% | 100% | Flat |
-| 575 | 0.00 | 0.00 | 1.00 | -94.29 | 64% | 20% | 0% | 100% | Flat |
-| 586 | 0.00 | 0.00 | 1.00 | -93.97 | 63% | 21% | 0% | 100% | Flat |
-| 610 | 0.00 | 0.00 | 1.00 | -96.76 | 63% | 21% | 0% | 100% | Flat |
-| 633 | 0.00 | 0.00 | 1.00 | -95.22 | 64% | 20% | 0% | 100% | 97% through run. Final stretch — zero change across entire run. |
-| 645 | 0.00 | 0.00 | 1.00 | -95.82 | 64% | 20% | 0% | 100% | Final logged update. Run ended at step 19,800,000. |
-
-**Phase 0 verdict: FAILED**
-
-| Criterion | Target | Final | Result |
-|-----------|--------|-------|--------|
-| cbt (combat win rate) | ≥ 0.85 | 0.00 | ❌ |
-| crys_dmg | > 0% | 0% | ❌ |
-| tmt (timeout rate) | ≤ 0.10 | 1.00 | ❌ |
-| no_pres | ≤ 0.10 | 100% | ❌ |
-
-**Post-mortem:**
-
-The run completed all 651 updates (20M steps) without a single episode of crystal damage, no combat wins, and a 100% timeout rate. The policy converged fully to a bad local optimum by update 165 and never recovered.
-
-**Trajectory summary:**
-
-| Phase | Updates | no_pres | atk_mv | ep_rew | Description |
-|-------|---------|---------|--------|--------|-------------|
-| Early | u24–u59 | 28%→94% | 36%→41% | -101 | Rapid no_pres rise, exploring |
-| Convergence | u83–u165 | 99%→100% | 45%→54% | -102→-99 | Locks into bad local optimum |
-| Plateau | u165–u645 | 100% | 54%→64% | ~-95 | Fully stuck for 480 updates |
-
-**Root cause (confirmed):**
-
-Two interacting problems created an unescapable local optimum:
-
-1. **`attack_move enemy_army` falls back to midfield.** When no enemy combat units are visible, `resolveTargetZone("enemy_army")` returns `{ x: mid, y: MAP.height/2 }`. Against IdleBot (which trains ZERO combat units ever), this means every `enemy_army` attack_move resolves to the exact centre of the map. The agent learned to use this action heavily.
-
-2. **`hasForwardUnit` threshold xNorm > 0.45 creates a midfield attractor.** The anti-passivity army-idle penalty fires when `ownCombat >= 3` and no unit has `xNorm > 0.45`. A unit parked at xNorm ≈ 0.46–0.49 satisfies this check (avoiding the -0.002/tick penalty) but falls short of the midfield milestone threshold (xNorm > 0.50) and of the enemy quarter milestone (xNorm > 0.75). Forward progression milestones (+3 midfield, +3 enemy quarter, +5 crystal hit) were NEVER triggered in the entire 20M step run.
-
-Result: the agent settled into building barracks/foundry, training a few units, moving them to xNorm ≈ 0.45, and looping. ep_rew stabilised at ~-95 = -100 terminal + ~+9 milestone shaping - ~-4 anti-passivity. This was the local optimum.
-
-**Fixes required for v0.2.3-ML:**
-
-1. **`actionSpace.ts`: Change `enemy_army` fallback from midfield → enemy_crystal.**
-   `return { x: mid, y: MAP.height / 2 }` → `return { x: isBlue ? MAP.width - 100 : 100, y: MAP.height / 2 }`
-   This removes the midfield attractor for this action.
-
-2. **`stdioRunner.ts`: Raise `hasForwardUnit` threshold from xNorm > 0.45 → xNorm > 0.65.**
-   Forces units to enter the enemy quarter before the army-idle penalty is relieved. Eliminates the stable parking spot between 0.45 and 0.5.
-
-**Final checkpoint:** `checkpoints/crystalfront_ppo__0_2_2-ML__idle__1__1779144843/final.pt`
-
-A running log of meaningful milestones, decisions, and pivots. Most recent first.
-
----
-
-### 2026-05-18 — v0.1.75-ML: Phase C v8 — oscillation analysis + passive_bot diagnosis
-
-**Training status (PID 522611, `/tmp/train_v75.log`):**
-```
-update=  8 | win_rate=0.77 | ep_len=3000 | ep_rew= 31 | bld=34% trn=0%
-update= 15 | win_rate=0.37 | ep_len=3000 | ep_rew= 35 | bld=51% trn=0%
-update= 21 | win_rate=0.67 | ep_len=1185 | ep_rew=104 | bld=37% trn=0%
-```
-Same ~12-update oscillation cycle as v74. ent_coef=0.03 did not stop the V(s) lag cycle.
-
-**Passive_bot geometry diagnosis:** Ran a test match — passive_bot DOES build a barracks at (900, 380) and trains 2 skirmishers with autoAttackEnabled=true. However, the skirmishers sit at (871, 359) and (866, 391), offset in y from the blue workers' approach vector (y≈300). Workers walking at y=300 toward the crystal at (900, 300) may slip past the skirmishers (60–90px offset in y) without triggering auto-attack. This partly explains wins with trn=0%.
-
-**Root of oscillation (V(s) lag):** Policy at peak had A(train_unit) > 0, wins at 86%. After PPO update, V(s) rises to ~106. Next batch: A(train_unit) = R_train_onward − V(s) ≈ 40 − 106 = **−66** (negative). Policy pushes away from train_unit. trn→0%, win rate drops. V(s) corrects to ~35. A(train_unit) becomes positive again. Cycle repeats every ~12 updates.
-
-**Next steps to break the cycle:**
-1. Fix passive_bot skirmisher positioning to block the y=250–350 worker corridor
-2. Reduce `hasTrainedCombatUnit` back to +15 — the +50 spike is causing V(s) overshoot
-3. Per-unit reward instead of one-shot: +2.0 every time a NEW combat unit appears (capped 5/ep)
-
----
-
-### 2026-05-18 — v0.1.75-ML: Phase C v8 — locking in the winning policy
-
-**Status:** Running (PID 522611, `/tmp/train_v75.log`)
-
-**Strategy:** Resume from the Phase C v7 `update_000010.pt` checkpoint (the peak policy: win_rate=86%, bld=17%, trn=1%) with `ent_coef=0.03`. The high-entropy v7 run discovered and then lost the winning strategy every ~12 updates due to value-function lag. Low entropy should lock the policy in place once it finds the chain.
-
-**Also fixed in this version:**
-- All 4 `package.json` files now bumped together (previous versions only bumped root — client/server/shared were stuck at 0.1.56-ML, live site showed wrong version)
-- Training runs now started with `--save_replay_every 0` — no more broken 1000px map replays polluting the replay browser
-- Site deployed and verified at 0.1.75-ML
-
----
-
-### 2026-05-18 — v0.1.74-ML: Phase C v7 — first_combat_unit +50, barracks-idle ×5
-
-**Problem:** v6 reached win_rate=0.82 at update 7 but collapsed to 0.01 by update 35. Root cause: policy gradient for `bld` actions (25% of episode, +2.5 immediate reward) overwhelmed gradient for `trn` (1% of episode, +10 delayed ~100 ticks). Expected value of "build + train" was only marginally better than "build only".
-
-**Changes:**
-- `hasTrainedCombatUnit` milestone: +10 → **+50** (discounted at gamma^100 ≈ +30.5, vs bld's +2.5)
-- Barracks-idle trickle penalty: -0.003/tick → **-0.015/tick**
-- Expected value: build+train = +33, build-without-train = +1.9 (a 17× gap)
-
-**Results:** win_rate oscillated 20–86% over 63 updates in 12-update cycles. Pattern: agent discovers train→attack (trn=1%, ep_rew=106), V(s) updates high, future A(train) becomes negative, trn falls to 0%, V(s) corrects, cycle repeats. Never converged. Best checkpoint at update 10 (win_rate=86%) used as seed for v8.
-
----
-
-### 2026-05-18 — v0.1.73-ML: Phase C v6 — CRITICAL BUG FIX: build zone
-
-**Root cause of all Phase C failures identified:**
-
-`chooseBuildPosition()` in `headless/src/actionSpace.ts` used `MAP.width` (hardcoded 6000) instead of `match.config.mapWidth` (1000 for training). This placed buildings at:
-- `near_crystal` → x=180: overlaps spawn workers → "Overlaps existing entity"
-- `mid_base` → x=600: outside 200px blue build zone → "Outside your build zone"
-- `forward` → x=960: outside build zone AND near red crystal → "Outside your build zone"
-
-**Every single barracks build attempt silently failed in ALL Phase C runs (v1–v5).** bld=60-75% looked like the agent was building — it was issuing 15,000+ build commands per update that all returned empty. trn=0% was a direct consequence: the barracks never existed.
-
-Additional bugs fixed in the same function:
-- Blocking check tested only buildings; added workers + crystal entity overlap
-- No-build radius around own crystal wasn't checked; added `PLACEMENT.crystalNoBuildRadius` check  
-- Zone end hardcoded to `mapW × 0.2`; set minimum to 280px so the valid strip (x=180-280 on 1000px map) is reachable
-- Attempts increased 8 → 16
-
-**Verified:** All 3 barracks zones now succeed on 1000px map, barracks completes at tick ~250, `train_skirmisher` legal with 425 resources.
-
-**Results:** win_rate=0.82 at update 7 (trn=1%, atk_mv=22%). But still collapsed to 0.01 by update 35 — same bld-dominance problem as before, now just a reward problem not a build problem.
-
----
-
-### 2026-05-18 — v0.1.72-ML: Phase C v5 — barracks-only builds (wrong diagnosis)
-
-**Hypothesis:** 12 bld variants (barracks/foundry/depot/turret × 3 zones) vs 4 train variants → bld gets 3× probability mass regardless of reward. Restricted build legal mask to barracks only (3 variants).
-
-Added `phaseLegal()` filter in `stdioRunner.ts` that removes `build` actions except `build_barracks`. This also ensured bld probability never exceeded 3/10 of actions.
-
-**Results:** bld=62-69%, trn=0% throughout. **Build zone bug was still present — all barracks builds were still silently failing.** The filter was correct but masked the real problem.
-
----
-
-### 2026-05-18 — v0.1.70-ML / v0.1.71-ML: Phase C v3/v4 — resource starvation fix
-
-**Another diagnosis:** With `startingResources=200`, the agent could build 3 buildings in the first 3 ticks (barracks=75, depot=50, foundry=100 = 225 > 200), drain all resources, pull all workers to build sites (no gathering), leaving resources=0 when barracks completes → `train_skirmisher` (costs 50) **ILLEGAL**.
-
-**Fix (v0.1.71):** `startingResources: 200 → 500`. Even after a 3-building spree, 275 resources remain when barracks completes. Also from scratch with `ent_coef=0.10` (was 0.04).
-
-**Results (v71):** win_rate=0.75 at update 8 (trn=1%!) — resources fix helped briefly. Then collapsed. Build zone bug was still silently failing ~2/3 of builds (only mid_base and forward worked by chance on some maps, but both still silently failing due to MAP.width bug).
-
----
-
-### 2026-05-18 — v0.1.68-ML / v0.1.69-ML: Phase C v1/v2 — reward fixes for build→train gap
-
-**Problem (Phase C v1):** Resume from Phase B v2 checkpoint → immediately bld=70%, trn=0%. Same collapse as Phase B v1. Build zone bug active, but also:
-- Phase B v2 checkpoint had trn=1% (pre-placed barracks always present). When Phase C removed the barracks, train_unit masked for 150 ticks → logit pushed toward zero
-- ent_coef=0.04 too low to recover
-
-**v0.1.69 changes:**
-- Barracks-idle trickle: -0.003/tick when barracks complete + no combat units
-- `hasTrainedCombatUnit`: +5 → +10
-
-**Results:** Still collapsed. Build zone bug meant the trickle penalty never fired (no barracks ever completed).
-
----
-
-### 2026-05-18 — v0.1.67-ML: Phase B v2 — pre-placed barracks ✅ 100% win rate
-
-**Problem (Phase B v1):** Removing pre-placed skirmishers AND requiring barracks build was too large a jump. Agent converged to bld=78%, trn=0%, win_rate→0.04 within 4 updates.
-
-**Fix:** Pre-place a **completed barracks** at (250, 300) in `stdioRunner.ts`. Agent only needs to discover `train_skirmisher → attack_move`. Build chain comes in Phase C.
-
-**Results:** win_rate=1.00 from update 3. ep_len declined 574→389 as policy tightened. atk_mv=43%, tgt=14%, bld=2%, trn=1%. Saved checkpoint at update_000010. 
-
----
-
-### 2026-05-18 — v0.1.66-ML: Phase B v1 — full chain attempt (failed)
-
-**Removed all scaffolding** (no pre-placed skirmishers, no pre-placed barracks). Agent must build barracks + train + attack from scratch.
-
-**Results:** Loaded from Phase A (0.1.65-ML) checkpoint. bld=73-79%, trn=0%, win_rate collapsed 0.40→0.04 in 4 updates. Root causes: (1) build zone bug — barracks builds all failing; (2) Phase A policy had atk_mv=40% but no combat units to move; (3) ent_coef=0.04 too low to explore new behaviors.
-
----
-
-### 2026-05-18 — v0.1.65-ML: Phase A ✅ First wins in training history
-
-**Curriculum Phase A:** Injected 3 pre-placed skirmishers for blue at match start. Removed build+train credit chain entirely. Agent only needs to learn `attack_move → win`.
-
-| Config | Value |
-|---|---|
-| mapWidth | 500 (crystal 250px away, travel time ~125 ticks) |
-| crystalHealth | 50 (destroyed in ~25 ticks) |
-| startingResources | 200 (barracks affordable) |
-| Pre-placed skirmishers | 3 (autoAttackEnabled=true) |
-| MAX_TICKS | 3000 |
-
-**Results:** win_rate=1.00 from update 1 — first positive terminals in the entire training history. ep_len=84-142 ticks. atk_mv=40%, tgt=17%, bld=27%, trn=2%. Phase A checkpoint saved (update_000005). Used as Phase B seed.
-
----
-
-### 2026-05-18 — v0.1.62–v0.1.64: Diagnosing trn=1% and mining domination
-
-**v0.1.62 — startingResources fix:** At startingResources=50, `build_barracks` (costs 75) was **illegal at tick 0**. Only `train_worker` (50) was legal. So "trn=1%" was 100% worker training, not skirmisher training. Fixed to 200.
-
-**v0.1.63–64 — mining reward poisoning:** `miningDelta × 0.000025` accumulated to **+150/episode** for full gathering, completely dominating all combat signals. Agent learned to mine, not fight. Cut to 0.000001 (25×). 
-
-Also discovered: `attack_move` only selects combat units via `getUnitGroup("all_combat")`. Workers assigned to gathering nodes never walk toward the enemy crystal regardless of map width. Map-width reduction (v0.1.63: 6000→2000→500px) was irrelevant for workers.
-
-**Final diagnosis:** Workers can't attack via macro actions. Need pre-placed combat units (Phase A).
-
----
-
-### 2026-05-18 — matchEngine.ts split + determinism test
-
-`matchEngine.ts` extracted from 1953 lines into:
-- `engine/visibility.ts` — `computeVisibility()`
-- `engine/movement.ts` — `processMovement()`
-- `engine/combat.ts` — `processCombat()`
-- `engine/gathering.ts` — `processGathering()`
-- `engine/repair.ts` — `processRepairAndHealing()`
-- `engine/utils.ts` — pure helpers (`dist`, `buildSpatialGrid`, etc.)
-
-Determinism test added: same seed × 500 ticks → identical state hash. All 391 tests passing.
-
----
-
-### 2026-05-17 — Replay browser + scrub bar improvements
-
-**Server-side pagination:** Replay browser rewritten to send `page/pageSize/sort/asc/winner/winType/bot/flags/starred` to `/api/replays`. Was fetching all 500+ replays on every render. Now defaults to 30/page.
-
-**Scrub bar fix:** Previously used `replayBufferSize` as the max — scrub bar only filled in as the replay downloaded. Fixed to use `replayTotalTicks - 1` as the constant max. Seeking beyond the buffered portion clamps to `Math.min(target, bufferSize - 1)`.
-
-**Economy win reward:** Changed from `+winType === "resource" ? 0 : +30` to `winType === "resource" ? -30 : +30` — economy wins now score same as losses, removing the second local minimum.
-
----
-
-### 2026-05-17 — v0.1.60-ML: Breaking the 0% win-rate plateau
-
-**Problem identified (Review 3):** After ~60M cumulative combat-training steps across v0.1.56–v0.1.59, the agent reached a stable *losing* equilibrium: intermediate shaping rewards summed to ~+12/ep, terminal loss is −10, net ep_rew ≈ +1–2 while losing 100% of games. PPO had no gradient pulling it off this optimum because the value head had never seen a +10 terminal signal. The discount at gamma=0.995 over a 1800-tick episode rendered the terminal ~1000× weaker than the barracks milestone at the decision point.
-
-**Root cause:** No opponent weak enough to generate winning trajectories. Every training phase from v0.1.57 onwards was against `rush_medium` or earlier, bots the current policy cannot beat even by luck.
-
-**Changes implemented (v0.1.60-ML):**
-
-| Change | Before | After |
-|---|---|---|
-| Opponent | `rush_medium` | `passive_bot` (economy only, never attacks) |
-| Terminal reward | ±10 | **±30** (combat), +3 (resource) |
-| Crystal damage shaping | ×0.0008/HP | **×0.005/HP** (×6.25) |
-| First-hit milestone | +1.0 | **+3.0** |
-| Damage depth milestones | none | **+1/+2/+5** at 25/50/90% enemy crystal |
-| Economy shaping | baseline | **halved** (gathering, mining, supply, standing force) |
-| MAX_TICKS (training) | 6000 | **3000** |
-| ent_coef | 0.02 | **0.08** (re-exploration phase) |
-| New bot | — | `PassiveBot` added to headless/src/bots/ |
-
-**Key bug caught:** `oppCrystalHealthFrac = 0` when enemy crystal is not visible (fog of war). New depth-milestone code fired all three thresholds (25/50/90%) on tick 1, giving +8 of spurious reward. Fixed with `if (curr.global.oppCrystalHealthFrac > 0)` guard before updating `minOppCrystalHealthFrac`.
-
-**Training:** PID 417005, `/tmp/train_v60.log`, resumed from v0.1.59 final checkpoint. 20M steps vs passive_bot. Autonomous loop set to advance curriculum (passive → weak_rush → medium_rush) gated on win_rate thresholds (>60%, >40%).
-
-**Success criterion:** First `win_rate > 0` in the log. If not seen in 5M steps vs passive_bot, escalate to behaviour-cloning warmup.
-
----
-
-### 2026-05-17 — v0.1.59-ML: Gamma + milestone-timing fix
-
-**Changes:** gamma 0.99 → 0.995 (doubles effective horizon, ~100→~200 ticks). Barracks milestone fires on **build start** (entity appears) instead of completion — brings the +0.5–2.5 reward 150 ticks closer to the actual decision. Resumed from v0.1.58 checkpoint.
-
-**Results:** 651 updates, 20M steps. ep_rew moved positive (+0.5 to +2.0 typical, was negative in v0.1.58). ep_len locked at ~1800 throughout. **0% win rate**. Two outlier episodes (ep_rew 8.30 and 5.41, ep_len 2000+) showed occasional better survival but did not reproduce as a trend. The gamma fix worked mechanically but couldn't overcome the fundamental missing-win-trajectory problem.
-
----
-
-### 2026-05-17 — React error #185 fixed
-
-React "Maximum update depth exceeded" (error #185) traced to all `useCallback` hooks in `App.tsx` depending on `[ws]` — the entire WebSocket context object, which is a new plain object literal on every 10 Hz render. Fixed by using stable method references (`[ws.createLobby]`, `[ws.sendGameCommand]`, etc.). Also fixed `setHoverPos` in `GameShell.tsx` creating unnecessary new objects on every mouse move.
-
----
-
-### 2026-05-16 — v0.1.58-ML: Skirmisher→turret counter fix + rush_medium phase 2
-
-**Analysis of v0.1.57 Phase 1:** Agent won 100% vs idle/turtle in mixed curriculum (67% of games were free wins). Achieved 3% win rate vs rush_weak — combat was irrelevant to the gradient. Fixed by switching to 100% rush_medium.
-
-**Changes:** Skirmisher→turret counter multiplier corrected from 1.0× to 2.0× (turrets now use "gunner" counter as defenders, matching existing logic). This prevents turret-spam as a hard counter to skirmisher rushes, forcing the agent to use actual combat units.
-
-**Results:** Agent initially tried attacking (week 1), then decided it was "not worth it" and reverted to turtling. 0% win rate throughout. The attack-then-retreat pattern confirmed the credit-assignment problem more than action-space issues.
-
----
-
-### 2026-05-15 — v0.1.57-ML: Major system overhaul (CRYSTALFRONT_REVIEW_2.md)
-
-**Diagnostic from replay review:** Agent was never actually fighting. Root causes identified:
-- `attack_move` command emitted `move` not `attack` — units never auto-acquired targets
-- `retreat` set `autoAttackEnabled = false` — retreating units couldn't fire even if enemies walked into range
-- `commandedTicks = 5` after every move — units were effectively paralysed during oscillating attack/retreat sequences
-- Action space had no way to issue real `{type: "attack", targetEntityId}` commands
-
-**Changes:** Full action space rebuild (37→58 actions): added `attack_targeted×12`, `hold_position×1`, new `attack_move` zones (`enemy_army`, `defend_crystal`). Engine bugs fixed (retreat keeps auto-attack, commandedTicks 1→1). Observation expanded (GLOBAL_DIM 18→22, ENTITY_DIM 11→12). New curriculum bots: `WeakRushBot`, `MediumRushBot`. Reward overhaul: forward_pressure replaced by weapon-range-proximity; defenseless trickle; survival fires earlier.
-
-**Results (Phase 1, combat_weak):** Turret-spam defence emerged — agent learned 1 barracks + depot chain kept 4-skirmisher rushes out. Win rate ~72% but via economy abuse (67% were idle/turtle games). Combat vs rush_weak: 3%.
-
----
-
-### 2026-05-14 — Planning document finalised
-
-Original ML_BOT_ACTION_PLAN.md written. 6-phase plan: Phase 0 (engine refactors) → Phase 1 (headless + scripted bots) → Phase 2 (obs/action/reward specs) → Phase 3 (Python harness) → Phase 4 (league training) → Phase 5 (replay tools) → Phase 6 (production ONNX integration).
-
----
-
-### 2026-05-14 — Phases 0–3 implemented (status as of 2026-05-18)
-
-**Phase 0 — Engine refactors:**
-- ✅ `Rng` class (mulberry32, seedable) — `server/src/match/engine/rng.ts`
-- ✅ `IdGen` class (monotonic counter) — `server/src/match/engine/idGen.ts`
-- ✅ `LiveMatchRunner` split from `MatchEngine` — `server/src/match/liveMatchRunner.ts`
-- ✅ `commandLog` added to match state (replay system foundation)
-- ✅ `replayRunner.ts` for server-side replay playback
-- ✅ `matchEngine.ts` split: engine/combat.ts, gathering.ts, movement.ts, repair.ts, utils.ts, visibility.ts
-- ✅ Determinism test added: same seed × 500 ticks → identical state hash (391 tests passing)
-- ✅ `randomUUID()` removed — IdGen used throughout
-- ❌ Legacy aliases in `gameBalance.ts` not removed (low priority)
-- ❌ Duplicate type definitions not resolved (low priority)
-
-**Phase 1 — Headless + scripted bots (complete + exceeded):**
-- ✅ `headless/` workspace, `runMatch.ts`, CLI tool
-- ✅ `observation.ts`, `actionSpace.ts`, `legalActions.ts`, `actionIndex.ts`
-- ✅ `IdleBot`, `RushBot`, `TurtleBot`, `MacroBot`, `HeavyBot`, `WeakRushBot`, `MediumRushBot`, `PassiveBot`
-- ✅ `BotPlayer` in-process driver; difficulty selector in lobby UI
-- ✅ Replay saving (seed + command log → JSON)
-- ✅ Server-side pagination in replay browser (30/page, filter/sort to `/api/replays`)
-- ✅ Scrub bar fixed to show full game length
-- ✅ Training replays suppressed (`--save_replay_every 0`)
-- ⚠️ No speed selector or jump-to-event in replay viewer
-
-**Phase 2 — Specs (complete):**
-- ✅ `docs/CRYSTALFRONT_OBS_SPEC.md`, `docs/CRYSTALFRONT_ACTION_SPEC.md`, `docs/CRYSTALFRONT_REWARD_SPEC.md`
-- ✅ 391 passing tests (added determinism test)
-- ⚠️ Reward spec may lag behind stdioRunner.ts (source of truth)
-
-**Phase 3 — Python training harness (complete):**
-- ✅ `training/env/crystalfront_env.py` (Gymnasium wrapper, 60 parallel Node sims)
-- ✅ `training/ppo/train.py` (CleanRL-style PPO, TensorBoard, action histograms, checkpoint save/load)
-- ✅ `training/ppo/policy.py` (Set-transformer, entity attention, global concat, legal-action masking)
-- ✅ ROCm/CUDA GPU training confirmed working
+## Table of contents
+
+1. [Project goals](#1-project-goals)
+2. [Decisions made (the foundation)](#2-decisions-made-the-foundation)
+3. [Architecture overview](#3-architecture-overview)
+4. [Proposed repo structure](#4-proposed-repo-structure-after-implementation)
+5. [Implementation phases](#5-implementation-phases)
+6. [Risks & mitigations](#6-risks--mitigations)
+7. [Estimated timeline](#7-estimated-timeline-assuming-part-time-work)
+8. [Stop-the-line conditions](#8-stop-the-line-conditions)
+9. [Open questions to revisit](#9-open-questions-to-revisit)
+10. [Resources to learn from](#10-resources-to-learn-from)
+11. [Immediate next step (historical)](#11-immediate-next-step-historical)
+12. [Development diary — chronological](#12-development-diary--chronological-oldest-first)
 
 ---
 
@@ -977,7 +393,7 @@ Each phase has a clear definition of done. Don't move to the next phase until th
 
 **Status (2026-05-18): ✅ Complete + exceeded plan**
 - ✅ All tasks 1–9 done
-- ✅ 8 scripted bots (IdleBot, RushBot, TurtleBot, MacroBot, HeavyBot, WeakRushBot, MediumRushBot, PassiveBot)
+- ✅ 8 scripted bots (IdleBot, RushBot, TurtleBot, MacroBot, HeavyBot, WeakRushBot, MediumRushBot, PassiveBot) + WeakMediumRushBot added during shipping work (9 total)
 - ✅ Replay saving (seed + command log → JSON, ~20–50 KB/match as planned)
 - ✅ BotPlayer in-process driver wired into live server; difficulty selector in lobby UI
 - ✅ Server-side replay pagination (30/page; was fetching all replays on every render)
@@ -992,93 +408,23 @@ Each phase has a clear definition of done. Don't move to the next phase until th
 **Goal:** lock down the exact interface between game and bot. This is the contract; everything downstream depends on it.
 
 **Tasks:**
-1. Write `docs/observation_spec.md` — every field the bot sees, with shapes and ranges. Examples:
-   ```
-   global_features: vec[12]
-     - own_resources / 1000          ∈ [0, 10]
-     - own_supply / max_supply       ∈ [0, 1]
-     - opp_visible_supply_estimate / max_supply  ∈ [0, 1]
-     - tick / 6000                   ∈ [0, 1]
-     - score_diff                    ∈ [-3, 3]
-     - ... etc
-
-   entity_list: variable-length list of vec[24] per entity
-     - type one-hot (10 dims: crystal, worker, skirmisher, gunner, bruiser, medic, barracks, foundry, supply_depot, turret)
-     - owner (1 = mine, -1 = enemy, 0 = neutral)
-     - x_norm, y_norm                ∈ [0, 1]
-     - health / max_health           ∈ [0, 1]
-     - attack_cooldown_norm
-     - is_attacking, is_moving, is_gathering, is_building (binary flags)
-     - construction_progress / 100   (buildings only)
-     - ... etc
-
-   node_list: variable-length list of vec[6] per visible node
-     - x_norm, y_norm
-     - remaining / capacity
-     - gatherer_count / 3
-     - is_contested (binary)
-     - ...
-   ```
-2. Write `docs/action_space.md` — complete hierarchical action tree. Example:
-   ```
-   NOOP
-
-   TRAIN_WORKER
-
-   TRAIN_UNIT(unit_type ∈ {skirmisher, gunner, bruiser, medic})
-     → auto-routes to nearest valid production building
-
-   BUILD(building_type, x_zone, y_zone, intent)
-     building_type ∈ {barracks, foundry, supply_depot, turret}
-     x_zone ∈ {near_crystal, mid_base, forward}      # 3 distance bands
-     y_zone ∈ {top, middle, bottom}                  # 3 lane positions
-     intent ∈ {near_node, near_building, freestanding, blocking_lane}
-     → 4 × 3 × 3 × 4 = 144 build sub-actions
-
-   ATTACK_MOVE_GROUP(group, target_zone)
-     group ∈ {all_combat, skirmishers, gunners, bruisers, mixed_army}
-     target_zone ∈ {enemy_crystal, enemy_visible_threat, midfield_top, midfield_mid, midfield_bot, contested_node_nearest}
-
-   RETREAT_GROUP(group) → toward own crystal
-
-   ASSIGN_WORKERS(node_choice, count)
-     node_choice ∈ {nearest_safe, nearest_contested, richest_visible}
-     count ∈ {1, 2, 3, all_idle}
-
-   SET_RALLY(building_zone, target_zone)
-
-   TOGGLE_AUTO_ATTACK(group)
-   ```
-   Total enumerated actions: ~250–400. Manageable for PPO.
-3. Write `docs/reward_spec.md` — initial reward shaping:
-   ```
-   Per-tick rewards (sum each tick into agent's score):
-     +0.0010 × damage_dealt_to_enemy_crystal
-     -0.0010 × damage_taken_to_own_crystal
-     +0.0001 × resources_mined_this_tick
-     +0.0005 × (own_supply - opp_supply)  # army advantage
-     -0.00005 (time penalty per tick — discourages stalling)
-   Terminal rewards:
-     +10.0  for win (crystal kill)
-     -10.0  for loss
-     +5.0   for resource-victory win   # passive win condition
-     -5.0   for resource-victory loss
-   ```
-   These are *starting points*. Expect to retune after observing behaviour.
+1. Write `docs/observation_spec.md` — every field the bot sees, with shapes and ranges.
+2. Write `docs/action_space.md` — complete hierarchical action tree.
+3. Write `docs/reward_spec.md` — initial reward shaping.
 4. Implement observation builder and action enumerator against the specs.
 5. Write unit tests: every action in the action space, when emitted on a valid state, produces a successful `processCommand` result.
 
 **Definition of done:**
 - Three markdown specs are complete and reviewable.
 - Code matches the specs.
-- All 250–400 actions are individually unit-tested for "emits valid commands on a representative state."
+- All ~80 actions are individually unit-tested for "emits valid commands on a representative state."
 
 **Estimated effort:** 4–5 days.
 
 **Status (2026-05-18): ✅ Complete**
 - ✅ `docs/CRYSTALFRONT_OBS_SPEC.md`, `docs/CRYSTALFRONT_ACTION_SPEC.md`, `docs/CRYSTALFRONT_REWARD_SPEC.md`
 - ✅ 391 tests passing (added determinism test)
-- ⚠️ Reward spec may lag stdioRunner.ts — source of truth is the code
+- ⚠️ Reward spec may lag the canonical `headless/src/reward.ts` — that file is the source of truth as of v0.3.0-ML.
 
 ---
 
@@ -1087,35 +433,31 @@ Each phase has a clear definition of done. Don't move to the next phase until th
 **Goal:** a working PPO training loop with parallel Node simulators.
 
 **Tasks:**
-1. Set up `training/` Python project (pyproject.toml, requirements: `torch`, `gymnasium`, `pettingzoo`, `numpy`, `tensorboard`, `tyro` or `click` for CLI).
-2. Build `training/env/subprocess_pool.py` — manages N Node subprocesses, each running `headless/src/runMatch.ts` in "stepper mode" (reads commands from stdin, writes observations to stdout).
-3. Implement JSON-line protocol on the Node side (`headless/src/stdioProtocol.ts`):
-   - `RESET { seed }` → `OBSERVATION { state, legal_actions }`
-   - `STEP { actions: [blueAction, redAction] }` → `OBSERVATION { state, legal_actions, reward, done }`
-4. Wrap as Gymnasium env (`training/env/crystalfront_env.py`).
-5. Build PPO trainer (`training/ppo/train.py`) based on CleanRL `ppo.py` template.
-6. Build policy network (`training/ppo/policy.py`):
-   - Set-transformer over entity list (2–4 attention layers)
-   - Concatenate pooled entity embedding with global features
-   - Hierarchical action head: first pick top-level action, then sub-actions conditioned on it
-   - Use legal-action masking to zero out invalid options before softmax
-7. Train against `RushBot` first (single fixed opponent) to confirm the pipeline works end-to-end.
-8. Add TensorBoard logging: win rate, episode length, reward components, entropy.
+1. Set up `training/` Python project.
+2. Build `training/env/subprocess_pool.py` — manages N Node subprocesses.
+3. Implement JSON-line protocol on the Node side.
+4. Wrap as Gymnasium env.
+5. Build PPO trainer.
+6. Build policy network (set-transformer over entity list).
+7. Train against `RushBot` first.
+8. Add TensorBoard logging.
 
 **Definition of done:**
 - `python training/ppo/train.py --opponent rush --steps 1M` runs without error.
-- Win rate vs `IdleBot` reaches 100% within reasonable training time (sanity check — beating an opponent that does nothing should be trivial).
-- TensorBoard shows reward curves that aren't obviously broken (not collapsing, not flat).
+- Win rate vs `IdleBot` reaches 100% within reasonable training time.
+- TensorBoard shows reward curves that aren't obviously broken.
 
-**Estimated effort:** 2 weeks. This is the hardest phase if you've never done RL before.
+**Estimated effort:** 2 weeks.
 
 **Status (2026-05-18): ✅ Complete**
 - ✅ `training/env/crystalfront_env.py` — Gymnasium wrapper, 60 parallel Node sims
-- ✅ `training/ppo/train.py` — CleanRL PPO, TensorBoard, action histograms, checkpoint save/load, `--save_replay_every`
-- ✅ `training/ppo/policy.py` — Set-transformer over entity list, global concat, legal-action masking
-- ✅ GPU training working (ROCm/CUDA)
+- ✅ `training/env/crystalfront_vec_env.py` — vectorised, N games per process (v0.2.8-ML)
+- ✅ `training/ppo/train.py` — CleanRL PPO, TensorBoard, action histograms, checkpoint save/load, GPU/ROCm
+- ✅ `training/ppo/policy.py` — Set-transformer over entity list, global concat, legal-action masking; RND module (v0.4.0-ML, default-off)
+- ✅ `training/bc_pretrain.py` — Behaviour Cloning warmup (v0.3.0-ML+)
+- ✅ `training/diagnose_policy.py` — per-episode action histogram diagnostic (v0.4.0-ML)
 - ✅ 0% win rate plateau broken — Phase A win_rate=1.00 (v0.1.65-ML), Phase B win_rate=1.00 (v0.1.67-ML)
-- 🔄 Phase C (full build chain) oscillating 37-77% win rate — see diary for diagnosis
+- ✅ Full BC + 13-stage curriculum delivered v0.3.2-ML production model
 
 ---
 
@@ -1124,13 +466,11 @@ Each phase has a clear definition of done. Don't move to the next phase until th
 **Goal:** real training campaign, with the league system from D3.
 
 **Tasks:**
-1. Implement `training/ppo/league.py` — manages a pool of opponents:
-   - Scripted bots (always present, low sampling weight once policy is competent)
-   - Last N policy checkpoints (sampled with priority on closest-skill match)
-2. Checkpoint saving: every K updates, save the policy and add to the league pool.
-3. Sampling strategy: for each rollout, pick opponent with prioritised-fictitious-self-play (PFSP) weighting.
-4. Win-rate matrix logging: every E episodes, log current policy's win rate vs every opponent in the league.
-5. Run the first serious training campaign (target: 10M environment steps, ~1 week wall time on CPU).
+1. Implement `training/ppo/league.py` — PFSP-weighted opponent sampling.
+2. Checkpoint saving every K updates.
+3. Sampling strategy.
+4. Win-rate matrix logging.
+5. Run the first serious training campaign.
 
 **Definition of done:**
 - Win rate vs each scripted bot is >90% (Milestone 1 achieved).
@@ -1139,80 +479,32 @@ Each phase has a clear definition of done. Don't move to the next phase until th
 
 **Estimated effort:** 1 week setup + indefinite training time.
 
-**Status (2026-05-18): ⚠️ Curriculum in progress — three scaffolded phases complete**
-
-**Curriculum ladder (as of v0.1.75-ML):**
-
-| Phase | Version | Scaffold | Map | Crystal | Opponent | Win rate |
-|---|---|---|---|---|---|---|
-| A | 0.1.65-ML | 3 pre-placed skirmishers | 500px | 50HP | idle_bot | **1.00 ✅** |
-| B v2 | 0.1.67-ML | Pre-placed barracks | 1000px | 100HP | passive_bot | **1.00 ✅** |
-| C v8 | 0.1.75-ML | None (full chain) | 1000px | 100HP | passive_bot | 🔄 Running |
-| D | planned | None | 6000px | 1000HP | passive_bot | not started |
-
+**Status (2026-05-22): ⚠️ Partial — never activated in production**
 - ✅ `training/ppo/league.py` — PFSP opponent sampling, win-rate matrix, checkpoint pool
 - ✅ League mode in `train.py` (`--league` flag)
-- ✅ Checkpoint saved every N updates (configurable), full pool management
-- ✅ Action histogram logging: `atk_mv/tgt/bld/trn` percentages per update
-- ❌ Never activated in production — curriculum approach used instead
-- ❌ Human playtest vs trained policy (live bot still uses scripted bots only)
-- ❌ Phase D (full game) not started; blocked on Phase C convergence
-
-**Key wins achieved:**
-- First ever positive terminal in training history: v0.1.65-ML Phase A, win_rate=1.00 from update 1
-- Full build→train→attack chain discovered at 82%+ win_rate in v0.1.73 (build zone bug fixed)
-- Critical bug found and fixed: `chooseBuildPosition()` used hardcoded MAP.width=6000 regardless of training map size — every Phase C build command silently failed for ~8 training versions
-
-**Immediate blockers for Phase D:**
-1. Phase C (full chain, 1000px map) must achieve stable >70% win rate
-2. `phaseLegal()` filter (barracks-only builds) must be removed
-3. Map widened from 1000px → 6000px with crystal 1000HP (discount + terminal signal recalibration needed)
+- ✅ Checkpoint saved every N updates (configurable)
+- ✅ 13-stage curriculum (the real driver of v0.3.2-ML)
+- ❌ League mode never activated — curriculum approach used instead (per third review §7.10 + R11: league only after 3b is solved; 3b never solved)
+- ✅ Human playtest vs trained policy — happened with v0.3.2-ML on 2026-05-22
 
 ---
 
 ### Phase 5 — Replay viewer + balance analysis tools
 
-**Goal:** turn the bot from a black box into an instrument.
-
-**Tasks:**
-1. Build replay viewer in the existing client:
-   - New route `/replay/:id`
-   - Loads replay JSON, runs `MatchEngine` in playback mode at real-time speed
-   - Same renderer as live games
-   - Playback controls: pause, play, 2×, 4×, jump to tick, "next event"
-2. Replay index DB (`replays/index.sqlite`): metadata per match (seed, ticks, winner, ending type, unit counts, build orders).
-3. Replay browser UI: filter/sort by:
-   - Match length (find the 10-second surprise!)
-   - Winning side
-   - Win type (crystal vs passive resource)
-   - Dominant unit type used
-   - Specific build orders (e.g. "matches where red built turret first")
-4. Balance report generator (`training/eval/balance_report.py`):
-   - Run 10,000 matches at current checkpoint
-   - Output: win rates by side, average game length, frequency of each unit type, frequency of each building, average resources at game end, passive-win frequency
-   - Compare against baseline reports (so you can see what changed after a balance tweak)
-5. Auto-flagging: highlight outliers in the replay index — fastest games, longest games, lopsided games, unusual win conditions.
-
-**Definition of done:**
-- You can browse a folder of 10,000 replays, sort by length, click the shortest one, and watch it play out at real-time speed.
-- After a balance change to `gameBalance.ts`, you can run a balance report and get a side-by-side comparison.
-
-**Estimated effort:** 1 week.
-
 **Status (2026-05-18): ⚠️ Partial**
-- ✅ Replays save to disk as JSON (seed + command log, one file per match in `replays/`)
-- ✅ Replay playback in client (route `/replays`, loads and plays back)
-- ✅ **Scrub bar represents full game length** (was: only buffered portion; fixed to use `replayTotalTicks`)
-- ✅ **Server-side pagination** for replay browser (30/page default; sends filter/sort/page params to `/api/replays` endpoint)
-- ✅ Filters: winner, win type, bot name (debounced), starred flag
-- ✅ Training replays now suppressed: `--save_replay_every 0` flag on all training runs
-- ❌ `replays/index.sqlite` metadata database (still raw JSON files)
-- ❌ Filter by unit composition or build order (would need SQLite index)
-- ❌ `training/eval/` directory does not exist; no balance report generator
+- ✅ Replays save to disk as JSON (seed + command log)
+- ✅ Replay playback in client (route `/replays`)
+- ✅ Scrub bar represents full game length
+- ✅ Server-side pagination
+- ✅ Filters: winner, win type, bot name, starred flag
+- ✅ Training replays suppressed by default
+- ❌ `replays/index.sqlite` metadata database
+- ❌ Filter by unit composition or build order
+- ❌ Balance report generator
 - ❌ Jump-to-event controls; speed selector
-- ❌ Auto-flagging (outlier detection on fastest/longest/lopsided games)
+- ❌ Auto-flagging (outlier detection)
 
-**Priority:** Deferred until Phase 4 (training campaign) produces a policy worth analysing at scale. Balance reports are most valuable after the policy stops changing.
+**Priority:** Deferred. Balance reports are most valuable after the policy stops changing.
 
 ---
 
@@ -1220,21 +512,8 @@ Each phase has a clear definition of done. Don't move to the next phase until th
 
 **Goal:** trained bot shipped as a player option in the live game.
 
-**Tasks:**
-1. ONNX export from PyTorch (`training/eval/export_onnx.py`).
-2. ONNX runtime in Node (`onnxruntime-node`) — `BotPlayer` class loads a `.onnx` file and produces commands.
-3. Difficulty tier system: ship 3 policy snapshots (early, mid, late training checkpoints) as "easy / medium / hard."
-4. Lobby UI: "Play vs Bot" with difficulty selector.
-5. In-process driver: `BotPlayer` plugs into `MatchEngine` without going through WebSocket — bot's commands enter via the same `processCommand` interface as a remote player.
-
-**Definition of done:**
-- A player can start the game, click "vs Hard Bot", and play a full match.
-- Bot responds within a tick (no perceptible lag).
-- Bot bundle size doesn't bloat the client (policy lives server-side).
-
-**Estimated effort:** 3–4 days.
-
 **Status (2026-05-22): ✅ Complete — v0.3.2-ML shipped**
+
 - ✅ `BotPlayer` in-process driver (`server/src/match/botPlayer.ts`)
 - ✅ `MlBot` class (`headless/src/bots/mlBot.ts`) — ONNX policy via `onnxruntime-node`
 - ✅ ONNX export pipeline (`training/export_onnx.py`)
@@ -1243,20 +522,20 @@ Each phase has a clear definition of done. Don't move to the next phase until th
 - ✅ `BotSelectMenu.tsx` — dedicated "Play vs Bot" screen with SCRIPTED / ML sections
 - ✅ All matches (PvP + vs-bot) saved as replays with both player usernames
 - ✅ Replay playback shows actual gameplay (UUID playerId bugs fixed)
-- ✅ 443 tests passing
+- ✅ 443+ tests passing at ship
 
-See diary entry "v0.3.2-ML — SHIPPED" above for full implementation notes.
+See diary entry "v0.3.2-ML — SHIPPED" in section 12 for full implementation notes.
 
 ---
 
 ### Phase 7 — Permanent instrument (ongoing)
 
 This isn't a phase with a definition of done — it's the steady-state you arrive at. After every meaningful change to `gameBalance.ts`, `matchEngine.ts`, or the action space:
-1. Re-run a training campaign (could be short — fine-tune from previous checkpoint).
+1. Re-run a training campaign.
 2. Generate a fresh balance report.
-3. Compare against previous reports. Did something break? Did a new dominant strategy emerge?
-4. Watch a sample of replays. Anything surprising?
-5. If something is off, adjust balance or design, repeat.
+3. Compare against previous reports.
+4. Watch a sample of replays.
+5. Adjust balance or design, repeat.
 
 This is the loop that justifies the entire project. Milestones 3 and 4 from D10 are met inside this loop.
 
@@ -1269,10 +548,11 @@ This is the loop that justifies the entire project. Milestones 3 and 4 from D10 
 | Reward hacking — bot finds degenerate strategies (mine forever, suicide units, etc.) | Start with sparse rewards, add shaped pieces gradually. Watch replays of outlier games to spot exploits early. |
 | Training instability — PPO diverges, win rates collapse | Use CleanRL's reference hyperparameters; don't tune until baseline is reproducible. Save checkpoints often so you can roll back. |
 | Game-design churn invalidates trained policy | Treat training as cheap and re-runnable. Don't over-invest in any single checkpoint until balance is locked. |
-| GPU passthrough to LXC is a fight | Don't fight it. CPU-only training is fine for this scale. Revisit only if learning step becomes the bottleneck. |
+| GPU passthrough to LXC is a fight | Don't fight it. CPU-only training is fine for this scale. Revisit only if learning step becomes the bottleneck. (GPU later worked; see v0.2.8 entry.) |
 | Action space too large, training too slow | Start with a reduced action space (~50 actions), expand once baseline works. Keep the action-space spec versioned. |
 | Determinism bugs (small floating-point drift between runs) | Test determinism in CI: run the same seed twice, hash the final state, assert equal. Catch drift the moment it appears. |
 | Scope creep — features piling up before any training happens | Phases 0–2 are mandatory and unambiguously valuable. Resist the urge to start Phase 3 before then. |
+| **Local optima that compound** (added 2026-05-23) | The `trn=0%` ceiling for v0.4.0-ML was not a tooling problem — it was a **gradient sign** problem. Adding mechanics (action-masking, intrinsic rewards) on top of a misaligned gradient does not fix the alignment. Future architectural work must change *which trajectories produce wins*, not how trajectories are sampled. |
 
 ---
 
@@ -1286,12 +566,10 @@ These are *rough* — adjust to your actual pace. The total is generous; this is
 | Phase 1 — headless + scripted bots | 1 week | ~4 weeks |
 | Phase 2 — specs (obs, action, reward) | 4–5 days | ~6 weeks |
 | Phase 3 — Python training pipeline | 2 weeks | ~10 weeks |
-| Phase 4 — league training | 1 week setup + open training | ~12 weeks (training runs in background) |
+| Phase 4 — league training | 1 week setup + open training | ~12 weeks |
 | Phase 5 — replay tools + balance analysis | 1 week | ~14 weeks |
 | Phase 6 — production bot | 3–4 days | ~15 weeks |
 | Phase 7 — ongoing | Forever | Forever |
-
-If at the end of Phase 1 you already have what you need (scripted bots are challenging enough for playtesting), **stop and ship**. Phases 3–6 are the ML payoff but they're not required for the playtest goal.
 
 ---
 
@@ -1303,6 +581,7 @@ Pause and reassess if any of these happen:
 - **Phase 3 training never beats `IdleBot`.** Pipeline is broken, not a tuning problem. Don't move forward.
 - **Phase 4 win rate vs scripted bots plateaus below 60% after 20M steps.** Action space, reward, or observation needs rework — don't throw more compute at it.
 - **Bot's "interesting" behaviour turns out to be exploiting a simulation bug** (e.g. dealing damage through walls, infinite resource glitch). Fix the bug; don't let the bot keep the win.
+- **(2026-05-23 update) An architectural change runs for >2× its planned budget without breaking through.** Both Option B (action-masking) and Option γ (RND) hit this. The lesson: when you find yourself adding the third or fourth tweak to a failing approach, the approach itself is wrong.
 
 ---
 
@@ -1313,41 +592,539 @@ These don't block starting work, but they'll need decisions later:
 - **Exact action sub-tree contents** — the trees in §5 Phase 2 are a starting sketch. Refine before coding.
 - **Passive win threshold** — start at 10,000, but tune via human playtests *before* the bot starts training against it.
 - **Episode length cap** — what's the maximum tick count for a training match? (Recommend 6000 ticks = 10 min real-time = ~6 seconds compute.)
-- **How many sub-tiers of "Hard"?** — just one, or several? (e.g. "Hard / Master / Expert" with progressively newer checkpoints.)
+- **How many sub-tiers of "Hard"?** — just one, or several?
 - **Replay retention policy** — keep all replays forever? Just the interesting ones? Prune by date?
-- **What does "live game" version-compatibility mean?** — if `gameBalance.ts` changes, older replays may not play back identically. Add a `version` field to replay format; warn on mismatch.
+- **What does "live game" version-compatibility mean?** — if `gameBalance.ts` changes, older replays may not play back identically. Add a `version` field to replay format; warn on mismatch. (Versioned balance history added during v0.3.2-ML ship.)
 - **Is there a future for asymmetric features** (e.g. different starting positions, terrain variations)? — keep the door open in observation format but don't implement yet.
+- **(2026-05-23) What replaces Option B/γ for v0.4.0-ML?** — Option α (hierarchical), curriculum redesign that builds positive train_unit gradient first, or accept the v0.3.2-ML ceiling. Awaiting decision.
 
 ---
 
 ## 10. Resources to learn from
 
-A short curated list of materials that will serve this project specifically (not a generic ML reading list):
+A short curated list of materials that will serve this project specifically:
 
 - **CleanRL PPO** — https://github.com/vwxyzjn/cleanrl — single-file PPO implementation, read it cover-to-cover before writing your own.
 - **OpenAI Five blog posts** — overview of how a real multi-agent RTS-like bot was built. Skim for vocabulary.
-- **OpenAI hide-and-seek paper** (which you've already cited) — useful for inspiration but their environment differs substantially from yours.
+- **OpenAI hide-and-seek paper** — useful for inspiration but their environment differs substantially from yours.
 - **AlphaStar Nature paper** — the architecture (set-transformer + auto-regressive action head + league training) is what we're roughly modelling.
-- **PettingZoo docs** — the multi-agent Gym variant; useful if you decide to formalise the env that way.
+- **PettingZoo docs** — the multi-agent Gym variant.
 - **Hugging Face Deep RL course** — free, well-paced, covers PPO with practical examples.
+- **Random Network Distillation (Burda et al., 2018)** — https://arxiv.org/abs/1810.12894 — the basis of the Option γ implementation. Useful even though it didn't work here.
+- **CrystalFront_ML_Review.md** — three independent technical reviews of the project. The third review (§B5) is the source of the Option α/β/γ taxonomy.
 
 ---
 
-## 11. Immediate next step
+## 11. Immediate next step (historical)
 
-Begin **Phase 0, Task 1**: add `Rng` class and plumb it through `MatchState`. Verify with a "run the same seed twice, hash final state, assert equal" test.
+> *Original text from 2026-05-14, preserved for context.* Begin **Phase 0, Task 1**: add `Rng` class and plumb it through `MatchState`. Verify with a "run the same seed twice, hash final state, assert equal" test. Everything downstream depends on this.
 
-Everything downstream depends on this.
-
----
-
-*End of plan. Live document — update as decisions evolve.*
+**Current next step (2026-05-23):** See `Current handoff state` at the top of this document.
 
 ---
 
-## 12. Training diary
+## 12. Development diary — chronological (oldest first)
 
-### v0.3.0-ML — Independent technical review + methodology overhaul (2026-05-20)
+A running log of meaningful milestones, decisions, and pivots. Read top-to-bottom for the full arc.
+
+---
+
+### 2026-05-14 — Planning document finalised
+
+Original ML_BOT_ACTION_PLAN.md written. 6-phase plan: Phase 0 (engine refactors) → Phase 1 (headless + scripted bots) → Phase 2 (obs/action/reward specs) → Phase 3 (Python harness) → Phase 4 (league training) → Phase 5 (replay tools) → Phase 6 (production ONNX integration).
+
+---
+
+### 2026-05-14 — Phases 0–3 implemented (status as of 2026-05-18)
+
+**Phase 0 — Engine refactors:**
+- ✅ `Rng` class (mulberry32, seedable) — `server/src/match/engine/rng.ts`
+- ✅ `IdGen` class (monotonic counter) — `server/src/match/engine/idGen.ts`
+- ✅ `LiveMatchRunner` split from `MatchEngine` — `server/src/match/liveMatchRunner.ts`
+- ✅ `commandLog` added to match state (replay system foundation)
+- ✅ `replayRunner.ts` for server-side replay playback
+- ✅ `matchEngine.ts` split: engine/combat.ts, gathering.ts, movement.ts, repair.ts, utils.ts, visibility.ts
+- ✅ Determinism test added: same seed × 500 ticks → identical state hash (391 tests passing)
+- ✅ `randomUUID()` removed — IdGen used throughout
+- ❌ Legacy aliases in `gameBalance.ts` not removed (low priority)
+- ❌ Duplicate type definitions not resolved (low priority)
+
+**Phase 1 — Headless + scripted bots (complete + exceeded):**
+- ✅ `headless/` workspace, `runMatch.ts`, CLI tool
+- ✅ `observation.ts`, `actionSpace.ts`, `legalActions.ts`, `actionIndex.ts`
+- ✅ `IdleBot`, `RushBot`, `TurtleBot`, `MacroBot`, `HeavyBot`, `WeakRushBot`, `MediumRushBot`, `PassiveBot`
+- ✅ `BotPlayer` in-process driver; difficulty selector in lobby UI
+- ✅ Replay saving (seed + command log → JSON)
+- ✅ Server-side pagination in replay browser (30/page, filter/sort to `/api/replays`)
+- ✅ Scrub bar fixed to show full game length
+- ✅ Training replays suppressed (`--save_replay_every 0`)
+
+**Phase 2 — Specs (complete):**
+- ✅ `docs/CRYSTALFRONT_OBS_SPEC.md`, `docs/CRYSTALFRONT_ACTION_SPEC.md`, `docs/CRYSTALFRONT_REWARD_SPEC.md`
+- ✅ 391 passing tests (added determinism test)
+
+**Phase 3 — Python training harness (complete):**
+- ✅ `training/env/crystalfront_env.py` (Gymnasium wrapper, 60 parallel Node sims)
+- ✅ `training/ppo/train.py` (CleanRL-style PPO, TensorBoard, action histograms, checkpoint save/load)
+- ✅ `training/ppo/policy.py` (Set-transformer, entity attention, global concat, legal-action masking)
+- ✅ ROCm/CUDA GPU training confirmed working
+
+---
+
+### 2026-05-15 — v0.1.57-ML: Major system overhaul (CRYSTALFRONT_REVIEW_2.md)
+
+**Diagnostic from replay review:** Agent was never actually fighting. Root causes identified:
+- `attack_move` command emitted `move` not `attack` — units never auto-acquired targets
+- `retreat` set `autoAttackEnabled = false` — retreating units couldn't fire even if enemies walked into range
+- `commandedTicks = 5` after every move — units were effectively paralysed during oscillating attack/retreat sequences
+- Action space had no way to issue real `{type: "attack", targetEntityId}` commands
+
+**Changes:** Full action space rebuild (37→58 actions): added `attack_targeted×12`, `hold_position×1`, new `attack_move` zones (`enemy_army`, `defend_crystal`). Engine bugs fixed (retreat keeps auto-attack, commandedTicks 1→1). Observation expanded (GLOBAL_DIM 18→22, ENTITY_DIM 11→12). New curriculum bots: `WeakRushBot`, `MediumRushBot`. Reward overhaul: forward_pressure replaced by weapon-range-proximity; defenseless trickle; survival fires earlier.
+
+**Results (Phase 1, combat_weak):** Turret-spam defence emerged — agent learned 1 barracks + depot chain kept 4-skirmisher rushes out. Win rate ~72% but via economy abuse (67% were idle/turtle games). Combat vs rush_weak: 3%.
+
+---
+
+### 2026-05-16 — v0.1.58-ML: Skirmisher→turret counter fix + rush_medium phase 2
+
+**Analysis of v0.1.57 Phase 1:** Agent won 100% vs idle/turtle in mixed curriculum (67% of games were free wins). Achieved 3% win rate vs rush_weak — combat was irrelevant to the gradient. Fixed by switching to 100% rush_medium.
+
+**Changes:** Skirmisher→turret counter multiplier corrected from 1.0× to 2.0× (turrets now use "gunner" counter as defenders, matching existing logic). This prevents turret-spam as a hard counter to skirmisher rushes, forcing the agent to use actual combat units.
+
+**Results:** Agent initially tried attacking (week 1), then decided it was "not worth it" and reverted to turtling. 0% win rate throughout. The attack-then-retreat pattern confirmed the credit-assignment problem more than action-space issues.
+
+---
+
+### 2026-05-17 — React error #185 fixed
+
+React "Maximum update depth exceeded" (error #185) traced to all `useCallback` hooks in `App.tsx` depending on `[ws]` — the entire WebSocket context object, which is a new plain object literal on every 10 Hz render. Fixed by using stable method references (`[ws.createLobby]`, `[ws.sendGameCommand]`, etc.). Also fixed `setHoverPos` in `GameShell.tsx` creating unnecessary new objects on every mouse move.
+
+---
+
+### 2026-05-17 — v0.1.59-ML: Gamma + milestone-timing fix
+
+**Changes:** gamma 0.99 → 0.995 (doubles effective horizon, ~100→~200 ticks). Barracks milestone fires on **build start** (entity appears) instead of completion — brings the +0.5–2.5 reward 150 ticks closer to the actual decision. Resumed from v0.1.58 checkpoint.
+
+**Results:** 651 updates, 20M steps. ep_rew moved positive (+0.5 to +2.0 typical, was negative in v0.1.58). ep_len locked at ~1800 throughout. **0% win rate**. Two outlier episodes (ep_rew 8.30 and 5.41, ep_len 2000+) showed occasional better survival but did not reproduce as a trend. The gamma fix worked mechanically but couldn't overcome the fundamental missing-win-trajectory problem.
+
+---
+
+### 2026-05-17 — v0.1.60-ML: Breaking the 0% win-rate plateau
+
+**Problem identified (Review 3):** After ~60M cumulative combat-training steps across v0.1.56–v0.1.59, the agent reached a stable *losing* equilibrium: intermediate shaping rewards summed to ~+12/ep, terminal loss is −10, net ep_rew ≈ +1–2 while losing 100% of games. PPO had no gradient pulling it off this optimum because the value head had never seen a +10 terminal signal. The discount at gamma=0.995 over a 1800-tick episode rendered the terminal ~1000× weaker than the barracks milestone at the decision point.
+
+**Root cause:** No opponent weak enough to generate winning trajectories. Every training phase from v0.1.57 onwards was against `rush_medium` or earlier, bots the current policy cannot beat even by luck.
+
+**Changes implemented (v0.1.60-ML):**
+
+| Change | Before | After |
+|---|---|---|
+| Opponent | `rush_medium` | `passive_bot` (economy only, never attacks) |
+| Terminal reward | ±10 | **±30** (combat), +3 (resource) |
+| Crystal damage shaping | ×0.0008/HP | **×0.005/HP** (×6.25) |
+| First-hit milestone | +1.0 | **+3.0** |
+| Damage depth milestones | none | **+1/+2/+5** at 25/50/90% enemy crystal |
+| Economy shaping | baseline | **halved** (gathering, mining, supply, standing force) |
+| MAX_TICKS (training) | 6000 | **3000** |
+| ent_coef | 0.02 | **0.08** (re-exploration phase) |
+| New bot | — | `PassiveBot` added to headless/src/bots/ |
+
+**Key bug caught:** `oppCrystalHealthFrac = 0` when enemy crystal is not visible (fog of war). New depth-milestone code fired all three thresholds (25/50/90%) on tick 1, giving +8 of spurious reward. Fixed with `if (curr.global.oppCrystalHealthFrac > 0)` guard before updating `minOppCrystalHealthFrac`.
+
+**Training:** PID 417005, `/tmp/train_v60.log`, resumed from v0.1.59 final checkpoint. 20M steps vs passive_bot.
+
+**Success criterion:** First `win_rate > 0` in the log. If not seen in 5M steps vs passive_bot, escalate to behaviour-cloning warmup.
+
+---
+
+### 2026-05-17 — Replay browser + scrub bar improvements
+
+**Server-side pagination:** Replay browser rewritten to send `page/pageSize/sort/asc/winner/winType/bot/flags/starred` to `/api/replays`. Was fetching all 500+ replays on every render. Now defaults to 30/page.
+
+**Scrub bar fix:** Previously used `replayBufferSize` as the max — scrub bar only filled in as the replay downloaded. Fixed to use `replayTotalTicks - 1` as the constant max. Seeking beyond the buffered portion clamps to `Math.min(target, bufferSize - 1)`.
+
+**Economy win reward:** Changed from `+winType === "resource" ? 0 : +30` to `winType === "resource" ? -30 : +30` — economy wins now score same as losses, removing the second local minimum.
+
+---
+
+### 2026-05-18 — matchEngine.ts split + determinism test
+
+`matchEngine.ts` extracted from 1953 lines into:
+- `engine/visibility.ts` — `computeVisibility()`
+- `engine/movement.ts` — `processMovement()`
+- `engine/combat.ts` — `processCombat()`
+- `engine/gathering.ts` — `processGathering()`
+- `engine/repair.ts` — `processRepairAndHealing()`
+- `engine/utils.ts` — pure helpers (`dist`, `buildSpatialGrid`, etc.)
+
+Determinism test added: same seed × 500 ticks → identical state hash. All 391 tests passing.
+
+---
+
+### 2026-05-18 — v0.1.62–v0.1.64: Diagnosing trn=1% and mining domination
+
+**v0.1.62 — startingResources fix:** At startingResources=50, `build_barracks` (costs 75) was **illegal at tick 0**. Only `train_worker` (50) was legal. So "trn=1%" was 100% worker training, not skirmisher training. Fixed to 200.
+
+**v0.1.63–64 — mining reward poisoning:** `miningDelta × 0.000025` accumulated to **+150/episode** for full gathering, completely dominating all combat signals. Agent learned to mine, not fight. Cut to 0.000001 (25×).
+
+Also discovered: `attack_move` only selects combat units via `getUnitGroup("all_combat")`. Workers assigned to gathering nodes never walk toward the enemy crystal regardless of map width. Map-width reduction (v0.1.63: 6000→2000→500px) was irrelevant for workers.
+
+**Final diagnosis:** Workers can't attack via macro actions. Need pre-placed combat units (Phase A).
+
+---
+
+### 2026-05-18 — v0.1.65-ML: Phase A ✅ First wins in training history
+
+**Curriculum Phase A:** Injected 3 pre-placed skirmishers for blue at match start. Removed build+train credit chain entirely. Agent only needs to learn `attack_move → win`.
+
+| Config | Value |
+|---|---|
+| mapWidth | 500 (crystal 250px away, travel time ~125 ticks) |
+| crystalHealth | 50 (destroyed in ~25 ticks) |
+| startingResources | 200 (barracks affordable) |
+| Pre-placed skirmishers | 3 (autoAttackEnabled=true) |
+| MAX_TICKS | 3000 |
+
+**Results:** win_rate=1.00 from update 1 — first positive terminals in the entire training history. ep_len=84-142 ticks. atk_mv=40%, tgt=17%, bld=27%, trn=2%. Phase A checkpoint saved (update_000005). Used as Phase B seed.
+
+---
+
+### 2026-05-18 — v0.1.66-ML: Phase B v1 — full chain attempt (failed)
+
+**Removed all scaffolding** (no pre-placed skirmishers, no pre-placed barracks). Agent must build barracks + train + attack from scratch.
+
+**Results:** Loaded from Phase A (0.1.65-ML) checkpoint. bld=73-79%, trn=0%, win_rate collapsed 0.40→0.04 in 4 updates. Root causes: (1) build zone bug — barracks builds all failing; (2) Phase A policy had atk_mv=40% but no combat units to move; (3) ent_coef=0.04 too low to explore new behaviors.
+
+---
+
+### 2026-05-18 — v0.1.67-ML: Phase B v2 — pre-placed barracks ✅ 100% win rate
+
+**Problem (Phase B v1):** Removing pre-placed skirmishers AND requiring barracks build was too large a jump. Agent converged to bld=78%, trn=0%, win_rate→0.04 within 4 updates.
+
+**Fix:** Pre-place a **completed barracks** at (250, 300) in `stdioRunner.ts`. Agent only needs to discover `train_skirmisher → attack_move`. Build chain comes in Phase C.
+
+**Results:** win_rate=1.00 from update 3. ep_len declined 574→389 as policy tightened. atk_mv=43%, tgt=14%, bld=2%, trn=1%. Saved checkpoint at update_000010.
+
+---
+
+### 2026-05-18 — v0.1.68-ML / v0.1.69-ML: Phase C v1/v2 — reward fixes for build→train gap
+
+**Problem (Phase C v1):** Resume from Phase B v2 checkpoint → immediately bld=70%, trn=0%. Same collapse as Phase B v1. Build zone bug active, but also:
+- Phase B v2 checkpoint had trn=1% (pre-placed barracks always present). When Phase C removed the barracks, train_unit masked for 150 ticks → logit pushed toward zero
+- ent_coef=0.04 too low to recover
+
+**v0.1.69 changes:**
+- Barracks-idle trickle: -0.003/tick when barracks complete + no combat units
+- `hasTrainedCombatUnit`: +5 → +10
+
+**Results:** Still collapsed. Build zone bug meant the trickle penalty never fired (no barracks ever completed).
+
+---
+
+### 2026-05-18 — v0.1.70-ML / v0.1.71-ML: Phase C v3/v4 — resource starvation fix
+
+**Another diagnosis:** With `startingResources=200`, the agent could build 3 buildings in the first 3 ticks (barracks=75, depot=50, foundry=100 = 225 > 200), drain all resources, pull all workers to build sites (no gathering), leaving resources=0 when barracks completes → `train_skirmisher` (costs 50) **ILLEGAL**.
+
+**Fix (v0.1.71):** `startingResources: 200 → 500`. Even after a 3-building spree, 275 resources remain when barracks completes. Also from scratch with `ent_coef=0.10` (was 0.04).
+
+**Results (v71):** win_rate=0.75 at update 8 (trn=1%!) — resources fix helped briefly. Then collapsed. Build zone bug was still silently failing ~2/3 of builds.
+
+---
+
+### 2026-05-18 — v0.1.72-ML: Phase C v5 — barracks-only builds (wrong diagnosis)
+
+**Hypothesis:** 12 bld variants (barracks/foundry/depot/turret × 3 zones) vs 4 train variants → bld gets 3× probability mass regardless of reward. Restricted build legal mask to barracks only (3 variants).
+
+Added `phaseLegal()` filter in `stdioRunner.ts` that removes `build` actions except `build_barracks`. This also ensured bld probability never exceeded 3/10 of actions.
+
+**Results:** bld=62-69%, trn=0% throughout. **Build zone bug was still present — all barracks builds were still silently failing.** The filter was correct but masked the real problem.
+
+---
+
+### 2026-05-18 — v0.1.73-ML: Phase C v6 — CRITICAL BUG FIX: build zone
+
+**Root cause of all Phase C failures identified:**
+
+`chooseBuildPosition()` in `headless/src/actionSpace.ts` used `MAP.width` (hardcoded 6000) instead of `match.config.mapWidth` (1000 for training). This placed buildings at:
+- `near_crystal` → x=180: overlaps spawn workers → "Overlaps existing entity"
+- `mid_base` → x=600: outside 200px blue build zone → "Outside your build zone"
+- `forward` → x=960: outside build zone AND near red crystal → "Outside your build zone"
+
+**Every single barracks build attempt silently failed in ALL Phase C runs (v1–v5).** bld=60-75% looked like the agent was building — it was issuing 15,000+ build commands per update that all returned empty. trn=0% was a direct consequence: the barracks never existed.
+
+Additional bugs fixed in the same function:
+- Blocking check tested only buildings; added workers + crystal entity overlap
+- No-build radius around own crystal wasn't checked; added `PLACEMENT.crystalNoBuildRadius` check
+- Zone end hardcoded to `mapW × 0.2`; set minimum to 280px so the valid strip (x=180-280 on 1000px map) is reachable
+- Attempts increased 8 → 16
+
+**Verified:** All 3 barracks zones now succeed on 1000px map, barracks completes at tick ~250, `train_skirmisher` legal with 425 resources.
+
+**Results:** win_rate=0.82 at update 7 (trn=1%, atk_mv=22%). But still collapsed to 0.01 by update 35 — same bld-dominance problem as before, now just a reward problem not a build problem.
+
+---
+
+### 2026-05-18 — v0.1.74-ML: Phase C v7 — first_combat_unit +50, barracks-idle ×5
+
+**Problem:** v6 reached win_rate=0.82 at update 7 but collapsed to 0.01 by update 35. Root cause: policy gradient for `bld` actions (25% of episode, +2.5 immediate reward) overwhelmed gradient for `trn` (1% of episode, +10 delayed ~100 ticks). Expected value of "build + train" was only marginally better than "build only".
+
+**Changes:**
+- `hasTrainedCombatUnit` milestone: +10 → **+50** (discounted at gamma^100 ≈ +30.5, vs bld's +2.5)
+- Barracks-idle trickle penalty: -0.003/tick → **-0.015/tick**
+- Expected value: build+train = +33, build-without-train = +1.9 (a 17× gap)
+
+**Results:** win_rate oscillated 20–86% over 63 updates in 12-update cycles. Pattern: agent discovers train→attack (trn=1%, ep_rew=106), V(s) updates high, future A(train) becomes negative, trn falls to 0%, V(s) corrects, cycle repeats. Never converged. Best checkpoint at update 10 (win_rate=86%) used as seed for v8.
+
+---
+
+### 2026-05-18 — v0.1.75-ML: Phase C v8 — locking in the winning policy
+
+**Status:** Running (PID 522611, `/tmp/train_v75.log`)
+
+**Strategy:** Resume from the Phase C v7 `update_000010.pt` checkpoint (the peak policy: win_rate=86%, bld=17%, trn=1%) with `ent_coef=0.03`. The high-entropy v7 run discovered and then lost the winning strategy every ~12 updates due to value-function lag. Low entropy should lock the policy in place once it finds the chain.
+
+**Also fixed in this version:**
+- All 4 `package.json` files now bumped together (previous versions only bumped root — client/server/shared were stuck at 0.1.56-ML, live site showed wrong version)
+- Training runs now started with `--save_replay_every 0` — no more broken 1000px map replays polluting the replay browser
+- Site deployed and verified at 0.1.75-ML
+
+---
+
+### 2026-05-18 — v0.1.75-ML: Phase C v8 — oscillation analysis + passive_bot diagnosis
+
+**Training status (PID 522611, `/tmp/train_v75.log`):**
+```
+update=  8 | win_rate=0.77 | ep_len=3000 | ep_rew= 31 | bld=34% trn=0%
+update= 15 | win_rate=0.37 | ep_len=3000 | ep_rew= 35 | bld=51% trn=0%
+update= 21 | win_rate=0.67 | ep_len=1185 | ep_rew=104 | bld=37% trn=0%
+```
+Same ~12-update oscillation cycle as v74. ent_coef=0.03 did not stop the V(s) lag cycle.
+
+**Passive_bot geometry diagnosis:** Ran a test match — passive_bot DOES build a barracks at (900, 380) and trains 2 skirmishers with autoAttackEnabled=true. However, the skirmishers sit at (871, 359) and (866, 391), offset in y from the blue workers' approach vector (y≈300). Workers walking at y=300 toward the crystal at (900, 300) may slip past the skirmishers (60–90px offset in y) without triggering auto-attack. This partly explains wins with trn=0%.
+
+**Root of oscillation (V(s) lag):** Policy at peak had A(train_unit) > 0, wins at 86%. After PPO update, V(s) rises to ~106. Next batch: A(train_unit) = R_train_onward − V(s) ≈ 40 − 106 = **−66** (negative). Policy pushes away from train_unit. trn→0%, win rate drops. V(s) corrects to ~35. A(train_unit) becomes positive again. Cycle repeats every ~12 updates.
+
+**Next steps to break the cycle:**
+1. Fix passive_bot skirmisher positioning to block the y=250–350 worker corridor
+2. Reduce `hasTrainedCombatUnit` back to +15 — the +50 spike is causing V(s) overshoot
+3. Per-unit reward instead of one-shot: +2.0 every time a NEW combat unit appears (capped 5/ep)
+
+---
+
+### 2026-05-18 — v0.2.0-ML: Major reset — course-corrected reward function, Phase 0 begins
+
+**Version bump rationale:** Fresh start to reflect the complete reward function overhaul. Previous versions (0.1.x-ML) used fundamentally broken reward shaping — a +50 first_combat_unit spike that caused V(s) oscillation, passive army-ownership trickles that rewarded doing nothing, and ±30 terminal rewards that could be offset by accumulated shaping. All now corrected.
+
+**Key reward function changes (vs 0.1.75-ML):**
+- Terminal rewards: ±30 → **±100** (combat win / all losses)
+- Shaping clamp: none → **clamp(total_shaping, −20, +20)** at episode end
+- `first_combat_unit` milestone: +50 → **+2** (was causing V(s) overshoot)
+- Standing force trickle (+0.005×army): **removed** (passive ownership reward)
+- Crystal damage per HP: +0.005 → **+0.01** (doubled)
+- Own crystal damage penalty: −0.002 → **−0.003**
+- Barracks-idle trickle: −0.015 → **−0.003** (was too punitive before barracks economy)
+- New milestones: army reaches 3 units (+2.0), enemy quarter entry (+3.0)
+- Crystal depth milestones: +1/+2/+5 → **+3/+5/+8**
+- First crystal hit: +3 → **+5**
+- Removed passive signals: gathering workers trickle, supply advantage, survival reward, friendly-vs-enemy presence, forward scout trickle
+- Added 3 anti-passivity penalties (army idle with advantage, no crystal pressure, late-game no-damage)
+
+**Game config reverted to full defaults:**
+- Map: 6000×600px (was 1000px training map)
+- Crystal HP: 1000 (was 100)
+- Max ticks: 6000 (was 3000)
+- Starting resources: 50 (was 500)
+- passiveWinThreshold: 4500 (was 999999)
+
+**Training setup:**
+- PID: 554458, log: `/tmp/train_v76.log`
+- Phase 0: `idle` opponent
+- 60 parallel envs, ent_coef=0.05, gamma=0.995
+- Starting from scratch — no checkpoint (reward function incompatible with all prior runs)
+
+This run plus v0.2.1 produced the first wins via resource accumulation (u36–u42 ep_rew slowly improving) but exposed the approaching-reward exploit which dominated late-run behaviour.
+
+---
+
+### 2026-05-19 — v0.2.2-ML: Remove approaching reward + idle penalties, fix barracks milestone, add foundry milestone
+
+**Context:** v0.2.1-ML confirmed exploitation of approaching reward (+0.0003/unit/tick). Removed it plus idle_worker_penalty and supply_headroom_waste to eliminate worker spam loop. Barracks milestone changed from time-decaying `1.5×max(0,(600-tick)/600)` to flat +3.0 (time-decay gave 0 reward when barracks built after tick 600). Added foundry milestone +2.0. Reverted to num_steps=512 (same as successful 0.1.xx runs). Resumed from v0.2.1-ML update_000075.
+
+**Training config:** PID 615692, run `crystalfront_ppo__0_2_2-ML__idle__1__1779144843`. ~651 updates total.
+
+**Phase 0 verdict: FAILED**
+
+| Criterion | Target | Final | Result |
+|-----------|--------|-------|--------|
+| cbt | ≥ 0.85 | 0.00 | ❌ |
+| crys_dmg | > 0% | 0% | ❌ |
+| tmt | ≤ 0.10 | 1.00 | ❌ |
+| no_pres | ≤ 0.10 | 100% | ❌ |
+
+**Post-mortem:** The run completed all 651 updates (20M steps) without a single episode of crystal damage, no combat wins, and a 100% timeout rate. The policy converged fully to a bad local optimum by update 165 and never recovered.
+
+**Root cause (confirmed):**
+
+Two interacting problems created an unescapable local optimum:
+
+1. **`attack_move enemy_army` falls back to midfield.** When no enemy combat units are visible, `resolveTargetZone("enemy_army")` returns `{ x: mid, y: MAP.height/2 }`. Against IdleBot, this means every `enemy_army` attack_move resolves to the exact centre of the map. The agent learned to use this action heavily.
+
+2. **`hasForwardUnit` threshold xNorm > 0.45 creates a midfield attractor.** The anti-passivity army-idle penalty fires when `ownCombat >= 3` and no unit has `xNorm > 0.45`. A unit parked at xNorm ≈ 0.46–0.49 satisfies this check (avoiding the -0.002/tick penalty) but falls short of the midfield milestone threshold (xNorm > 0.50) and of the enemy quarter milestone (xNorm > 0.75). Forward progression milestones (+3 midfield, +3 enemy quarter, +5 crystal hit) were NEVER triggered in the entire 20M step run.
+
+Result: ep_rew stabilised at ~-95 = -100 terminal + ~+9 milestone shaping - ~-4 anti-passivity.
+
+**Fixes carried forward to v0.2.3-ML:**
+
+1. `actionSpace.ts`: Change `enemy_army` fallback from midfield → enemy_crystal.
+2. `stdioRunner.ts`: Raise `hasForwardUnit` threshold from xNorm > 0.45 → xNorm > 0.65.
+
+---
+
+### 2026-05-19 — v0.2.3-ML: STOPPED at u235 — worker spam exploitation
+
+**Training config:** PID 676184, run `crystalfront_ppo__0_2_3-ML__idle__1__1779184406`. Fresh start. Killed at update 235/651 after replay analysis confirmed the failure mode.
+
+**Changes from v0.2.2-ML (all carried forward to v0.2.4):**
+- `actionSpace.ts`: `enemy_army` fallback midfield → enemy crystal position
+- All 3 anti-passivity penalties removed
+- Cross-midfield and enemy-quarter milestone rewards removed (tracking only)
+- Added: damage-dealt reward — `0.1 × healthFrac_delta` for units/workers, `0.05` for buildings
+- Added: own building damage penalty — `−0.04 × healthFrac_delta`
+- Added: map visibility reward — `visibleAreaFraction × 0.001` per tick
+- Worker kill: +0.15 → +0.20; own crystal damage: −0.003 → −0.01 per HP
+- Action space: 58 → 66 (targeting_friend, spread_fire × 4 groups)
+
+**Failure analysis:** ep_rew pinned at exactly −120.00 for all 235 updates. Replay analysis showed every episode: 127–168 `train_worker`, 56–65 `build:supply_depot`, 2–4 `build:turret`, zero barracks, zero combat units.
+
+Root cause:
+1. **attack_move is gated on combat units** — `legalActions.ts` only adds attack_move to the legal mask when `combatUnits.length > 0`. Since the agent never trained a combat unit, ALL attack actions were permanently illegal.
+2. **Wrong-building-first + defenseless penalties hit the shaping clamp floor** — building depots before barracks costs −0.003/tick (−18/ep), no-barracks defenseless costs −0.002/tick (−11/ep) = −29/ep raw. The ±20 clamp flattened this to −20 regardless of how many depots were built, removing all marginal gradient.
+3. **Map visibility reward** was incidentally boosting the worker spam.
+
+---
+
+### 2026-05-19 — v0.2.4-ML: Remove shaping clamp, barracks +5, worker movement actions
+
+**Training config:** PID 681602, run `crystalfront_ppo__0_2_4-ML__idle__1__1779193049`. Fresh start — action space 66→71 incompatible.
+
+**Changes from v0.2.3-ML:**
+- Shaping clamp (±20) fully removed — agent now feels full magnitude of all decisions in both directions. Terminal (±100) still dominates.
+- Barracks milestone: +3.0 → +5.0
+- Added: worker movement actions — `attack_move × all_workers × 5 zones` (indices 66–70). Workers can now be explicitly sent to enemy_crystal, midfield, contested_node, enemy_army, defend_crystal.
+- Action space: 66 → 71
+
+**Result:** Plateau at ~-95 ep_rew. Zone oscillation exploit fully converged. Workers bouncing between x=300/3000/5900 every 2-3 ticks for entire episode.
+
+---
+
+### 2026-05-20 — v0.2.6-ML: Block worker→crystal/building attack, 10× time penalty, diminishing unit rewards
+
+**Training config:** PID 692048, run `crystalfront_ppo__0_2_6-ML__idle__1__1779229732`. Fresh start. num_steps=512, num_envs=60, total_timesteps=20M, ent_coef=0.10.
+
+**Changes from v0.2.5-ML:**
+- Engine fix (`combat.ts`): workers cannot auto-attack crystals or buildings. Can still fight enemy workers and retaliate against combat units.
+- Time penalty: −0.00005/tick → **−0.0005/tick** (10×)
+- Combat unit training reward: replaced +2.0 (first unit) + +2.0 (3 units) with diminishing per-unit: **+1.0, +0.8, +0.6, +0.4, +0.2**, then 0
+
+**Phase 0 verdict: FAILED — but best run yet, actively improving at completion**
+
+| Criterion | Target | Final | Result |
+|-----------|--------|-------|--------|
+| cbt | ≥ 0.85 | 0.09 | ❌ |
+| crys_dmg consistently >0% | yes | ✅ from u317 | ✅ |
+| tmt | ≤ 0.10 | 0.91 | ❌ |
+| no_pres | ≤ 0.10 | 0.90 | ❌ |
+
+**What worked:**
+- Cancel penalty eliminated worker oscillation immediately (wkr_mv=0% from u47)
+- Worker crystal attack blocked — all crys_dmg now from combat units
+- Genuine barracks→combat unit→crystal damage chain discovered by u317
+- Final trend: crys_dmg 2%→9%, win_rate 3%→9%, no_pres 100%→88% — all improving at termination
+
+**What held it back:** atk_mv=0% throughout entire run — agent never used explicit attack_move commands. The cancel penalty trained the agent to NOT issue attack_move, even though a single uncommitted attack_move on idle units has zero cancel cost.
+
+---
+
+### 2026-05-20 — v0.2.8-ML: Training pipeline optimisation — all report recommendations implemented
+
+**Context:** Following completion of the v0.2.7-ML run, an independent hardware profiling pass identified that the training loop was CPU-bound on a single Python thread while the GPU (RX 7900 XTX) sat at 18% utilisation.
+
+**Hardware reality (measured):**
+- Container has 12 vCPUs (not 28 as documented — host limits the cgroup)
+- GPU at 18% busy, 4/24 GB VRAM used during v0.2.7-ML
+- Python trainer pegged at 100% on one core; 122 Node processes fighting for 12 vCPUs
+- Rollout had 1,536 GPU→CPU syncs per rollout
+
+**Changes implemented (commit a0d5d07):**
+
+*Infrastructure:*
+- **`headless/src/stdioVecRunner.ts`** (new): N games per Node process with autoreset. Uses pre-compiled `headless/dist/stdioVecRunner.js` — no tsx overhead at runtime.
+- **`training/env/crystalfront_vec_env.py`** (new): Python wrapper around the vec runner. One `CrystalFrontVecEnv(vec_size=4)` runs 4 games via one Node process.
+- Subprocess count: 122 → 7 (5 vec procs × 4 games + server + tensorboard)
+
+*GPU utilisation:*
+- **GPU rollout buffer**: `RolloutBuffer` now holds all tensors on device.
+- **No per-tick GPU sync**: `logprobs_t` and `values_t` stored directly on device.
+- **GAE on GPU**: T-step loop over `(E,)` GPU tensors.
+- **bf16 autocast**: policy inference and PPO update wrapped in `torch.autocast(dtype=bfloat16)`.
+- **`torch.compile(reduce-overhead)`**: reduces kernel-launch overhead.
+
+*CPU/Python overhead:*
+- **`orjson`** for JSON encode/decode.
+- **`np.bincount`** for action histograms.
+- ROCm env vars: `PYTORCH_TUNABLEOP_ENABLED=1`, `MIOPEN_FIND_MODE=FAST`, `HSA_OVERRIDE_GFX_VERSION=11.0.0`.
+
+*Hyperparameters:*
+- `num_envs`: 60 → **20** (right-sized for 12 vCPUs)
+- `num_steps`: 512 → **1536** (better GAE horizon over 6000-tick episodes)
+- `num_minibatches`: 4 → **6**
+- `mlp_hidden`: 256 → **384**
+- Batch size preserved: 30,720
+
+**Observed before/after:**
+| Metric | v0.2.7-ML | v0.2.8-ML | Change |
+|--------|-----------|-----------|--------|
+| GPU busy | 18% | 98% | +80pp |
+| Node procs | 122 | 7 | −94% |
+
+---
+
+### 2026-05-20 — v0.2.10-ML: Reward overhaul — worker exploit removal + building incentives
+
+**Versions covered:** v0.2.8-ML (pipeline), v0.2.9-ML (exploit fix), v0.2.10-ML (building rewards)
+
+**Context:** After the pipeline optimisation (v0.2.8), three successive reward problems were discovered and fixed through replay analysis. v0.2.9 and v0.2.10 address the root cause of the agent never building a barracks.
+
+#### Problem 1 — Worker-swarm exploit (diagnosed in v0.2.8-ML)
+
+Replay analysis revealed the agent was training 100+ workers, spamming them at the enemy base with `toggle_auto_attack`, and farming continuous kill/damage rewards from worker-vs-worker fights. This generated 50–100+ shaping reward per episode, completely dominating the one-time +5 barracks milestone.
+
+**Fix (v0.2.9-ML):** Gated all kill/damage rewards on `ownCombatCurrCount > 0`. Workers can still fight but generate zero kill/damage reward unless at least one own combat unit is on the field.
+
+#### Problem 2 — Noop local optimum (diagnosed in v0.2.9-ML)
+
+After removing the worker-swarm exploit, the agent converged to 99% noop by update 79. Replay analysis showed it was doing almost nothing.
+
+Root cause: the −100 terminal is a fixed unavoidable cost for an agent that hasn't learned to win. With V(s) ≈ −100 everywhere, the policy optimises shaping only — and the shaping optimum with kill/damage blocked is "do nothing".
+
+**Fix (v0.2.10-ML):** Added per-tick bonuses for completed barracks and foundry buildings with diminishing returns capping at 3 of each:
+```
+Barracks: 1st +0.005/tick, 2nd +0.004/tick, 3rd +0.003/tick (cap)
+Foundry:  1st +0.002/tick, 2nd +0.0015/tick, 3rd +0.001/tick (cap)
+```
+
+Max combined: +0.0165/tick → ~+94 per episode for 3× barracks + 3× foundry from tick ~300.
+
+#### Engine fix — movement.ts + combat.ts (v0.2.8-ML)
+
+Workers sent to `attack_move enemy_crystal` were permanently "committed" (never idle) because they all targeted the crystal's center point (single pixel) and collision resolution prevented any from reaching within 1px. Fixed in two places:
+
+- `movement.ts`: Units complete movement when within attack range of any crystal/building at their target position.
+- `combat.ts`: Attack chase now clears `moveTarget` when unit is already in attack range.
+
+---
+
+### 2026-05-20 — v0.3.0-ML: Independent technical review + methodology overhaul
 
 **Status:** Infrastructure changes complete, training not started.
 
@@ -1372,73 +1149,57 @@ An independent technical review of the full project history identified the root 
    - Time penalty: -0.001/tick
    - Max achievable shaping ≈ +14 (well below ±100 terminal)
 
-3. **LR schedule bug fix** — Checkpoint resume now restores the update counter so the LR anneal schedule continues from the correct position instead of restarting from 1.0.
+3. **LR schedule bug fix** — Checkpoint resume now restores the update counter so the LR anneal schedule continues from the correct position.
 
 4. **MatchConfig pass-through** — mapWidth, crystalHealth, startingResources, max_ticks are now configurable via CLI and passed through to the Node engine.
 
-5. **Curriculum stages** — 8-stage curriculum (0c → 4) defined in train.py. Stages auto-promote on win_rate ≥ threshold and auto-regress when stuck. Each stage has a max_steps budget before regression.
+5. **Curriculum stages** — 8-stage curriculum (0c → 4) defined in train.py. Stages auto-promote on win_rate ≥ threshold and auto-regress when stuck.
 
 6. **ep_ret logging** — The console print now shows both ep_rew (with shaping) and ep_ret (terminal-only), making shaping-hacking immediately visible.
 
-7. **bc_pretrain.py** — Behaviour cloning script. Run ~500 episodes of rush-weighted random play, train policy with cross-entropy for 3 epochs, save bc_warmup.pt. Use as starting point for PPO.
+7. **bc_pretrain.py** — Behaviour cloning script. Run ~500 episodes of rush-weighted random play, train policy with cross-entropy for 3 epochs, save bc_warmup.pt.
 
-8. **eval_checkpoint.py** — Checkpoint evaluator. Loads any .pt file and plays N deterministic matches vs each scripted bot, printing win rates.
-
-**Recommended next steps:**
-1. Run BC warmup: `python -m training.bc_pretrain --episodes 500 --output bc_warmup.pt`
-2. Eval BC: `python -m training.eval.eval_checkpoint --checkpoint bc_warmup.pt --episodes 50`
-3. Start curriculum training from BC warmup: `python -m training.ppo.train --curriculum True --checkpoint bc_warmup.pt --ent_coef 0.02 --total_timesteps 20000000`
-4. Monitor: each stage should win within 1-3M steps. If stuck, check which stage and why.
+8. **eval_checkpoint.py** — Checkpoint evaluator. Loads any .pt file and plays N deterministic matches vs each scripted bot.
 
 ---
 
-### v0.3.1-ML — Behaviour cloning + curriculum training — first wins on real game map (2026-05-21)
+### 2026-05-21 — v0.3.1-ML: Behaviour cloning + curriculum training — first wins on real game map
 
 **Status:** Curriculum reached stage 3b (full 6000px map vs MediumRush). BC being retrained on full game config. Restarting.
 
----
-
 #### Methodology
 
-The fundamental insight driving this entire session: **PPO alone cannot solve a task where the win signal is 3000+ ticks away from the first decision.** At gamma=0.995, the terminal reward is discounted to near-zero by the time the early build decisions are made. Shaping rewards don't fix this — they just create new exploits. The correct approach is:
+The fundamental insight: **PPO alone cannot solve a task where the win signal is 3000+ ticks away from the first decision.** At gamma=0.995, the terminal reward is discounted to near-zero by the time the early build decisions are made. Shaping rewards don't fix this — they just create new exploits. The correct approach is:
 
-1. **Behaviour cloning (BC) warmup** — pre-train the policy on expert demonstrations to start PPO from a state where wins are already occurring. Without this, PPO has zero gradient signal and converges to noop.
-2. **Fine-grained curriculum** — start from a task so easy that the BC policy wins immediately (bootstrapping the value function), then remove one scaffold at a time until reaching full difficulty.
+1. **Behaviour cloning (BC) warmup** — pre-train the policy on expert demonstrations to start PPO from a state where wins are already occurring.
+2. **Fine-grained curriculum** — start from a task so easy that the BC policy wins immediately, then remove one scaffold at a time until reaching full difficulty.
 
-The critical design rule for both: **one variable at a time.** Every time a training transition failed, the cause was removing too many scaffolds simultaneously.
-
----
+The critical design rule for both: **one variable at a time.**
 
 #### BC warmup — iterations and lessons
 
-**BC v1 (failed — data quality):** Trained on 500 episodes of RushBot demonstrations but used a "rush-weighted random" policy as a proxy. The data was 95% noop, training achieved 95% accuracy, greedy policy got 0% wins. Accuracy was a lie — the model learned to noop everywhere.
+**BC v1 (failed — data quality):** Trained on "rush-weighted random" policy. The data was 95% noop, training achieved 95% accuracy, greedy policy got 0% wins.
 
-**BC v2 (failed — wrong map config):** Switched to real RushBot demo mode (Node runner drives blue with RushBot). Added 5% noop subsampling to reduce noop dominance. Achieved 63-70% accuracy. Still 0% greedy wins. Root cause: training data was on default 6000px map but PPO ran on 1500px stages — different observation distributions (xNorm values, node positions).
+**BC v2 (failed — wrong map config):** Switched to real RushBot demo mode. Added 5% noop subsampling. Achieved 63-70% accuracy. Still 0% greedy wins. Root cause: training data was on default 6000px map but PPO ran on 1500px stages.
 
-**BC v3 (partial fix — correct map, missing critic):** Retrained on 1500px/200HP map matching the target Day 5 stage. 70.4% accuracy. 0% greedy wins, but PPO from BC immediately collapsed to noop=99% within 10 updates. Root cause: **the critic head starts randomly initialised**. Noisy value estimates → noisy advantages → policy gradient overwrites the BC actor prior within ~10 PPO updates.
+**BC v3 (partial fix — correct map, missing critic):** Retrained on 1500px/200HP map. 70.4% accuracy. 0% greedy wins, but PPO from BC immediately collapsed to noop=99% within 10 updates. Root cause: **the critic head starts randomly initialised**. Noisy value estimates → noisy advantages → policy gradient overwrites the BC actor prior within ~10 PPO updates.
 
 **BC v4 (working):** Added two additional fixes on top of v3:
-1. **Critic pretraining** — after actor BC training, train the critic head with MSE on discounted returns from the demonstration episodes. The critic learns V(s_t) ≈ γ^(T−t) × 100 (discounted win return), giving PPO meaningful advantages from update 1.
-2. **Don't load BC optimizer state into PPO** — BC trains at lr=1e-3 with cross-entropy objective. Loading that Adam momentum into PPO (lr=3e-4, RL objective) caused the first PPO gradient steps to fight the BC momentum. Fix: skip optimizer state restore for checkpoints with update=0.
+1. **Critic pretraining** — after actor BC training, train the critic head with MSE on discounted returns from the demonstration episodes.
+2. **Don't load BC optimizer state into PPO** — BC trains at lr=1e-3 with cross-entropy objective. Loading that Adam momentum into PPO (lr=3e-4, RL objective) caused the first PPO gradient steps to fight the BC momentum.
 
-With these fixes: PPO from BC achieved **6% wins at update 10** on Day 5 config (1500px/200HP/50 resources, vs IdleBot, no scaffolding) — the first wins ever from an unscaffolded start in this project's history.
+With these fixes: PPO from BC achieved **6% wins at update 10** on Day 5 config — the first wins ever from an unscaffolded start.
 
-**BC v5 (current, full game config):** Previous iterations used 1500px training data. The curriculum stages span 1500px, 3000px, and 6000px maps. The 1500px BC prior didn't transfer to 3000px stages (the policy that handled rush_weak on 1500px was ineffective on 3000px). Retraining on **default full game config (6000px/1000HP/50 resources)** to maximise generalization across all curriculum stages.
+**BC v5 (current, full game config):** Retraining on **default full game config (6000px/1000HP/50 resources)** to maximise generalization across all curriculum stages.
 
 **BC design rules learned:**
 - Use real bot demonstrations (not weighted random sampling)
 - Subsample noop transitions to ~50% of dataset (5% noop keep rate)
-- Train on the **same map config** as the target PPO stage, OR use the full game config for generalization across all stages
+- Train on the same map config as the target PPO stage, OR use the full game config for generalization
 - Always pretrain the critic on discounted returns from demonstrations
 - Never restore the BC optimizer state into PPO — create a fresh Adam optimizer
 
----
-
 #### Curriculum design — progressive scaffolding
-
-The curriculum traversal works as follows: auto-promote on `win_rate ≥ threshold` over 100 episodes, auto-regress after `max_steps` if stuck. Each stage changes exactly **one variable** from the previous stage.
-
-The design principle proved itself repeatedly: every time a stage transition failed, it was because too many variables changed at once. The fix was always to add an intermediate stage that changed only one thing.
 
 **Final working curriculum (v0.3.1):**
 
@@ -1456,20 +1217,16 @@ The design principle proved itself repeatedly: every time a stage transition fai
 | 3b | 6000px | 1000HP | 50 | rush_medium | 50% |
 | 4 | 6000px | 1000HP | 50 | league | 60% |
 
-**Key insight — the resource slider for active opponents:** Passive opponents can be beaten with a pure rush (agents never need to train defensive units). The first time an active opponent (rush_weak) was introduced, the policy converged to "send workers toward enemy crystal" because the value function had learned "units near enemy crystal = high value" from passive stages, but without combat units there was nothing useful to do there.
+**Key insight — the resource slider for active opponents:** Passive opponents can be beaten with a pure rush. The first time an active opponent (rush_weak) was introduced, the policy converged to "send workers toward enemy crystal" because the value function had learned "units near enemy crystal = high value" from passive stages, but without combat units there was nothing useful to do there.
 
 The fix: introduce the active opponent with enough starting resources (200) that the agent can build barracks and train a skirmisher **before the opponent's units arrive**. This teaches the agent that building+training beats rushing with workers. Then progressively reduce starting resources: 200 → 75 → 50, each step forcing the agent to gather slightly more before building.
 
-**Why scaffolded stages (0a, 0a5, 0b) were abandoned:** Early attempts used pre-placed barracks and skirmishers to bootstrap the curriculum. These worked initially but created an unintended bias: the value function learned "any unit with high xNorm near enemy crystal = win coming." This caused workers to be sent to the enemy crystal uselessly whenever scaffolding was removed. The resource slider approach avoids this bias entirely.
-
----
-
 #### Training progress
 
-**Run 1 (day5 breakthrough):** Starting from BC v4 warmup on 1500px/200HP config, `ent_coef=0.02`, curriculum stage `day5`:
+**Run 1 (day5 breakthrough):** Starting from BC v4 warmup, `ent_coef=0.02`, stage `day5`:
 - Update 10: **6% wins** — first wins from unscaffolded start
 - Update 19: **65% wins** → promoted to 1a
-- Update 28: **71% wins** on 1a → promoted to 1b  
+- Update 28: **71% wins** on 1a → promoted to 1b
 - Update 35: **96% wins** on 1b (vs passive) → promoted to 2a
 - Update 44: **90% wins** on 2a → promoted to 2b
 
@@ -1484,54 +1241,71 @@ After 2b, the curriculum accelerated through:
 - 3a (6000px/passive): **100% wins**
 - 3b (6000px/rush_medium): entered, same bottleneck as 2b (trn=0%, crys_dmg=3-7%)
 
-**Total stages cleared in ~3M steps (from BC warmup):** day5, 1a, 1b, 2a, 2a5, 2a6, 2b, 3a → first time on real game map.
-
-**3b solution (pending):** Adding 3a5 (rush_medium/200 resources) as intermediate, same pattern as 2a5. BC being retrained on full game config first to fix the 3000px→6000px observation transfer gap.
-
----
+**Total stages cleared in ~3M steps (from BC warmup):** day5, 1a, 1b, 2a, 2a5, 2a6, 2b, 3a — first time on real game map.
 
 #### Key failure modes encountered and fixes
 
-**Noop attractor (every stage transition):** Policy converges to noop whenever the task becomes too hard. Fix: smaller steps in the curriculum, and sufficient BC prior to provide initial gradient.
+**Noop attractor (every stage transition):** Policy converges to noop whenever the task becomes too hard. Fix: smaller steps in the curriculum, sufficient BC prior.
 
-**Worker-move (wkr_mv) attractor:** When scaffolding is removed but no combat units exist, the value function sends workers toward the crystal (useless). Fix: don't use pre-placed unit scaffolding; instead use the resource slider so the agent always builds its own units.
+**Worker-move attractor:** Value function sends workers toward the crystal (useless) when scaffolding is removed. Fix: don't use pre-placed unit scaffolding; use the resource slider.
 
-**trn=0% against active opponents:** Policy learns "rush attack" and never trains defensive combat units. Fix: introduce opponent with starting_resources=200 so barracks is built and unit is trained before the opponent's first attack can kill the agent's crystal.
+**trn=0% against active opponents:** Policy learns "rush attack" and never trains defensive combat units. Fix: introduce opponent with starting_resources=200.
 
 **BC prior collapse after 10 PPO updates:** Random critic → noisy advantages → actor prior overwritten by noise. Fix: pretrain critic on demonstration returns.
 
-**BC optimizer fighting PPO:** Adam momentum from BC (lr=1e-3, CE loss) loaded into PPO (lr=3e-4, RL loss) causes gradient fights. Fix: skip optimizer state restore for BC checkpoints.
-
-**BC observation mismatch:** BC trained on map A, PPO runs on map B → different xNorm values → policy doesn't generalise. Fix: train BC on full game config (6000px) which is ≥ all curriculum map sizes.
+**BC optimizer fighting PPO:** Adam momentum from BC loaded into PPO causes gradient fights. Fix: skip optimizer state restore for BC checkpoints.
 
 ---
 
-#### Current state (2026-05-21)
+### 2026-05-21 — v0.3.2-ML: Full curriculum run — BC v5 + 0a→0b direct chain
 
-- BC v5 collecting: 1000 RushBot vs IdleBot episodes on default 6000px/1000HP/50 resources config
-- Next: start curriculum from `day5` (index 5 in CURRICULUM list)
-- Expected: early stages clear in ~3M steps; 3a5 and 3b are the next hard stages
-- 3b promotion requires ≥50% wins vs MediumRush on full game map
+**Status (as of ~4.9M steps):** Stage 3a5 (full-size map, rush_medium/200 resources). 13 stages cleared.
 
-**Command to run after BC completes:**
-```
-python -m training.ppo.train --curriculum --curriculum_stage 5 \
-  --checkpoint bc_warmup.pt --ent_coef 0.02 --total_timesteps 20000000
-```
+#### Key change from v0.3.1: 0a→0b direct chain
+
+The 0a5 intermediate stage (single pre-placed skirmisher) was removed. The review's curriculum design goes 0a (Phase A: 2 pre-placed skirmishers) → 0b (Phase B: no scaffolding) directly, with 0b inheriting 0a's full value function.
+
+Previous attempts with 0a5 failed: the single skirmisher couldn't beat IdleBot workers in a damage race, and the value function received contradictory signals about whether units near the enemy crystal were good or bad. Removing 0a5 gave 0b a clean value function.
+
+#### Training run — full stage log
+
+PID 791519, started from BC v5 warmup (1000 episodes, full game config).
+
+| Stage | Map | Opponent | Win% (at promote) | Update | Steps |
+|-------|-----|----------|-------------------|--------|-------|
+| 0a | 800px | idle | 87% | u11 | 312k |
+| 0b | 800px | idle | 83% | u52 | 1.57M |
+| 0b5 | 800px | idle | 71% | u90 | 2.76M |
+| 0c | 800px | idle | 78% | u97 | 2.95M |
+| day5 | 1500px | idle | 96% | u103 | 3.16M |
+| 1a | 1500px | idle | 100% | u109 | 3.34M |
+| 1b | 1500px | passive | 99% | u116 | 3.55M |
+| 2a | 3000px | passive | 100% | u125 | 3.82M |
+| 2a5 | 3000px | rush_weak | 75% | u134 | 4.09M |
+| 2a6 | 3000px | rush_weak | 91% | u143 | 4.37M |
+| 2b | 3000px | rush_weak | 93% | u152 | 4.64M |
+| 3a | full | passive | 100% | u160 | 4.90M |
+| **3a5** | full | **rush_medium** | — | — | — |
+
+**Notable observations:**
+- `wkr_mv=0%` at every single stage — the wkr_mv attractor never formed.
+- `trn=0%` persists throughout — the agent never trains additional combat units. It wins via pure first-skirmisher rush.
+- Stages day5 through 3a all cleared in exactly 1 evaluation window (first measurement after entering stage).
+- `atk_mv` climbed from 12% to 45% over the run. `noop` dropped from 86% to 53%.
+
+**Open question:** `trn=0%` bottleneck against rush_medium on full map. The agent has never needed to train a second unit. Stage 3a5 and 3b are the first tests where a single skirmisher may not be sufficient.
 
 ---
 
-### v0.3.2-ML — SHIPPED: ML bot live in production (2026-05-22)
+### 2026-05-22 — v0.3.2-ML: SHIPPED — ML bot live in production
 
-**Status:** ✅ Deployed and verified. First live human vs ML bot game played successfully.
-
----
+**Status:** ✅ Deployed and verified. First live human vs ML bot game played successfully (commit `da072a9`).
 
 #### What was shipped
 
-Option A from `docs/SHIPPING_AND_V040_PLAN.md` completed in full:
+The Option A ship plan was completed in full:
 
-- **Checkpoint:** `update_000150.pt` (not u200 as planned — u200 was degraded by 40 updates of 0% rush_medium stall during a failed 3a curriculum attempt after the training run in the section below)
+- **Checkpoint:** `update_000150.pt` (not u200 as planned — u200 was degraded by 40 updates of 0% rush_medium stall during a failed 3a curriculum attempt after the training run in the section above)
 - **ONNX export:** `training/export_onnx.py` using the dynamo exporter. Produces two files: `policy-v0.3.2-ML.onnx` + `policy-v0.3.2-ML.onnx.data` (~1.3 MB total). The `_OnnxWrapper` module flattens the forward signature to `(g, e, em, n, nm) -> (logits, value)` so ONNX can trace it.
 - **MlBot TypeScript:** `headless/src/bots/mlBot.ts` — implements `Agent` interface, loads ONNX via `onnxruntime-node`. Async inference with 1-tick lag pattern (return `lastAction` immediately, update on `.then()`).
 - **Server integration:** `MlBot.create()` called once at server startup; `createBotAgent()` factory function routes bot name strings to instances.
@@ -1553,13 +1327,11 @@ Option A from `docs/SHIPPING_AND_V040_PLAN.md` completed in full:
 
 Intended tier: **easy/medium** — beats passive and weak-rush reliably, loses to full-strength rush and turtle.
 
----
-
 #### Critical bugs found and fixed during implementation
 
 **1. xNorm mirroring (ML bot doing nothing)**
 
-Policy was trained exclusively as BLUE (left side, low xNorm). When the bot plays RED in a live match, the xNorm coordinates are flipped — its own crystal is at xNorm≈1, the enemy crystal at xNorm≈0. Without mirroring, the policy receives an observation that looks like it is playing from the wrong side of the map and makes no coherent actions.
+Policy was trained exclusively as BLUE (left side, low xNorm). When the bot plays RED in a live match, the xNorm coordinates are flipped. Without mirroring, the policy receives an observation that looks like it is playing from the wrong side of the map and makes no coherent actions.
 
 Fix in `headless/src/bots/mlBot.ts::_buildFeeds()`:
 ```typescript
@@ -1572,23 +1344,21 @@ nodeArr[base + 0]   = mx(nd.xNorm ?? 0);  // index 0: xNorm
 
 **2. Replay playback showing no gameplay (bluePlayerId field typo)**
 
-`saveReplay()` in `server/src/index.ts` called `bluePlayer?.playerId` and `redPlayer?.playerId`. The `Player` interface (from `shared/src/types.ts`) only has `.id`, not `.playerId`. The field was always `undefined`, so the fallback `"headless-blue"` / `"headless-red"` always fired. The replay runner then created a match with those literal IDs, but the `commandLog` stored real UUID playerIds — every `processCommand` call was silently rejected, producing a replay that showed no gameplay.
+`saveReplay()` in `server/src/index.ts` called `bluePlayer?.playerId` and `redPlayer?.playerId`. The `Player` interface only has `.id`, not `.playerId`. The field was always `undefined`, so the fallback `"headless-blue"` / `"headless-red"` always fired. The replay runner then created a match with those literal IDs, but the `commandLog` stored real UUID playerIds — every `processCommand` call was silently rejected.
 
 Fix: `bluePlayer?.id` / `redPlayer?.id`.
 
 **3. Replay playback showing no gameplay (ReplayMeta interface missing fields)**
 
-`bluePlayerId` and `redPlayerId` were stored in the JSON on disk correctly, but `getReplay()` constructed its return object field-by-field from the parsed JSON. Fields not declared in the `ReplayMeta` interface were dropped on return. The `ReplayRunner` then read `(replay as { bluePlayerId? }).bluePlayerId` → `undefined` → fell back to `"headless-blue"`.
+`bluePlayerId` and `redPlayerId` were stored in the JSON on disk correctly, but `getReplay()` constructed its return object field-by-field from the parsed JSON. Fields not declared in the `ReplayMeta` interface were dropped on return.
 
 Fix: added `bluePlayerId?: string` and `redPlayerId?: string` to `ReplayMeta`, `listReplays()`, and `getReplay()`.
 
 **4. START_BOT_GAME blank screen**
 
-`GameShell` only renders when `ws.lobbyState` is populated (it reads `getCurrentPlayer()` and `getCurrentLobby()` which both return null without a LOBBY_STATE message). The `START_BOT_GAME` handler was sending `MATCH_START` without first sending a `LOBBY_STATE` message.
+`GameShell` only renders when `ws.lobbyState` is populated. The `START_BOT_GAME` handler was sending `MATCH_START` without first sending a `LOBBY_STATE` message.
 
 Fix: added `broadcastLobbyState(ws, code)` before `sendWS(ws, { type: MATCH_START ... })`.
-
----
 
 #### Verification
 
@@ -1601,70 +1371,184 @@ All 443 tests passing at ship.
 
 ---
 
-### v0.3.2-ML — Full curriculum run: BC v5 + 0a→0b direct chain (2026-05-21)
+### 2026-05-22 — v0.4.0-ML Option B: action-masking forcing — attempted and exhausted
 
-**Status (as of ~4.9M steps):** Stage 3a5 (full-size map, rush_medium/200 resources). 13 stages cleared.
+**Status:** Implemented and exhausted. All forcing variants (Mode A, Mode B, Variant β', threshold tuning) produced the same regression at 3a_rm_3k.
+
+#### Pre-flight diagnostic (§2.3)
+
+`training/diagnose_policy.py` written and run on u150 against rush_weak_medium and rush_medium. The diagnostic recorded per-episode action histograms (train_unit count, max_noop_streak, outcome).
+
+| Opponent | Win rate | train_unit/ep mean | train_unit/ep max | max_noop_streak mean |
+|----------|----------|---------------------|--------------------|----------------------|
+| rush_weak_medium | 99% | 9.4 | 13 | 400 ticks (max 662) |
+| rush_medium | 0% | 13.2 | 17 | 337 ticks (max 440) |
+
+**Key finding:** `trn=0%` in training logs is a rounding artefact — `int(0.3%) = 0`. The policy actively trains 9–17 units per episode in eval. The problem is timing and noop streak overhead, not train_unit frequency.
+
+CSVs saved to `docs/diag_u150_rwm.csv` and `docs/diag_u150_rm.csv`.
+
+#### Implementation (§2.4)
+
+`headless/src/legalActions.ts` extended with `LegalActionsOpts`:
+
+```typescript
+export interface LegalActionsOpts {
+  noopStreak?: number;
+  trainUnitStreak?: number;  // Variant β' trigger
+  forcingScale?: number;     // 0.0 = off, 1.0 = always force when conditions met
+}
+```
+
+Two forcing modes:
+- **Mode A** (noop_streak trigger): `noopStreak >= 30 && !anyBarracks && idleWorker && resources >= barracks.cost` → suppress noop. Forces the bot to build a barracks early in the opening.
+- **Mode B (Variant β')** (trainUnitStreak trigger): `trainUnitStreak >= 50 && completedBarracks >= 1 && combatUnits < 3 && resources >= 50` → suppress noop AND attack_move. Forces the bot to train a third unit while two pre-placed skirmishers are still alive.
+
+`stdioVecRunner.ts` tracks both streak counters per slot, reads `ACTION_FORCING_SCALE` from the `reset_all` protocol message, and supports mid-training fade via `set_forcing_scale`. `crystalfront_vec_env.py` plumbs the scalar through to the runner. `train.py` gains `--action_forcing_scale`, `--action_forcing_fade_start`, `--action_forcing_fade_end` flags with linear fade schedule.
+
+8 forcing logic tests added (461 total tests passing).
+
+#### Smoke test result (§2.5)
+
+| Update | Stage | Win rate | noop% | trn% | Notes |
+|--------|-------|----------|-------|------|-------|
+| 160 | 3a_rwm | 90% | 54% | 0% | Forcing active; promoted immediately |
+| 171 | 3a_rm_3k | **25%** | **44%** | 0% | Gate PASSED — noop dropped 10pp |
+| 183 | 3a_rm_3k | 1% | 53% | 0% | Regression — pre-placed advantage wore off |
+| 195 | 3a_rm_3k | 0% | 53% | 0% | Stall |
+
+G3' gate (win_rate ≥ 20%) PASSED at u171, then regression. Diagnosed: Mode B fires only after pre-placed skirmishers die (the `combatUnits < 2` check); by then the barracks isn't built yet. Mode A added to force early barracks build.
+
+#### Iteration log
+
+Six configurations attempted; all produced the same 0-6% steady-state at 3a_rm_3k:
+
+| Variant | Change | Result |
+|---------|--------|--------|
+| noop_streak ≥ 30, combatUnits < 2 | Original spec | Streak rarely reaches 30 (attack_move resets it). 0% wins. |
+| trainUnitStreak ≥ 200, combatUnits < 2 | Variant β': different streak counter | Fires too rarely. 0% wins. |
+| trainUnitStreak ≥ 200, combatUnits < 3 | Threshold raised so it fires while 2 pre-placed units alive | trn=1% appears briefly. 1-3% wins. |
+| trainUnitStreak ≥ 200 + suppress attack_move | Mode B Variant β'' | trn=1% stable. 1-3% wins, no upward trend. |
+| Extended rewards (+2 unit 3, +1 unit 4) | Provide positive shaping to counteract forced-training negative gradient | ep_rew improves -97 → -84. Win rate still 1-3%. |
+| trainUnitStreak ≥ 50 (from u300) | Reduced threshold 4× + restart from later checkpoint | trn=1% durable across 50+ updates. **noop stabilises 43-45%.** Win rate 1-3%. |
+
+#### Root cause analysis (catastrophic forgetting)
+
+After 90 updates of training at 3a_rm_3k under various forcing configurations, the u350 checkpoint can no longer beat **passive**. Forcing-induced episodes ending in -100 terminal trained the policy that even basic build-and-attack play correlates with losing. The action-masking approach is exhausted.
+
+**v0.3.2-ML (u150 ship checkpoint) is unaffected.** The forcing code path is gated by `forcingScale > 0`; the production model and its eval results pre-date all v0.4.0-ML training.
 
 ---
 
-#### Key change from v0.3.1: 0a→0b direct chain
+### 2026-05-23 — v0.4.0-ML Option γ: RND intrinsic motivation — implemented, ran, failed, halted
 
-The 0a5 intermediate stage (single pre-placed skirmisher) was removed. The review's curriculum design goes 0a (Phase A: 2 pre-placed skirmishers) → 0b (Phase B: no scaffolding) directly, with 0b inheriting 0a's full value function.
+**Status:** Implemented as the §2.9 escalation from the failed Option B attempt. One full 15M-step training run completed. Decision gate technically passed at u312 (15% win rate) but did not sustain — collapsed to 0-2% with noop rising to 68%.
 
-Previous attempts with 0a5 failed: the single skirmisher couldn't beat IdleBot workers in a damage race, and the value function received contradictory signals about whether units near the enemy crystal were good or bad. Removing 0a5 gave 0b a clean value function — 0a at 100% wins means V(train_barracks → train_unit → attack) is maximally high from the start of 0b, providing a strong gradient on the very first 0b updates.
+Commits: `d2f3c58` (RND implementation), `c783d54` (calibration findings).
+
+#### Implementation
+
+`training/ppo/policy.py` — added `RunningMeanStd` (Welford online estimator for obs/reward normalisation) and `RNDModel`:
+
+```python
+class RNDModel(nn.Module):
+    def __init__(self, obs_dim: int = 22, embed_dim: int = 64):
+        self.obs_rms = RunningMeanStd(shape=(obs_dim,))
+        self.rew_rms = RunningMeanStd(shape=())
+        # Target: fixed random weights, 2-layer
+        self.target = _mlp(obs_dim, embed_dim, embed_dim)
+        for p in self.target.parameters():
+            p.requires_grad_(False)
+            nn.init.orthogonal_(p) if p.dim() >= 2 else nn.init.zeros_(p)
+        # Predictor: trained, 3-layer
+        self.predictor = _mlp(obs_dim, embed_dim, embed_dim, embed_dim)
+
+    def intrinsic_reward(self, global_obs):
+        o = self._norm_obs(global_obs)
+        with torch.no_grad():
+            t = self.target(o)
+        p = self.predictor(o)
+        return ((p - t) ** 2).mean(dim=-1)  # (B,)
+```
+
+`training/ppo/train.py`:
+- CLI flags: `--rnd_coef 0.0`, `--rnd_embed_dim 64`
+- Per-step intrinsic reward added to rewards before buffer write
+- Separate optimizer for predictor; trained after PPO epochs on full rollout batch
+- RND state dict saved/restored in checkpoints under `"rnd"` key
+- Logging: `rnd/predictor_loss`, `rnd/intrinsic_reward_mean`, `rnd=X.XXXX` in print line
+
+#### Calibration findings
+
+- `rnd_coef=0.01` provides only **+0.001/step** — completely buried by ±100 terminal.
+- `rnd_coef=0.5` provides **+0.06–0.29/novel step** (~+5–17 per episode if 50–100 novel states visited). Meaningful but still small relative to terminal.
+- **RND alone fails.** Policy never visits novel states (p(train_unit) ≈ 0 due to forcing requirement), so the intrinsic reward never fires. Must combine RND with Variant β' forcing: forcing mechanically samples train_unit → reaches novel multi-unit state → RND rewards that state.
+
+#### Run config
+
+PID 101428, log `/tmp/train_v040_rnd05.log`:
+- `rnd_coef=0.5, action_forcing_scale=1.0, ent_coef=0.05`
+- Curriculum stage 14 (3a_rm_3k)
+- Checkpoint: u150
+- `total_timesteps=15M` (~10M new env steps from u150)
+
+#### Decision gate result (auto-regression at ~u300)
+
+| Update | Stage | Win rate | noop | RND loss | Outcome |
+|--------|-------|----------|------|----------|---------|
+| u300 | 3a_rwm (regress) | 92% | 56% | 0.064 | Healthy on weaker opponent |
+| u312 | 3a_rm_3k (re-entry) | **15%** | 47% | 0.043 | **Gate PASSED (≥10%)** |
+| u324 | 3a_rm_3k | 0% | 52% | 0.047 | Regression |
+| u336 | 3a_rm_3k | 0% | 51% | 0.037 | Stall |
+| u347 | 3a_rm_3k | 1% | 51% | 0.036 | Stall |
+| u355 | 3a_rm_3k | 0% | **62%** | 0.027 | **noop rising** |
+| u363 | 3a_rm_3k | 0% | 65% | 0.021 | noop rising |
+| u394 | 3a_rm_3k | 0% | 68% | 0.012 | noop peaked |
+| u431 | 3a_rm_3k | 1% | 64% | 0.010 | Auto-regress to 3a_rwm |
+| u440–u483 | 3a_rwm | 10–28% | 64–68% | 0.04 | Stuck on weaker stage |
+
+Training ended at u483 with budget exhausted, still on 3a_rwm.
+
+#### Failure mode
+
+The damning signal: **noop rose monotonically from 47% (u312) to 68% (u394)** at 3a_rm_3k. The policy responded to forcing pressure not by training more units, but by retreating to states where forcing conditions can't trigger.
+
+The brief 15% at u312 was likely two pre-placed skirmishers still alive (no learned behaviour change). When they died, no replacement units → no crystal pressure → loss. The intrinsic reward decayed to 0.01 (background noise) as the predictor learned the high-noop equilibrium states.
+
+#### Why RND didn't rescue this
+
+- Forcing was supposed to mechanically visit novel states.
+- RND was supposed to reward those states enough to pull the policy toward them.
+- Net per-episode incentive for "train units then lose": `−100 (terminal) + 11 (unit milestones) + ~6 (RND novelty) = −83`
+- Per-episode for "noop and lose": `−100 (terminal) + 0 (no milestones) + 0 (familiar states, RND ~0) = −100`
+- 17-point advantage for trying. **Not enough** — the gradient noise from a 17-point delta in a ±100 terminal regime is dwarfed by the persistent negative signal from `train_unit → lose`.
+
+The problem is **gradient sign**, not exploration. No amount of intrinsic reward can correct a policy that has correctly learned `train_unit` correlates with losing in this matchup. The correction must come from winning trajectories — which neither forcing nor RND produces.
 
 ---
 
-#### Training run — full stage log
+### 2026-05-23 — v0.4.0-ML attempt halted + documentation update
 
-PID 791519, started from BC v5 warmup (1000 episodes, full game config 6000px/1000HP/50 resources).
+After Option B and Option γ both failed against rush_medium, the user decided to halt v0.4.0-ML research and document the state for handoff. This entry.
 
-| Stage | Map | Opponent | Win% (at promote) | Update | Steps |
-|-------|-----|----------|-------------------|--------|-------|
-| 0a | 800px | idle | 87% | u11 | 312k |
-| 0b | 800px | idle | 83% | u52 | 1.57M |
-| 0b5 | 800px | idle | 71% | u90 | 2.76M |
-| 0c | 800px | idle | 78% | u97 | 2.95M |
-| day5 | 1500px | idle | 96% | u103 | 3.16M |
-| 1a | 1500px | idle | 100% | u109 | 3.34M |
-| 1b | 1500px | passive | 99% | u116 | 3.55M |
-| 2a | 3000px | passive | 100% | u125 | 3.82M |
-| 2a5 | 3000px | rush_weak | 75% | u134 | 4.09M |
-| 2a6 | 3000px | rush_weak | 91% | u143 | 4.37M |
-| 2b | 3000px | rush_weak | 93% | u152 | 4.64M |
-| 3a | full | passive | 100% | u160 | 4.90M |
-| **3a5** | full | **rush_medium** | — | — | — |
+**What was halted:**
+- No further training runs of any kind.
+- v0.4.0-ML code remains merged on `CrystalFront-ML` but all entry points default-off (`forcingScale=0`, `rnd_coef=0`).
+- v0.3.2-ML (u150) remains the production model.
 
-**Notable observations:**
-- `wkr_mv=0%` at every single stage — the wkr_mv attractor never formed. Full-config BC provides a strong prior that workers do not belong near the enemy crystal.
-- `trn=0%` persists throughout — the agent never trains additional combat units. It wins via pure first-skirmisher rush. This held up through rush_weak (93%) and passive on full map (100%). Whether it holds against rush_medium is the open question.
-- Stages day5 through 3a all cleared in exactly 1 evaluation window (first measurement after entering stage). The BC v5 prior transferred cleanly across all map sizes.
-- `atk_mv` climbed from 12% to 45% over the run as the policy became more aggressive. `noop` dropped from 86% to 53%.
+**Documentation updates this session:**
+- `docs/ML_BOT_ACTION_PLAN.md` — reorganised chronologically + handoff section at top (this update).
+- `docs/ML_AGENT.md` — rewritten as pure technical reference with v0.4.0-ML modules (RND, action-forcing) documented; current reward spec from `headless/src/reward.ts`.
+- `docs/SHIPPING_AND_V040_PLAN.md` — deleted. Its forward-looking content (§2.9 fallbacks, commands, file refs) consolidated into this document's handoff section and into `ML_AGENT.md`. Its Option A/B/γ historical narrative is now in the diary entries above. The file was a snapshot of an active plan; with the plan halted and outcomes documented inline, it became duplicate.
+- `memory/project_v040_rnd.md` — terminal outcome recorded.
+
+**Decisions outstanding for the next session:**
+1. **Option α (hierarchical)** — separate "what to train" policy via imitation learning. Estimated 3–5 weeks, no guarantee of success. Closest to addressing root cause.
+2. **Curriculum redesign** — start training in a regime where multi-unit play causes wins (e.g., scripted opponent that *requires* 3 defending units to beat). Build positive `train_unit` gradient first; then transfer to rush_medium.
+3. **Accept v0.3.2-ML ceiling** — ship as-is. The bot beats passive/weak-rush reliably; the rush_medium loss is a known limitation documented in release notes.
+
+The fallback options are documented in the **Current handoff state** section at the top of this file. The third-review architectural taxonomy (Option α / β / γ) is in `CrystalFront_ML_Review.md` at the repo root.
 
 ---
 
-#### Assessment against plan
-
-**Predicted by the review, confirmed:**
-1. 0a→0b direct chain unlocks 0b — confirmed. 0b hit 83% after stalling at 47% in prior run with 0a5 present.
-2. BC critic pretraining prevents noop collapse — confirmed. Zero noop attractor episodes in this run.
-3. Resource slider (200→75→50) bridges passive→rush transition — confirmed. 2a5/2a6/2b all cleared cleanly.
-4. Full-config BC generalises across map sizes — confirmed. day5→2a cleared in single windows despite 1500px/3000px differences.
-
-**Not yet tested:**
-- `trn=0%` bottleneck against rush_medium on full map. The agent has never needed to train a second unit. Stage 3a5 (rush_medium/200 resources) and 3b (rush_medium/50 resources) are the first tests where a single skirmisher may not be sufficient.
-- League activation (stage 4). Review says to activate only after 3b is solved.
-
-**On track?** Yes — ahead of schedule. The review estimated 6 weeks to reach stage 3b. The run is at stage 3a5 with ~4.9M steps used of a 20M budget, having taken ~5-6 hours of wall time. The curriculum structure is validated; the remaining risk is concentrated at 3b.
-
----
-
-#### Next hard stage: 3b
-
-3b is the graduation test: full game map (6000px), 1000HP crystal, 50 start resources, vs MediumRush. MediumRush sends 3+ skirmishers which can kill one defending skirmisher. The agent needs to either:
-- Rush fast enough to win before the opponent's attack lands (pure aggression, risky), or
-- Train a second defensive unit before attacking (requires `trn > 0%`)
-
-If `trn=0%` causes a 3b stall, the fix is the same as the 2b resource-slider solution: introduce 3a5 (rush_medium/200 resources) so the agent has time to build two barracks units before the rush arrives. This stage is already in the curriculum.
-
-**3b promotion criterion:** `win_rate ≥ 0.50` over 100 episodes.
+*End of diary. The next entry should be either an architectural decision (Option α / redesign / accept) or a clean rebase to start fresh on v0.4.0-ML.*

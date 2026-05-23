@@ -66,5 +66,4 @@ Full training history in `docs/ML_BOT_ACTION_PLAN.md`.
 
 ## Next planned release
 
-**v0.4.0-ML** — architectural change targeting multi-unit play via action-masking curriculum injection. Goal: ≥30% win rate vs `rush_medium` on the full game map.  
-See `docs/SHIPPING_AND_V040_PLAN.md` Part 2 for the full plan.
+**v0.4.0-ML** — architectural change targeting multi-unit play. Two approaches attempted (action-masking forcing, RND intrinsic motivation) and halted on 2026-05-23 — both failed to break the `trn=0%` ceiling against `rush_medium`. See `docs/ML_BOT_ACTION_PLAN.md` (current handoff section + diary entries from 2026-05-22/23) for the full post-mortem and remaining fallback options.
