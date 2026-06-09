@@ -416,14 +416,14 @@ tensorboard --logdir runs --bind_all
 
 | Task | One-line summary | Verified by | Status |
 |---|---|---|---|
-| 0.1 | Persist configOverrides across autoreset | 0.2 test | ⬜ |
-| 0.2 | Config echo + regression test | test bites on revert | ⬜ |
-| 0.3 | Config-aware geometry in observation/actionSpace/legalActions | npm test + xNorm assertion | ⬜ |
-| 0.4 | MacroBot fix + try/catch bot steps + botCrashCount | 5-match macro vs rush_medium script | ⬜ |
-| 0.5 | build:headless script + dist staleness guard | touch-file test | ⬜ |
-| 0.6 | Action table regenerated from code | spot-check 5 indices | ⬜ |
-| 0.7 | Deprecation comments on forcing/RND | n/a | ⬜ |
-| P0 | Phase 0 diary entry + handoff update (R10) | entry in ML_BOT_ACTION_PLAN.md §12 | ⬜ |
+| 0.1 | Persist configOverrides across autoreset | 0.2 test | ✅ |
+| 0.2 | Config echo + regression test | test bites on revert | ✅ |
+| 0.3 | Config-aware geometry in observation/actionSpace/legalActions | npm test + xNorm assertion | ✅ |
+| 0.4 | MacroBot fix + try/catch bot steps + botCrashCount | 5-match macro vs rush_medium script | ✅ |
+| 0.5 | build:headless script + dist staleness guard | touch-file test | ⚠️ |
+| 0.6 | Action table regenerated from code | spot-check 5 indices | ✅ |
+| 0.7 | Deprecation comments on forcing/RND | n/a | ✅ |
+| P0 | Phase 0 diary entry + handoff update (R10) | entry in ML_BOT_ACTION_PLAN.md §12 | ✅ |
 | 1.1 | 9-bot balance harness + baseline matrix | baseline ≈ diagnosis numbers | ⬜ |
 | 1.2 | Engine timeout tiebreaker (maxTicks in config) | engine tests; 0 draws macro-vs-turtle | ⬜ |
 | 1.3 | Balance iterations to acceptance criteria | matrix in docs/balance/ | ⬜ |
@@ -438,3 +438,5 @@ tensorboard --logdir runs --bind_all
 | 3.1 | Re-record BC demos (k=8, expert fixes) | BC sanity gates | ⬜ |
 | 3.2 | Curriculum run with running diary | stage log + Reflections in diary | ⬜ |
 | 3.3 | Eval gates → ship v0.5.0-ML | eval table vs gates; release notes | ⬜ |
+
+**⚠️ Task 0.5 deviation:** The plan specified `tsc -p headless/tsconfig.build.json` as the build command. This fails because headless/src imports server/ and shared/ via relative paths, violating the rootDir constraint. Used esbuild instead (`npm run build:headless`). Staleness guard and dist rebuild both work correctly with esbuild. The Appendix A command cheat sheet (`npm run build:headless`) remains correct.
