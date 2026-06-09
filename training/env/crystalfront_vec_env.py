@@ -90,6 +90,18 @@ class CrystalFrontVecEnv:
             self._startup_delay = 0.0
         # Use pre-compiled JS if available; fall back to tsx
         if Path(VEC_RUNNER_JS).exists():
+            # Staleness guard: fail loud if any TS source is newer than the compiled runner
+            src_dir = REPO_ROOT / "headless" / "src"
+            runner_mtime = Path(VEC_RUNNER_JS).stat().st_mtime
+            stale = next(
+                (str(p) for p in src_dir.rglob("*.ts") if p.stat().st_mtime > runner_mtime),
+                None,
+            )
+            if stale:
+                raise RuntimeError(
+                    f"headless/dist is stale ({stale} is newer than runner JS) — "
+                    "run: npm run build:headless"
+                )
             cmd = ["/root/.local/bin/node", VEC_RUNNER_JS]
         else:
             cmd = [NODE_BIN, VEC_RUNNER_TS]
