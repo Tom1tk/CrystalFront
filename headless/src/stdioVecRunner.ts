@@ -125,6 +125,7 @@ interface SlotState {
   prePlace?: PrePlace;
   noopStreak: number;
   trainUnitStreak: number;  // ticks since last train_unit action (Variant β')
+  cfgOverrides?: Partial<import("../../server/src/match/types.js").MatchConfig>;
 }
 
 function makeBot(name: string): Agent {
@@ -278,11 +279,13 @@ function stepSlot(slot: SlotState, actionIdx: number): {
     // Autoreset: immediately start a new episode in this slot
     slot.episodeCount++;
     const doNextSave = slot.saveReplayEvery > 0 && slot.episodeCount % slot.saveReplayEvery === 0;
-    const nextObs    = resetSlot(slot, undefined, slot.opponentName, doNextSave, undefined, slot.prePlace);
+    const nextObs    = resetSlot(slot, undefined, slot.opponentName, doNextSave, slot.cfgOverrides, slot.prePlace);
     const forcingOpts: LegalActionsOpts = ACTION_FORCING_SCALE > 0
       ? { noopStreak: slot.noopStreak, trainUnitStreak: slot.trainUnitStreak, forcingScale: ACTION_FORCING_SCALE }
       : {};
     const nextLegal  = getLegalActions(slot.match!, BLUE_ID, forcingOpts);
+    const nextCfg = slot.match!.config;
+    info.nextEpisodeConfig = { mapWidth: nextCfg.mapWidth, crystalHealth: nextCfg.crystalHealth, startingResources: nextCfg.startingResources };
     return { obs: nextObs, legalMask: buildLegalMask(nextLegal), reward, done, info };
   }
 
@@ -321,7 +324,7 @@ rl.on("line", (raw) => {
         if (msg.action_forcing_scale !== undefined) ACTION_FORCING_SCALE = msg.action_forcing_scale as number;
 
         slots = [];
-        const readySlots: { obs: PlayerObservation; legalMask: boolean[] }[] = [];
+        const readySlots: { obs: PlayerObservation; legalMask: boolean[]; config: { mapWidth: number; crystalHealth: number; startingResources: number } }[] = [];
         for (let i = 0; i < n; i++) {
           const slot: SlotState = {
             engine: new MatchEngine(),
@@ -338,11 +341,13 @@ rl.on("line", (raw) => {
             prePlace: prePlaceMsg,
             noopStreak: 0,
             trainUnitStreak: 0,
+            cfgOverrides: cfgOverrides,
           };
           const obs = resetSlot(slot, seeds[i], opponents[i], saveReplays[i], cfgOverrides, prePlaceMsg);
           slots.push(slot);
           const legal = getLegalActions(slot.match!, BLUE_ID);
-          readySlots.push({ obs, legalMask: buildLegalMask(legal) });
+          const cfg = slot.match!.config;
+          readySlots.push({ obs, legalMask: buildLegalMask(legal), config: { mapWidth: cfg.mapWidth, crystalHealth: cfg.crystalHealth, startingResources: cfg.startingResources } });
         }
         send({ type: "ready", slots: readySlots });
         break;
