@@ -22,15 +22,12 @@ export class MacroBot implements Agent {
   private lastBuildTick  = -60;
   private lastPushTick   = -60;
 
-  private prevBarracksCount = 0;
-
   init(playerId: string, _match: MatchState): void {
     this.playerId       = playerId;
     this.phase          = "expand";
     this.lastAssignTick = -50;
     this.lastBuildTick  = -60;
     this.lastPushTick   = -60;
-    this.prevBarracksCount = 0;
   }
 
   step(obs: PlayerObservation, legal: MacroAction[]): MacroAction[] {
@@ -42,14 +39,6 @@ export class MacroBot implements Agent {
     const hasBarracks = entities.some(e => e.owner === 1 && e.typeIndex === 6 && e.constructionFrac >= 1);
     const hasFoundry  = entities.some(e => e.owner === 1 && e.typeIndex === 7 && e.constructionFrac >= 1);
     const armySize    = entities.filter(e => e.owner === 1 && [2,3,4,5].includes(e.typeIndex)).length;
-
-    const barracksCount = entities.filter(e => e.owner === 1 && e.typeIndex === 6).length;
-    if (barracksCount < this.prevBarracksCount) {
-      // Barracks destroyed — shift build y-zone
-      this.barracksZoneIdx = (this.barracksZoneIdx + 1) % this.barracksYZones.length;
-      this.barracksYZone   = this.barracksYZones[this.barracksZoneIdx];
-    }
-    this.prevBarracksCount = barracksCount;
 
     // Phase transitions
     if (this.phase === "expand" && hasBarracks && hasFoundry) this.phase = "tech";

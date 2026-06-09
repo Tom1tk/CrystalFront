@@ -126,6 +126,7 @@ interface SlotState {
   noopStreak: number;
   trainUnitStreak: number;  // ticks since last train_unit action (Variant β')
   cfgOverrides?: Partial<import("../../server/src/match/types.js").MatchConfig>;
+  botCrashCount: number;
 }
 
 function makeBot(name: string): Agent {
@@ -153,6 +154,7 @@ function resetSlot(slot: SlotState, seed: number | undefined, opponent: string, 
   slot.episodeTotalActions = 0;
   slot.noopStreak         = 0;
   slot.trainUnitStreak    = 0;
+  slot.botCrashCount      = 0;
   slot.opponentName       = opponent.toLowerCase();
   slot.saveReplay         = doSave;
   slot.commandLog         = [];
@@ -202,7 +204,13 @@ function stepSlot(slot: SlotState, actionIdx: number): {
 
   const redObs   = buildObservation(match, RED_ID);
   const redLegal = getLegalActions(match, RED_ID);
-  const redActions = redBot.step(redObs, redLegal);
+  let redActions: ReturnType<typeof redBot.step> = [];
+  try {
+    redActions = redBot.step(redObs, redLegal);
+  } catch (e) {
+    process.stderr.write(`[bot crash] ${slot.opponentName}: ${(e as Error).message}\n`);
+    slot.botCrashCount++;
+  }
   for (const ra of redActions) {
     const redCmds = expandMacroAction(ra, match, RED_ID);
     for (const cmd of redCmds) {
@@ -228,6 +236,7 @@ function stepSlot(slot: SlotState, actionIdx: number): {
   if (done) {
     info.winner      = winner;
     info.winType     = winType;
+    info.botCrashCount = slot.botCrashCount;
     info.seed        = match.seed;
     info.opponentType = slot.opponentName;
 
@@ -342,6 +351,7 @@ rl.on("line", (raw) => {
             noopStreak: 0,
             trainUnitStreak: 0,
             cfgOverrides: cfgOverrides,
+            botCrashCount: 0,
           };
           const obs = resetSlot(slot, seeds[i], opponents[i], saveReplays[i], cfgOverrides, prePlaceMsg);
           slots.push(slot);
