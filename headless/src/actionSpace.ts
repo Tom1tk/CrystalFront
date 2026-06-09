@@ -245,7 +245,7 @@ function resolveAttackTarget(
   match: MatchState,
 ): MatchEntity | undefined {
   const isBlue = playerColor === "blue";
-  const mid = MAP.width / 2;
+  const mid = (match.config?.mapWidth ?? MAP.width) / 2;
 
   // Filter to combat units for most cases
   const enemyCombat = visibleEnemies.filter(e =>
@@ -361,25 +361,27 @@ function resolveTargetZone(
   visibleIds: Set<string>,
 ): { x: number; y: number } {
   const isBlue = playerColor === "blue";
-  const mid = MAP.width / 2;
+  const mapW = match.config?.mapWidth  ?? MAP.width;
+  const mapH = match.config?.mapHeight ?? MAP.height;
+  const mid = mapW / 2;
 
   if (zone === "enemy_crystal") {
     const oppColor = isBlue ? "red" : "blue";
     for (const e of match.entities.values()) {
       if (e.type === "crystal" && e.color.includes(oppColor)) return { x: e.x, y: e.y };
     }
-    return { x: isBlue ? MAP.width - 100 : 100, y: MAP.height / 2 };
+    return { x: isBlue ? mapW - 100 : 100, y: mapH / 2 };
   }
 
   if (zone === "midfield") {
-    return { x: mid, y: MAP.height / 2 };
+    return { x: mid, y: mapH / 2 };
   }
 
   if (zone === "contested_node") {
-    let nearest: { x: number; y: number } = { x: mid, y: MAP.height / 2 };
+    let nearest: { x: number; y: number } = { x: mid, y: mapH / 2 };
     let nearestDist = Infinity;
     for (const node of match.resourceNodes) {
-      if (Math.abs(node.x - mid) < MAP.width * 0.35) {
+      if (Math.abs(node.x - mid) < mapW * 0.35) {
         const dist = Math.abs(node.x - mid);
         if (dist < nearestDist) { nearestDist = dist; nearest = node; }
       }
@@ -401,15 +403,15 @@ function resolveTargetZone(
       return { x: cx, y: cy };
     }
     // Fall back to enemy crystal
-    return { x: isBlue ? MAP.width - 100 : 100, y: MAP.height / 2 };
+    return { x: isBlue ? mapW - 100 : 100, y: mapH / 2 };
   }
 
   if (zone === "defend_crystal") {
     // Position between own crystal and the nearest visible threat
     const ownPlayerId = match.players.find(p => p?.color === playerColor)?.playerId ?? "";
     const ownCrystal = [...match.entities.values()].find(e => e.type === "crystal" && e.ownerId === ownPlayerId);
-    const cristalX = ownCrystal?.x ?? (isBlue ? 100 : MAP.width - 100);
-    const crystalY = ownCrystal?.y ?? MAP.height / 2;
+    const cristalX = ownCrystal?.x ?? (isBlue ? 100 : mapW - 100);
+    const crystalY = ownCrystal?.y ?? mapH / 2;
 
     const threats = [...match.entities.values()].filter(e =>
       e.ownerId !== ownPlayerId && visibleIds.has(e.id) &&
@@ -449,7 +451,8 @@ function findNode(
 ): (typeof match.resourceNodes)[0] | undefined {
   const playerIdx = match.players.findIndex(p => p?.playerId === playerId);
   const isBlue = match.players[playerIdx]?.color === "blue";
-  const mid = MAP.width / 2;
+  const mapW = match.config?.mapWidth ?? MAP.width;
+  const mid = mapW / 2;
 
   const availableNodes = match.resourceNodes.filter(n =>
     n.remaining > 0 && n.gathererSlots.size < n.maxGathererSlots
@@ -460,7 +463,7 @@ function findNode(
     return safe.sort((a, b) => dist2(a, nearEntity) - dist2(b, nearEntity))[0];
   }
   if (choice === "nearest_contested") {
-    const cont = availableNodes.filter(n => Math.abs(n.x - mid) < MAP.width * 0.35);
+    const cont = availableNodes.filter(n => Math.abs(n.x - mid) < mapW * 0.35);
     return cont.sort((a, b) => dist2(a, nearEntity) - dist2(b, nearEntity))[0];
   }
   if (choice === "richest_visible") {
