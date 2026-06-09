@@ -170,7 +170,7 @@ class CrystalFrontVecEnv:
             obs  = self._parse_obs(slot["obs"])
             mask = np.array(slot["legalMask"], dtype=bool)
             self._last_legal_masks[i] = mask
-            results.append((obs, {"legal_mask": mask.copy()}))
+            results.append((obs, {"legal_mask": mask.copy(), "config": slot.get("config")}))
         return results
 
     def set_forcing_scale(self, scale: float) -> None:
