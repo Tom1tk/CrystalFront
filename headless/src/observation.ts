@@ -1,9 +1,12 @@
 import type { MatchState } from "../../server/src/match/types.js";
 import type { PlayerObservation, GlobalFeatures, EntityFeature, NodeFeature } from "./types.js";
 import { ENTITY_TYPES } from "./types.js";
-import { MAP, ECONOMY, ENTITY, UNIT_DEFS } from "@crystalfront/shared";
+import { MAP, ECONOMY, UNIT_DEFS } from "@crystalfront/shared";
 
 export function buildObservation(match: MatchState, playerId: string): PlayerObservation {
+  const mapW = match.config?.mapWidth  ?? MAP.width;
+  const mapH = match.config?.mapHeight ?? MAP.height;
+
   const playerIdx = match.players.findIndex(p => p?.playerId === playerId);
   const oppIdx = playerIdx === 0 ? 1 : 0;
 
@@ -32,7 +35,6 @@ export function buildObservation(match: MatchState, playerId: string): PlayerObs
   const oppCrystal = canSeeOpp
     ? [...match.entities.values()].find(e => e.type === "crystal" && e.ownerId === oppId)
     : undefined;
-  const crystalMaxHp = ENTITY.crystal.health;
 
   const threshold = ECONOMY.passiveWinThreshold;
   const ownHeldRaw = economy?.resources ?? 0;
@@ -40,7 +42,7 @@ export function buildObservation(match: MatchState, playerId: string): PlayerObs
   const ownLifetime = economy?.lifetimeResources ?? 0;
   const oppLifetime = canSeeOpp ? (oppEconomy?.lifetimeResources ?? 0) : 0;
 
-  const mid = MAP.width / 2;
+  const mid = mapW / 2;
   const isBlue = match.players[playerIdx]?.color === "blue";
 
   // Enemy unit composition (visible only)
@@ -64,14 +66,14 @@ export function buildObservation(match: MatchState, playerId: string): PlayerObs
 
   // ── Threat geometry features (v0.1.57) ───────────────────────────────────────
   // nearestEnemyToCrystalDistNorm: how close is the nearest visible enemy to our crystal?
-  const ownCrystalX = ownCrystal?.x ?? (isBlue ? 100 : MAP.width - 100);
-  const ownCrystalY = ownCrystal?.y ?? MAP.height / 2;
+  const ownCrystalX = ownCrystal?.x ?? (isBlue ? 100 : mapW - 100);
+  const ownCrystalY = ownCrystal?.y ?? mapH / 2;
   const visibleEnemyUnits = visibleEnemies.filter(e =>
     ["skirmisher","gunner","bruiser","medic"].includes(e.type)
   );
   let nearestEnemyToCrystalDistNorm = 1.0;
   for (const e of visibleEnemyUnits) {
-    const d = Math.sqrt((e.x - ownCrystalX) ** 2 + (e.y - ownCrystalY) ** 2) / MAP.width;
+    const d = Math.sqrt((e.x - ownCrystalX) ** 2 + (e.y - ownCrystalY) ** 2) / mapW;
     if (d < nearestEnemyToCrystalDistNorm) nearestEnemyToCrystalDistNorm = d;
   }
 
@@ -97,8 +99,8 @@ export function buildObservation(match: MatchState, playerId: string): PlayerObs
     oppVisibleSupply,
     tick: match.tick / 6000,
     scoreDiff: (match.players[playerIdx]?.score ?? 0) - (match.players[oppIdx]?.score ?? 0),
-    ownCrystalHealthFrac: ownCrystal ? ownCrystal.health / crystalMaxHp : 0,
-    oppCrystalHealthFrac: oppCrystal ? oppCrystal.health / crystalMaxHp : 0,
+    ownCrystalHealthFrac: ownCrystal && ownCrystal.maxHealth > 0 ? ownCrystal.health / ownCrystal.maxHealth : 0,
+    oppCrystalHealthFrac: oppCrystal && oppCrystal.maxHealth > 0 ? oppCrystal.health / oppCrystal.maxHealth : 0,
     ownResourcesWinFrac: Math.min(ownHeldRaw / threshold, 1),
     oppResourcesWinFrac: Math.min(oppHeldRaw / threshold, 1),
     ownLifetimeResourcesFrac: Math.min(ownLifetime / (threshold * 2), 1),
@@ -150,8 +152,8 @@ export function buildObservation(match: MatchState, playerId: string): PlayerObs
       id,
       typeIndex: typeIndex < 0 ? 0 : typeIndex,
       owner: isOwn ? 1 : -1,
-      xNorm: e.x / MAP.width,
-      yNorm: e.y / MAP.height,
+      xNorm: e.x / mapW,
+      yNorm: e.y / mapH,
       healthFrac: e.maxHealth > 0 ? e.health / e.maxHealth : 0,
       constructionFrac: e.constructionProgress / 100,
       isAttacking: !!e.attackTargetId,
@@ -168,14 +170,13 @@ export function buildObservation(match: MatchState, playerId: string): PlayerObs
   for (const node of match.resourceNodes) {
     if (!visibleNodeIds.has(node.id)) continue;
 
-    const midX = MAP.width / 2;
     nodes.push({
       id: node.id,
-      xNorm: node.x / MAP.width,
-      yNorm: node.y / MAP.height,
+      xNorm: node.x / mapW,
+      yNorm: node.y / mapH,
       remainingFrac: node.capacity > 0 ? node.remaining / node.capacity : 0,
       gathererCount: node.gathererSlots.size,
-      isContested: Math.abs(node.x - midX) < MAP.width * 0.3,
+      isContested: Math.abs(node.x - mid) < mapW * 0.3,
     });
   }
 

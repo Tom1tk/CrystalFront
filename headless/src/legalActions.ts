@@ -1,6 +1,6 @@
 import type { MacroAction } from "./types.js";
 import type { MatchState } from "../../server/src/match/types.js";
-import { BUILDING_DEFS, UNIT_DEFS, ECONOMY, MAP } from "@crystalfront/shared";
+import { BUILDING_DEFS, UNIT_DEFS, ECONOMY } from "@crystalfront/shared";
 
 export interface LegalActionsOpts {
   noopStreak?: number;
@@ -28,7 +28,6 @@ export function getLegalActions(match: MatchState, playerId: string, opts: Legal
   if (!economy) { legal.push({ type: "noop" }); return legal; }
 
   const isBlue = match.players[playerIdx]?.color === "blue";
-  const mid = MAP.width / 2;
 
   // Visibility
   const visibleIds: Set<string> = match.visibilityData?.get(playerId)?.entityIds ?? new Set();
