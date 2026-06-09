@@ -6,15 +6,17 @@
 
 ---
 
-## Current handoff state (2026-05-23) — START HERE
+## Current handoff state (2026-06-09) — START HERE
 
 This section is the orientation point for any agent picking up the project. Everything else in this file is either reference (sections 1–11) or chronological development history (section 12).
 
 ### Where we are
 
-- **v0.3.2-ML is live in production** as the deployable ML bot. Checkpoint `update_000150.pt` from run `crystalfront_ppo__0_3_0-ML__idle__1__1779364610`. Exported to ONNX at `models/policy-v0.3.2-ML.onnx`. Wired into the live server via `MlBot` + `BotPlayer`. See diary entry `2026-05-22 — v0.3.2-ML SHIPPED`.
-- **v0.4.0-ML was attempted and halted.** Two architectural approaches were exhausted: Option B (action-masking forcing) and Option γ (Random Network Distillation intrinsic motivation). Both produced the same failure mode: the policy regressed to high-noop play at `3a_rm_3k` (rush_medium on 3000px). See `2026-05-22 — v0.4.0-ML Option B` and `2026-05-23 — v0.4.0-ML Option γ post-mortem + halt`.
-- **All v0.4.0-ML code is committed on `CrystalFront-ML`** (`c783d54` — RND calibration; `d2f3c58` — RND implementation; `79c340e` — Mode B threshold 200→50; …). The implementation works, the policy training does not. The v0.3.2-ML production model is unaffected — it runs on `models/policy-v0.3.2-ML.onnx` and was trained before any forcing/RND code paths existed.
+- **v0.3.2-ML is live in production.** `models/policy-v0.3.2-ML.onnx`. Not changing until v0.5.0-ML eval gates pass (see `docs/REVIVAL_PLAN.md` Task 3.3).
+- **Phase 0 of the revival plan is complete** (v0.5.0-ML). The three root causes of the v0.4.0-ML failure were diagnosed and fixed: (1) autoreset config-override bug in `stdioVecRunner.ts`, (2) static MAP constants in observation/geometry code, (3) MacroBot crash. Code base is now trustworthy.
+- **Phase 1 (balance) is next.** See `docs/REVIVAL_PLAN.md` §Phase 1. Do not start training until acceptance criteria pass.
+
+See `docs/REVIVAL_PLAN.md` for the full implementation plan and Appendix B for task status.
 
 ### What's deployable, what's not
 
@@ -22,114 +24,54 @@ This section is the orientation point for any agent picking up the project. Ever
 |-------|-------|------|
 | **Production ML bot** | ✅ Live (v0.3.2-ML, u150) | `models/policy-v0.3.2-ML.onnx` (+ `.onnx.data`) |
 | Source checkpoint | ✅ Clean | `checkpoints/crystalfront_ppo__0_3_0-ML__idle__1__1779364610/update_000150.pt` |
-| Option B code (action-forcing) | ⚠️ Merged, default-off | `forcingScale=0.0` default — zero behaviour change. Gated by CLI flag `--action_forcing_scale`. |
-| Option γ code (RND) | ⚠️ Merged, default-off | `rnd_coef=0.0` default — RND module instantiated only when coef > 0. |
-| v0.4.0-ML checkpoints | ❌ Catastrophically forgetting | `checkpoints/crystalfront_ppo__0_4_0-ML__idle__1__1779487674/*.pt` — do **not** ship. |
+| v0.4.0-ML checkpoints | ❌ Do not use | Training ran on default config (bug fixed in v0.5.0-ML) |
+| Option B / RND code | ⚠️ Default-off, deprecated | See @deprecated comments; do not activate |
 
-The repository compiles, tests pass (461+ tests), and the live bot is unaffected by any halted experiment. Any agent inheriting this state can either continue v0.4.0-ML research from the fallback options below or treat v0.3.2-ML as the long-term ceiling.
+### What was learned (2026-06 full diagnosis)
 
-### What was learned about why v0.4.0-ML failed
+The v0.4.0-ML failures were caused by three compounding bugs, **not** by the "gradient sign" hypothesis recorded in the previous handoff:
 
-The `trn=0%` ceiling against `rush_medium` is **not** an exploration problem — diagnostic `training/diagnose_policy.py` showed the policy actively trains 9–17 units per winning episode against weaker opponents. The display `trn=0%` is a rounding artefact of `int(0.3%)` = 0.
+1. **Autoreset bug** — `stdioVecRunner.ts` dropped `configOverrides` on every episode autoreset. >99% of all training ran on default 6000px/1000HP/50-res config regardless of curriculum stage. All historical stage-clear rates are meaningless. **FIXED in v0.5.0-ML Task 0.1.**
+2. **Game balance** — empirically, no scripted bot beats rush_medium (macro 0/20, turtle 0/20, heavy 0/20, rush 1/20). The training gate was unachievable regardless of algorithm. **To be fixed in Phase 1.**
+3. **MDP formulation** — γ=0.995 with 1 decision/tick makes the ±100 terminal invisible to early game decisions. Draws and resource wins both score −100 (noop attractor). **To be fixed in Phase 2.**
 
-The real problem is gradient sign. In a losing episode against rush_medium:
-
-- `train_unit` actions contribute to a trajectory that ends in a −100 terminal
-- The +5/+3/+2/+1 bootstrap shaping for units 1–4 sums to +11, not enough to flip sign
-- The policy therefore learns that `train_unit` correlates with losing → suppresses it
-- The fix needs to come from somewhere upstream of the terminal, not from intrinsic rewards or masking
-
-Both Option B (forcing the action) and Option γ (rewarding novelty) tried to make `train_unit` happen mechanically. The policy responded by making everything *else* happen less — `noop` rose to 65–68% as the policy retreated from any state where forcing might trigger. RND novelty bonuses decayed to ~0.01 by update 431; they became background noise against the ±100 terminal.
-
-The fallback options that remain unexplored:
-
-**Option α — hierarchical action space** (per third review §B5.1). Add a high-level policy that decides "what to train next" (skirmisher / gunner / bruiser / barracks / nothing), and a separate low-level policy that handles execution. Train the high-level policy via imitation on *winning episodes from a stronger reference policy* — sidesteps the gradient-sign problem because every demonstrated `train_unit` action is from a winning trajectory. **ETA: 3–5 weeks.** Highest expected value, highest implementation cost.
-
-**Curriculum redesign — gradient-direction approach.** Build a training regime where multi-unit play *causes* wins, then transfer. Candidate stages:
-- Stage `3a_def`: 3000px map, passive opponent with **5 pre-placed skirmishers** in the centre. The bot *cannot* win with just one unit; it must train 3+. Wins here reinforce `train_unit → positive terminal`. Once the policy reliably wins, remove pre-placed enemies one at a time.
-- This is the same "one-variable-at-a-time" principle that worked for v0.3.1 (resource slider). The variable being changed is "minimum units required to win" rather than "starting resources".
-- **ETA: 1 week to define and run.** No new code required — only curriculum table edits in `train.py` and `passiveBot.ts` variant.
-
-**Accept the v0.3.2-ML ceiling.** A bot that beats `passive`, `rush_weak`, `rush_weak_medium`, and `macro` reliably is a legitimate product. The release notes already document the `rush_medium`/`turtle`/`rush` losses as known limitations. Effort can be redirected to features that benefit from RL only marginally (e.g., difficulty tier UI, more scripted bots, playtest replay analysis). **ETA: zero.**
-
-**Combined recommendation** if work resumes: try curriculum redesign first (cheap, may unlock gradient signal); escalate to Option α only if that fails. Do not attempt action-masking or intrinsic motivation again without first proving the gradient-sign problem has been solved — both Option B and Option γ failed for the same root cause.
+The "gradient sign" framing from the previous handoff was not wrong per se — it described a symptom — but the root causes were upstream of the gradient.
 
 ### Files an agent should read next
 
 | If you want to | Read |
 |----------------|------|
-| Architecture, specs, training commands, RND/forcing reference | `docs/ML_AGENT.md` |
-| Historical training arc | Section 12 below (chronological) |
-| Current reward function | `headless/src/reward.ts` (single source of truth) |
-| Current action-forcing logic | `headless/src/legalActions.ts` (`LegalActionsOpts`) |
-| RND implementation | `training/ppo/policy.py` (`RNDModel` class) |
-| Per-episode action histogram diagnostic | `training/diagnose_policy.py` |
-| Evaluation results (ship checkpoint) | `docs/eval_v0.3.2-ML.txt`, `docs/diag_u150_rwm.csv`, `docs/diag_u150_rm.csv` |
-| Release notes for shipped bot | `docs/RELEASE_NOTES_v0.3.2-ML.md` |
+| Full implementation plan with task checklist | `docs/REVIVAL_PLAN.md` |
+| Architecture, specs, training commands | `docs/ML_AGENT.md` (§3 regenerated 2026-06-09) |
+| Current reward function | `headless/src/reward.ts` |
+| Balance numbers | `shared/src/gameBalance.ts` |
+| Action enumeration (source of truth) | `headless/src/actionIndex.ts` |
+| Historical training arc | Section 12 below |
 
-### Key commands cheat sheet
+### Key commands
 
 ```bash
-# Evaluate any checkpoint against all opponents
-python -m training.eval.eval_checkpoint \
-  --checkpoint checkpoints/<run>/update_NNN.pt \
-  --episodes 100
+npm test                                   # 461+ tests
+npm run build:headless                     # rebuild dist (ALWAYS after editing headless/src)
+python3 -m training.test_env               # 5s smoke test
+python3 -m training.test_config_persistence # config-override regression test
+python3 training/balance_report.py --matches 20   # bot matrix (Phase 1)
 
-# Per-episode action histogram diagnostic
-python -m training.diagnose_policy \
-  --checkpoint checkpoints/<run>/update_NNN.pt \
-  --opponent rush_medium \
-  --episodes 100 \
-  --output /tmp/diag.csv
-
-# Re-export ONNX (parity-tested)
-python -m training.export_onnx --checkpoint <ckpt> --output models/policy-X.onnx
-python -m training.test_onnx_parity --checkpoint <ckpt> --onnx_path models/policy-X.onnx
-
-# Continue training (forcing OFF by default — same as v0.3.2-ML baseline)
-python -m training.ppo.train --curriculum --curriculum_stage 5 \
-  --checkpoint bc_warmup.pt --ent_coef 0.02 --total_timesteps 20000000
-
-# Restart Option B (action-masking)
-python -m training.ppo.train --curriculum --curriculum_stage 13 \
-  --checkpoint <ckpt> --action_forcing_scale 1.0 --total_timesteps 5000000
-
-# Restart Option γ (RND, must combine with forcing)
-python -m training.ppo.train --curriculum --curriculum_stage 14 \
-  --checkpoint <ckpt> --rnd_coef 0.5 --action_forcing_scale 1.0 \
-  --ent_coef 0.05 --total_timesteps 15000000
-
-# Bump all 5 package.json (mandatory on any training/reward/config change)
-for f in package.json server/package.json headless/package.json shared/package.json client/package.json; do
-  sed -i 's/"version": "0\.X\.X-ML"/"version": "0.Y.Y-ML"/' "$f"
-done
+# Continue training (after Phase 0+1+2 complete)
+python3 -m training.ppo.train --curriculum --curriculum_stage 0 \
+  --checkpoint bc_warmup_v05.pt --decision_interval 8 \
+  --num_envs 20 --vec_size 4 --total_timesteps 20000000
 ```
-
-### Files modified for v0.4.0-ML (all default-off in code)
-
-| File | Change |
-|------|--------|
-| `headless/src/legalActions.ts` + `.js` | `LegalActionsOpts` interface (`noopStreak`, `trainUnitStreak`, `forcingScale`); Mode A + Mode B suppression |
-| `headless/src/stdioVecRunner.ts` + `.js` | Per-slot `noopStreak`/`trainUnitStreak`; `set_forcing_scale` protocol; `ACTION_FORCING_SCALE` env var |
-| `headless/src/reward.ts` + `.js` | Extended `Milestones` (units 3, 4); +2/+1 shaping for units 3/4 |
-| `training/env/crystalfront_vec_env.py` | `action_forcing_scale` constructor param; `set_forcing_scale()` method |
-| `training/ppo/policy.py` | `RunningMeanStd`, `RNDModel` classes |
-| `training/ppo/train.py` | `--action_forcing_scale`, `--action_forcing_fade_*`, `--rnd_coef`, `--rnd_embed_dim` flags |
-| `training/diagnose_policy.py` | New — per-episode action histogram |
-| `package.json × 5` | 0.3.2-ML → 0.4.0-ML |
-
-All changes are gated by their respective scalar flags. `forcingScale=0.0` and `rnd_coef=0.0` produce behaviour identical to v0.3.2-ML.
 
 ### Open commitments
 
 | Commitment | Status |
 |------------|--------|
-| Ship v0.3.2-ML bot | ✅ Live in production (commit `da072a9`) |
-| Run pre-flight diagnostic for Option B | ✅ Done (`docs/diag_u150_*.csv`) |
-| Implement action-masking forcing | ✅ Merged, default-off |
-| Implement RND intrinsic motivation | ✅ Merged, default-off |
-| Reach `win_rate ≥ 30%` vs rush_medium for v0.4.0-ML | ❌ Failed (peaked 15%, regressed to 0%) |
-| Decide v0.4.0-ML path forward | 🔄 Halted; awaiting human direction |
+| Ship v0.3.2-ML bot | ✅ Live in production |
+| Phase 0: fix infra bugs | ✅ Complete (v0.5.0-ML, 2026-06-09) |
+| Phase 1: balance game | 🔄 Next — see REVIVAL_PLAN.md §Phase 1 |
+| Phase 2: restructure MDP | ⬜ After Phase 1 |
+| Phase 3: retrain + ship v0.5.0-ML | ⬜ After Phase 2 |
 
 ---
 
@@ -1552,3 +1494,60 @@ The fallback options are documented in the **Current handoff state** section at 
 ---
 
 *End of diary. The next entry should be either an architectural decision (Option α / redesign / accept) or a clean rebase to start fresh on v0.4.0-ML.*
+
+---
+
+### 2026-06-09 — v0.5.0-ML Phase 0: Repair the instrument
+
+**What was done:**
+
+Phase 0 of the revival plan (`docs/REVIVAL_PLAN.md`) was executed in full. Seven tasks completed on branch `CrystalFront-ML`, all in separate commits per R7.
+
+| Task | What | Commits |
+|---|---|---|
+| 0.1+v | Persist cfgOverrides across autoreset; bump to v0.5.0-ML | `4ff901b` |
+| 0.2 | Config-persistence regression test | `4ff901b` |
+| 0.3 | Config-aware observation/actionSpace/legalActions | `efad5cc` |
+| 0.4 | MacroBot crash fix + try/catch wrapper | `508494f` |
+| 0.5 | build:headless script + dist staleness guard | `d63ada9` |
+| 0.6 | Action table regenerated from code; ML_AGENT.md §3 rewritten | `e357843` |
+| 0.7 | Deprecation comments on LegalActionsOpts/RNDModel | `2a99765` |
+
+**What was observed:**
+
+- `test_config_persistence.py`: PASS — overrides persisted across 120 steps, 2 episodes/slot. xNorm on 800px map reached >0.5 after Task 0.3 (was <0.14 before).
+- `npm test`: 461/0 throughout all tasks.
+- `test_env.py`: PASS.
+- MacroBot: 5/5 matches vs rush_medium completed without crashes (all losses, expected pre-balance).
+- Staleness guard: correctly raised RuntimeError after touching legalActions.ts; cleared after rebuild.
+
+**What was decided and why:**
+
+- The "gradient sign" root cause from the previous handoff was a symptom. The actual root causes were: autoreset bug (explains why curriculum config was never applied), game balance (explains why the gate was impossible), and MDP formulation (explains why even correctly-configured training couldn't learn). These were all independent of gradient-sign.
+- All three fixes are in the code now. The environment can be trusted for the first time.
+- `docs/ML_AGENT.md` §3.1 was wrong — it documented y-zones and set_rally that don't exist in actionIndex.ts. Replaced with generated table. Previous diary conclusions about specific curriculum stages (e.g. "the resource slider worked") are unreliable because the stage config was never applied on autoreset.
+
+**Historical conclusions now invalidated:**
+
+- All curriculum stage-clear percentages in the diary (sections 12, entries before 2026-06-09) — they were measured with the autoreset config bug active, meaning every episode after the first per slot ran on 6000px/1000HP/50-res regardless of stage.
+- The "resource slider worked" observation from v0.3.1-ML — the resource override may have applied to the first episode per slot but not subsequent ones.
+- Option B/γ failure analysis — these approaches ran on the wrong config. They might or might not have worked on correct config; we will never know.
+
+---
+
+### Reflections — Phase 0
+
+**(a) Did results match the plan's predictions?**
+
+Yes. All 7 tasks completed as specified. The xNorm test (a soft check in test_config_persistence.py) confirmed that Task 0.3 made observations config-aware — entities reached xNorm>0.5 on the 800px test map after the fix. MacroBot crashes were confirmed to be caused by the undeclared `barracksYZones` fields as predicted. No surprises.
+
+**(b) Does any later phase need adjusting?**
+
+No changes needed to Phases 1–3 based on Phase 0 findings. The esbuild-based `build:headless` script works correctly but uses a different invocation than the plan's tsconfig.build.json suggestion — `tsconfig.build.json` fails due to rootDir cross-package constraints. This was documented in Task 0.5's commit. The plan's command cheat sheet at Appendix A still says `npm run build:headless` which is correct.
+
+**(c) What would you tell the next agent NOT to waste time on?**
+
+- Do not try `tsc -p headless/tsconfig.build.json` — it fails on rootDir constraints because headless imports from server/ and shared/ via relative paths. Use `npm run build:headless` (esbuild) instead.
+- Do not trust historical curriculum clear rates — see invalidated conclusions above.
+- Do not activate the RND or action-forcing modules — they're marked @deprecated and were not tested post-bugfix.
+- Phase 1 balance work MUST precede training. Even with Phase 0 fixes, training against rush_medium will still fail until turtle/macro can beat it (acceptance criterion 2 in REVIVAL_PLAN.md §1.3).
