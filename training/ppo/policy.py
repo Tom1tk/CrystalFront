@@ -68,6 +68,8 @@ class RunningMeanStd(nn.Module):
 
 class RNDModel(nn.Module):
     """
+    @deprecated — see docs/REVIVAL_PLAN.md (RND was a symptom treatment; keep rnd_coef=0.0)
+
     Random Network Distillation — intrinsic exploration bonus.
 
     Two networks operating on the 22-dim global observation:

@@ -2,6 +2,7 @@ import type { MacroAction } from "./types.js";
 import type { MatchState } from "../../server/src/match/types.js";
 import { BUILDING_DEFS, UNIT_DEFS, ECONOMY } from "@crystalfront/shared";
 
+/** @deprecated — see docs/REVIVAL_PLAN.md (action-forcing was a symptom treatment; keep default-off) */
 export interface LegalActionsOpts {
   noopStreak?: number;
   trainUnitStreak?: number;  // ticks since last train_unit action (Variant β')
