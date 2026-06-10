@@ -12,7 +12,7 @@ For project history, decisions, and the current handoff state, see **`ML_BOT_ACT
 **Branch:** `CrystalFront-ML`
 **Algorithm:** PPO + Behaviour Cloning warmup + curriculum learning
 **Current shipped version:** `0.3.2-ML` — `models/policy-v0.3.2-ML.onnx` (u150 checkpoint, ~1.3 MB)
-**Code version:** `0.5.0-ML` (revival plan in progress; see `docs/REVIVAL_PLAN.md` and `ML_BOT_ACTION_PLAN.md`)
+**Code version:** `0.5.2-ML` (revival plan Phase 1 in progress; see `docs/REVIVAL_PLAN.md` and `ML_BOT_ACTION_PLAN.md`)
 
 ---
 

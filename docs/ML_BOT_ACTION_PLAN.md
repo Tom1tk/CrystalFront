@@ -2,7 +2,7 @@
 
 **Branch:** `CrystalFront-ML`
 **Status:** v0.3.2-ML **SHIPPED** (2026-05-22). v0.4.0-ML **HALTED** (2026-05-23) — Option B action-masking and Option γ RND both failed to break `trn=0%` ceiling.
-**Last updated:** 2026-05-23
+**Last updated:** 2026-06-09
 
 ---
 
@@ -14,7 +14,8 @@ This section is the orientation point for any agent picking up the project. Ever
 
 - **v0.3.2-ML is live in production.** `models/policy-v0.3.2-ML.onnx`. Not changing until v0.5.0-ML eval gates pass (see `docs/REVIVAL_PLAN.md` Task 3.3).
 - **Phase 0 of the revival plan is complete** (v0.5.0-ML). The three root causes of the v0.4.0-ML failure were diagnosed and fixed: (1) autoreset config-override bug in `stdioVecRunner.ts`, (2) static MAP constants in observation/geometry code, (3) MacroBot crash. Code base is now trustworthy.
-- **Phase 1 (balance) is next.** See `docs/REVIVAL_PLAN.md` §Phase 1. Do not start training until acceptance criteria pass.
+- **Phase 1 (balance) is in progress** (v0.5.1-ML). Tasks 1.1–1.4 complete (engine tiebreaker, iteration 1 balance changes). Balance matrix running; acceptance criteria TBD when matrix completes. Do not start Phase 2 until acceptance criteria pass.
+- **Phase 2 (MDP restructure) is next** after Phase 1 acceptance. See `docs/REVIVAL_PLAN.md` §Phase 2.
 
 See `docs/REVIVAL_PLAN.md` for the full implementation plan and Appendix B for task status.
 
@@ -51,7 +52,7 @@ The "gradient sign" framing from the previous handoff was not wrong per se — i
 ### Key commands
 
 ```bash
-npm test                                   # 461+ tests
+npm test                                   # 466+ tests
 npm run build:headless                     # rebuild dist (ALWAYS after editing headless/src)
 python3 -m training.test_env               # 5s smoke test
 python3 -m training.test_config_persistence # config-override regression test
@@ -69,8 +70,8 @@ python3 -m training.ppo.train --curriculum --curriculum_stage 0 \
 |------------|--------|
 | Ship v0.3.2-ML bot | ✅ Live in production |
 | Phase 0: fix infra bugs | ✅ Complete (v0.5.0-ML, 2026-06-09) |
-| Phase 1: balance game | 🔄 Next — see REVIVAL_PLAN.md §Phase 1 |
-| Phase 2: restructure MDP | ⬜ After Phase 1 |
+| Phase 1: balance game | 🔄 In progress — Tasks 1.1–1.4 done; matrix running |
+| Phase 2: restructure MDP | ⬜ After Phase 1 acceptance criteria pass |
 | Phase 3: retrain + ship v0.5.0-ML | ⬜ After Phase 2 |
 
 ---
@@ -1551,3 +1552,138 @@ No changes needed to Phases 1–3 based on Phase 0 findings. The esbuild-based `
 - Do not trust historical curriculum clear rates — see invalidated conclusions above.
 - Do not activate the RND or action-forcing modules — they're marked @deprecated and were not tested post-bugfix.
 - Phase 1 balance work MUST precede training. Even with Phase 0 fixes, training against rush_medium will still fail until turtle/macro can beat it (acceptance criterion 2 in REVIVAL_PLAN.md §1.3).
+
+---
+
+### 2026-06-09 — v0.5.1-ML Phase 1: Balance the game
+
+**What was done:**
+
+Phase 1 of the revival plan (`docs/REVIVAL_PLAN.md`) executed on branch `CrystalFront-ML`. Tasks 1.1–1.4 completed, plus two undocumented bugs found and fixed.
+
+| Task | What | Commits |
+|---|---|---|
+| 1.1 | 9-bot balance harness (`SCRIPTED_BOTS` expanded); `balance:matrix` npm script | `[prior session]` |
+| 1.2 | Engine timeout tiebreaker (maxTicks in MatchConfig; deterministic crystal HP → lifetimeResources → slot 0) | `3bdf097` |
+| 1.2b | `runMatch.ts` bug: maxTicks not forwarded to match config → tiebreaker never fired from CLI | `865d32b` |
+| 1.3 | Iteration 1 balance: worker cost 50→35, turret HP 400→600, cooldown 12→8, COUNTER_MODIFIER 2.0/0.5→1.5/0.75 | `0ec33be` |
+| 1.4 | Timeout win tracking in `balance_report.py` flags | `9591324` |
+
+**Bugs found (not in plan):**
+
+1. **`runMatch.ts` missing maxTicks wiring** — The engine tiebreaker (`Phase 3.6` in `matchEngine.ts`) fires correctly when `match.config.maxTicks` is set. But `runMatch.ts` constructed the match with `DEFAULT_CONFIG` (no maxTicks), then used a local variable to cap the loop. The tiebreaker never fired from the CLI path; games hit the tick cap and returned `winner=null` (draw). Fixed by `const matchConfig = { ...config, maxTicks }` before `createMatch()`. The unit tests passed because they set maxTicks directly in the config; only the CLI/balance_report path was broken.
+
+**Iteration 1 balance rationale:**
+
+| Lever | Before | After | Why |
+|---|---|---|---|
+| Worker cost | 50 | 35 | Economy shouldn't be a 1:1 sacrifice of military. Cheaper workers let turtle/macro build economy while still able to train units. |
+| Turret HP | 400 | 600 | Turrets died to 7 skirmishers in ~48 ticks. Defence must hold long enough to matter. |
+| Turret attack cooldown | 12 | 8 | DPS 1.5 → 2.25. Turret must be worth building; otherwise turtle never wins. |
+| COUNTER_MODIFIER | 2.0 / 0.5 | 1.5 / 0.75 | 4× swing (2.0 vs 0.5) made fights binary. Counter-favoured units instawin. Softer multipliers preserve the RPS flavour without making unit composition hopeless when wrong. |
+
+**Balance matrix (iteration 1, 20 matches/pair):**
+
+*(Matrix pending — running as of this writing. Will be committed to `docs/balance/matrix_iter1_v0.5.1.json` and summarised here.)*
+
+**Acceptance criteria check:**
+
+*(To be updated when matrix completes.)*
+
+**Draft release notes (player-facing changes in v0.5.1-ML):**
+
+- Workers are cheaper (50 → 35). Growing your economy is now less of a hard trade-off against military production.
+- Turrets are significantly stronger (HP 400→600, DPS +50%). Defensive builds are more viable.
+- Combat counters are softer (ratio 2.0/0.5 → 1.5/0.75). Mixed compositions fight more evenly.
+- Matches that reach the tick limit now always have a winner (higher crystal HP wins; equal HP → higher total resources gathered → blue wins). No more draws.
+
+---
+
+### Reflections — Phase 1
+
+**(a) Did results match the plan's predictions?**
+
+Partially. The balance changes themselves were straightforward. The unexpected finding was the `runMatch.ts` bug: the engine tiebreaker (Task 1.2) required a second fix in `runMatch.ts` because the config path was disconnected. Unit tests passed because they constructed matches with the config directly; only the CLI/balance_report path was broken. This is a common "integration gap" — unit tests bypass the integration layer.
+
+**(b) Does any later phase need adjusting?**
+
+No changes needed to Phases 2–3 based on Phase 1 findings. The balance may require further iterations (Task 1.3 is iterative); see acceptance criteria.
+
+**(c) What would you tell the next agent NOT to waste time on?**
+
+- Do not run a balance matrix before confirming the tiebreaker works end-to-end via CLI (`python3 training/balance_report.py --matches 5 --blue macro --red turtle` — check that `win_rate > 0` and `timeout` flags are ≤ half of matches rather than 100%).
+- The runMatch.ts fix is committed. Don't revert it or "simplify" it away — the `matchConfig = { ...config, maxTicks }` line is load-bearing.
+- If balance criteria still fail after iteration 1, try `MediumRushBot.FIRST_PUSH_TICK 200→300` before touching crystal regen (engine change, requires tests).
+
+---
+
+### 2026-06-10 — v0.5.2-ML Phase 1: Iteration 2 (engine determinism fixes + balance tuning)
+
+**What was done:**
+
+Continuing Task 1.3 (balance tuning loop) from the 2026-06-09 entry. Three commits on `CrystalFront-ML`:
+
+| Commit | What |
+|---|---|
+| `b6604d4` | Fix pre-existing broken test: "Counter Damage Multipliers" still asserted the old 2.0x ratio after `0ec33be` changed `COUNTER_MODIFIER.skirmisher.gunner` to 1.5. `npm test` was red at HEAD before this fix, unrelated to this session's work. |
+| `3b4852f` | Five engine determinism fixes (see below). |
+| `f376905` | Iteration 2 balance changes (see table below). |
+
+**Engine determinism fixes (`3b4852f`):**
+
+These were investigated as "deep archaeology" into the rush_medium mirror-match bias (criterion 4: Blue WR 0.73, 22-8-0 over 30 seeds). All five are independently-correct fixes for real (if previously latent) determinism/symmetry bugs, regardless of their effect on criterion 4:
+
+1. **Action-order alternation** (`headless/src/runMatch.ts`, carried from the 2026-06-09 session) — bot actions for player 0/1 now alternate which acts first per tick, instead of player 0 always acting first.
+2. **Gathering tick-parity tie-break** (`server/src/match/engine/gathering.ts`, carried from the 2026-06-09 session) — resource-node gather-slot contention now alternates by tick parity instead of always favouring the lower entity id.
+3. **Seeded-coinflip tiebreaker** (`server/src/match/matchEngine.ts`, carried from the 2026-06-09 session; `types.ts` `result.winType` union widened to include `"timeout"`) — the Phase 3.6 timeout tiebreaker's final fallback (fully equal crystal HP and lifetimeResources) now picks the winner via `match.seed % 2` instead of always slot 0 (blue). A fixed "slot 0 wins" rule gave blue ~90-100% WR in mirror matches that time out, which is the common case for symmetric bots.
+4. **ID-comparison fix** (`server/src/match/engine/utils.ts` new `entityIdNum()`, used in `movement.ts`'s collision-pair dedup) — entity ids like `"e10"` sort lexicographically before `"e9"`, so the old `other.id <= entity.id` check broke symmetric collision-pair ordering once the id counter passed 9. Now compares numeric suffixes.
+5. **Per-player RNG streams** (`types.ts` `rng: Rng` → `rng: [Rng, Rng]`; `matchEngine.ts` `createMatch`/`resetMatch`/`train_worker`/`processConstruction`) — spawn-position randomization for one player's units no longer consumes from a shared RNG stream whose draw order depends on the other player's entity-Map insertion order. Each player slot now has its own seeded stream (`seed` and `seed ^ 0x9e3779b9`).
+
+**Iteration 2 balance changes (`f376905`):**
+
+| Lever | Before | After | Why |
+|---|---|---|---|
+| `UNIT_DEFS.skirmisher.cost` | 50 | **60** | Rush needs more resources to mass; gives defenders more time to build up. |
+| `UNIT_DEFS.skirmisher.speed` | 3.0 | **2.0** | Slower raiders give defenders more reaction time. |
+| `BUILDING_DEFS.turret.cost` | 60 | **50** | Cheaper turrets help defenders build up faster. |
+| `BUILDING_DEFS.turret.attackCooldown` | 8 | **6** | dps 1.5 → 2.25 → 3.0 (was 12 before iteration 1); defence needs to hold. |
+
+**What was observed:**
+
+- 30-seed batch of `rush_medium` vs `rush_medium` mirror matches (criterion 4) before AND after fixes #4-5: **identical** aggregate result, Blue WR 0.73 (22-8-0). Both fixes are individually correct and address real symmetry bugs, but neither moved the aggregate win rate by even one match.
+- Target-acquisition tie investigation in `combat.ts` (temporarily instrumented, then fully reverted — no diff vs HEAD): for seed=1, the number of ties in the nearest-target selection loop was **0/0/0** across the whole match. Ruled out as a contributing factor.
+- `npm test`: 466/0 after `b6604d4` in isolation, and again after `3b4852f` and `f376905` stacked on top.
+
+**What was decided and why:**
+
+- Two independent, principled symmetry fixes (#4 and #5 above) producing byte-identical aggregate outcomes over 30 seeds means the rush_medium mirror bias is **deterministic**, not an artifact of RNG draw order, entity-id comparison ordering, or action-processing order. Something else — currently unknown — gives one mirrored copy of `rush_medium` a structural ~70/30 edge over its identical twin.
+- Per the user's explicit choice (of a 3-way tradeoff: decisive-margin tiebreaker / continue archaeology / commit-and-defer), **criterion 4 is deferred** as a documented known limitation. The 5 determinism fixes are committed regardless, because each is independently correct (real latent bugs, just not THE bug behind criterion 4).
+- Further root-cause work on criterion 4 should NOT repeat the RNG-stream or id-comparison angles — both are now fixed and proven not to be the cause. A more promising untried angle: a full tick-by-tick state-divergence trace between the two mirrored players from t=0, looking for the first tick at which their derived state differs despite symmetric initial conditions and inputs.
+
+**Acceptance criteria check (iteration 2, vs the 2026-06-09 iteration-1 entry):**
+
+| # | Criterion | Status |
+|---|---|---|
+| 1 | Every bot loses ≥20% to at least one other | not yet retested under v0.5.2-ML |
+| 2 | turtle AND macro each beat rush_medium ≥30% | not yet retested under v0.5.2-ML |
+| 3 | rush_medium beats rush_weak_medium ≥60% | not yet retested under v0.5.2-ML |
+| 4 | Mirror matches (rush_medium/rush_weak/macro) within 40-60% per side | **DEFERRED** — rush_medium mirror measured 73/27 (22-8-0/30 seeds) both before and after the 5 determinism fixes; root cause unknown, see above |
+| 5 | Timeout-tiebreak games <30% per pairing | not yet retested under v0.5.2-ML |
+
+Criteria 1, 2, 3, 5 need a fresh 20-match matrix under v0.5.2-ML (iteration-2 levers) before they can be marked. This is the next session's first task.
+
+**Draft release notes (v0.5.2-ML, additive to the 2026-06-09 draft):**
+
+- Skirmishers cost more (50→60) and move slower (3.0→2.0 px/substep) — rushes are slower to mass and easier to react to.
+- Turrets are cheaper (60→50) but fire faster (cooldown 8→6, dps 2.25→3.0) — defensive turtling is cheaper to set up and hits harder.
+- Matches that reach the tick limit with fully-tied crystal HP and resources now resolve via a seeded coin flip (`match.seed % 2`) instead of always favouring blue.
+
+---
+
+### Reflections — Phase 1, addendum (iteration 2)
+
+**(c) What would you tell the next agent NOT to waste time on?** *(addendum to the 2026-06-09 entry)*
+
+- Don't re-investigate RNG draw order or entity-id lexicographic comparison for the rush_medium mirror bias — both are fixed in `3b4852f` and proven to have zero effect on the aggregate 73/27 split.
+- Don't re-run the target-acquisition tie count in `combat.ts` — confirmed 0/0/0 for seed=1; not the cause.
+- Criterion 4 is a known limitation as of v0.5.2-ML. Don't block the rest of Phase 1 (criteria 1/2/3/5, full matrix) on resolving it.

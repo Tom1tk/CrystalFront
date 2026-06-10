@@ -424,11 +424,11 @@ tensorboard --logdir runs --bind_all
 | 0.6 | Action table regenerated from code | spot-check 5 indices | ✅ |
 | 0.7 | Deprecation comments on forcing/RND | n/a | ✅ |
 | P0 | Phase 0 diary entry + handoff update (R10) | entry in ML_BOT_ACTION_PLAN.md §12 | ✅ |
-| 1.1 | 9-bot balance harness + baseline matrix | baseline ≈ diagnosis numbers | ⬜ |
-| 1.2 | Engine timeout tiebreaker (maxTicks in config) | engine tests; 0 draws macro-vs-turtle | ⬜ |
-| 1.3 | Balance iterations to acceptance criteria | matrix in docs/balance/ | ⬜ |
-| 1.4 | Resource win is a real win | matrix resource_win rate | ⬜ |
-| P1 | Phase 1 diary entry (matrices + lever reasoning) | entry in ML_BOT_ACTION_PLAN.md §12 | ⬜ |
+| 1.1 | 9-bot balance harness + baseline matrix | baseline ≈ diagnosis numbers | ✅ |
+| 1.2 | Engine timeout tiebreaker (maxTicks in config) | engine tests; 0 draws macro-vs-turtle | ✅ |
+| 1.3 | Balance iterations to acceptance criteria | matrix in docs/balance/ | 🔄 |
+| 1.4 | Resource win is a real win | matrix resource_win rate | ✅ |
+| P1 | Phase 1 diary entry (matrices + lever reasoning) | entry in ML_BOT_ACTION_PLAN.md §12 | 🔄 |
 | 2.1 | decision_interval k=8 in runners/env/trainer | smoke run; ep lengths ÷8 | ⬜ |
 | 2.2 | Rewards rescaled to ±1; resource/timeout wins count | reward_mean ∈ [−1.3, 1.3] | ⬜ |
 | 2.3 | γ=0.99, num_steps=256, LR guard | smoke run | ⬜ |
@@ -440,3 +440,58 @@ tensorboard --logdir runs --bind_all
 | 3.3 | Eval gates → ship v0.5.0-ML | eval table vs gates; release notes | ⬜ |
 
 **⚠️ Task 0.5 deviation:** The plan specified `tsc -p headless/tsconfig.build.json` as the build command. This fails because headless/src imports server/ and shared/ via relative paths, violating the rootDir constraint. Used esbuild instead (`npm run build:headless`). Staleness guard and dist rebuild both work correctly with esbuild. The Appendix A command cheat sheet (`npm run build:headless`) remains correct.
+
+**Task 1.3, criterion 4 deferred (v0.5.2-ML):** rush_medium mirror matches measured 73/27 (22-8-0 over 30 seeds), outside the 40-60% target. Two independent symmetry fixes — numeric entity-id comparison and per-player RNG streams (both in `3b4852f`) — were verified correct but produced byte-identical aggregate results, proving the bias is deterministic rather than RNG/ordering-driven. Root cause unknown. Per user decision, criterion 4 is deferred as a documented known limitation; Task 1.3 remains 🔄 pending a fresh matrix for criteria 1/2/3/5 under v0.5.2-ML. See `docs/ML_BOT_ACTION_PLAN.md`, 2026-06-10 entry, for full details. **Investigation guidance: see Appendix C below.**
+
+---
+
+## Appendix C — Criterion 4 (mirror-match bias): investigation guide
+
+**The problem.** In a rush_medium-vs-rush_medium mirror match, blue (slot 0, left side) wins 73% (22-8-0 over 30 seeds, stable across seeds). A 50/50-symmetric game should give ~40–60%. The bias is **structural and deterministic**: it survives different seeds, and two principled symmetry fixes changed nothing. Someone — engine or harness — systematically favours slot 0 / the left side / low entity ids. This appendix records what is already ruled out and what to try next, so future work starts where the last session stopped instead of repeating it.
+
+### C.1 — Ruled out (do NOT re-investigate)
+
+All verified as of v0.5.2-ML (commits `b6604d4`…`164bf4f`); details in the `ML_BOT_ACTION_PLAN.md` 2026-06-10 entry:
+
+1. **Bot action order** — alternates per tick (`headless/src/runMatch.ts`). Fixed; no effect on the 73/27.
+2. **Gathering slot contention** — tick-parity tie-break (`engine/gathering.ts`). Fixed; no effect.
+3. **Timeout-tiebreaker slot-0 bias** — now a seeded coin flip (`matchEngine.ts`). Fixed; and the biased mirror matches were not timeouts anyway.
+4. **Lexicographic entity-id comparison** (`"e10" < "e9"`) — `entityIdNum()` fix in `engine/utils.ts`/`movement.ts`. Fixed; aggregate result byte-identical before/after.
+5. **Shared RNG stream cross-contamination** — per-player streams (`rng: [Rng, Rng]`, seeds `s` and `s ^ 0x9e3779b9`). Fixed; aggregate result byte-identical before/after.
+6. **Target-acquisition ties in `combat.ts`** — instrumented count was 0/0/0 over a full seed=1 match. Not a factor.
+7. **Map-constant asymmetry** — audited 2026-06-10: `SPAWN` (crystals at x=100 / W−100, worker offsets mirror exactly), `SAFE_NODE_OFFSETS` (red side auto-mirrored, same dy), `CONTESTED_NODE_OFFSETS` (±dx pairs, shared dy), `BUILD_ZONES` (0.2 / 0.8). All horizontally symmetric in `shared/src/gameBalance.ts` + `server/src/match/map.ts`.
+8. **MediumRushBot side-dependence** — the bot's only coordinate logic is `isBlue ? n.xNorm < 0.5 : n.xNorm > 0.5` for safe-node selection; correctly mirrored.
+9. **Immediate-damage first-strike** — combat damage is buffered in `damageLog` and applied after the attack loop; attack order within a tick cannot grant a first-strike kill.
+10. **Entity creation/processing order (H1/H3 below)** — experiment C.3 #1 run 2026-06-10: swapping `createMatch` so red's crystal/workers are created first (red gets the low ids and earlier Map slots) produced **byte-identical** outcomes to baseline across all 30 seeds (same winners, tick counts, final entity counts; fresh baseline at `88a2188` re-confirmed blue 22-8-0). The bias is invariant to id assignment and Map-insertion order — it is **geometric (left/right side)**. Note: `server/src/match/matchEngine.js` is a stale committed artifact that tsx never executes (`.js` import specifiers resolve to `.ts` sources); don't let it mislead you.
+11. **Spatial-grid binning, mostly (H2)** — experiment C.3 #2 run 2026-06-10: set `SIMULATION.spatialCellSize` to 6100 (≥ `mapWidth`=6000), collapsing collision-pair discovery to a plain double loop with zero floor-based binning. Result: **23-7-0** (vs baseline 22-8-0) — only 3/30 seeds flipped (5, 17, 26) and the ~75/25 skew persists almost unchanged. Floor-based grid binning is a **minor contributor** (perturbs a handful of borderline seeds) but **not the dominant cause**. Methodology note: `shared/src` edits (e.g. `gameBalance.ts`) require `npm run build:shared` before they're live for `tsx` — the workspace symlink resolves `@crystalfront/shared` to the gitignored `shared/dist`, not `shared/src` (R2 applies here too).
+12. **`chooseBuildPosition` fallback-offset asymmetry found, but a naive mirror-fix overshoots (H5)** — experiment C.3 #3 run 2026-06-10. In `headless/src/actionSpace.ts`'s `chooseBuildPosition` (the only call site: `actionSpace.ts:46`, used by every bot's `build` macro-action for barracks/turret/depot/foundry), the `xZone` band selection (`near_crystal`/`mid_base`/`forward`) IS correctly `isBlue`-mirrored. But the 16-attempt fallback search (`actionSpace.ts:336`, used whenever the preferred spot is blocked — routine once buildings/units accumulate) computes `dx = (attempt % 4) * STEP * (attempt % 2 === 0 ? 1 : -1)` with **no `isBlue` term**. Since blue's build zone is `[0, 1200]` (own crystal near x=100, "increasing x" = toward the front) and red's is `[4800, 6000]` (own crystal near x=5900, "increasing x" = toward own crystal — the *opposite* relative direction), the same raw `dx` sequence produces **non-mirrored** fallback positions for the two colors (e.g. attempt 1: blue retreats toward its own crystal, red advances toward the front). Patching this to `dxSign = isBlue ? 1 : -1` makes `chooseBuildPosition` exactly mirror-symmetric (verified: `mirror(blue_cx(attempt)) == red_cx(attempt)` for all 16 attempts). **Result of the symmetric-patch experiment: 10-20-0 (blue 33%, red 67%)** — fully reproducible (re-ran seed 1 twice, byte-identical, entity counts 18v19 vs baseline 26v10). This is a ~40-point swing — by far the largest effect found in this investigation — but it **overshoots past 40-60% and flips direction** rather than landing near 50/50. See H6 below for what this implies.
+
+### C.2 — Live hypotheses, in priority order
+
+Identified by code inspection 2026-06-10. **Update 2026-06-10: experiments C.3 #1 and #2 ruled out H1/H3 and downgraded H2 to a minor contributor** (see C.1 #10, #11). The dominant ~75/25 skew is geometric and survives elimination of both id/order-coupling AND grid binning. Remaining suspects:
+
+- ~~**H1 — Sequential collision resolution**~~ — RULED OUT via C.3 #1: pair-resolution order is id-coupled, and outcomes are invariant to id assignment.
+- **H2 — Spatial-grid binning** — MINOR, NOT DOMINANT via C.3 #2: collapsing to a single cell gave 23-7-0 (vs 22-8-0), only 3/30 seeds flipped. Real but small; does not explain the bulk of the skew.
+- ~~**H3 — Map-insertion iteration order**~~ — RULED OUT via C.3 #1 (same experiment swaps Map-insertion order).
+- **H4 — Floating-point mirror asymmetry** (`x − v` vs `(W−x) + v` round differently). Real, but FP noise should average out over 30 seeds rather than produce a stable ~75/25 — treat as noise floor, not as the cause. (Could explain the H2 seed-flips, though — borderline ticks nudged across a threshold by the changed FP path.)
+- **H5 — Unaudited left/right-asymmetric code.** CONFIRMED as a major lever via C.1 #12: `chooseBuildPosition`'s fallback-offset `dx` is unmirrored, and naively mirroring it swings the win rate ~40 points (blue 73% → red 67%). All other `isBlue ? ... : ...` branches and static map constants were swept and check out as symmetric (see C.1 #12's "other candidates" — observation.ts, actionSpace.ts xZone bands, movement edge-clamps, buildingValidation.ts, combat/gathering/repair/visibility all use relative `dist()`). H5 is **real but evidently not the only asymmetry** — see H6.
+- **H6 — Multiple compensating asymmetries (NEW, leading hypothesis).** The naive `chooseBuildPosition` mirror-fix didn't land near 50/50, it *overshot to the opposite side* (red 67%). A single isolated bug, once fixed, should move the result toward 50/50 and stop — overshoot-and-flip is the signature of **fixing one asymmetry that was partially cancelling against at least one other, still-undiscovered asymmetry that favors red**. The original 73/27-blue is therefore plausibly the *net* of ≥2 opposing biases (e.g. H5 favoring blue by a lot, something else favoring red by a bit less). This reframes the problem: one-at-a-time "find an asymmetry, flip it, re-measure 30 seeds" is now a whack-a-mole search with overshoot risk on each move. The mirror-invariance property test (C.3, was #4 now #5) is the right tool here because it enumerates *all* asymmetries in one pass instead of finding them one swing at a time.
+
+### C.3 — Decisive experiments (cheapest first)
+
+Each is standalone; run the same 30-seed rush_medium-mirror protocol after each (`headless` harness, seeds 1–30; baseline to beat: blue 22-8-0).
+
+1. ✅ **Creation-order swap — DONE 2026-06-10.** Result: blue kept 73% with byte-identical per-seed outcomes. Bias is geometric, not order-coupled. See C.1 #10.
+2. ✅ **Single-cell grid — DONE 2026-06-10.** Result: 23-7-0 (vs 22-8-0 baseline), only 3/30 seeds flipped. H2 is a minor contributor, not the dominant cause. See C.1 #11.
+3. ✅ **Absolute-x asymmetry sweep — DONE 2026-06-10.** Found `chooseBuildPosition`'s unmirrored fallback `dx` (H5, large effect: naive mirror-fix → 10-20-0, blue 33%/red 67%, ~40-pt swing but overshoots past 50/50 in the *opposite* direction). Swept all other `isBlue ? : ` branches, static map constants, edge-clamps — all check out symmetric. See C.1 #12, H5/H6.
+4. **Mirror-invariance property test (half a day, NOW THE TOP PRIORITY — see H6).** Because the H5 fix overshot to red-favored rather than landing near 50/50, there is evidence of **≥2 compensating asymmetries**, not one. Write `mirrorState(match)`: flip all `x → mapWidth − x`, swap player slots/ownership, remap ids symmetrically (id-remap can likely be skipped — C.1 #10 proved id assignment doesn't matter). Property: `tick(mirror(s)) ≈ mirror(tick(s))` (epsilon for FP, H4). Drive it from states sampled out of a real mirror match (including post-build-fallback states, since H5 lives in action *selection*, not the engine tick — the harness/headless layer needs its own mirror-invariance check, e.g. `chooseBuildPosition(blue, ...)` mirrored == `chooseBuildPosition(red, ...)` for the same mirrored match state) and assert per system (movement / combat / gathering / construction / **action-space build placement**) — the first system that violates the invariant *is* a culprit; **keep going after the first hit**, since H6 implies there are more. This becomes a permanent regression test for criterion 4 and for any future engine change.
+5. **Buffered collision pushes (~1 h, low priority / likely skip).** H1 ruled out; would only address the small H2 seed-flip noise (C.1 #11). Not worth doing unless #4 specifically implicates Gauss-Seidel ordering.
+6. **Tick-divergence trace (fallback).** Per tick, compare blue's state against red's mirrored state (unit count, total HP, resources, Σ|x − (W−x′)|); log the first tick the divergence exceeds FP noise, then bisect into that tick's system calls. More labour than #4 for less reusable output — only if #4 is impractical.
+
+**On the H5 fix itself:** do not land the `dxSign = isBlue ? 1 : -1` patch as-is — it was a probe that overshot to red-favored (10-20-0). A real fix should come out of the #4 property test (which will reveal the *other* asymmetry/asymmetries too), so all of them can be fixed and verified together with one balance-matrix re-run, rather than landing partial fixes that individually make criterion 4 worse.
+
+### C.4 — Exit condition & process
+
+- Criterion 4 passes when all three mirror pairings (rush_medium, rush_weak, macro) land in 40–60% over ≥30 seeds. Re-measure **all three**, not just rush_medium — a fix for H1/H2 affects every matchup.
+- Any engine fix here follows the standard rules: R1 version bump, R2 rebuild, R7 one-commit-per-task (`fix(1.3): …`), R10 diary entry, and re-run the full criteria 1/2/3/5 matrix afterwards — collision/grid changes can shift *all* balance numbers, not just mirrors.
+- If experiments 1–3 all leave 73/27 untouched, do **not** keep guessing: go straight to the invariance test (#4). Three null results would mean the mental model is wrong somewhere, and only the property test localises bugs you haven't hypothesised.

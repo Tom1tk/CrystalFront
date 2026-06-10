@@ -54,7 +54,7 @@ export class MatchEngine {
   ): MatchState {
     const id = `match-${++this.nextMatchId}`;
     const resolvedSeed = seed ?? (Date.now() & 0xffffffff);
-    const rng = new Rng(resolvedSeed);
+    const rng: [Rng, Rng] = [new Rng(resolvedSeed), new Rng((resolvedSeed ^ 0x9e3779b9) >>> 0)];
     const idGen = new IdGen();
     const map = createMap(config);
     const entities = new Map<EntityId, MatchEntity>();
@@ -460,7 +460,7 @@ if (command.type === "gather") {
         return { success: false, message: "Not enough supply" };
       }
 
-      const spawn = this.spawnOutside(match.rng, crystal, config.workerRadius);
+      const spawn = this.spawnOutside(match.rng[playerIdx], crystal, config.workerRadius);
       const newWorker = this.createEntity(
         match.idGen,
         "worker",
@@ -1045,6 +1045,37 @@ if (command.type === "gather") {
       }
     }
 
+    // Phase 3.6: Tick-cap tiebreaker — deterministic winner when maxTicks is reached
+    const maxTicks = match.config.maxTicks ?? 0;
+    if (maxTicks > 0 && match.tick >= maxTicks) {
+      const crystals = match.players.map((p, i) =>
+        p ? [...match.entities.values()].find(e => e.type === "crystal" && e.ownerId === p.playerId) : undefined
+      );
+      const healthFracs = crystals.map(c => (c && c.maxHealth > 0) ? c.health / c.maxHealth : 0);
+      const lifetimes  = match.economy.map(e => e?.lifetimeResources ?? 0);
+
+      // tiebreak (c): symmetric matchups regularly land here with equal
+      // health and lifetime resources — always picking slot 0 (blue)
+      // would give blue a ~100% win rate in mirror matches. Use the
+      // match seed for a coin flip that's deterministic per-seed but
+      // averages 50/50 across the many seeds run in a balance matrix.
+      let winnerIdx = match.seed % 2;
+      if (healthFracs[0] !== healthFracs[1]) {
+        winnerIdx = healthFracs[0] >= healthFracs[1] ? 0 : 1; // (a) higher crystal HP frac
+      } else if (lifetimes[0] !== lifetimes[1]) {
+        winnerIdx = lifetimes[0] >= lifetimes[1] ? 0 : 1;     // (b) higher lifetime resources
+      }
+
+      const winner = match.players[winnerIdx]?.playerId;
+      if (winner) {
+        match.phase = "ended";
+        match.result = { winner, winType: "timeout" };
+        match.endedAt = Date.now();
+        if (this.matchEndCallback) this.matchEndCallback(match.id, winner);
+        return match;
+      }
+    }
+
     // Phase 4: Construction & production
     this.processConstruction(match);
 
@@ -1122,14 +1153,14 @@ if (command.type === "gather") {
           if (item.remainingTicks <= 0) {
             const unitDef = UNIT_DEFS[item.unitType];
             if (unitDef) {
-              const spawn = this.spawnOutside(match.rng, entity, unitDef.radius);
+              const spawnPIdx = match.players.findIndex((p) => p?.playerId === entity.ownerId);
+              const spawn = this.spawnOutside(match.rng[spawnPIdx >= 0 ? spawnPIdx : 0], entity, unitDef.radius);
               const unit = this.createEntity(
                 match.idGen, item.unitType, entity.ownerId,
                 spawn.x, spawn.y, unitDef.health, unitDef.radius, unitDef.color,
               );
               if (entity.rallyPoint) unit.moveTarget = { ...entity.rallyPoint };
               match.entities.set(unit.id, unit);
-              const spawnPIdx = match.players.findIndex((p) => p?.playerId === entity.ownerId);
               if (spawnPIdx >= 0 && match.economy[spawnPIdx]) {
                 match.economy[spawnPIdx]!.supply += item.supplyCost;
               }
@@ -1220,7 +1251,7 @@ if (command.type === "gather") {
 
     const newSeed = (Date.now() & 0xffffffff);
     match.seed = newSeed;
-    match.rng = new Rng(newSeed);
+    match.rng = [new Rng(newSeed), new Rng((newSeed ^ 0x9e3779b9) >>> 0)];
     match.idGen = new IdGen();
     match.commandLog = [];
     match.phase = "spawn";

@@ -48,8 +48,14 @@ export function processGathering(match: MatchState): void {
         }
       }
 
+      // Alternate processing order by tick parity so that, when both
+      // players' rounded shares tie for a contested node's limited
+      // wholeResources, neither side gets a persistent first-mover edge.
+      let entries = [...gatheredByPlayer.entries()];
+      if (match.tick % 2 === 1) entries = entries.reverse();
+
       let distributed = 0;
-      for (const [ownerId, count] of gatheredByPlayer) {
+      for (const [ownerId, count] of entries) {
         const rounded = Math.round(count);
         const capped = Math.min(rounded, wholeResources - distributed);
         if (capped <= 0) continue;

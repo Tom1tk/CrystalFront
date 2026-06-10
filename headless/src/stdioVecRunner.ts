@@ -165,7 +165,7 @@ function resetSlot(slot: SlotState, seed: number | undefined, opponent: string, 
     { playerId: BLUE_ID, username: "Blue", color: "blue", score: 0 },
     { playerId: RED_ID,  username: "Red",  color: "red",  score: 0 },
   ];
-  const matchCfg = configOverrides ? { ...DEFAULT_CONFIG, ...configOverrides } : DEFAULT_CONFIG;
+  const matchCfg = { ...DEFAULT_CONFIG, maxTicks: MAX_TICKS, ...configOverrides };
   slot.match  = slot.engine.createMatch("headless", players, matchCfg, effectiveSeed);
   slot.engine.startMatch(slot.match.id);
   slot.redBot = makeBot(opponent);

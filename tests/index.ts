@@ -523,7 +523,7 @@ console.log("\n--- Combat: Counter Damage Multipliers ---");
   engine.startMatch(match.id);
 
   // Create a skirmisher for blue and a gunner for red
-  // Skirmisher beats gunner (2x damage)
+  // Skirmisher beats gunner (1.5x damage)
   const skirmisher = engine["createEntity"](match.idGen,
     "skirmisher", p1.id, 3000, 300, 120, 12, "#44dd88"
   );
@@ -537,12 +537,12 @@ console.log("\n--- Combat: Counter Damage Multipliers ---");
   skirmisher.attackTargetId = gunner.id;
   skirmisher.attackCooldown = 0;
 
-  // Tick - skirmisher should deal 2x damage to gunner
+  // Tick - skirmisher should deal 1.5x damage to gunner
   engine.tick(match.id);
   const gunnerAfter = match.entities.get(gunner.id)!;
   const baseSkirmisherDamage = 12;  // updated: skirmisher damage was reduced to 12
-  const expectedDamage = Math.round(baseSkirmisherDamage * 2.0);
-  assert(gunnerAfter.health === 80 - expectedDamage, `Gunner took ${expectedDamage} damage (2x counter)`);
+  const expectedDamage = Math.round(baseSkirmisherDamage * 1.5);  // updated: COUNTER_MODIFIER 2.0 -> 1.5
+  assert(gunnerAfter.health === 80 - expectedDamage, `Gunner took ${expectedDamage} damage (1.5x counter)`);
 
 }
 
@@ -1973,6 +1973,65 @@ console.log("\n--- legalActions: action-forcing (Option B) ---");
     // Mode A fires only if anyBarracks is false; with an in-progress barracks, anyBarracks=true → mode A off
     // Mode B: completedBarracks=0 → also off. So noop should be present.
     assert(legal.some(a => a.type === "noop"), "forcing mode A: noop present when barracks in progress (anyBarracks=true)");
+  }
+}
+
+// ── Engine timeout tiebreaker (Task 1.2) ─────────────────────────────────────
+console.log("\n--- Engine timeout tiebreaker ---");
+{
+  // Helper: create a minimal 2-player match with maxTicks cap
+  function makeTwoPlayerMatch(maxTicks: number) {
+    const eng = new MatchEngine();
+    const players: [import("../server/src/match/types.js").PlayerSlot, import("../server/src/match/types.js").PlayerSlot] = [
+      { playerId: "blue", username: "Blue", color: "blue", score: 0 },
+      { playerId: "red",  username: "Red",  color: "red",  score: 0 },
+    ];
+    const cfg = { ...DEFAULT_CONFIG, maxTicks, mapWidth: 800, crystalHealth: 100, startingResources: 0 };
+    const m = eng.createMatch("test", players as any, cfg, 1);
+    eng.startMatch(m.id);
+    return { eng, m };
+  }
+
+  // Test 1: higher crystal HP fraction wins
+  {
+    const { eng, m } = makeTwoPlayerMatch(1);
+    // Give blue crystal more health than red crystal
+    for (const e of m.entities.values()) {
+      if (e.type === "crystal" && e.ownerId === "blue") { e.health = 100; e.maxHealth = 100; }
+      if (e.type === "crystal" && e.ownerId === "red")  { e.health = 50;  e.maxHealth = 100; }
+    }
+    eng.tick(m.id);
+    assert(m.phase === "ended",              "tiebreaker: match ends at maxTicks");
+    assert(m.result?.winner === "blue",      "tiebreaker: higher crystal HP wins");
+    assert(m.result?.winType === "timeout",  "tiebreaker: winType is 'timeout'");
+  }
+
+  // Test 2: equal HP, higher lifetime resources wins
+  {
+    const { eng, m } = makeTwoPlayerMatch(1);
+    for (const e of m.entities.values()) {
+      if (e.type === "crystal") { e.health = 100; e.maxHealth = 100; }
+    }
+    m.economy[0]!.lifetimeResources = 100;
+    m.economy[1]!.lifetimeResources = 200;
+    eng.tick(m.id);
+    assert(m.result?.winner === "red",  "tiebreaker: equal HP, higher lifetime resources wins (red)");
+  }
+
+  // Test 3: fully equal → seeded coin flip (seed=1 → slot 1/red).
+  // A fixed "slot 0 always wins" rule was found to give blue a ~90-100% win
+  // rate in mirror matches that time out (the common case for symmetric
+  // bots). The tiebreak now uses match.seed % 2, which is deterministic
+  // per-seed but ~50/50 across the many seeds run in a balance matrix.
+  {
+    const { eng, m } = makeTwoPlayerMatch(1);
+    for (const e of m.entities.values()) {
+      if (e.type === "crystal") { e.health = 100; e.maxHealth = 100; }
+    }
+    m.economy[0]!.lifetimeResources = 100;
+    m.economy[1]!.lifetimeResources = 100;
+    eng.tick(m.id);
+    assert(m.result?.winner === "red", "tiebreaker: fully equal, seed=1 → seeded coin flip picks slot 1 (red)");
   }
 }
 

@@ -9,7 +9,7 @@ import { writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runMatch } from "./runMatch.js";
-import { IdleBot, RushBot, TurtleBot, MacroBot, HeavyBot } from "./bots/index.js";
+import { IdleBot, RushBot, WeakRushBot, WeakMediumRushBot, MediumRushBot, PassiveBot, TurtleBot, MacroBot, HeavyBot } from "./bots/index.js";
 import type { Agent } from "./types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -69,13 +69,17 @@ function parseArgs(): {
 
 function makeBot(name: string): Agent {
   switch (name.toLowerCase()) {
-    case "idle":   return new IdleBot();
-    case "rush":   return new RushBot();
-    case "turtle": return new TurtleBot();
-    case "macro":  return new MacroBot();
-    case "heavy":  return new HeavyBot();
+    case "idle":           return new IdleBot();
+    case "passive":        return new PassiveBot();
+    case "rush":           return new RushBot();
+    case "rush_weak":      return new WeakRushBot();
+    case "rush_weak_medium": return new WeakMediumRushBot();
+    case "rush_medium":    return new MediumRushBot();
+    case "turtle":         return new TurtleBot();
+    case "macro":          return new MacroBot();
+    case "heavy":          return new HeavyBot();
     default:
-      console.error(`Unknown bot: "${name}". Options: idle, rush, turtle, macro, heavy`);
+      console.error(`Unknown bot: "${name}". Options: idle, passive, rush, rush_weak, rush_weak_medium, rush_medium, turtle, macro, heavy`);
       process.exit(1);
   }
 }

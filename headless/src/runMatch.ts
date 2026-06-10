@@ -20,6 +20,7 @@ export function runMatch(
   options: RunMatchOptions = {}
 ): MatchResult {
   const { seed, maxTicks = DEFAULT_MAX_TICKS, config = DEFAULT_CONFIG } = options;
+  const matchConfig = { ...config, maxTicks };
 
   const engine = new MatchEngine();
 
@@ -32,7 +33,7 @@ export function runMatch(
     { playerId: redId,  username: "Red",  color: "red",  score: 0 },
   ];
 
-  const match = engine.createMatch("headless", players, config, seed);
+  const match = engine.createMatch("headless", players, matchConfig, seed);
   engine.startMatch(match.id);
 
   agentBlue.init(blueId, match);
@@ -53,9 +54,15 @@ export function runMatch(
     const actionsBlue = agentBlue.step(obsBlue, legalBlue);
     const actionsRed  = agentRed.step(obsRed, legalRed);
 
-    // Expand macro-actions to raw commands and apply
-    applyActions(engine, match.id, blueId, actionsBlue, match);
-    applyActions(engine, match.id, redId,  actionsRed,  match);
+    // Expand macro-actions to raw commands and apply.
+    // Alternate who goes first each tick so neither player has a persistent head start.
+    if (match.tick % 2 === 0) {
+      applyActions(engine, match.id, blueId, actionsBlue, match);
+      applyActions(engine, match.id, redId,  actionsRed,  match);
+    } else {
+      applyActions(engine, match.id, redId,  actionsRed,  match);
+      applyActions(engine, match.id, blueId, actionsBlue, match);
+    }
 
     // Advance simulation one tick
     engine.tick(match.id);
