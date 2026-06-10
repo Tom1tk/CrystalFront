@@ -286,7 +286,7 @@ function resolveAttackTarget(
   return visibleEnemies[0];
 }
 
-function chooseBuildPosition(
+export function chooseBuildPosition(
   color: string,
   xZone: MacroAction["xZone"],
   yZone: MacroAction["yZone"],

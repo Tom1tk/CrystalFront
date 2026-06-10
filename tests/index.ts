@@ -11,6 +11,8 @@ import { expandMacroAction } from "../headless/src/actionSpace.js";
 import { buildObservation } from "../headless/src/observation.js";
 import { ECONOMY } from "../shared/src/gameBalance.js";
 import { saveReplay, getReplay, listReplays } from "../server/src/match/replayRunner.js";
+import { mirrorState, deepCloneMatchState, diffStates } from "../server/src/match/engine/mirror.js";
+import { MediumRushBot } from "../headless/src/bots/mediumRushBot.js";
 import { existsSync as _existsSync, unlinkSync as _unlinkSync } from "node:fs";
 import { resolve as _resolve, join as _join } from "node:path";
 
@@ -2033,6 +2035,80 @@ console.log("\n--- Engine timeout tiebreaker ---");
     eng.tick(m.id);
     assert(m.result?.winner === "red", "tiebreaker: fully equal, seed=1 → seeded coin flip picks slot 1 (red)");
   }
+}
+
+// ── Mirror-invariance property test (Appendix C, experiment 4) ──────────────
+// tick(mirrorState(s)) ~= mirrorState(tick(s)) for every tick of a real
+// rush_medium mirror match. eps=0.5 absorbs the documented H4 noise floor
+// (collision-resolution iteration order reverses under x-mirroring, giving
+// a bounded <0.5px movement drift — see REVIVAL_PLAN.md Appendix C, C.1 #14).
+// Any violation here (any system, any magnitude > eps) is a NEW asymmetry.
+console.log("\n--- Mirror-invariance property test (Appendix C exp. 4) ---");
+{
+  const blueId = "headless-blue";
+  const redId = "headless-red";
+  const players: [PlayerSlot | null, PlayerSlot | null] = [
+    { playerId: blueId, username: "Blue", color: "blue", score: 0 },
+    { playerId: redId, username: "Red", color: "red", score: 0 },
+  ];
+  const cfg = { ...DEFAULT_CONFIG, maxTicks: 6000 };
+  const engine = new MatchEngine();
+  const match = engine.createMatch("mirror-audit", players, cfg, 1);
+  engine.startMatch(match.id);
+
+  const blue = new MediumRushBot();
+  const red = new MediumRushBot();
+  blue.init(blueId, match);
+  red.init(redId, match);
+
+  const MIRROR_AUDIT_TICKS = 1500;
+  const MIRROR_EPS = 0.5;
+  let violations = 0;
+  let firstViolation: string | undefined;
+
+  while (match.phase === "playing" && match.tick < MIRROR_AUDIT_TICKS) {
+    const obsBlue = buildObservation(match, blueId);
+    const obsRed = buildObservation(match, redId);
+    const legalBlue = getLegalActions(match, blueId);
+    const legalRed = getLegalActions(match, redId);
+    const actionsBlue = blue.step(obsBlue, legalBlue);
+    const actionsRed = red.step(obsRed, legalRed);
+
+    const apply = (playerId: string, actions: ReturnType<MediumRushBot["step"]>) => {
+      for (const action of actions) {
+        for (const cmd of expandMacroAction(action, match, playerId)) {
+          engine.processCommand(match.id, playerId, cmd as Parameters<MatchEngine["processCommand"]>[2]);
+        }
+      }
+    };
+    if (match.tick % 2 === 0) { apply(blueId, actionsBlue); apply(redId, actionsRed); }
+    else { apply(redId, actionsRed); apply(blueId, actionsBlue); }
+
+    const s = deepCloneMatchState(match);
+    const preExistingIds = new Set(s.entities.keys());
+
+    const engA = new MatchEngine();
+    (engA as unknown as { matches: Map<string, typeof s> }).matches.set(s.id, deepCloneMatchState(s));
+    engA.tick(s.id);
+    const a = (engA as unknown as { matches: Map<string, typeof s> }).matches.get(s.id)!;
+
+    const engB = new MatchEngine();
+    (engB as unknown as { matches: Map<string, typeof s> }).matches.set(s.id, mirrorState(s));
+    engB.tick(s.id);
+    const b = (engB as unknown as { matches: Map<string, typeof s> }).matches.get(s.id)!;
+
+    const diffs = diffStates(mirrorState(a), b, preExistingIds, MIRROR_EPS);
+    if (diffs.length > 0 && !firstViolation) {
+      firstViolation = `tick ${match.tick + 1}: [${diffs[0].system}] ${diffs[0].detail}`;
+    }
+    violations += diffs.length;
+
+    engine.tick(match.id);
+  }
+
+  assert(violations === 0,
+    `mirror-invariance: tick(mirror(s)) ~= mirror(tick(s)) for ${MIRROR_AUDIT_TICKS} ticks (eps=${MIRROR_EPS})` +
+    (firstViolation ? ` — first: ${firstViolation}` : ""));
 }
 
 console.log(`\n${"=".repeat(40)}`);
