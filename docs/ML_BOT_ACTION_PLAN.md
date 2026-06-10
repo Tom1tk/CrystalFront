@@ -1786,3 +1786,28 @@ Before implementing the "full stateful lockstep test" left as the next step by I
 - Don't build the "two bot instances + `mirrorState`-linked trajectory `m`" lockstep test in ANY form — proven invalid above and in C.1 #20, regardless of which functions/bots you point it at, as long as they derive `isBlue` via `match.players`-lookup (which `findNode` and `MediumRushBot.init` both do).
 - `_directSymmetryAudit.ts`'s results (C.1 #17) for `resolveTargetZone`/`findNode` are final — don't re-audit those two functions via mirrorState-based methods.
 - `chooseBuildPosition`'s `mirrorState`-based audit (C.1 #15) IS valid and IS NOT affected by this finding — don't second-guess H5's fix.
+
+---
+
+### 2026-06-10 — v0.5.2-ML Phase 1: Iteration 6 (independent audit of Iterations 3–5 + revised Appendix C plan)
+
+**What was done:**
+
+At the user's request, independently audited the criterion-4 investigation (Iterations 3–5 and Appendix C) against the source, then rewrote the path forward. Verified against code: the C.1 #20 lockstep-invalidity worked example (correct — `mirrorState`'s slot-swap genuinely anti-correlates `match.players`-lookup `isBlue` with `ownerId` entity-side); the `chooseBuildPosition` isometry exemption (correct); the engine RNG-consumer inventory (`spawnOutside` at `matchEngine.ts:463`/`:1157` are the only two gameplay consumers; the timeout tiebreaker uses `match.seed % 2`, kill-decided matches never reach it); `getLegalActions` is side-blind (`isBlue` declared at `legalActions.ts:31` and never used; no positional logic anywhere in the file); `expandMacroAction`'s unit-selection (worker slicing, attack-target claiming) is order-coupled and constrained by C.3 #1's byte-identical order-swap. New C.1 #21 records the latter two so nobody re-checks them. Docs only — no code, no version bump (R1 N/A). `npm test` not re-run (no source touched).
+
+**What was observed (the substantive audit finding):**
+
+- The chain C.1 #16 → "H6 proven" → "H7 must exist" has a statistical hole: 10-20-0 over seeds 1–30 is one-sided p ≈ 0.049 under a true-50% game, and the celebrated "byte-identical" replications reused the same 30 seeds — they prove per-seed determinism, not a cross-seed bias. Pre-H5 22-8-0 (p ≈ 0.008) was stronger evidence of *some* asymmetry, but H5 — found, property-proven — plausibly accounts for it. **The residual "67/33 red" skew that the whole H7 hunt is chasing may be sampling noise, in which case landing H5 alone already passes criterion 4.**
+- Relatedly, the criterion-4 gate itself (40–60% over ≥30 seeds) has a ~20% false-failure rate for a perfectly fair game at n=30 — recorded a gate-design note in C.4 (use n ≥ 100 for pass/fail).
+- Iteration 5's proposed ticks-0-52 per-entity audit has a blind spot: `attack_move` decisions begin at tick ≥ 200, outside the clean window. A spawn-determinization experiment (replace `spawnOutside`'s isotropic angle with a deterministic mirror-symmetric one, H5 applied) extends the guaranteed-clean window to the entire match: by C.1 #13+#14 the only remaining desymmetrizers are then bot-decision asymmetries, so a first-divergence trace localizes H7 directly at any tick — or the matrix goes ~50/50 and clears the bot layer entirely.
+
+**What was decided and why:**
+
+- Appendix C rewritten into a strictly-ordered, timeboxed plan (C.3 #8/#9 + C.4 "Path forward"): **(1)** C.3 #8 — 100 fresh seeds (31–130) with H5 applied, ~30 min, BEFORE any new infrastructure; 40–60% ⇒ no H7, land H5, close the appendix. **(2)** C.3 #9 — symmetric-by-construction match, only if #8 confirms the skew; decisive either way. **(3)** If H7 still isn't localized after #9, STOP (criterion 4 is already user-deferred), land what's proven, mitigate via side-balanced ML evals (half slot 0, half slot 1), and return to the mainline (criteria-1/2/3/5 matrix → Phase 2).
+- The ticks-0-52 per-entity audit is marked superseded in C.3 #7 — do not build it.
+
+**What would you tell the next agent NOT to waste time on?**
+
+- Don't treat 10-20-0 (n=30, same seeds every run) as proof that H7 exists — run C.3 #8 first; it's the cheapest experiment in the whole appendix and may end the investigation outright.
+- Don't build the ticks-0-52 per-entity audit (superseded by #9's whole-match clean window) or any `mirrorState`-based bot test (C.1 #20 stands).
+- Don't re-inventory RNG consumers or re-audit `getLegalActions`/`expandMacroAction` selection — recorded in C.1 #21.
