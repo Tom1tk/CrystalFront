@@ -28,6 +28,7 @@ v0.4.0-ML was halted after the agent failed to learn multi-unit play against `ru
 - **R8 — Surgical diffs.** Change only what the task specifies. If you find adjacent problems, note them in the commit body; don't fix them inline.
 - **R9 — Do not ship any new ONNX model until Phase 3's eval gates pass.** `models/policy-v0.3.2-ML.onnx` stays the production model throughout Phases 0–2.
 - **R10 — Document as you go.** This project's continuity lives in its docs, not in your session. Follow the **Documentation & reflection protocol** below after every task and at every phase boundary. An undocumented task is an unfinished task.
+- **R11 — Push after every commit.** `git push origin CrystalFront-ML` immediately after each commit (R7), not just at phase boundaries. On 2026-06-10, `/root/CrystalFront` was `rm -rf`'d while 8 commits sat unpushed since `772540e3`; recovery only worked because Claude Code's file-history backups happened to cover it. Don't rely on that again — local-only history is one accident away from gone.
 
 ### Documentation & reflection protocol (R10 — mandatory)
 
