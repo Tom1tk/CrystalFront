@@ -1755,3 +1755,34 @@ Exported `resolveTargetZone` and `findNode` from `headless/src/actionSpace.ts` (
 - Don't try a frozen single-color `mirrorState` test for `findNode`/`resolveTargetZone` — proven structurally invalid for these specific filter-based functions (see above).
 - Don't treat the `_directSymmetryAudit.ts` tick-430/tick-2128 violations as independent H7 leads without first ruling out the tick-53 RNG divergence (#18) as their cause — they're very likely downstream.
 - `richest_visible`'s missing side-filter (C.1 #19) is confirmed but dead-code (MediumRushBot never selects it) — don't prioritize fixing it as part of H5+H7.
+
+---
+
+### 2026-06-10 — v0.5.2-ML Phase 1: Iteration 5 (C.3 #7 lockstep design re-examined and found invalid; H7 search direction revised)
+
+**What was done:**
+
+Before implementing the "full stateful lockstep test" left as the next step by Iteration 4 (two `MediumRushBot` instances driving `s` and `m=mirrorState(s)` independently from t=0, asserting `action(bot,m,"headless-blue") ≈ mirror(action(bot,s,"headless-red"))`), worked through its correctness on paper using the actual `mirrorState`/`findNode`/`MediumRushBot.init`/`createMap` source (`server/src/match/engine/mirror.ts`, `headless/src/actionSpace.ts:357-475`, `headless/src/bots/mediumRushBot.ts:27-34`, `server/src/match/map.ts`, `server/src/match/matchEngine.ts:49-85`). No code was written for the lockstep test itself — this was pure design review to avoid sinking a multi-hour implementation into a flawed methodology, per CLAUDE.md "Think Before Coding".
+
+**What was observed:**
+
+- `mirrorState(s)` swaps `players[0]↔players[1]` (and `economy`/`rng` with them) but leaves entity `ownerId` strings unchanged while mirroring their `x` positions. `createMap`/`createMatch` ALWAYS assign `players[0]` to `map.blueCrystal` (left, low x) and `players[1]` to `map.redCrystal` (right, high x), **regardless of `.color`** — `.color` is only used for a render-color string in `createMatch`. In the headless harness, `players[0]={playerId:"headless-blue",color:"blue"}`, so `.color==="blue" ⟺ playerIdx===0 ⟺ left side` — but this is a **harness convention**, not an engine invariant.
+- `findNode(match,playerId,...)` and `MediumRushBot.init(playerId,match)` both derive `isBlue` via `match.players.findIndex(p=>p?.playerId===playerId)?.color==="blue"`.
+- Worked example: in `m=mirrorState(s)`, `playerId="headless-blue"` is now at `m.players[1]` (slots swapped), and `m.players[1].color==="blue"` (color travels with the slot, unchanged) → `isBlue=true` → `nearest_safe`/`safeNodes` filter `n.x<mid` (m's left). But `ownerId="headless-blue"`'s entities — mirrored from `s`'s left half (where `players[0]` always lives) — are now at `x>mid` (m's right half) in `m`. So `isBlue`'s side-filter and `"headless-blue"`'s actual entity-side become **anti-correlated** in `m`. This produces "violations" against `mirror(action(·,s,"headless-red")))` for **CORRECT** code — the lockstep test would be testing `m`, an out-of-distribution state where the harness's `color↔side` convention is broken, not testing whether the bot logic is mirror-equivariant for real games.
+- This is the SAME root cause as Iteration 4's already-rejected "frozen single-color `mirrorState`" test, generalized: it's not "frozen vs lockstep" that matters — `mirrorState` decouples `playerId/.color ↔ entity-position-side`, and ANY function whose `isBlue` comes from a `match.players`-lookup (not a direct caller-supplied boolean) inherits this break.
+- By contrast, `chooseBuildPosition` (C.1 #15, whose `mirrorState`-based audit DID validate the H5 fix correctly) takes `isBlue` as a **direct parameter** (no `match.players` lookup) and only checks position-based blocking against `match.entities`, which mirrors correctly because reflection is an isometry (`dist(mirror(a),mirror(b))=dist(a,b)`). That's the structural difference that makes its `mirrorState`-based test valid while the `findNode`/`MediumRushBot`-based lockstep test is not.
+
+**What was decided and why:**
+
+- **The "full stateful lockstep test" is abandoned as methodologically invalid** (new C.1 #20) — do not build it, in any form.
+- `_directSymmetryAudit.ts` (Iteration 4, C.1 #17 — cross-color, SAME live state `s`, NO `mirrorState`) does not have this problem (`s` is always a real, in-distribution state with `players[0].color==="blue"`/left). It is therefore the **correct AND complete** form of C.3 #7 for `resolveTargetZone`/`findNode` — already run, already clean on-path. C.3 item 7 is marked done for these two functions.
+- **H7's search surface is narrowed further**: the only bot-decision-layer code with NO equivariance audit at all is now (a) `MediumRushBot.step()`'s own `xNorm`/`safeNodes`/`workerTarget`/tick-counter logic, and (b) `buildObservation()`'s per-entity/per-node features (Iteration 4's `_stateDivergenceAudit.ts` only checked *global* scalar features).
+- **Proposed next test** (not yet built): extend `_stateDivergenceAudit.ts` to compare blue's vs red's per-entity/per-node observation features and `MediumRushBot.step()` internals, restricted to **ticks 0-52** — the window before the `spawnOutside`-RNG divergence (#18) takes hold, where blue's state ≈ mirror(red's state) is guaranteed (C.1 #13+#14), so any asymmetry there is real H7 evidence, not RNG noise.
+- **Decided to checkpoint and sync with the user here** rather than build the new (not-yet-validated) per-entity test design unsupervised: this is the second time in two iterations that the "obvious next step" turned out to be a methodological dead end, and the H7 investigation has now spanned multiple sessions chasing a ~17-34 percentage-point residual bias. Worth confirming this is still the highest-priority use of time before investing in new infrastructure.
+- No version bump (R1 doesn't apply — docs only, no code changes this iteration). `npm test`: 467/0 (unchanged, no source touched).
+
+**What would you tell the next agent NOT to waste time on?**
+
+- Don't build the "two bot instances + `mirrorState`-linked trajectory `m`" lockstep test in ANY form — proven invalid above and in C.1 #20, regardless of which functions/bots you point it at, as long as they derive `isBlue` via `match.players`-lookup (which `findNode` and `MediumRushBot.init` both do).
+- `_directSymmetryAudit.ts`'s results (C.1 #17) for `resolveTargetZone`/`findNode` are final — don't re-audit those two functions via mirrorState-based methods.
+- `chooseBuildPosition`'s `mirrorState`-based audit (C.1 #15) IS valid and IS NOT affected by this finding — don't second-guess H5's fix.
