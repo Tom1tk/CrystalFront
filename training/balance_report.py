@@ -46,7 +46,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 CLI_SCRIPT = str(REPO_ROOT / "headless/src/cli.ts")
 TSX_BIN = str(REPO_ROOT / "node_modules/.bin/tsx")
 
-SCRIPTED_BOTS = ["idle", "rush", "turtle", "macro"]
+SCRIPTED_BOTS = ["idle", "passive", "rush_weak", "rush_weak_medium", "rush_medium", "turtle", "macro", "heavy", "rush"]
 
 
 @dataclass
@@ -268,6 +268,8 @@ def generate_report(results: list[MatchOutcome]) -> dict:
             flags[f"{key}__fast"] += 1
         if r.win_type == "resource":
             flags[f"{key}__resource_win"] += 1
+        if r.win_type == "timeout":
+            flags[f"{key}__timeout"] += 1
 
     # Compute win rates
     wr_matrix = {}

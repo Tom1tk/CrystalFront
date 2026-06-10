@@ -38,7 +38,7 @@ export interface UnitDef {
 
 export const UNIT_DEFS: Record<string, UnitDef> = {
   worker: {
-    cost: 50,          // was 25 — expensive enough to discourage idle spam
+    cost: 35,          // was 50 — economy shouldn't be a 1:1 sacrifice of military
     supplyCost: 1,
     buildTime: 80,
     health: 100,
@@ -51,14 +51,14 @@ export const UNIT_DEFS: Record<string, UnitDef> = {
     visionRange: 225,
   },
   skirmisher: {
-    cost: 50,
+    cost: 60,           // was 50 — rush needs more resources to mass; gives defenders more time
     supplyCost: 1,
     buildTime: 100,
     health: 120,
     radius: 12,
     damage: 12,        // was 15 — 20% less damage, faster but less punch
     range: 20,
-    speed: 3.0,        // was 2.5 — 20% faster, skirmishers are now raiders
+    speed: 2.0,        // was 3.0 — slower raiders give defenders time to build
     color: "#44dd88",
     attackCooldown: 10,
     visionRange: 300,
@@ -155,15 +155,15 @@ export const BUILDING_DEFS: Record<string, BuildingDef> = {
     visionRange: 150,
   },
   turret: {
-    cost: 60,
+    cost: 50,           // was 60 — cheaper turrets help defenders build up faster
     buildTime: 120,
-    health: 400,
+    health: 600,        // was 400 — turrets must survive a skirmisher raid long enough to matter
     width: 30,
     height: 30,
     color: "#aa8844",
     damage: 18,
     range: 150,
-    attackCooldown: 12,
+    attackCooldown: 6,  // was 12 → 8 → 6; dps 1.5 → 2.25 → 3.0; defence needs to hold
     visionRange: 225,
   },
 };
@@ -177,7 +177,7 @@ export const BUILDING_ORDER: string[] = ["barracks", "foundry", "supply_depot", 
 export const ECONOMY = {
   startingResources: 50,
   startingMaxSupply: 10,
-  workerTrainCost: 50,          // must match UNIT_DEFS.worker.cost
+  workerTrainCost: 35,          // must match UNIT_DEFS.worker.cost
   workerSupplyCost: 1,
   passiveWinThreshold: 4500,   // current held resources = win (turtling win condition)
 } as const;
@@ -303,10 +303,11 @@ export const HEALING = {
 //  skirmisher > gunner > bruiser > skirmisher
 // ====================================================================
 
+// was 2.0/0.5 — 4× swing made fights binary and rush dominant; 1.5/0.75 keeps RPS without instawin
 export const COUNTER_MODIFIER: Record<string, Record<string, number>> = {
-  skirmisher: { gunner: 2.0, bruiser: 0.5, worker: 1.0, medic: 1.0 },
-  gunner:     { bruiser: 2.0, skirmisher: 0.5, worker: 1.0, medic: 1.0 },
-  bruiser:    { skirmisher: 2.0, gunner: 0.5, worker: 1.0, medic: 1.0 },
+  skirmisher: { gunner: 1.5, bruiser: 0.75, worker: 1.0, medic: 1.0 },
+  gunner:     { bruiser: 1.5, skirmisher: 0.75, worker: 1.0, medic: 1.0 },
+  bruiser:    { skirmisher: 1.5, gunner: 0.75, worker: 1.0, medic: 1.0 },
   medic:      { worker: 1.0, skirmisher: 1.0, gunner: 1.0, bruiser: 1.0 },
   worker:     { worker: 1.0, skirmisher: 1.0, gunner: 1.0, bruiser: 1.0, medic: 1.0 },
 };

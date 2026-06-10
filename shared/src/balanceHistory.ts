@@ -18,6 +18,32 @@ export interface BalanceSnapshot {
 }
 
 export const BALANCE_HISTORY: Readonly<Record<string, BalanceSnapshot>> = {
+  // ── 0.5.1-ML ──────────────────────────────────────────────────────────
+  // Phase 1 balance iteration 1 (REVIVAL_PLAN Task 1.3):
+  //   worker cost 50 → 35; turret HP 400 → 600, cooldown 12 → 8;
+  //   COUNTER_MODIFIER 2.0/0.5 → 1.5/0.75.
+  // Turret/counter changes not wired into MatchConfig overrides yet — replay
+  // accuracy for those fields requires a future MatchConfig extension.
+  "0.5.1-ML": {
+    workerCost:            35,
+    workerSpeed:            1.7,
+    skirmisherSpeed:        3.0,
+    skirmisherDamage:      12,
+    passiveWinThreshold: 4500,
+  },
+
+  // ── 0.5.0-ML ──────────────────────────────────────────────────────────
+  // Phase 0 instrument repairs: autoreset config bug, static MAP constants,
+  // MacroBot crash, stdioVecRunner MAX_TICKS, engine timeout tiebreaker.
+  // No unit/economy/building stat changes vs 0.1.75-ML.
+  "0.5.0-ML": {
+    workerCost:            50,
+    workerSpeed:            1.7,
+    skirmisherSpeed:        3.0,
+    skirmisherDamage:      12,
+    passiveWinThreshold: 4500,
+  },
+
   // ── 0.1.75-ML ──────────────────────────────────────────────────────────
   // Phase C v8: resume from 0.1.74 update_000010 (peak policy: win_rate=86%, trn=1%).
   // ent_coef 0.10→0.03: low entropy locks in the discovered build→train→attack policy

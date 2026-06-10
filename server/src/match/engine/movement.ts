@@ -1,6 +1,6 @@
 import { UNIT_DEFS, SIMULATION } from "@crystalfront/shared";
 import type { MatchState } from "../types.js";
-import { dist, buildSpatialGrid, getRange } from "./utils.js";
+import { dist, buildSpatialGrid, getRange, entityIdNum } from "./utils.js";
 
 export function processMovement(match: MatchState, subStepMs: number = 100): void {
   const entities = Array.from(match.entities.values());
@@ -81,7 +81,10 @@ export function processMovement(match: MatchState, subStepMs: number = 100): voi
           const cell = grid.get(key);
           if (!cell) continue;
           for (const other of cell) {
-            if (other.id <= entity.id) continue;
+            // Numeric comparison: ids are "e<n>" and lexicographic comparison
+            // is wrong once n reaches double digits (e.g. "e10" < "e9"),
+            // which would otherwise pair entities in an inconsistent order.
+            if (entityIdNum(other.id) <= entityIdNum(entity.id)) continue;
             if (checked.has(`${entity.id}-${other.id}`)) continue;
             checked.add(`${entity.id}-${other.id}`);
             const dx = other.x - entity.x;

@@ -27,6 +27,12 @@ export function buildSpatialGrid(entities: MatchEntity[], cellSize: number): Map
   return grid;
 }
 
+// Numeric value of an entity id like "e10" -> 10. Lexicographic comparison of
+// these ids is wrong once the counter reaches double digits (e.g. "e10" < "e9").
+export function entityIdNum(id: string): number {
+  return parseInt(id.slice(1), 10);
+}
+
 // ── Vision ─────────────────────────────────────────────────────────────────────
 
 export function getVisionRange(entity: MatchEntity): number {

@@ -69,7 +69,7 @@ export interface MatchState {
   players: [PlayerSlot | null, PlayerSlot | null];
   entities: Map<EntityId, MatchEntity>;
   attackLog: AttackEvent[];
-  result: { winner: PlayerId; winType?: "combat" | "resource" } | null;
+  result: { winner: PlayerId; winType?: "combat" | "resource" | "timeout" } | null;
   startedAt: number;
   endedAt: number | null;
   economy: [PlayerEconomy | null, PlayerEconomy | null];
@@ -79,8 +79,12 @@ export interface MatchState {
   mapHeight: number;
   // Fog of war — computed per tick, keyed by playerId
   visibilityData?: Map<PlayerId, { entityIds: Set<EntityId>; nodeIds: Set<string> }>;
-  // Determinism — seedable RNG and monotonic ID generator
-  rng: Rng;
+  // Determinism — seedable RNG and monotonic ID generator.
+  // One RNG stream per player slot so spawn-position randomization for one
+  // player never depends on engine processing order relative to the other
+  // (a shared stream's consumption order is fixed by entity-Map insertion
+  // order, which is not symmetric between players).
+  rng: [Rng, Rng];
   idGen: IdGen;
   seed: number;
   // Replay — append-only log of every successful command
@@ -158,6 +162,7 @@ export interface MatchConfig {
   viewportHeight: number;
   // ── Per-version balance overrides (populated from BalanceSnapshot for replays) ──
   passiveWinThreshold?: number;   // held resources to win; falls back to ECONOMY constant
+  maxTicks?: number;              // tick cap; 0 = no cap; tiebreak resolves the winner
   workerSpeed?: number;           // px/substep override
   skirmisherSpeed?: number;
   skirmisherDamage?: number;

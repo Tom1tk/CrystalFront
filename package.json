@@ -1,6 +1,6 @@
 {
   "name": "crystalfront-rts",
-  "version": "0.5.0-ML",
+  "version": "0.5.2-ML",
   "private": true,
   "description": "A multiplayer browser RTS prototype",
   "scripts": {
@@ -14,7 +14,8 @@
     "start": "node server/dist/index.js",
     "test": "tsx tests/index.ts",
     "test:server": "tsx tests/index.ts",
-    "build:headless": "node_modules/.bin/esbuild --platform=node --format=esm --outbase=headless/src --outdir=headless/dist $(find headless/src -name '*.ts' | tr '\\n' ' ')"
+    "build:headless": "node_modules/.bin/esbuild --platform=node --format=esm --outbase=headless/src --outdir=headless/dist $(find headless/src -name '*.ts' | tr '\\n' ' ')",
+    "balance:matrix": "python3 training/balance_report.py --matches 50"
   },
   "workspaces": [
     "client",
