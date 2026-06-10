@@ -1687,3 +1687,31 @@ Criteria 1, 2, 3, 5 need a fresh 20-match matrix under v0.5.2-ML (iteration-2 le
 - Don't re-investigate RNG draw order or entity-id lexicographic comparison for the rush_medium mirror bias — both are fixed in `3b4852f` and proven to have zero effect on the aggregate 73/27 split.
 - Don't re-run the target-acquisition tie count in `combat.ts` — confirmed 0/0/0 for seed=1; not the cause.
 - Criterion 4 is a known limitation as of v0.5.2-ML. Don't block the rest of Phase 1 (criteria 1/2/3/5, full matrix) on resolving it.
+
+---
+
+### 2026-06-10 — v0.5.2-ML Phase 1: Iteration 3 (mirror-invariance property-test infrastructure, Appendix C experiment 4)
+
+**What was done:**
+
+Continuing Task 1.3's criterion-4 investigation (Appendix C). Built the mirror-invariance property test (`server/src/match/engine/mirror.ts`: `mirrorState`, `deepCloneMatchState`, `diffStates`/`MirrorDiff` — Case-B mirror: x-reflect all positions/moveTargets/rallyPoints/resourceNodes and swap player slots 0/1 including `economy`/`rng`; entity ids/`ownerId`/`idGen`/`seed`/`tick` untouched), plus four audit scripts (`headless/src/mirrorAudit.ts`, `_mirrorAudit2.ts`, `_buildPosAudit.ts`, `_initStateAudit.ts`, `_matrixAudit.ts`) and a permanent regression test added to `tests/index.ts` (1500-tick `tick(mirror(s)) ≈ mirror(tick(s))` check at `eps=0.5`, asserted on every `npm test` run going forward). Exported `chooseBuildPosition` from `headless/src/actionSpace.ts` (was module-private) so it could be audited directly — this is the only source change, and it's a no-op (export visibility only).
+
+**What was observed:**
+
+- Initial state is perfectly mirror-symmetric (C.1 #13) — rules out an initial-condition asymmetry.
+- `tick()` itself is mirror-invariant for a full 6000-tick match except a bounded ≤0.5px movement-position drift (H4, C.1 #14), root-caused to the soft-collision-resolution loop's neighbour-cell iteration order reversing under x-mirroring. Confirmed via an eps sweep {1e-6, 0.05, 0.5}: zero diffs anywhere at eps=0.5, never cascades to combat/gathering/construction/result. **H4 closed as confirmed-minor/noise-floor.**
+- `chooseBuildPosition`'s 16-attempt fallback `dx` is unmirrored (H5, previously found in C.1 #12); the `dxSign = isBlue ? 1 : -1` fix is now property-test-proven exactly correct — 0/9 zone-combo violations over 6000 ticks (vs violations in 5/9 combos, including at tick 0, before the fix) (C.1 #15).
+- Re-ran the 30-seed rush_medium-mirror matrix WITH the H5 fix applied: **10-20-0 (blue 33%, red 67%)** — byte-identical to the earlier C.1 #12 probe (C.1 #16). Since `tick()` and `chooseBuildPosition` are now BOTH proven mirror-equivariant (mod the 0.5px H4 noise floor) and the matrix is *still* skewed, **H6 ("≥1 more asymmetry exists") is upgraded from hypothesis to proven fact**, by elimination.
+- `npm test`: 467/0 (the new mirror-invariance test is the +1).
+
+**What was decided and why:**
+
+- The H5 fix (`dxSign = isBlue ? 1 : -1`) was applied during the experiment, verified property-clean, then **reverted** — per C.4, landing it alone would *regress* criterion 4 from 73/27-blue to 67/33-red. `actionSpace.ts`'s only remaining diff is the `export` keyword (zero behaviour change). `headless/dist` was rebuilt (`npm run build:headless`) to clear the staleness guard for the new/changed `headless/src/*.ts` files — `headless/dist` is gitignored/untracked, so nothing to commit there.
+- No version bump (R1 doesn't apply — no training/reward/config/balance change landed; this is test infrastructure + a no-op export + docs).
+- New leading hypothesis **H7**: the remaining asymmetry lives in the bot-DECISION layer (`MediumRushBot.step()`, `buildObservation()`, or `resolveTargetZone`/`resolveAttackTarget`/`findNode` in `actionSpace.ts`) — code that decides *when/whether/what* to act, not *where*. These look symmetric by inspection but are untested by the new property tests. **C.3 #7** (next step) extends the harness to two bots run in lockstep from t=0 — one driving `s`, one driving `mirrorState(s)` — asserting `action(mirror-bot, mirrorState(s)) ≈ mirror(action(other-color-bot, s))` at every tick, to localise the first action-level divergence. Once H7 is found, land H5+H7 together with one 30-seed-per-pairing matrix re-run across rush_medium/rush_weak/macro (C.4).
+
+**What would you tell the next agent NOT to waste time on?**
+
+- Don't re-derive the H5 fix (`dxSign = isBlue ? 1 : -1` in `actionSpace.ts`'s `chooseBuildPosition` fallback) — it's correct and property-test-proven (C.1 #15), just blocked on H7.
+- Don't re-run the engine-tick or `chooseBuildPosition` mirror-equivariance audits — both are now permanently covered (`tests/index.ts` for tick-level; `_buildPosAudit.ts` available for ad-hoc re-checks if `actionSpace.ts` changes).
+- Don't chase H4 (collision-resolution iteration-order noise) further — confirmed bounded ≤0.5px, never cascades, closed.
