@@ -333,7 +333,7 @@ export function chooseBuildPosition(
   );
 
   for (let attempt = 0; attempt < 16; attempt++) {
-    const dx = (attempt % 4) * STEP * (attempt % 2 === 0 ? 1 : -1);
+    const dx = (attempt % 4) * STEP * (attempt % 2 === 0 ? 1 : -1) * (isBlue ? 1 : -1);
     const dy = Math.floor(attempt / 4) * STEP * (attempt < 8 ? 1 : -1);
     const cx = Math.max(zoneStart + 40, Math.min(zoneEnd - 40, baseX + dx));
     const cy = Math.max(40, Math.min(mapH - 40, baseY + dy));

@@ -1667,7 +1667,7 @@ These were investigated as "deep archaeology" into the rush_medium mirror-match 
 | 1 | Every bot loses ≥20% to at least one other | not yet retested under v0.5.2-ML |
 | 2 | turtle AND macro each beat rush_medium ≥30% | not yet retested under v0.5.2-ML |
 | 3 | rush_medium beats rush_weak_medium ≥60% | not yet retested under v0.5.2-ML |
-| 4 | Mirror matches (rush_medium/rush_weak/macro) within 40-60% per side | **DEFERRED** — rush_medium mirror measured 73/27 (22-8-0/30 seeds) both before and after the 5 determinism fixes; root cause unknown, see above |
+| 4 | Mirror matches (rush_medium/rush_weak/macro) within 40-60% per side | ~~**DEFERRED**~~ — **RESOLVED, PASSES (v0.5.3-ML, Iteration 7)**: H5 landed (`chooseBuildPosition` unmirrored fallback `dx`, see C.1 #22), all three pairings inside 40-60% (rush_medium 43.8%/130 seeds, rush_weak 56.7%, macro 46.7%). Original note (rush_medium 73/27 pre-H5, root cause unknown) preserved for history. |
 | 5 | Timeout-tiebreak games <30% per pairing | not yet retested under v0.5.2-ML |
 
 Criteria 1, 2, 3, 5 need a fresh 20-match matrix under v0.5.2-ML (iteration-2 levers) before they can be marked. This is the next session's first task.
@@ -1811,3 +1811,41 @@ At the user's request, independently audited the criterion-4 investigation (Iter
 - Don't treat 10-20-0 (n=30, same seeds every run) as proof that H7 exists — run C.3 #8 first; it's the cheapest experiment in the whole appendix and may end the investigation outright.
 - Don't build the ticks-0-52 per-entity audit (superseded by #9's whole-match clean window) or any `mirrorState`-based bot test (C.1 #20 stands).
 - Don't re-inventory RNG consumers or re-audit `getLegalActions`/`expandMacroAction` selection — recorded in C.1 #21.
+
+---
+
+### 2026-06-10 — v0.5.3-ML Phase 1: Iteration 7 (C.3 #8 executed — H6/H7 retracted as sampling noise, H5 landed, criterion 4 resolved, Appendix C CLOSED)
+
+**What was done:**
+
+Executed C.3 #8 per Iteration 6's strictly-ordered plan: generalized `headless/src/_matrixAudit.ts` to accept `[startSeed endSeed botName]` (or `[numSeeds botName]`, legacy `[numSeeds]` defaulting to seeds 1..N) via a `BOT_FACTORIES` map (`rush_medium`/`rush_weak`/`macro`), applied the H5 fix (`dxSign = isBlue ? 1 : -1` multiplied into `chooseBuildPosition`'s fallback `dx`, `actionSpace.ts:336`), and ran:
+- 100 fresh seeds (31-130), rush_medium mirror, H5 applied.
+- Pooled re-run of seeds 1-30 (sanity check for byte-identical reproduction of C.1 #16's 10-20-0).
+- 30-seed rush_weak mirror and 30-seed macro mirror, both H5-applied (the other two criterion-4 pairings).
+
+Then landed H5 permanently: kept the `actionSpace.ts:336` fix, ran `npm test` (467/467) and `npm run build:headless`, and bumped all 5 `package.json` from `0.5.2-ML` → `0.5.3-ML` per R1. Updated `docs/REVIVAL_PLAN.md`'s Task 1.3 status paragraph and Appendix C (header → CLOSED, new C.1 #22 with full results, C.2's H5/H6/H7 entries rewritten, C.3 #8 marked done/#9 marked not-needed, new C.4 closing bullet).
+
+**What was observed:**
+
+- **C.3 #8 (100 fresh seeds, 31-130, H5 applied): 47-53-0 → 47.0% blue.** Squarely inside 40-60%.
+- **Pooled 1-130 (130 seeds): 57-73-0 → 43.8% blue.** Also inside 40-60%. Seeds 1-30 alone reproduced 10-20-0 byte-identically (re-confirms C.1 #16's determinism finding — same data, different interpretation, see below).
+- **rush_weak mirror (30 seeds, H5 applied): 17-13-0 → 56.7% blue.** Inside 40-60%.
+- **macro mirror (30 seeds, H5 applied): 14-16-0 → 46.7% blue.** Inside 40-60%.
+- All three of criterion 4's required pairings (rush_medium, rush_weak, macro) now pass the 40-60% gate.
+- `npm test`: 467/467 (no regressions from the H5 landing). `npm run build:headless` succeeded (~17ms, esbuild).
+
+**What was decided and why:**
+
+- Per Iteration 6's pre-written decision rule, a 100-seed result inside 40-60% is decisive: **H7 does not exist.** The 10-20-0/n=30 result that "proved" H6 (Iteration 3) and motivated the entire H7 hunt (Iterations 4-6) was the p≈0.049 sampling-noise artifact Iteration 6 flagged as a possibility — at n=130 the same H5-fixed code lands at 43.8%, comfortably inside the band. **H6 is retracted**: 10-20-0 over the same 30 seeds reproducing byte-identically every time proves the engine is *deterministic*, not that the aggregate outcome is *biased* — those are different claims, and Iterations 3-6 conflated them.
+- **H5 is landed** as the sole fix needed for criterion 4: `actionSpace.ts:336`'s `dxSign = isBlue ? 1 : -1`, property-test-proven correct (C.1 #15) and now empirically confirmed sufficient across all three mirror pairings at n≥30 (rush_medium at n=130).
+- C.3 #9 (symmetric-by-construction spawn experiment) is **not needed** — #8 alone was decisive, per the pre-written rule.
+- **Criterion 4 PASSES** as of v0.5.3-ML. Appendix C is **CLOSED**.
+- Criteria 1/2/3/5 (Task 1.3's full 9-bot matrix, ≥50 matches/pair per the gate-design note in C.4) remain **not yet retested** under v0.5.3-ML — this is the explicit next mainline step, separate from and not started by this iteration. It was already 🔄 in Appendix B before the H7 investigation began and is unaffected in scope by the H5 landing (other than now being unblocked).
+- Bumped `0.5.2-ML` → `0.5.3-ML` (R1: balance-affecting code change to `chooseBuildPosition`).
+
+**What would you tell the next agent NOT to waste time on?**
+
+- Don't re-open H6 or H7 — both retracted/resolved-as-non-existent (C.1 #22, REVIVAL_PLAN.md Appendix C is CLOSED). The "67/33 red" skew the last 3 iterations chased was n=30 sampling noise; n=130 lands at 43.8%, inside the 40-60% gate.
+- Don't re-run C.3 #9 (symmetric-by-construction spawn) — explicitly not needed, the decision rule resolved at #8.
+- Don't re-derive or re-audit the H5 fix (`actionSpace.ts:336`, `dxSign = isBlue ? 1 : -1`) — landed, property-test-proven (C.1 #15), and empirically confirmed across all three mirror pairings.
+- Next mainline step: Task 1.3's full criteria-1/2/3/5 matrix (9 bots, ≥50 matches/pair per C.4's gate-design note) under v0.5.3-ML, then Phase 2. Not started this iteration — needs its own session (likely long-running/background given the match counts involved).
