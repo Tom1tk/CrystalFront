@@ -354,7 +354,7 @@ export function chooseBuildPosition(
   return null;  // no valid position found — caller treats as illegal
 }
 
-function resolveTargetZone(
+export function resolveTargetZone(
   zone: MacroAction["targetZone"],
   playerColor: string,
   match: MatchState,
@@ -443,7 +443,7 @@ function resolveTargetZone(
   return { x: mid, y: MAP.height / 2 };
 }
 
-function findNode(
+export function findNode(
   match: MatchState,
   playerId: string,
   choice: MacroAction["nodeChoice"],
