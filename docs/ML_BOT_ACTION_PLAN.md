@@ -1715,3 +1715,43 @@ Continuing Task 1.3's criterion-4 investigation (Appendix C). Built the mirror-i
 - Don't re-derive the H5 fix (`dxSign = isBlue ? 1 : -1` in `actionSpace.ts`'s `chooseBuildPosition` fallback) — it's correct and property-test-proven (C.1 #15), just blocked on H7.
 - Don't re-run the engine-tick or `chooseBuildPosition` mirror-equivariance audits — both are now permanently covered (`tests/index.ts` for tick-level; `_buildPosAudit.ts` available for ad-hoc re-checks if `actionSpace.ts` changes).
 - Don't chase H4 (collision-resolution iteration-order noise) further — confirmed bounded ≤0.5px, never cascades, closed.
+
+---
+
+### 2026-06-10 — v0.5.2-ML Phase 1: Iteration 4 (C.3 #7 first pass: bot-decision-layer audit, H7 still open)
+
+**What was done:**
+
+Continuing the H7 search (bot-decision layer asymmetry, C.3 #7). Built three diagnostic scripts:
+
+- `headless/src/_directSymmetryAudit.ts`: on a real rush_medium mirror match (no `mirrorState` involved), checks at every tick whether `resolveTargetZone(zone, "blue", match, ids) ≈ mirrorPos(resolveTargetZone(zone, "red", match, ids))` for all 5 zones, and `findNode(match, playerId, choice, ownCrystal) ≈ mirrorPos(...)` for all 3 node choices.
+- `headless/src/_stateDivergenceAudit.ts`: tracks own-side scalar observation features (resources, supply, type counts, action JSON) for blue vs red every tick — these should be IDENTICAL while no asymmetry has acted, since both start from C.1 #13's mirror-symmetric init. Reports the first tick of divergence.
+- `headless/src/_gatherTrace.ts`: per-tick trace of worker counts/positions/gather-node assignments/`accumulatedGather`, used to root-cause the divergence found above.
+
+Exported `resolveTargetZone` and `findNode` from `headless/src/actionSpace.ts` (no-op visibility changes, same pattern as the prior `chooseBuildPosition` export) so they could be audited directly.
+
+**What was observed:**
+
+- `_stateDivergenceAudit.ts` (seed=1, 6000 ticks): first divergence at **tick 53** — `ownResources` blue=0.039 vs red=0.04, `ownLifetimeResourcesFrac` blue=0.00267 vs red=0.00278, growing through tick 62 (blue=0.048 vs red=0.052). 5947/6000 ticks diverge thereafter.
+- `_gatherTrace.ts` traced tick 53 to `spawnOutside`'s per-player-slot RNG streams (`match.rng[0]`/`match.rng[1]`, independent by design, `types.ts:83-86`): each side's 4th worker spawns at a non-mirror-paired position relative to its assigned gather node. At tick 21 (seed=1), blue's 4th worker (e23) is 207.7px from node e11; red's 4th worker (e22) is only 157.8px from node e15. Red arrives and starts gathering (`accumulatedGather` growing) by tick 50; blue is still 109px away at tick 50 and hasn't arrived by tick 60. This produces an early ~1.32 res/tick (red) vs ~0.99 res/tick (blue) gather-rate gap — exactly the tick-53 divergence.
+- `_directSymmetryAudit.ts` (seed=1, 6000 ticks, eps=1e-6): 4 violation classes —
+  - `resolveTargetZone/enemy_army` and `resolveTargetZone/defend_crystal`: first violate at tick 430.
+  - `findNode/nearest_safe`: first violates at tick 2128.
+  - `findNode/richest_visible`: violates from **tick 0** — confirmed dead-code bug, its impl at `actionSpace.ts:469-471` has NO `isBlue` side filter (unlike `nearest_safe`/`nearest_contested`).
+  - `resolveTargetZone/enemy_crystal` and `findNode/nearest_safe` — **MediumRushBot's actual decision path** — had **zero** violations before tick 2128.
+- MediumRushBot only ever calls `findNode("nearest_safe",...)` (via `assign_workers`, every 20 ticks) and `resolveTargetZone("enemy_crystal",...)` (via `attack_move`); it never exercises `enemy_army`/`defend_crystal`/`midfield`/`contested_node` zones, `nearest_contested`/`richest_visible` node choices, or `attack_targeted`.
+
+**What was decided and why:**
+
+- **H7 downgraded** from "leading hypothesis" to "still open — first-pass audits did not find it" (C.2). The on-path functions (`enemy_crystal`/`nearest_safe`) were clean for >2000 ticks; the off-path violations are most plausibly DOWNSTREAM of the tick-53 RNG-driven state divergence rather than independent function bugs — once blue's and red's worlds have diverged at the entity-position level, `findNode`/`resolveTargetZone`'s `isBlue ? ... : ...` filters can correctly return *different, non-mirror-paired* answers for genuinely different inputs, which is not itself a bug.
+- **Rejected** a "frozen single-color `mirrorState`" test (`f("blue", mirrorState(s)) ≈ mirrorPos(f("blue", s))`) as a way to test `findNode`/`resolveTargetZone` in isolation: their `isBlue ? n.x<mid : n.x>mid` filters are *intentionally* side-asymmetric (blue searches its own/left half), so mirroring the world while holding color fixed turns "search my own half" into "search the other color's half" — this test would fail even for CORRECT code. Structurally invalid, not just impractical.
+- `findNode("richest_visible",...)`'s missing side-filter (C.1 #19) is real but **unreachable** by MediumRushBot — tracked separately from the H5+H7 landing.
+- The `spawnOutside`-RNG divergence (C.1 #18) is "non-biasing" *per-seed* (already documented in `mirror.ts:106-107` as expected noise for the single-tick round-trip property), so it's unlikely to **be** H7 (which must be a systematic, color-correlated bias to explain a 67/33 skew across 30 seeds) — but it does mean state-divergence-based comparisons (#17/#18) can't cleanly separate "function has a bug" from "function correctly answers an already-diverged question". The full **stateful lockstep test** (C.3 item 7 as originally specced — two bot instances driving `s` and `m=mirrorState(s)` independently from t=0, asserting `action(bot, m, "headless-blue") ≈ mirror(action(bot, s, "headless-red"))` every tick) remains the correct next test and was **not** built this iteration — it's the explicit next step.
+- No version bump (R1 doesn't apply — diagnostic scripts + docs only). `headless/dist` rebuild not required: the 2 new exports are additive/no-op (same pattern as `chooseBuildPosition`) and the 3 new scripts are standalone, run via `tsx`, not part of any built/imported pipeline. `npm test`: 467/0 (unchanged).
+
+**What would you tell the next agent NOT to waste time on?**
+
+- Don't re-run `_directSymmetryAudit.ts`/`_stateDivergenceAudit.ts`/`_gatherTrace.ts` as-is expecting to find H7 directly — they've already been run (seed=1, 6000 ticks) and their findings are recorded above and in C.1 #17-18. They're useful as building blocks/reference for the lockstep test, not as the final test themselves.
+- Don't try a frozen single-color `mirrorState` test for `findNode`/`resolveTargetZone` — proven structurally invalid for these specific filter-based functions (see above).
+- Don't treat the `_directSymmetryAudit.ts` tick-430/tick-2128 violations as independent H7 leads without first ruling out the tick-53 RNG divergence (#18) as their cause — they're very likely downstream.
+- `richest_visible`'s missing side-filter (C.1 #19) is confirmed but dead-code (MediumRushBot never selects it) — don't prioritize fixing it as part of H5+H7.
