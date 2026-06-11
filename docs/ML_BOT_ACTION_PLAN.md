@@ -1849,3 +1849,39 @@ Then landed H5 permanently: kept the `actionSpace.ts:336` fix, ran `npm test` (4
 - Don't re-run C.3 #9 (symmetric-by-construction spawn) — explicitly not needed, the decision rule resolved at #8.
 - Don't re-derive or re-audit the H5 fix (`actionSpace.ts:336`, `dxSign = isBlue ? 1 : -1`) — landed, property-test-proven (C.1 #15), and empirically confirmed across all three mirror pairings.
 - Next mainline step: Task 1.3's full criteria-1/2/3/5 matrix (9 bots, ≥50 matches/pair per C.4's gate-design note) under v0.5.3-ML, then Phase 2. Not started this iteration — needs its own session (likely long-running/background given the match counts involved).
+
+---
+
+### 2026-06-11 — v0.5.3-ML Phase 1: Iteration 8 (full 9-bot/50-match Task 1.3 matrix — criteria 2 and 5 FAIL, iteration 3 begins)
+
+**What was done:**
+
+Ran the full Task 1.3 acceptance matrix: `python3 training/balance_report.py --matches 50` (all 9×9 bot pairs, 4050 matches, ~113 min wall time), under v0.5.3-ML (H5 landed, criterion 4 closed). A 1-match/pair sanity pass (81 matches) ran first to confirm no crashes across the full 9-bot roster (none found). Report saved to `docs/balance/matrix_v0.5.3_task1.3.json`.
+
+**What was observed:**
+
+- **Criterion 1 (every bot loses ≥20% to someone): PASSES for all 9 bots.** Worst matchup per bot (either color): idle/passive/rush_weak/rush_weak_medium/turtle all 0% vs their hard counters; rush_medium 26% vs `rush` (as red); macro 2% vs `heavy`; heavy 42% vs rush_medium; rush 36% vs `macro` (as red).
+- **Criterion 2 (turtle AND macro each beat rush_medium ≥30%): FAILS.**
+  - `macro` vs `rush_medium`: 46% as blue, 46% as red — **passes**.
+  - `turtle` vs `rush_medium`: **0/50 as blue, 0/50 as red (0/100 total)** — **fails hard**. `turtle`'s build order is 100% `turret,turret,turret` (450/450 first-3-builds) — it never trains combat units, so it has zero offense; its only win conditions are resource-win or out-lasting to the timeout tiebreak. Against `rush_medium` neither flag fired (`flags` empty for both `turtle_vs_rush_medium` and `rush_medium_vs_turtle`); avg duration ~5070-5134 ticks (not "fast", not capped) — `rush_medium` grinds through turtle's turret wall via combat ~100% of the time, just takes ~5100 ticks instead of being instant.
+- **Criterion 3 (rush_medium beats rush_weak_medium ≥60%): PASSES** — 100% as blue, 100% as red.
+- **Criterion 4 (mirror matches 40-60%, already CLOSED in Appendix C): mostly consistent, one new data point flagged.** Mirror diagonal at n=50: idle 50%, passive 48%, rush_weak 44%, rush_weak_medium 48%, **rush_medium 56%** (consistent with the C.1 #22 closure), turtle 50%, **macro 66%** (outside 40-60% — C.3 #8 measured macro at 46.7%/30 seeds with H5 applied, inside band), heavy 60% (boundary), rush 54%. **Not reopening Appendix C on this single n=50 sample** — Iteration 6's gate-design note already established a ~12% per-pairing false-failure rate at n=50 for a fair game, and across 9 mirror pairings tested here the chance at least one lands outside band by pure chance is ~69%. Recorded here for awareness; if macro's mirror keeps landing outside band in future matrices, revisit.
+- **Criterion 5 (timeout-tiebreak games <30% per pairing): FAILS — 14/81 pairings (17%) at 70-100% timeout.** Two distinct groups:
+  - **4 degenerate pairings at 100%**: `idle_vs_idle`, `idle_vs_passive`, `passive_vs_idle`, `passive_vs_passive`. Both bots are non-aggressive baselines (`idle` does nothing; `passive` builds a small economy + 2 skirmishers but never attacks per earlier diary entries) — these pairings can **never** resolve by combat or resource-win by construction, regardless of any balance lever. Likely outside this criterion's intent (they exist as floor/sanity references in `SCRIPTED_BOTS`, not "strategies").
+  - **10 "real" pairings at 70-100%**: `rush_medium_vs_rush_medium` 82%, `rush_vs_rush` 72%, `rush_medium_vs_rush` 70%, `rush_vs_rush_medium` 70%, `turtle_vs_macro` 100%, `macro_vs_turtle` 100%, `macro_vs_macro` 100%, `turtle_vs_heavy` 98%, `heavy_vs_turtle` 100%, `heavy_vs_heavy` 100%. These involve bots capable of winning by combat, but routinely don't within 6000 ticks.
+- Separately: `turtle` produces resource-wins very often when NOT facing `rush_medium`/`heavy` (e.g. 38-45/50 vs idle/passive/rush_weak/rush_weak_medium, 50/50 in its own mirror) — its passive economy-behind-walls strategy works exactly as scripted against non-aggressive/weak-aggression opponents, just not against the two bots that can break turrets (`rush_medium`, `heavy`).
+
+**What was decided and why:**
+
+- **Task 1.3 is NOT done.** This is "iteration 3" of the balance tuning loop (iteration 1 = `0ec33be`, iteration 2 = `f376905`). Per the plan's "further levers if iteration 1 falls short" list: `MediumRushBot.FIRST_PUSH_TICK 200→300` is next (turret-cost 60→50 and skirmisher-cost 50→60 were already applied in iteration 2). Applying this lever now, targeting criterion 2's `turtle`/`rush_medium` failure — `turtle` gets 100 extra ticks to build up its turret wall before the first rush wave arrives.
+- **Re-measurement strategy for this and subsequent levers**: re-running the full 81-pair/50-match matrix takes ~113 min. Per-lever, re-measure only the **directly targeted pairings** (e.g. `turtle`↔`rush_medium`, `macro`↔`rush_medium` for criterion 2) at 50 matches/side (~5 min), and only re-run the FULL matrix once a candidate change looks promising on criteria 2 AND a plan for criterion 5 exists — to confirm no regressions before committing.
+- **Criterion 5's idle/passive group is flagged as a likely scope question, not actioned yet**: these 4 pairings are structurally unfixable by balance levers (neither bot ever acts). Not raising this to the user mid-iteration (continuing autonomously per instruction) — will note it in the final Task 1.3 writeup as a documented interpretation (criterion 5 evaluated over the 7 "active" bots / 49 active pairings, with the 4 idle/passive-only pairings called out separately as expected-100%-by-design) unless the remaining 10 "real" failures can't be fixed either, in which case this becomes more material to the final accept/defer decision.
+- The 10 "real" criterion-5 failures are deferred until after the criterion-2 lever — fixing `turtle` vs `rush_medium`/`heavy` (criterion 2's remaining failure) may also address `turtle_vs_macro`/`turtle_vs_heavy`/`heavy_vs_turtle` (same root cause: `turtle` has no offense, so any opponent that doesn't crack its turret wall within 6000 ticks times out). The `rush_medium`/`rush` mirror and cross-timeouts (70-82%) are a separate phenomenon (both sides DO have offense) and may need their own lever later.
+- No version bump yet (R1 — no balance code changed this iteration, matrix run + analysis only). `npm test` not re-run (no source touched).
+
+**What would you tell the next agent NOT to waste time on?**
+
+- Don't re-run the full 81-pair/50-match matrix per lever — ~113 min each, far too slow for one-lever-at-a-time iteration. Use targeted pairing re-measurements (`--blue X --red Y --matches 50`) and only re-run the full matrix before a final commit.
+- Don't reopen Appendix C / re-litigate criterion 4 over the single macro-mirror=66% data point here — already addressed above; revisit only if it recurs.
+- Don't treat the 4 idle/passive pairings as balance bugs — they cannot resolve by design (neither bot ever issues an attack command). This is a scope/interpretation question for criterion 5, not a lever to pull.
+- `turtle`'s 100% `turret,turret,turret` build order (450/450) is confirmed correct/intentional (pure-defense bot) — don't "fix" it as a bug; its win conditions are resource-win and timeout-tiebreak by design.
