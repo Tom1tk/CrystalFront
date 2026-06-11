@@ -6,7 +6,7 @@
 
 ---
 
-## Current handoff state (2026-06-09) — START HERE
+## Current handoff state (2026-06-11) — START HERE
 
 This section is the orientation point for any agent picking up the project. Everything else in this file is either reference (sections 1–11) or chronological development history (section 12).
 
@@ -14,8 +14,8 @@ This section is the orientation point for any agent picking up the project. Ever
 
 - **v0.3.2-ML is live in production.** `models/policy-v0.3.2-ML.onnx`. Not changing until v0.5.0-ML eval gates pass (see `docs/REVIVAL_PLAN.md` Task 3.3).
 - **Phase 0 of the revival plan is complete** (v0.5.0-ML). The three root causes of the v0.4.0-ML failure were diagnosed and fixed: (1) autoreset config-override bug in `stdioVecRunner.ts`, (2) static MAP constants in observation/geometry code, (3) MacroBot crash. Code base is now trustworthy.
-- **Phase 1 (balance) is in progress** (v0.5.1-ML). Tasks 1.1–1.4 complete (engine tiebreaker, iteration 1 balance changes). Balance matrix running; acceptance criteria TBD when matrix completes. Do not start Phase 2 until acceptance criteria pass.
-- **Phase 2 (MDP restructure) is next** after Phase 1 acceptance. See `docs/REVIVAL_PLAN.md` §Phase 2.
+- **Phase 1 (balance) is one confirmation run from exit** (v0.5.4-ML). Task 1.3's tuning loop ran 5 iterations, hit REVIVAL_PLAN line 244's stop clause (criterion 2's `turtle` leg is structurally unsatisfiable — `turtle` never attacks, so its only win path vs a sustained rush is the timeout tiebreak, which criterion 5 caps), and on 2026-06-11 the acceptance criteria were **amended** per user direction: criterion 2 drops the `turtle` leg (`macro` passes at 46%/46%, 0 timeouts), criterion 5 is scoped to rush-vs-non-rush pairings (KI-1 accepted for rush-internal attrition). Under the amended criteria the v0.5.3 matrix passes everything. **Next step: run the confirmation matrix under v0.5.4-ML and execute Phase 1 exit** — follow the 6-step checklist in `docs/balance/FINDINGS.md` §Decision (read that section first; it is the authoritative record of what was amended and why).
+- **Phase 2 (MDP restructure) is next** after the confirmation matrix passes. See `docs/REVIVAL_PLAN.md` §Phase 2. Re-read `/root/fable-crystalfront-diagnosis.md` before starting it.
 
 See `docs/REVIVAL_PLAN.md` for the full implementation plan and Appendix B for task status.
 
@@ -70,7 +70,7 @@ python3 -m training.ppo.train --curriculum --curriculum_stage 0 \
 |------------|--------|
 | Ship v0.3.2-ML bot | ✅ Live in production |
 | Phase 0: fix infra bugs | ✅ Complete (v0.5.0-ML, 2026-06-09) |
-| Phase 1: balance game | 🔄 In progress — Tasks 1.1–1.4 done; matrix running |
+| Phase 1: balance game | 🔄 One step left — criteria amended 2026-06-11 (FINDINGS.md §Decision); run v0.5.4-ML confirmation matrix, then exit |
 | Phase 2: restructure MDP | ⬜ After Phase 1 acceptance criteria pass |
 | Phase 3: retrain + ship v0.5.0-ML | ⬜ After Phase 2 |
 
@@ -1962,3 +1962,18 @@ Continued Iteration 9's `TurtleBot.TURRET_CAP` exploration (3→5→7), targeted
 - Don't try more `TURRET_CAP` values (4, 6, 8...) expecting to find a value where criterion 2 ≥30% AND criterion 5 <30% simultaneously for `turtle`/`rush_medium` — the win-rate≈timeout-rate relationship at cap=5 (12%≈12%) and cap=7 (92%≈95%) is the whole story: 100% of `turtle`'s wins against `rush_medium` are timeout-tiebreak wins at every cap, so pushing one metric across its threshold pushes the other across its threshold too, in the same direction.
 - Don't look for a "Lever 6" numeric tweak to `mediumRushBot.ts` or `gameBalance.ts` either — the structural problem is `turtle`'s win-condition set (no combat/resource-win path vs sustained pressure), not a numeric imbalance. Any further fix here is a `TurtleBot` *behavior* change (e.g., giving it some counter-offense) or a criteria/design change — both are human decisions per FINDINGS.md, not autonomous balance tuning.
 - Read `docs/balance/FINDINGS.md` before doing ANY further Task 1.3 work — it's the authoritative summary of what's been tried (iterations 1-5) and why Phase 2 is blocked.
+
+### 2026-06-11 — v0.5.4-ML Phase 1: Iteration 11 (decision ratified — acceptance criteria amended, Phase 2 path unblocked; docs-only, no code change)
+
+**Context:** Iteration 10 invoked REVIVAL_PLAN line 244's stop clause and wrote `docs/balance/FINDINGS.md`, which ended with 4 candidate human/design decisions. The user then asked for a best-path recommendation with the plan docs updated accordingly, pausing for handoff afterwards. This entry records the decision; no code, balance values, or tests changed (no version bump per R1 — docs only).
+
+**What was decided and why (full rationale in `docs/balance/FINDINGS.md` §Decision — that section is authoritative):**
+
+- **Adopted: FINDINGS.md options 2+4 — amend the acceptance criteria.** Phase 1 exists to fix diagnosis root cause #2 ("no scripted bot beats rush_medium — the training gate was unachievable"). That is already fixed: `macro` beats `rush_medium` 46%/46% with **zero** timeout games in either direction — a non-rush strategy beating the rush by genuine resolution. `turtle`'s 0% is a property of the bot's intentional never-attack design (structural proof in Iteration 10), not of game balance, and the ML agent is not constrained to never attack. Blocking Phase 2 on it inverts priorities.
+- **Criterion 2 (amended):** `macro` beats `rush_medium` ≥30% with the pairing's timeout rate <30%; `turtle` leg removed. **Criterion 5 (amended):** <30% timeout in every rush-family vs non-rush pairing (worst measured: 20%); pairings within {idle, passive, turtle, macro, heavy} excluded by construction (unsatisfiable as originally written — neither side attacks); the 4 rush-internal attrition pairings (70–82%) accepted as **KI-1**, revisit at Phase 3 eval if the trained agent learns to stall.
+- **Rejected: option 1** (give turtle counter-offense — redundant with `macro`, destroys the pure-defense reference/sparring style, re-opens a multi-iteration tuning loop) and **option 3** (change tiebreak/`maxTicks` — blast radius across passing criteria; longer episodes worsen the γ-horizon problem Phase 2 fixes).
+- **New finding folded into the decision (Task 1.4 corollary):** the v0.5.3 matrix has 8 non-mirror pairings above Task 1.4's "~30% resource wins → raise `passiveWinThreshold` 50%" trigger — but all 8 are `turtle` vs {idle, passive, rush_weak, rush_weak_medium} at 74–90%, i.e. the resource win working as designed (turtle's legitimate win path vs opponents that can't break its wall), and it is exactly what keeps those pairings OFF the criterion-5 timeout list. Mechanically applying the rule would have regressed criterion 5. **`passiveWinThreshold` stays 4500**; the rule's trigger is scoped to pairings where combat resolution is achievable for both sides.
+
+**Docs updated in this commit:** `docs/balance/FINDINGS.md` (+§Decision with amended criteria, rejections, Task 1.4 corollary, 6-step handoff checklist); `docs/REVIVAL_PLAN.md` (Task 1.3 amendment block after the lever list + chronological "decision ratified" annotation); this file (handoff section refreshed to 2026-06-11 + this entry).
+
+**Handoff — next agent starts here:** follow the 6-step checklist at the end of `docs/balance/FINDINGS.md` §Decision. Short form: (1) run the v0.5.4-ML confirmation matrix (`python3 training/balance_report.py --matches 50`, ~115 min, background, save as `docs/balance/matrix_v0.5.4_task1.3_confirm.json`); (2) evaluate against the AMENDED criteria (expected pass — only `FIRST_PUSH_TICK`=300 and crystal regen changed since v0.5.3, both measured at zero effect); (3) execute Phase 1 exit per REVIVAL_PLAN line 250 (archive matrix, R10 diary with before/after tables + draft release notes for player-facing changes: timeout tiebreaker, cost/counter changes, crystal regen); (4) then Phase 2 Task 2.1 (frame skip), after re-reading `/root/fable-crystalfront-diagnosis.md`. Do NOT re-open turtle-vs-rush_medium tuning — see Iteration 10's "what NOT to waste time on" list.
