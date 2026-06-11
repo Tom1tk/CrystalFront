@@ -2,7 +2,7 @@
 
 **Branch:** `CrystalFront-ML`
 **Status:** v0.3.2-ML **SHIPPED** (2026-05-22). v0.4.0-ML **HALTED** (2026-05-23) — Option B action-masking and Option γ RND both failed to break `trn=0%` ceiling.
-**Last updated:** 2026-06-11 (Task 2.4)
+**Last updated:** 2026-06-11 (Task 2.5)
 
 ---
 
@@ -15,7 +15,7 @@ This section is the orientation point for any agent picking up the project. Ever
 - **v0.3.2-ML is live in production.** `models/policy-v0.3.2-ML.onnx`. Not changing until v0.5.0-ML eval gates pass (see `docs/REVIVAL_PLAN.md` Task 3.3).
 - **Phase 0 of the revival plan is complete** (v0.5.0-ML). The three root causes of the v0.4.0-ML failure were diagnosed and fixed: (1) autoreset config-override bug in `stdioVecRunner.ts`, (2) static MAP constants in observation/geometry code, (3) MacroBot crash. Code base is now trustworthy.
 - **Phase 1 (balance) is COMPLETE** (v0.5.4-ML, exited 2026-06-11). Task 1.3's tuning loop ran 5 iterations, hit REVIVAL_PLAN line 244's stop clause (criterion 2's `turtle` leg is structurally unsatisfiable — `turtle` never attacks, so its only win path vs a sustained rush is the timeout tiebreak, which criterion 5 caps), and the acceptance criteria were **amended** per user direction (criterion 2 drops the `turtle` leg, criterion 5 scoped to rush-vs-non-rush pairings, KI-1 accepted for rush-internal attrition). The v0.5.4-ML confirmation matrix (4050 matches, `docs/balance/matrix_v0.5.4_task1.3_confirm.json`) **passes all 5 amended criteria** — see Iteration 12 for the full before/after table and a noteworthy macro-mirror tiebreak swing (66%→48%, both within band).
-- **Phase 2 (MDP restructure) is in progress.** **Task 2.1 (frame skip, decision_interval k=8) is DONE** (v0.5.5-ML, 2026-06-11) — see Iteration 13. **Task 2.2 (reward rescale and terminal redesign) is DONE** (v0.5.6-ML, 2026-06-11) — see Iteration 14. **Task 2.3 (PPO hyperparameters: γ=0.99, num_steps=256, num_minibatches=4, LR-anneal guard) is DONE** (v0.5.7-ML, 2026-06-11) — see Iteration 15. **Task 2.4 (curriculum promotion deferred to update boundaries) is DONE** (v0.5.8-ML, 2026-06-11) — see Iteration 16. Next: **Task 2.5 (BC label alignment)** per `docs/REVIVAL_PLAN.md` §Phase 2.
+- **Phase 2 (MDP restructure) is in progress.** **Task 2.1 (frame skip, decision_interval k=8) is DONE** (v0.5.5-ML, 2026-06-11) — see Iteration 13. **Task 2.2 (reward rescale and terminal redesign) is DONE** (v0.5.6-ML, 2026-06-11) — see Iteration 14. **Task 2.3 (PPO hyperparameters: γ=0.99, num_steps=256, num_minibatches=4, LR-anneal guard) is DONE** (v0.5.7-ML, 2026-06-11) — see Iteration 15. **Task 2.4 (curriculum promotion deferred to update boundaries) is DONE** (v0.5.8-ML, 2026-06-11) — see Iteration 16. **Task 2.5 (BC label off-by-one fix) is DONE** (v0.5.9-ML, 2026-06-11) — see Iteration 17. **All 5 Phase 2 tasks are now ✅ in Appendix B.** Next: **P2 (Phase 2 phase-boundary diary entry + `ML_AGENT.md` §4/§8 sync + handoff checklist)** per `docs/REVIVAL_PLAN.md` §Phase 2 exit criteria.
 
 See `docs/REVIVAL_PLAN.md` for the full implementation plan and Appendix B for task status.
 
@@ -71,7 +71,7 @@ python3 -m training.ppo.train --curriculum --curriculum_stage 0 \
 | Ship v0.3.2-ML bot | ✅ Live in production |
 | Phase 0: fix infra bugs | ✅ Complete (v0.5.0-ML, 2026-06-09) |
 | Phase 1: balance game | ✅ Complete (v0.5.4-ML, 2026-06-11) — amended criteria all pass, see Iteration 12 diary entry |
-| Phase 2: restructure MDP | 🔄 In progress — Tasks 2.1 (frame skip, v0.5.5-ML), 2.2 (reward rescale, v0.5.6-ML), 2.3 (PPO hyperparams, v0.5.7-ML), 2.4 (curriculum at update boundaries, v0.5.8-ML) done; Task 2.5 (BC label alignment) next |
+| Phase 2: restructure MDP | 🔄 All 5 tasks done (2.1 v0.5.5-ML, 2.2 v0.5.6-ML, 2.3 v0.5.7-ML, 2.4 v0.5.8-ML, 2.5 v0.5.9-ML); P2 (phase-boundary diary + ML_AGENT.md sync + handoff) next |
 | Phase 3: retrain + ship v0.5.0-ML | ⬜ After Phase 2 |
 
 ---
@@ -2190,3 +2190,53 @@ Net effect: a single rollout buffer (and its GAE computation) never spans two cu
 - `WIN_WINDOW=100` is still hardcoded inside `train()` and still not tied to the unused `CurriculumStage.eval_window` field — this was true before Task 2.4 and is out of scope for it. If a future task wants per-stage eval windows, that's a separate change.
 
 **Phase 2 Task 2.5 (BC label alignment) is next**, per `docs/REVIVAL_PLAN.md` §Phase 2 Task 2.5 — in `training/bc_pretrain.py`, the demo label is currently read from the *previous* step's info, pairing action `a_t` with observation `s_{t+1}`. Restructure the collection loop so each appended `(obs, action)` pair is the observation **before** the step paired with the `demoAction` returned **by** that step (`stdioRunner.ts` already includes `demoAction` in every step info in demo mode, per Task 2.1). Keep the noop-subsample and critic-return logic unchanged.
+
+### 2026-06-11 — v0.5.9-ML Phase 2: Iteration 17 (Task 2.5 — BC label alignment)
+
+**What was done:**
+
+In `training/bc_pretrain.py`'s `collect_demonstrations()`, fixed the observation/action off-by-one per `docs/REVIVAL_PLAN.md` §Phase 2 Task 2.5. Old loop body:
+
+```python
+while not done:
+    demo_action = info.get("demoAction", 0)
+    ep_obs.append({k: v.copy() for k, v in obs.items()})
+    ep_acts.append(int(demo_action))
+    obs, reward, terminated, truncated, info = env.step(0)
+    ep_rews.append(float(reward))
+    done = terminated or truncated
+```
+
+`info.get("demoAction", 0)` here came from the *previous* iteration's `env.step()` (or from `env.reset()`'s info on the first iteration, which has no `demoAction` key → defaults to 0). So `ep_acts[i]` held the action that *produced* `ep_obs[i]` — i.e. `(s_t, a_{t-1})` pairs, one step stale relative to what BC needs. New loop body (matches the plan's diff exactly):
+
+```python
+while not done:
+    ep_obs.append({k: v.copy() for k, v in obs.items()})
+    obs, reward, terminated, truncated, info = env.step(0)
+    ep_acts.append(int(info.get("demoAction", 0)))
+    ep_rews.append(float(reward))
+    done = terminated or truncated
+```
+
+Now `obs` is appended *before* stepping, and `ep_acts[i]` is the `demoAction` returned *by* the step taken from `ep_obs[i]` — correct `(s_t, a_t)` pairs. Per-iteration counts of `ep_obs`/`ep_acts`/`ep_rews` appends are unchanged (still 1 of each per loop iteration, same total transitions per episode), so the noop-subsample (`cfg.noop_keep_frac`) and the backward discounted-return pass (`GAMMA=0.995`, used as critic pre-training targets) needed **zero** changes — only this 6-line loop body changed, nothing else in the 313-line file.
+
+**Verification:**
+
+- `python3 -c "import training.bc_pretrain"` → clean import.
+- **Smoke run**: `python3 -m training.bc_pretrain --episodes 2 --epochs 1 --device cpu --max_ticks 80 --output /tmp/bc_smoke_2_5.pt` (rush vs idle; `CrystalFrontEnv` has no `decision_interval` param so this runs at k=1, unaffected by Task 2.1's frame-skip work). Result: 160 transitions from 2 kept episodes (80 ticks/episode at k=1), noop-subsampled to 13 (6 non-noop + 7 noop = `max(1, int(154 × 0.05)) = 7`, arithmetic checks out), critic targets `min=-1.0 mean=-0.8 max=-0.7` (consistent with the ±1.0 terminal reward scale from Task 2.2 — both 80-tick episodes ended with blue losing/timing out unfavorably, plausible for `rush` vs `idle` cut off at only 80 ticks). 1 actor epoch (loss=4.40, acc=0% — meaningless with N=13 and an untrained network, expected) + 3 critic epochs (mse 0.575→0.208, decreasing as expected) ran without error; checkpoint saved.
+- **`python3 -m training.test_config_persistence`** — Phase 2 exit criteria explicitly calls this out as "the runner changed — re-run it" — `PASS: config overrides persisted across 120 steps (episodes_done=[2, 2])`.
+- `npm test`: 470/470 (no `headless/src` files touched).
+
+**What was decided and why:**
+
+- **Version bumped to `0.5.9-ML`** across all 5 `package.json` (R1 — training-pipeline change).
+- **No `BALANCE_HISTORY` entry added** — Python-only training-pipeline fix; no engine, reward, or replay-affecting change.
+- Appendix B row 2.5 marked ✅ — **all five Phase 2 tasks (2.1-2.5) are now ✅**. "Current handoff state" and "Open commitments" updated to point at task **P2** (the phase-boundary exit task) next.
+
+**What would you tell the next agent NOT to waste time on?**
+
+- The smoke run's `acc=0.0%` and high loss are expected and not a regression — 13 training transitions with a freshly-initialized network and 1 epoch tells you nothing about real BC quality. Don't try to "fix" this with a bigger smoke run; a real BC accuracy gate (if/when one exists) belongs to a full `--episodes 1000` run, which is out of scope here and would be a "long training run" the Phase 2 exit criteria explicitly says not to launch yet.
+- Don't go looking for other `info.get("demoAction", ...)` call sites to "fix the same bug" — `collect_demonstrations()` in `bc_pretrain.py` was the only place with this read-before-step pattern. `train.py`'s rollout loop doesn't use `demoAction` at all (that's a BC-only field).
+- `CrystalFrontEnv` (used by `bc_pretrain.py`) still has no `decision_interval` parameter (k=1 always) — this is pre-existing, out of scope for Task 2.5, and not something Phase 2 asked to change for the BC path beyond the `demoAction`-per-tick fix already done in Task 2.1's `stdioRunner.ts` work.
+
+**Phase 2 task P2 (phase-boundary diary entry + `ML_AGENT.md` §4/§8 sync + handoff checklist) is next**, per `docs/REVIVAL_PLAN.md` line 341's Phase 2 exit criteria: "all tasks committed; smoke runs green; `training/test_config_persistence.py` still green; version bumped; no long training launched yet; R10 done — diary entry, `ML_AGENT.md` §4 (reward) and §8 (training guide/hyperparameters) updated to the new MDP in the same commits that changed them, handoff section + Appendix B updated." All five tasks (2.1-2.5) are committed and Appendix B is current. Remaining for P2: (1) write the full Phase 2 "Reflections" (a/b/c) diary subsection (mandatory at phase boundaries per R10, omitted from Iterations 13-17 as those were mid-phase); (2) audit `ML_AGENT.md` §4 and §8 against ALL of Phase 2's changes — §4 was already updated for Task 2.2's reward rescale (Iteration 14), but check whether §4/§8 also need updates for `decision_interval` (Task 2.1), the new `gamma`/`num_steps`/`num_minibatches`/LR-anneal-guard (Task 2.3), the curriculum-update-boundary fix (Task 2.4), and the BC label fix (Task 2.5); (3) rewrite "Current handoff state" to describe the post-Phase-2 state and point at Phase 3.

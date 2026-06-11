@@ -113,10 +113,9 @@ def collect_demonstrations(cfg: Config) -> tuple[list[dict], list[int], list[flo
         ep_rews: list[float] = []
 
         while not done:
-            demo_action = info.get("demoAction", 0)
             ep_obs.append({k: v.copy() for k, v in obs.items()})
-            ep_acts.append(int(demo_action))
             obs, reward, terminated, truncated, info = env.step(0)
+            ep_acts.append(int(info.get("demoAction", 0)))
             ep_rews.append(float(reward))
             done = terminated or truncated
 
