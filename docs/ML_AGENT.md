@@ -543,6 +543,8 @@ python -m training.ppo.train \
 
 Expected throughput: ~1100–1375 SPS on RX 7900 XTX / 12-vCPU container. 20M steps = ~4–5h wall time.
 
+**Note (Phase 2, `decision_interval=8`):** `--total_timesteps` counts *decisions* (`env.step()` calls), each now holding for 8 engine ticks — the throughput/wall-time figures above predate Task 2.1 and were measured at the old implicit k=1. The same `--total_timesteps` value now corresponds to ~8× more simulated game-time and has not been re-measured at scale; Phase 3 Task 3.2's curriculum run is the first opportunity to record fresh SPS/wall-time numbers under k=8.
+
 ### 8.5 Resume from a specific checkpoint
 
 ```bash
@@ -552,7 +554,9 @@ python -m training.ppo.train \
   --total_timesteps 10000000
 ```
 
-The trainer restores actor, critic, RND state, and the update counter (LR schedule continues correctly). Optimizer state is skipped if the checkpoint is from BC (`update=0`).
+The trainer restores actor, critic, RND state, and the update counter (LR schedule continues correctly, clamped to never go negative — Phase 2 Task 2.3). Optimizer state is skipped if the checkpoint is from BC (`update=0`).
+
+**Schedule-compression warning (v0.5.7-ML+):** if `--anneal_lr` (default on) and the resumed checkpoint's `update` is already ≥80% of *this run's* `num_updates = total_timesteps // batch_size`, the trainer prints a `⚠️ WARNING` — the LR will start near zero (or be clamped to zero immediately). Increase `--total_timesteps` to give the resumed run a fresh anneal horizon, or pass `--no-anneal_lr`.
 
 ### 8.6 Option B training — action-masking forcing (v0.4.0-ML, default-off)
 
@@ -600,10 +604,11 @@ Per third review §7.10 + R11: do **not** activate league mode until stage 3b is
 |------|---------|-------|
 | `--num_envs` | 20 | Parallel simulators. 20 is the sweet spot for 12 vCPUs. |
 | `--vec_size` | 4 | Games per Node subprocess. 5 procs × 4 = 20 envs. |
-| `--num_steps` | 1536 | Rollout horizon; tuned for 6000-tick episodes. |
-| `--num_minibatches` | 6 | 5120 per minibatch with 30720 total. |
+| `--decision_interval` | 8 | Engine ticks held per decision (frame skip, Phase 2 Task 2.1). A 6000-tick episode is now ≤750 decisions. |
+| `--num_steps` | 256 | Rollout horizon; was 1536 for 6000-tick (k=1) episodes — episodes are now ≤750 decisions at k=8 (Phase 2 Task 2.3). |
+| `--num_minibatches` | 4 | 1280 per minibatch with 5120 total (20 envs × 256 steps) — was 5120 per minibatch with 30720 total (Phase 2 Task 2.3). |
 | `--update_epochs` | 4 | |
-| `--gamma` | 0.995 | Effective horizon ~200 ticks. |
+| `--gamma` | 0.99 | Effective horizon ~550 ticks (half-life ≈69 decisions at k=8) — was ~200 ticks at γ=0.995/k=1 (Phase 2 Task 2.3). |
 | `--ent_coef` | 0.02 | 0.05 used for v0.4.0-ML forcing/RND runs. |
 | `--mlp_hidden` | 384 | Trunk width. |
 | `--save_interval` | 50 | Checkpoint every N updates. |
@@ -617,7 +622,7 @@ Per third review §7.10 + R11: do **not** activate league mode until stage 3b is
 - vs scripted-bot win rate <60% after 20M steps → reward/action/observation needs rework, not more compute.
 - Entropy < 0.3 in first 500k steps → policy collapsed; increase `--ent_coef` or restart.
 - noop% rising monotonically above 60% during forcing → forcing is making things worse; halt and re-evaluate.
-- ep_len locked at 6000 → agent is drawing; check the draw=−100 penalty wired up.
+- `diagnostics/timeout_rate` stuck near 1.0 for an extended stretch → agent isn't engaging combat; episodes are running to `max_ticks` and resolving via the Phase 1 timeout tiebreaker (every match now has a winner — there is no draw penalty to check, Phase 2 Task 2.2). `game/episode_length_ticks` near `max_ticks` (≤750 decisions at k=8) is the corresponding signal in decision units.
 
 ---
 
@@ -673,7 +678,7 @@ Run names: `crystalfront_ppo__{version}__{opponent}__{seed}__{timestamp}`.
 
 - **`game/win_rate`** — rolling 100-episode win rate. Primary metric.
 - **`game/episode_reward`** — full reward (terminal + shaping).
-- **`game/episode_terminal_return`** — `±100` only; reveals shaping-hacking when it diverges from `episode_reward`.
+- **`game/episode_terminal_return`** — `±1.0` only (Phase 2 Task 2.2; was `±100`); reveals shaping-hacking when it diverges from `episode_reward`.
 - **`game/episode_length_ticks`** — leading indicator. Drops before win_rate moves.
 
 ### 10.2 `training/` — process health
