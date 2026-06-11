@@ -1,0 +1,628 @@
+{
+  "metadata": {
+    "generated_at": "2026-06-11T09:47:29Z",
+    "total_matches": 4050,
+    "version": "1.0",
+    "wall_time_secs": 7027.5
+  },
+  "win_rate_matrix": {
+    "idle": {
+      "idle": {
+        "wins": 24,
+        "total": 50,
+        "win_rate": 0.48
+      },
+      "passive": {
+        "wins": 0,
+        "total": 50,
+        "win_rate": 0.0
+      },
+      "rush_weak": {
+        "wins": 0,
+        "total": 50,
+        "win_rate": 0.0
+      },
+      "rush_weak_medium": {
+        "wins": 0,
+        "total": 50,
+        "win_rate": 0.0
+      },
+      "rush_medium": {
+        "wins": 0,
+        "total": 50,
+        "win_rate": 0.0
+      },
+      "turtle": {
+        "wins": 0,
+        "total": 50,
+        "win_rate": 0.0
+      },
+      "macro": {
+        "wins": 0,
+        "total": 50,
+        "win_rate": 0.0
+      },
+      "heavy": {
+        "wins": 0,
+        "total": 50,
+        "win_rate": 0.0
+      },
+      "rush": {
+        "wins": 0,
+        "total": 50,
+        "win_rate": 0.0
+      }
+    },
+    "passive": {
+      "idle": {
+        "wins": 50,
+        "total": 50,
+        "win_rate": 1.0
+      },
+      "passive": {
+        "wins": 22,
+        "total": 50,
+        "win_rate": 0.44
+      },
+      "rush_weak": {
+        "wins": 0,
+        "total": 50,
+        "win_rate": 0.0
+      },
+      "rush_weak_medium": {
+        "wins": 0,
+        "total": 50,
+        "win_rate": 0.0
+      },
+      "rush_medium": {
+        "wins": 0,
+        "total": 50,
+        "win_rate": 0.0
+      },
+      "turtle": {
+        "wins": 0,
+        "total": 50,
+        "win_rate": 0.0
+      },
+      "macro": {
+        "wins": 0,
+        "total": 50,
+        "win_rate": 0.0
+      },
+      "heavy": {
+        "wins": 0,
+        "total": 50,
+        "win_rate": 0.0
+      },
+      "rush": {
+        "wins": 0,
+        "total": 50,
+        "win_rate": 0.0
+      }
+    },
+    "rush_weak": {
+      "idle": {
+        "wins": 50,
+        "total": 50,
+        "win_rate": 1.0
+      },
+      "passive": {
+        "wins": 50,
+        "total": 50,
+        "win_rate": 1.0
+      },
+      "rush_weak": {
+        "wins": 20,
+        "total": 50,
+        "win_rate": 0.4
+      },
+      "rush_weak_medium": {
+        "wins": 1,
+        "total": 50,
+        "win_rate": 0.02
+      },
+      "rush_medium": {
+        "wins": 0,
+        "total": 50,
+        "win_rate": 0.0
+      },
+      "turtle": {
+        "wins": 0,
+        "total": 50,
+        "win_rate": 0.0
+      },
+      "macro": {
+        "wins": 7,
+        "total": 50,
+        "win_rate": 0.14
+      },
+      "heavy": {
+        "wins": 0,
+        "total": 50,
+        "win_rate": 0.0
+      },
+      "rush": {
+        "wins": 0,
+        "total": 50,
+        "win_rate": 0.0
+      }
+    },
+    "rush_weak_medium": {
+      "idle": {
+        "wins": 50,
+        "total": 50,
+        "win_rate": 1.0
+      },
+      "passive": {
+        "wins": 50,
+        "total": 50,
+        "win_rate": 1.0
+      },
+      "rush_weak": {
+        "wins": 49,
+        "total": 50,
+        "win_rate": 0.98
+      },
+      "rush_weak_medium": {
+        "wins": 30,
+        "total": 50,
+        "win_rate": 0.6
+      },
+      "rush_medium": {
+        "wins": 0,
+        "total": 50,
+        "win_rate": 0.0
+      },
+      "turtle": {
+        "wins": 0,
+        "total": 50,
+        "win_rate": 0.0
+      },
+      "macro": {
+        "wins": 3,
+        "total": 50,
+        "win_rate": 0.06
+      },
+      "heavy": {
+        "wins": 0,
+        "total": 50,
+        "win_rate": 0.0
+      },
+      "rush": {
+        "wins": 0,
+        "total": 50,
+        "win_rate": 0.0
+      }
+    },
+    "rush_medium": {
+      "idle": {
+        "wins": 50,
+        "total": 50,
+        "win_rate": 1.0
+      },
+      "passive": {
+        "wins": 50,
+        "total": 50,
+        "win_rate": 1.0
+      },
+      "rush_weak": {
+        "wins": 50,
+        "total": 50,
+        "win_rate": 1.0
+      },
+      "rush_weak_medium": {
+        "wins": 50,
+        "total": 50,
+        "win_rate": 1.0
+      },
+      "rush_medium": {
+        "wins": 23,
+        "total": 50,
+        "win_rate": 0.46
+      },
+      "turtle": {
+        "wins": 50,
+        "total": 50,
+        "win_rate": 1.0
+      },
+      "macro": {
+        "wins": 27,
+        "total": 50,
+        "win_rate": 0.54
+      },
+      "heavy": {
+        "wins": 35,
+        "total": 50,
+        "win_rate": 0.7
+      },
+      "rush": {
+        "wins": 14,
+        "total": 50,
+        "win_rate": 0.28
+      }
+    },
+    "turtle": {
+      "idle": {
+        "wins": 50,
+        "total": 50,
+        "win_rate": 1.0
+      },
+      "passive": {
+        "wins": 50,
+        "total": 50,
+        "win_rate": 1.0
+      },
+      "rush_weak": {
+        "wins": 50,
+        "total": 50,
+        "win_rate": 1.0
+      },
+      "rush_weak_medium": {
+        "wins": 50,
+        "total": 50,
+        "win_rate": 1.0
+      },
+      "rush_medium": {
+        "wins": 0,
+        "total": 50,
+        "win_rate": 0.0
+      },
+      "turtle": {
+        "wins": 30,
+        "total": 50,
+        "win_rate": 0.6
+      },
+      "macro": {
+        "wins": 5,
+        "total": 50,
+        "win_rate": 0.1
+      },
+      "heavy": {
+        "wins": 6,
+        "total": 50,
+        "win_rate": 0.12
+      },
+      "rush": {
+        "wins": 0,
+        "total": 50,
+        "win_rate": 0.0
+      }
+    },
+    "macro": {
+      "idle": {
+        "wins": 50,
+        "total": 50,
+        "win_rate": 1.0
+      },
+      "passive": {
+        "wins": 50,
+        "total": 50,
+        "win_rate": 1.0
+      },
+      "rush_weak": {
+        "wins": 41,
+        "total": 50,
+        "win_rate": 0.82
+      },
+      "rush_weak_medium": {
+        "wins": 42,
+        "total": 50,
+        "win_rate": 0.84
+      },
+      "rush_medium": {
+        "wins": 25,
+        "total": 50,
+        "win_rate": 0.5
+      },
+      "turtle": {
+        "wins": 39,
+        "total": 50,
+        "win_rate": 0.78
+      },
+      "macro": {
+        "wins": 24,
+        "total": 50,
+        "win_rate": 0.48
+      },
+      "heavy": {
+        "wins": 4,
+        "total": 50,
+        "win_rate": 0.08
+      },
+      "rush": {
+        "wins": 21,
+        "total": 50,
+        "win_rate": 0.42
+      }
+    },
+    "heavy": {
+      "idle": {
+        "wins": 50,
+        "total": 50,
+        "win_rate": 1.0
+      },
+      "passive": {
+        "wins": 50,
+        "total": 50,
+        "win_rate": 1.0
+      },
+      "rush_weak": {
+        "wins": 50,
+        "total": 50,
+        "win_rate": 1.0
+      },
+      "rush_weak_medium": {
+        "wins": 50,
+        "total": 50,
+        "win_rate": 1.0
+      },
+      "rush_medium": {
+        "wins": 21,
+        "total": 50,
+        "win_rate": 0.42
+      },
+      "turtle": {
+        "wins": 41,
+        "total": 50,
+        "win_rate": 0.82
+      },
+      "macro": {
+        "wins": 49,
+        "total": 50,
+        "win_rate": 0.98
+      },
+      "heavy": {
+        "wins": 25,
+        "total": 50,
+        "win_rate": 0.5
+      },
+      "rush": {
+        "wins": 14,
+        "total": 50,
+        "win_rate": 0.28
+      }
+    },
+    "rush": {
+      "idle": {
+        "wins": 50,
+        "total": 50,
+        "win_rate": 1.0
+      },
+      "passive": {
+        "wins": 50,
+        "total": 50,
+        "win_rate": 1.0
+      },
+      "rush_weak": {
+        "wins": 50,
+        "total": 50,
+        "win_rate": 1.0
+      },
+      "rush_weak_medium": {
+        "wins": 50,
+        "total": 50,
+        "win_rate": 1.0
+      },
+      "rush_medium": {
+        "wins": 38,
+        "total": 50,
+        "win_rate": 0.76
+      },
+      "turtle": {
+        "wins": 50,
+        "total": 50,
+        "win_rate": 1.0
+      },
+      "macro": {
+        "wins": 27,
+        "total": 50,
+        "win_rate": 0.54
+      },
+      "heavy": {
+        "wins": 24,
+        "total": 50,
+        "win_rate": 0.48
+      },
+      "rush": {
+        "wins": 28,
+        "total": 50,
+        "win_rate": 0.56
+      }
+    }
+  },
+  "avg_durations_ticks": {
+    "idle_vs_idle": 6000.0,
+    "idle_vs_passive": 6000.0,
+    "idle_vs_rush_weak": 2121.1,
+    "idle_vs_rush_weak_medium": 2121.2,
+    "idle_vs_rush_medium": 2127.24,
+    "idle_vs_turtle": 5772.82,
+    "idle_vs_macro": 3218.88,
+    "idle_vs_heavy": 4215.16,
+    "idle_vs_rush": 2120.38,
+    "passive_vs_idle": 6000.0,
+    "passive_vs_passive": 6000.0,
+    "passive_vs_rush_weak": 2877.32,
+    "passive_vs_rush_weak_medium": 2588.54,
+    "passive_vs_rush_medium": 2603.46,
+    "passive_vs_turtle": 5783.34,
+    "passive_vs_macro": 3204.0,
+    "passive_vs_heavy": 4458.68,
+    "passive_vs_rush": 2538.72,
+    "rush_weak_vs_idle": 2119.34,
+    "rush_weak_vs_passive": 2871.86,
+    "rush_weak_vs_rush_weak": 3804.86,
+    "rush_weak_vs_rush_weak_medium": 2891.24,
+    "rush_weak_vs_rush_medium": 2768.2,
+    "rush_weak_vs_turtle": 5778.78,
+    "rush_weak_vs_macro": 3188.44,
+    "rush_weak_vs_heavy": 4411.8,
+    "rush_weak_vs_rush": 2759.76,
+    "rush_weak_medium_vs_idle": 2120.4,
+    "rush_weak_medium_vs_passive": 2591.78,
+    "rush_weak_medium_vs_rush_weak": 2908.88,
+    "rush_weak_medium_vs_rush_weak_medium": 3572.62,
+    "rush_weak_medium_vs_rush_medium": 3045.12,
+    "rush_weak_medium_vs_turtle": 5778.24,
+    "rush_weak_medium_vs_macro": 3303.92,
+    "rush_weak_medium_vs_heavy": 4464.54,
+    "rush_weak_medium_vs_rush": 3185.92,
+    "rush_medium_vs_idle": 2128.22,
+    "rush_medium_vs_passive": 2624.7,
+    "rush_medium_vs_rush_weak": 2756.16,
+    "rush_medium_vs_rush_weak_medium": 3063.4,
+    "rush_medium_vs_rush_medium": 5874.16,
+    "rush_medium_vs_turtle": 5120.08,
+    "rush_medium_vs_macro": 3784.24,
+    "rush_medium_vs_heavy": 4781.02,
+    "rush_medium_vs_rush": 5746.98,
+    "turtle_vs_idle": 5773.26,
+    "turtle_vs_passive": 5784.42,
+    "turtle_vs_rush_weak": 5778.34,
+    "turtle_vs_rush_weak_medium": 5772.96,
+    "turtle_vs_rush_medium": 5087.14,
+    "turtle_vs_turtle": 5736.1,
+    "turtle_vs_macro": 6000.0,
+    "turtle_vs_heavy": 5994.68,
+    "turtle_vs_rush": 5221.94,
+    "macro_vs_idle": 3222.82,
+    "macro_vs_passive": 3203.26,
+    "macro_vs_rush_weak": 3168.46,
+    "macro_vs_rush_weak_medium": 3248.2,
+    "macro_vs_rush_medium": 3913.88,
+    "macro_vs_turtle": 6000.0,
+    "macro_vs_macro": 6000.0,
+    "macro_vs_heavy": 4862.86,
+    "macro_vs_rush": 3753.38,
+    "heavy_vs_idle": 4217.2,
+    "heavy_vs_passive": 4480.18,
+    "heavy_vs_rush_weak": 4479.82,
+    "heavy_vs_rush_weak_medium": 4424.22,
+    "heavy_vs_rush_medium": 4652.48,
+    "heavy_vs_turtle": 6000.0,
+    "heavy_vs_macro": 4642.18,
+    "heavy_vs_heavy": 6000.0,
+    "heavy_vs_rush": 4947.58,
+    "rush_vs_idle": 2120.34,
+    "rush_vs_passive": 2533.58,
+    "rush_vs_rush_weak": 2785.28,
+    "rush_vs_rush_weak_medium": 3181.28,
+    "rush_vs_rush_medium": 5836.02,
+    "rush_vs_turtle": 5184.98,
+    "rush_vs_macro": 3738.1,
+    "rush_vs_heavy": 4970.08,
+    "rush_vs_rush": 5903.18
+  },
+  "top_build_orders": {
+    "idle": [
+      {
+        "sequence": "none",
+        "count": 450
+      }
+    ],
+    "passive": [
+      {
+        "sequence": "barracks,barracks,barracks",
+        "count": 300
+      },
+      {
+        "sequence": "barracks",
+        "count": 150
+      }
+    ],
+    "rush_weak": [
+      {
+        "sequence": "barracks,barracks,barracks",
+        "count": 272
+      },
+      {
+        "sequence": "barracks",
+        "count": 178
+      }
+    ],
+    "rush_weak_medium": [
+      {
+        "sequence": "barracks",
+        "count": 230
+      },
+      {
+        "sequence": "barracks,barracks,barracks",
+        "count": 220
+      }
+    ],
+    "rush_medium": [
+      {
+        "sequence": "barracks,supply_depot,supply_depot",
+        "count": 450
+      }
+    ],
+    "turtle": [
+      {
+        "sequence": "turret,turret,turret",
+        "count": 450
+      }
+    ],
+    "macro": [
+      {
+        "sequence": "supply_depot,barracks,barracks",
+        "count": 450
+      }
+    ],
+    "heavy": [
+      {
+        "sequence": "supply_depot,turret,turret",
+        "count": 450
+      }
+    ],
+    "rush": [
+      {
+        "sequence": "barracks,supply_depot,supply_depot",
+        "count": 450
+      }
+    ]
+  },
+  "flags": {
+    "idle_vs_idle__timeout": 50,
+    "idle_vs_passive__timeout": 50,
+    "idle_vs_turtle__resource_win": 43,
+    "idle_vs_turtle__timeout": 7,
+    "passive_vs_idle__timeout": 50,
+    "passive_vs_passive__timeout": 50,
+    "passive_vs_turtle__resource_win": 41,
+    "passive_vs_turtle__timeout": 9,
+    "rush_weak_vs_rush_weak__timeout": 5,
+    "rush_weak_vs_turtle__resource_win": 42,
+    "rush_weak_vs_turtle__timeout": 8,
+    "rush_weak_medium_vs_rush_weak_medium__timeout": 2,
+    "rush_weak_medium_vs_turtle__timeout": 8,
+    "rush_weak_medium_vs_turtle__resource_win": 42,
+    "rush_medium_vs_rush_medium__timeout": 41,
+    "rush_medium_vs_heavy__timeout": 9,
+    "rush_medium_vs_rush__timeout": 34,
+    "turtle_vs_idle__resource_win": 43,
+    "turtle_vs_idle__timeout": 7,
+    "turtle_vs_passive__resource_win": 41,
+    "turtle_vs_passive__timeout": 9,
+    "turtle_vs_rush_weak__resource_win": 42,
+    "turtle_vs_rush_weak__timeout": 8,
+    "turtle_vs_rush_weak_medium__resource_win": 43,
+    "turtle_vs_rush_weak_medium__timeout": 7,
+    "turtle_vs_turtle__resource_win": 50,
+    "turtle_vs_macro__timeout": 50,
+    "turtle_vs_heavy__timeout": 49,
+    "turtle_vs_heavy__resource_win": 1,
+    "turtle_vs_rush__timeout": 1,
+    "macro_vs_turtle__timeout": 50,
+    "macro_vs_macro__timeout": 50,
+    "macro_vs_heavy__timeout": 9,
+    "macro_vs_rush__timeout": 1,
+    "heavy_vs_rush_medium__timeout": 4,
+    "heavy_vs_turtle__timeout": 50,
+    "heavy_vs_macro__timeout": 2,
+    "heavy_vs_heavy__timeout": 50,
+    "heavy_vs_rush__timeout": 10,
+    "rush_vs_rush_medium__timeout": 39,
+    "rush_vs_heavy__timeout": 6,
+    "rush_vs_rush__timeout": 42
+  }
+}
