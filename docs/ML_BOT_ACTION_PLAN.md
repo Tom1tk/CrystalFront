@@ -14,8 +14,8 @@ This section is the orientation point for any agent picking up the project. Ever
 
 - **v0.3.2-ML is live in production.** `models/policy-v0.3.2-ML.onnx`. Not changing until v0.5.0-ML eval gates pass (see `docs/REVIVAL_PLAN.md` Task 3.3).
 - **Phase 0 of the revival plan is complete** (v0.5.0-ML). The three root causes of the v0.4.0-ML failure were diagnosed and fixed: (1) autoreset config-override bug in `stdioVecRunner.ts`, (2) static MAP constants in observation/geometry code, (3) MacroBot crash. Code base is now trustworthy.
-- **Phase 1 (balance) is one confirmation run from exit** (v0.5.4-ML). Task 1.3's tuning loop ran 5 iterations, hit REVIVAL_PLAN line 244's stop clause (criterion 2's `turtle` leg is structurally unsatisfiable — `turtle` never attacks, so its only win path vs a sustained rush is the timeout tiebreak, which criterion 5 caps), and on 2026-06-11 the acceptance criteria were **amended** per user direction: criterion 2 drops the `turtle` leg (`macro` passes at 46%/46%, 0 timeouts), criterion 5 is scoped to rush-vs-non-rush pairings (KI-1 accepted for rush-internal attrition). Under the amended criteria the v0.5.3 matrix passes everything. **Next step: run the confirmation matrix under v0.5.4-ML and execute Phase 1 exit** — follow the 6-step checklist in `docs/balance/FINDINGS.md` §Decision (read that section first; it is the authoritative record of what was amended and why).
-- **Phase 2 (MDP restructure) is next** after the confirmation matrix passes. See `docs/REVIVAL_PLAN.md` §Phase 2. Re-read `/root/fable-crystalfront-diagnosis.md` before starting it.
+- **Phase 1 (balance) is COMPLETE** (v0.5.4-ML, exited 2026-06-11). Task 1.3's tuning loop ran 5 iterations, hit REVIVAL_PLAN line 244's stop clause (criterion 2's `turtle` leg is structurally unsatisfiable — `turtle` never attacks, so its only win path vs a sustained rush is the timeout tiebreak, which criterion 5 caps), and the acceptance criteria were **amended** per user direction (criterion 2 drops the `turtle` leg, criterion 5 scoped to rush-vs-non-rush pairings, KI-1 accepted for rush-internal attrition). The v0.5.4-ML confirmation matrix (4050 matches, `docs/balance/matrix_v0.5.4_task1.3_confirm.json`) **passes all 5 amended criteria** — see Iteration 12 for the full before/after table and a noteworthy macro-mirror tiebreak swing (66%→48%, both within band).
+- **Phase 2 (MDP restructure) is next.** Start with **Task 2.1 (frame skip, decision_interval k=8)**. See `docs/REVIVAL_PLAN.md` §Phase 2. Re-read `/root/fable-crystalfront-diagnosis.md` before starting it.
 
 See `docs/REVIVAL_PLAN.md` for the full implementation plan and Appendix B for task status.
 
@@ -70,8 +70,8 @@ python3 -m training.ppo.train --curriculum --curriculum_stage 0 \
 |------------|--------|
 | Ship v0.3.2-ML bot | ✅ Live in production |
 | Phase 0: fix infra bugs | ✅ Complete (v0.5.0-ML, 2026-06-09) |
-| Phase 1: balance game | 🔄 One step left — criteria amended 2026-06-11 (FINDINGS.md §Decision); run v0.5.4-ML confirmation matrix, then exit |
-| Phase 2: restructure MDP | ⬜ After Phase 1 acceptance criteria pass |
+| Phase 1: balance game | ✅ Complete (v0.5.4-ML, 2026-06-11) — amended criteria all pass, see Iteration 12 diary entry |
+| Phase 2: restructure MDP | 🔄 Next — Task 2.1 (frame skip) not yet started |
 | Phase 3: retrain + ship v0.5.0-ML | ⬜ After Phase 2 |
 
 ---
@@ -1977,3 +1977,57 @@ Continued Iteration 9's `TurtleBot.TURRET_CAP` exploration (3→5→7), targeted
 **Docs updated in this commit:** `docs/balance/FINDINGS.md` (+§Decision with amended criteria, rejections, Task 1.4 corollary, 6-step handoff checklist); `docs/REVIVAL_PLAN.md` (Task 1.3 amendment block after the lever list + chronological "decision ratified" annotation); this file (handoff section refreshed to 2026-06-11 + this entry).
 
 **Handoff — next agent starts here:** follow the 6-step checklist at the end of `docs/balance/FINDINGS.md` §Decision. Short form: (1) run the v0.5.4-ML confirmation matrix (`python3 training/balance_report.py --matches 50`, ~115 min, background, save as `docs/balance/matrix_v0.5.4_task1.3_confirm.json`); (2) evaluate against the AMENDED criteria (expected pass — only `FIRST_PUSH_TICK`=300 and crystal regen changed since v0.5.3, both measured at zero effect); (3) execute Phase 1 exit per REVIVAL_PLAN line 250 (archive matrix, R10 diary with before/after tables + draft release notes for player-facing changes: timeout tiebreaker, cost/counter changes, crystal regen); (4) then Phase 2 Task 2.1 (frame skip), after re-reading `/root/fable-crystalfront-diagnosis.md`. Do NOT re-open turtle-vs-rush_medium tuning — see Iteration 10's "what NOT to waste time on" list.
+
+---
+
+### 2026-06-11 — v0.5.4-ML Phase 1 EXIT: Iteration 12 (confirmation matrix — all amended criteria PASS)
+
+**What was done:**
+
+Ran the v0.5.4-ML confirmation matrix per Iteration 11's handoff: `python3 training/balance_report.py --matches 50 --out docs/balance/matrix_v0.5.4_task1.3_confirm.json` (full 9×9 bot grid, 4050 matches, wall time 7027.5s ≈ 117 min, background). Also confirmed `npm test` is still green (470/470, including the timeout-tiebreaker and mirror-invariance suites). Evaluated the result against the criteria amended in Iteration 11 / `FINDINGS.md` §Decision.
+
+**What was observed (v0.5.3 baseline → v0.5.4 confirmation, both predate vs. postdate `FIRST_PUSH_TICK`=300 + crystal regen respectively):**
+
+| Criterion | v0.5.3 (`matrix_v0.5.3_task1.3.json`) | v0.5.4 (`matrix_v0.5.4_task1.3_confirm.json`) | Result |
+|---|---|---|---|
+| 1. Every bot loses ≥20% to ≥1 other bot | PASS (all 9) | PASS (all 9) | ✅ |
+| 2 (amended). `macro` beats `rush_medium` ≥30%, pairing timeout <30% | 46% combined (23+23/100), 0% timeout | 48% combined (25+23/100), 0% timeout | ✅ |
+| 3. `rush_medium` beats `rush_weak_medium` ≥60% | 100% combined | 100% combined | ✅ |
+| 4. Mirror matches (`rush_medium`, `rush_weak`, `macro`) within 40-60% | rush_medium 56%, rush_weak 44%, **macro 66% (OUT OF BAND)** | rush_medium 46%, rush_weak 40%, **macro 48%** | ✅ (was a latent fail in v0.5.3's full matrix, never reported because criteria 2/5 already failed it) |
+| 5 (amended). <30% timeout in every rush-family-vs-non-rush pairing | worst 20% (rush_weak_medium vs turtle) | worst 20% (heavy vs rush) | ✅ |
+| KI-1 (rush-family-internal attrition timeouts, informational) | 70-82% (4 pairings) | 68-84% (4 pairings) | unchanged, accepted |
+| Task 1.4 corollary (`turtle` resource-win vs idle/passive/rush_weak/rush_weak_medium) | 76-88% | 82-86% | unchanged — `passiveWinThreshold` stays 4500 |
+
+- **All 5 amended acceptance criteria PASS** under v0.5.4-ML. The confirmation run was not a rubber stamp: it surfaced that v0.5.3's full 50-match matrix had `macro` mirror at 66% (33/50), **outside** the 40-60% criterion-4 band — this was never flagged in Iteration 8 because criteria 2 and 5 were already failing and the run wasn't re-checked against criterion 4 once those were fixed. Under v0.5.4 it lands at 48%, comfortably inside.
+- **Macro-mirror swing (66% → 48%)**: both the v0.5.3 and v0.5.4 macro-vs-macro matches resolve 100% by timeout-tiebreak (`macro_vs_macro__timeout` = 50/50 in both matrices) — neither side attacks the other's crystal in a pure macro mirror within 6000 ticks, by design. The win is decided entirely by relative crystal-HP%/lifetime-resources at tick 6000. The crystal slow-regen change (+0.05 HP/tick within 300px, landed in Iteration 9) alters how each side's crystal HP% evolves over a 6000-tick game in a symmetric matchup, which is enough to shift the tiebreak distribution from 66/34 to 48/52. This is a useful data point for future balance work: **timeout-tiebreak-resolved mirrors are sensitive to any change that affects crystal HP% trajectories**, even changes with "zero effect" on combat-resolved pairings.
+- `rush_medium`/`rush_weak`/`rush_weak_medium` mirrors and the criterion-2/3 pairings moved by ≤2 percentage points — consistent with Iterations 9-10's finding that `FIRST_PUSH_TICK`=300 and crystal regen have no material effect on combat-resolved pairings.
+- `npm test`: 470/470 passed, no regressions.
+
+**What was decided and why:**
+
+- **Phase 1 EXIT executed per `docs/REVIVAL_PLAN.md` line 250/256.** All Phase 1 exit criteria are now satisfied: acceptance matrix passes (table above) ✅; matrices archived in `docs/balance/` (`matrix_v0.5.3_task1.3.json`, `matrix_v0.5.4_task1.3_confirm.json` + `.log`) ✅; engine tests green (470/470) ✅; balance snapshot recorded (`0.5.4-ML` entry already in `shared/src/balanceHistory.ts`, landed in Iteration 9-10's commit) ✅; R10 diary entry — this entry ✅.
+- **No version bump** — per R1, this commit changes no training/reward/config code, only documentation and an archived matrix output. `0.5.4-ML` was already the version bumped in Iteration 9-10 for the actual lever changes.
+- **`turtle`'s 0% vs `rush_medium` and KI-1's rush-internal attrition timeouts (68-84%) remain as documented in Iteration 11** — both are accepted, non-blocking, by the amended criteria. Not re-litigated.
+
+**Draft release notes (player-facing changes accumulated across Phase 1, v0.3.2-ML → v0.5.4-ML):**
+
+- **Timeout tiebreaker** (Task 1.2): matches that reach the time limit no longer end in a draw — the winner is decided by crystal HP% (higher wins), then lifetime resources gathered, then a seeded coin-flip on exact ties.
+- **Turret buff**: turret HP 400 → 600, attack cooldown 12 → 8 ticks (faster firing, tougher).
+- **Counter-damage rebalance**: `COUNTER_MODIFIER` (bonus/penalty for countering unit types) 2.0/0.5 → 1.5/0.75 — counters matter less, less rock-paper-scissors swinginess.
+- **Worker cost reduction**: 50 → 35 resources — faster economy ramp-up early game.
+- **Rush-timing & crystal regen** (Iteration 9): scripted rush AI's first attack wave delayed from tick 200 → 300; crystals slowly self-heal (+0.05 HP/tick) when no enemy unit is within 300px — gives a brief grace period before the first attack and lets an undefended crystal recover slightly between pushes.
+
+**What would you tell the next agent NOT to waste time on?**
+
+- Don't re-run or re-litigate Task 1.3 — the amended criteria are met with margin (worst case 20% vs the 30% timeout cap, criterion 4 mirrors all comfortably inside 40-60%).
+- Don't try to "fix" KI-1 (rush-family-internal attrition, 68-84% timeout) — accepted by the amended criterion 5, revisit only at Phase 3 eval if the trained agent learns to stall.
+- Don't explore `TurtleBot.TURRET_CAP` or other turtle-buff levers — Iteration 10 already proved this is a structural dead end (criteria 2 and 5 move together 1:1 for this pairing).
+- Proceed straight to Phase 2 Task 2.1 (frame skip) per `docs/REVIVAL_PLAN.md` §Phase 2 — re-read `/root/fable-crystalfront-diagnosis.md` first (the γ-horizon root cause that Phase 2 fixes).
+
+**Reflections (R10 phase-boundary requirement):**
+
+(a) **Predictions vs. results**: Iteration 11 predicted the confirmation matrix would pass because `FIRST_PUSH_TICK`=300 and crystal regen were measured at zero effect on the targeted (`turtle`/`rush_medium`-involving) pairings — this held. The one surprise was the macro-mirror swing (66%→48%), which wasn't predicted because nobody had checked criterion 4 against the v0.5.3 full matrix (it was moot at the time, criteria 2/5 already failing). Net effect: still a pass, but it's a reminder that "zero effect on the pairings we measured" doesn't mean "zero effect everywhere" — timeout-tiebreak-resolved mirrors are a distinct sensitivity class.
+(b) **Later-phase adjustments**: none required to the Phase 2/3 plan as written. If the Phase 3 trained-agent eval reveals the agent exploits timeout-tiebreak stalling (KI-1's concern), revisit `maxTicks`/tiebreak design then — not before.
+(c) **What to skip going forward**: skip any further Task 1.3 balance tuning entirely (criteria met, lever list exhausted, structural dead ends documented). Skip re-deriving the diagnosis — `/root/fable-crystalfront-diagnosis.md` Phase 2 root cause (γ-horizon) is the active blocker now.
+
+**Phase 1 is now COMPLETE.** Next: Phase 2 Task 2.1 (frame skip, decision_interval k=8) per `docs/REVIVAL_PLAN.md` §Phase 2.
