@@ -50,6 +50,7 @@ const REPLAYS_DIR = resolve(REPO_ROOT, "replays");
 const BLUE_ID        = "headless-blue";
 const RED_ID         = "headless-red";
 let MAX_TICKS        = 6000;
+let DECISION_INTERVAL = 1;       // ticks held per macro-decision (frame skip)
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -140,13 +141,14 @@ let prevBlueObs: PlayerObservation | null = null;
 let saveReplay = false;
 let commandLog: Array<{ tick: number; playerId: string; command: Record<string, unknown> }> = [];
 
-function handleReset(seed?: number, opponent?: string, doSave = false, configOverrides?: Partial<import("../../server/src/match/types.js").MatchConfig>, newMaxTicks?: number, demoBot?: string, prePlace?: PrePlace): void {
+function handleReset(seed?: number, opponent?: string, doSave = false, configOverrides?: Partial<import("../../server/src/match/types.js").MatchConfig>, newMaxTicks?: number, demoBot?: string, prePlace?: PrePlace, newDecisionInterval?: number): void {
   milestones = freshMilestones();
   episodeShaping      = 0;
   lastTerminalReturn  = 0;
   episodeActionCounts = {};
   episodeTotalActions = 0;
   if (newMaxTicks !== undefined) MAX_TICKS = newMaxTicks;
+  if (newDecisionInterval !== undefined) DECISION_INTERVAL = newDecisionInterval;
   engine   = new MatchEngine();
   saveReplay = doSave;
 
@@ -189,56 +191,90 @@ function handleStep(actionIdx: number): void {
     return;
   }
 
-  // In demo mode, ignore Python's action — use the scripted blue bot instead
-  let macroAction = indexToAction(actionIdx);
-  let demoActionIdx = actionIdx;
-  if (blueBot) {
-    const blueLegal = getLegalActions(match, BLUE_ID);
-    const botActions = blueBot.step(buildObservation(match, BLUE_ID), blueLegal);
-    if (botActions.length > 0) {
-      macroAction = botActions[0];
-      demoActionIdx = actionToIndex(macroAction);
-      if (demoActionIdx < 0) demoActionIdx = 0;  // fallback to noop if not found
-    }
-  }
+  if (!blueBot) {
+    // Policy-driven: apply Python's macro-action once, held for the window.
+    const macroAction = indexToAction(actionIdx);
+    episodeTotalActions++;
+    episodeActionCounts[macroAction.type] = (episodeActionCounts[macroAction.type] ?? 0) + 1;
 
-  episodeTotalActions++;
-  episodeActionCounts[macroAction.type] = (episodeActionCounts[macroAction.type] ?? 0) + 1;
-
-  const blueCmds = expandMacroAction(macroAction, match, BLUE_ID);
-  for (const cmd of blueCmds) {
-    const result = engine.processCommand(match.id, BLUE_ID, cmd as Parameters<MatchEngine["processCommand"]>[2]);
-    if (result.success) {
-      commandLog.push({ tick: match.tick, playerId: BLUE_ID, command: cmd as Record<string, unknown> });
-    }
-  }
-
-  // Apply red scripted bot
-  const redObs   = buildObservation(match, RED_ID);
-  const redLegal = getLegalActions(match, RED_ID);
-  const redActions = redBot.step(redObs, redLegal);
-  for (const ra of redActions) {
-    const redCmds = expandMacroAction(ra, match, RED_ID);
-    for (const cmd of redCmds) {
-      const result = engine.processCommand(match.id, RED_ID, cmd as Parameters<MatchEngine["processCommand"]>[2]);
+    const blueCmds = expandMacroAction(macroAction, match, BLUE_ID);
+    for (const cmd of blueCmds) {
+      const result = engine.processCommand(match.id, BLUE_ID, cmd as Parameters<MatchEngine["processCommand"]>[2]);
       if (result.success) {
-        commandLog.push({ tick: match.tick, playerId: RED_ID, command: cmd as Record<string, unknown> });
+        commandLog.push({ tick: match.tick, playerId: BLUE_ID, command: cmd as Record<string, unknown> });
       }
     }
   }
 
-  // Advance simulation
-  engine.tick(match.id);
+  // Demo mode: first non-noop scripted-blue action issued in this window (else noop)
+  let demoActionIdx = 0;
+  let foundNonNoop = false;
 
-  const done   = match.phase !== "playing" || match.tick >= MAX_TICKS;
-  const winner = match.result?.winner ?? null;
-  const winType = (match.result?.winType ?? null) as string | null;
+  let reward     = 0;
+  let done       = false;
+  let winner: string | null  = null;
+  let winType: string | null = null;
+  let blueObs     = prevBlueObs;
+  let tickPrevObs = prevBlueObs;
 
-  const blueObs = buildObservation(match, BLUE_ID);
-  const { reward, terminalReturn, shapingReturn } = computeReward(prevBlueObs, blueObs, done, winner, winType, milestones, BLUE_ID);
-  episodeShaping += shapingReturn;
-  if (done) lastTerminalReturn = terminalReturn;
-  prevBlueObs   = blueObs;
+  for (let t = 0; t < DECISION_INTERVAL; t++) {
+    if (blueBot) {
+      // Demo mode: scripted blue bot acts every tick with its FULL action list
+      const blueLegal = getLegalActions(match, BLUE_ID);
+      const botActions = blueBot.step(buildObservation(match, BLUE_ID), blueLegal);
+      for (const ba of botActions) {
+        const blueCmds = expandMacroAction(ba, match, BLUE_ID);
+        for (const cmd of blueCmds) {
+          const result = engine.processCommand(match.id, BLUE_ID, cmd as Parameters<MatchEngine["processCommand"]>[2]);
+          if (result.success) {
+            commandLog.push({ tick: match.tick, playerId: BLUE_ID, command: cmd as Record<string, unknown> });
+          }
+        }
+        if (!foundNonNoop && ba.type !== "noop") {
+          const idx = actionToIndex(ba);
+          demoActionIdx = idx >= 0 ? idx : 0;
+          foundNonNoop = true;
+        }
+      }
+    }
+
+    // Apply red scripted bot — every tick
+    const redObs   = buildObservation(match, RED_ID);
+    const redLegal = getLegalActions(match, RED_ID);
+    const redActions = redBot.step(redObs, redLegal);
+    for (const ra of redActions) {
+      const redCmds = expandMacroAction(ra, match, RED_ID);
+      for (const cmd of redCmds) {
+        const result = engine.processCommand(match.id, RED_ID, cmd as Parameters<MatchEngine["processCommand"]>[2]);
+        if (result.success) {
+          commandLog.push({ tick: match.tick, playerId: RED_ID, command: cmd as Record<string, unknown> });
+        }
+      }
+    }
+
+    // Advance simulation
+    engine.tick(match.id);
+
+    done    = match.phase !== "playing" || match.tick >= MAX_TICKS;
+    winner  = match.result?.winner ?? null;
+    winType = (match.result?.winType ?? null) as string | null;
+
+    blueObs = buildObservation(match, BLUE_ID);
+    const tickResult = computeReward(tickPrevObs, blueObs, done, winner, winType, milestones, BLUE_ID);
+    reward += tickResult.reward;
+    episodeShaping += tickResult.shapingReturn;
+    if (done) lastTerminalReturn = tickResult.terminalReturn;
+    tickPrevObs = blueObs;
+
+    if (done) break;
+  }
+  prevBlueObs = blueObs;
+
+  if (blueBot) {
+    episodeTotalActions++;
+    const labelType = indexToAction(demoActionIdx).type;
+    episodeActionCounts[labelType] = (episodeActionCounts[labelType] ?? 0) + 1;
+  }
 
   const legal = getLegalActions(match, BLUE_ID);
   const info: Record<string, unknown> = { ticks: match.tick };
@@ -322,7 +358,7 @@ rl.on("line", (raw) => {
     const msg = JSON.parse(line);
     switch (msg.type) {
       case "reset":
-        handleReset(msg.seed, msg.opponent, msg.save_replay === true, msg.config_overrides ?? undefined, msg.max_ticks ?? undefined, msg.demo_bot ?? undefined, msg.pre_place ?? undefined);
+        handleReset(msg.seed, msg.opponent, msg.save_replay === true, msg.config_overrides ?? undefined, msg.max_ticks ?? undefined, msg.demo_bot ?? undefined, msg.pre_place ?? undefined, msg.decision_interval ?? undefined);
         break;
       case "step":
         handleStep(msg.action as number);

@@ -68,6 +68,7 @@ class CrystalFrontVecEnv:
         max_ticks: int = 6000,
         pre_place: dict | None = None,
         action_forcing_scale: float = 0.0,
+        decision_interval: int = 1,
     ):
         self.vec_size              = vec_size
         self.opponent              = opponent
@@ -77,6 +78,7 @@ class CrystalFrontVecEnv:
         self._max_ticks            = max_ticks
         self._pre_place            = pre_place
         self._action_forcing_scale = action_forcing_scale
+        self._decision_interval    = decision_interval
         self._proc: subprocess.Popen | None = None
         self._last_legal_masks = [np.ones(ACTION_SPACE_SIZE, dtype=bool)] * vec_size
 
@@ -166,6 +168,7 @@ class CrystalFrontVecEnv:
             "save_replays":     save_replays,
             "save_replay_every": self.save_replay_every,
             "max_ticks":        self._max_ticks,
+            "decision_interval": self._decision_interval,
         }
         if self._config_overrides:
             msg["config_overrides"] = self._config_overrides
