@@ -2,7 +2,7 @@
 
 **Branch:** `CrystalFront-ML`
 **Status:** v0.3.2-ML **SHIPPED** (2026-05-22). v0.4.0-ML **HALTED** (2026-05-23) — Option B action-masking and Option γ RND both failed to break `trn=0%` ceiling.
-**Last updated:** 2026-06-11 (Task 2.2)
+**Last updated:** 2026-06-11 (Task 2.4)
 
 ---
 
@@ -15,7 +15,7 @@ This section is the orientation point for any agent picking up the project. Ever
 - **v0.3.2-ML is live in production.** `models/policy-v0.3.2-ML.onnx`. Not changing until v0.5.0-ML eval gates pass (see `docs/REVIVAL_PLAN.md` Task 3.3).
 - **Phase 0 of the revival plan is complete** (v0.5.0-ML). The three root causes of the v0.4.0-ML failure were diagnosed and fixed: (1) autoreset config-override bug in `stdioVecRunner.ts`, (2) static MAP constants in observation/geometry code, (3) MacroBot crash. Code base is now trustworthy.
 - **Phase 1 (balance) is COMPLETE** (v0.5.4-ML, exited 2026-06-11). Task 1.3's tuning loop ran 5 iterations, hit REVIVAL_PLAN line 244's stop clause (criterion 2's `turtle` leg is structurally unsatisfiable — `turtle` never attacks, so its only win path vs a sustained rush is the timeout tiebreak, which criterion 5 caps), and the acceptance criteria were **amended** per user direction (criterion 2 drops the `turtle` leg, criterion 5 scoped to rush-vs-non-rush pairings, KI-1 accepted for rush-internal attrition). The v0.5.4-ML confirmation matrix (4050 matches, `docs/balance/matrix_v0.5.4_task1.3_confirm.json`) **passes all 5 amended criteria** — see Iteration 12 for the full before/after table and a noteworthy macro-mirror tiebreak swing (66%→48%, both within band).
-- **Phase 2 (MDP restructure) is in progress.** **Task 2.1 (frame skip, decision_interval k=8) is DONE** (v0.5.5-ML, 2026-06-11) — see Iteration 13. **Task 2.2 (reward rescale and terminal redesign) is DONE** (v0.5.6-ML, 2026-06-11) — see Iteration 14. **Task 2.3 (PPO hyperparameters: γ=0.99, num_steps=256, num_minibatches=4, LR-anneal guard) is DONE** (v0.5.7-ML, 2026-06-11) — see Iteration 15. Next: **Task 2.4 (curriculum promotion at update boundaries)** per `docs/REVIVAL_PLAN.md` §Phase 2.
+- **Phase 2 (MDP restructure) is in progress.** **Task 2.1 (frame skip, decision_interval k=8) is DONE** (v0.5.5-ML, 2026-06-11) — see Iteration 13. **Task 2.2 (reward rescale and terminal redesign) is DONE** (v0.5.6-ML, 2026-06-11) — see Iteration 14. **Task 2.3 (PPO hyperparameters: γ=0.99, num_steps=256, num_minibatches=4, LR-anneal guard) is DONE** (v0.5.7-ML, 2026-06-11) — see Iteration 15. **Task 2.4 (curriculum promotion deferred to update boundaries) is DONE** (v0.5.8-ML, 2026-06-11) — see Iteration 16. Next: **Task 2.5 (BC label alignment)** per `docs/REVIVAL_PLAN.md` §Phase 2.
 
 See `docs/REVIVAL_PLAN.md` for the full implementation plan and Appendix B for task status.
 
@@ -71,7 +71,7 @@ python3 -m training.ppo.train --curriculum --curriculum_stage 0 \
 | Ship v0.3.2-ML bot | ✅ Live in production |
 | Phase 0: fix infra bugs | ✅ Complete (v0.5.0-ML, 2026-06-09) |
 | Phase 1: balance game | ✅ Complete (v0.5.4-ML, 2026-06-11) — amended criteria all pass, see Iteration 12 diary entry |
-| Phase 2: restructure MDP | 🔄 In progress — Tasks 2.1 (frame skip, v0.5.5-ML), 2.2 (reward rescale, v0.5.6-ML), 2.3 (PPO hyperparams, v0.5.7-ML) done; Task 2.4 (curriculum at update boundaries) next |
+| Phase 2: restructure MDP | 🔄 In progress — Tasks 2.1 (frame skip, v0.5.5-ML), 2.2 (reward rescale, v0.5.6-ML), 2.3 (PPO hyperparams, v0.5.7-ML), 2.4 (curriculum at update boundaries, v0.5.8-ML) done; Task 2.5 (BC label alignment) next |
 | Phase 3: retrain + ship v0.5.0-ML | ⬜ After Phase 2 |
 
 ---
@@ -2151,3 +2151,42 @@ Two LR-anneal robustness changes:
 - Don't try to make the schedule-compression warning "smarter" (e.g. auto-adjusting `total_timesteps`) — the plan asks for a warning only; the user should decide whether to extend `--total_timesteps` or pass `--no-anneal_lr`.
 
 **Phase 2 Task 2.4 (curriculum promotion at update boundaries) is next**, per `docs/REVIVAL_PLAN.md` §Phase 2 Task 2.4 — `train.py` currently rebuilds the vec envs *inside* rollout collection when a stage promotes/regresses, splicing two stages into one rollout buffer with no episode boundary (corrupts GAE for that update). Fix: set `pending_stage_change = +1 | -1` in the win-window check instead of rebuilding immediately; after the PPO update for the current rollout completes, apply the change (rebuild envs, reset, update `cur_stage`, log); delete the in-loop rebuild blocks. Verify: short curriculum training from stage 0 with a low promotion threshold; confirm the promote log line appears *between* update logs and training continues without error.
+
+### 2026-06-11 — v0.5.8-ML Phase 2: Iteration 16 (Task 2.4 — curriculum promotion at update boundaries)
+
+**What was done:**
+
+In `training/ppo/train.py`, restructured curriculum stage transitions per `docs/REVIVAL_PLAN.md` §Phase 2 Task 2.4:
+
+- Added `pending_stage_change = 0` (an `int`, +1/−1/0) next to the existing `cur_stage_idx`/`cur_stage`/`stage_step_start` curriculum-state init.
+- The win-window promotion/regression check (still inside rollout collection, gated on `window_episodes >= WIN_WINDOW`) no longer rebuilds anything immediately. On promotion (`win_rate >= cur_stage.promotion_threshold`) it now just sets `pending_stage_change = +1` (or, if already at the last stage, prints "CURRICULUM COMPLETE" and sets `cur_stage = None`, unchanged from before). On regression (`_stage_steps > cur_stage.max_steps and cur_stage_idx > 0`) it sets `pending_stage_change = -1`. All the old in-loop `for ve in vec_envs: ve.close()` / `_build_vec_envs(...)` / re-reset / `cur_stage_idx`/`cur_stage`/`stage_step_start` mutation code was deleted from both branches.
+- Added a new block immediately after the league-step block, still inside the `for update in range(start_update, num_updates+1):` loop (i.e. runs once per update, at the very end of the loop body, right before "final save"): if `pending_stage_change != 0`, apply it — bump `cur_stage_idx`, swap `cur_stage = CURRICULUM[cur_stage_idx]`, reset `stage_step_start = global_step`, print the `*** CURRICULUM PROMOTE/REGRESS → stage ... ***` line, log `curriculum/stage` to TensorBoard, close and rebuild `vec_envs` via `_resolve_env_params()`/`_build_vec_envs()`, re-reset all envs (same `executor.map(_do_reset_vec, ...)` pattern as startup), and reset `pending_stage_change = 0`.
+- **Bundled fix beyond the literal plan text**: the new block also resets `episode_rewards = [0.0] * cfg.num_envs` and `episode_lengths = [0] * cfg.num_envs` for *every* env, not just whichever env happened to trigger the `done` that crossed the win-window threshold. This is necessary because the rebuild replaces the underlying game instance for *all* envs (not just the triggering one), so every env's in-flight episode is discarded — without this, the other envs' `episode_rewards`/`episode_lengths` accumulators would carry over stale partial-episode state into the new stage's first episode.
+
+Net effect: a single rollout buffer (and its GAE computation) never spans two curriculum stages/configs — the stage only changes between updates, never mid-rollout.
+
+**Verification:**
+
+- `python3 -c "import training.ppo.train"` → clean import, no syntax errors.
+- **Forced-promotion smoke test** (throwaway, not part of the committed diff): temporarily set `WIN_WINDOW = 8` (from 100) and stage `0a`'s `promotion_threshold = 0.0` (from 0.85) / `max_ticks = 80` (from 2000) — both reverted immediately after the run; `git diff --stat` before/after the test shows the same 29/30-line curriculum-only change. Ran:
+  ```
+  python3 -m training.ppo.train --curriculum --curriculum_stage 0 \
+    --num_envs 4 --vec_size 4 --decision_interval 8 --device cpu --no-compile_agent \
+    --num_steps 16 --total_timesteps 640 --log_dir runs/task2_4_smoke --exp_name task2_4_smoke
+  ```
+  (`num_updates = 640 // (4×16) = 10`.) Stage `0a` (pre-placed barracks + 2 skirmishers vs `idle`, 50 HP crystal) ended every episode after exactly 1 decision — expected and unrelated to this change (the pre-placed skirmishers' innate combat AI destroys the 50 HP crystal within the first 8-tick window regardless of the agent's action). With `WIN_WINDOW=8`, `window_episodes` crossed 8 **eight times** during update 1's rollout collection (8 window-report lines, all printed as `update=1`); the 8th crossing set `win_rate=0.00 >= promotion_threshold=0.0` → `pending_stage_change = +1`. The line `*** CURRICULUM PROMOTE → stage 0b (map=800, opp=idle) ***` printed **after** update 1's 8th window-report line and **before** any update-2 output — i.e. between update logs, exactly as `docs/REVIVAL_PLAN.md` Task 2.4's Verify step requires. `vec_envs` were closed/rebuilt for stage `0b` (`pre_place_units=[]`), envs re-reset, and updates 2–10 ran in stage `0b` with no further window-report lines (no episodes completed within the remaining 9×64=576-decision budget against `0b`'s 2000-tick/250-decision episodes — expected). The loop reached `num_updates=10` and printed `Training complete. Final checkpoint: .../final.pt` with no exceptions (no recurrence of the negative-LR / empty-`range` edge cases from Task 2.3). Smoke artifacts (`runs/task2_4_smoke`, `checkpoints/task2_4_smoke*`) deleted after the run.
+- `npm test`: 470/470 (no `headless/src` files touched this task; ran for regression safety per R6).
+
+**What was decided and why:**
+
+- **Version bumped to `0.5.8-ML`** across all 5 `package.json` (R1 — trainer-config/control-flow change).
+- **No `BALANCE_HISTORY` entry added** — trainer-only change; no engine, reward, or replay-affecting effect.
+- Appendix B row 2.4 marked ✅; "Current handoff state" and "Open commitments" updated to point at Task 2.5 next.
+
+**What would you tell the next agent NOT to waste time on?**
+
+- The `ep_len=1` episodes in the stage-`0a` smoke test are **not** a bug introduced by this task — they're an intrinsic property of stage `0a`'s pre-placed skirmishers + 50 HP crystal + `idle` opponent (the pre-placed units' built-in combat AI kills the crystal in the first decision window regardless of agent action). This is true with the *original* `max_ticks=2000` too (1 < 2000 either way), so don't go investigating "why does 0a end so fast" as part of Phase 2 — it's pre-existing and orthogonal to this task.
+- Don't try to make the forced-promotion smoke test "more realistic" (e.g. running until a *second* promotion in stage `0b` too) — the plan's Verify step only asks to confirm the promote line appears between update logs and training continues without error, both of which the single-promotion test demonstrates conclusively (including 9 further clean updates afterward in the new stage's env).
+- `WIN_WINDOW=100` is still hardcoded inside `train()` and still not tied to the unused `CurriculumStage.eval_window` field — this was true before Task 2.4 and is out of scope for it. If a future task wants per-stage eval windows, that's a separate change.
+
+**Phase 2 Task 2.5 (BC label alignment) is next**, per `docs/REVIVAL_PLAN.md` §Phase 2 Task 2.5 — in `training/bc_pretrain.py`, the demo label is currently read from the *previous* step's info, pairing action `a_t` with observation `s_{t+1}`. Restructure the collection loop so each appended `(obs, action)` pair is the observation **before** the step paired with the `demoAction` returned **by** that step (`stdioRunner.ts` already includes `demoAction` in every step info in demo mode, per Task 2.1). Keep the noop-subsample and critic-return logic unchanged.
