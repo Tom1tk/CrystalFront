@@ -178,3 +178,103 @@ given their zero effect on the targeted pairings and the targeted
 re-measurements showing no regression on `macro`'s leg, a full re-run is
 unlikely to change this document's conclusions and was not run (saves ~113
 min; can be done as part of whatever follow-up addresses this FINDINGS.md).
+
+---
+
+## Decision (2026-06-11) — ratified path forward
+
+The user asked for a best-path recommendation and directed that the plan
+documentation be updated accordingly. **Decision: adopt options 2 + 4 (amend
+the acceptance criteria); reject options 1 and 3; proceed to Phase 2 after
+one confirmation matrix run under v0.5.4-ML.** Rationale and the amended
+criteria follow. REVIVAL_PLAN.md Task 1.3 carries the same amendments inline.
+
+### Why amend the criteria rather than the game or the bots
+
+Phase 1 exists to fix diagnosis root cause #2: *"no scripted bot beats
+rush_medium — the training gate was unachievable."* That is no longer true:
+**`macro` beats `rush_medium` 46%/46% with zero timeout games in either
+direction** — a non-rush strategy beating the rush by genuine resolution.
+The game now demonstrably supports defence-into-victory. `turtle`'s 0% is a
+property of the bot's *intentional* design (never attacks, so no win path
+against sustained offense except the timeout tiebreak — proven structurally
+above), not a property of game balance. The ML agent is not `turtle`; it is
+not constrained to never attack. Holding Phase 2 (the project's actual
+bottleneck per the diagnosis) hostage to a scripted bot's deliberate design
+limitation inverts the project's priorities.
+
+- **Option 1 (give `turtle` counter-offense) — rejected.** (a) It destroys
+  `turtle`'s roster value as the pure-defense reference and as a distinct
+  sparring style for the ML agent; (b) "defend then push" already exists in
+  the roster and already passes criterion 2 — that bot is `macro`; turtle
+  with offense is a redundant, worse macro; (c) new behaviour means a new
+  multi-iteration tuning loop, delaying Phase 2 for zero training benefit.
+- **Option 3 (change tiebreak rule / `maxTicks`) — rejected.** Blast radius
+  over all 81 pairings and the now-passing criteria 1/3/4; the hoped-for
+  "smoothing of the cliff" is speculative; and raising `maxTicks` lengthens
+  episodes, directly worsening the per-tick-γ horizon problem that Phase 2
+  exists to fix.
+
+### Amended acceptance criteria (supersede REVIVAL_PLAN lines 238–242 for Task 1.3 evaluation)
+
+1. *(unchanged)* Every bot loses ≥20% of matches to at least one other bot.
+   — **PASSES** (v0.5.3 matrix).
+2. **(amended)** `macro` beats `rush_medium` ≥30%, **and** that pairing's
+   timeout rate is <30% (so the wins are genuine resolutions, not stalls).
+   The `turtle` leg is **removed**: it is mathematically incompatible with
+   criterion 5 for a never-attacks bot (root-cause section above). —
+   **PASSES** (46%/46%, 0 timeouts both directions).
+3. *(unchanged)* `rush_medium` beats `rush_weak_medium` ≥60%. — **PASSES**
+   (100%/100%).
+4. *(unchanged, already CLOSED)* Mirror matches within 40–60%.
+5. **(amended)** Timeout-tiebreak <30% in every pairing of a rush-family bot
+   (`rush_weak`, `rush_weak_medium`, `rush_medium`, `rush`) against a
+   non-rush bot. Pairings **within** {`idle`, `passive`, `turtle`, `macro`,
+   `heavy`} are excluded by construction: no bot in that set initiates
+   sustained offense, so those pairings can only resolve by resource win or
+   timeout — the original criterion was unsatisfiable for them as written.
+   — **PASSES** on the v0.5.3 matrix (worst rush-vs-non-rush pairing:
+   `rush_weak_medium` vs `turtle` at 20%).
+   - **Known issue KI-1 (accepted, non-blocking):** the four rush-family
+     internal attrition pairings — `rush_medium` mirror (82%), `rush` mirror
+     (72%), `rush_medium`↔`rush` (70%/70%) — stay timeout-heavy. Both sides
+     have offense, so this is tunable in principle, but any fix (sudden
+     death, damage escalation, `maxTicks` changes) risks the now-passing
+     criteria and is design work, not lever tuning. The ML agent never plays
+     in scripted-vs-scripted pairings, and timeouts produce deterministic
+     winners (no draws). **Revisit at Phase 3 eval** — specifically if the
+     trained agent learns to exploit timeout-stalling.
+
+### Task 1.4 corollary: `passiveWinThreshold` stays at 4500
+
+The v0.5.3 matrix shows 8 non-mirror pairings above Task 1.4's "~30%
+resource wins → raise threshold 50%" trigger — but **all 8 are `turtle` vs
+{`idle`, `passive`, `rush_weak`, `rush_weak_medium`}** (74–90% resource
+wins), i.e. the resource win working exactly as intended: turtle's
+legitimate win path against opponents that can't break its wall. No
+competitive pairing exceeds 2% resource wins. Raising the threshold would
+convert those resource wins into timeout-tiebreaks, directly regressing
+criterion 5 for no benefit. The rule's trigger is hereby scoped to pairings
+where a combat resolution is achievable for both sides (i.e. not turtle's
+fortress pairings).
+
+### Handoff — what the next agent does, in order
+
+1. Read this section, then REVIVAL_PLAN.md Task 1.3's amendment block.
+2. Run the **confirmation matrix under v0.5.4-ML** (the v0.5.3 matrix
+   predates `FIRST_PUSH_TICK`=300 and crystal regen): `python3
+   training/balance_report.py --matches 50`, ~115 min, run in background;
+   save as `docs/balance/matrix_v0.5.4_task1.3_confirm.json`.
+3. Evaluate against the **amended** criteria 1/2/3/5 above (criterion 4 is
+   closed) plus the Task 1.4 corollary. Expected: pass — only
+   `FIRST_PUSH_TICK` and crystal regen changed since v0.5.3, both measured
+   at zero effect on the targeted pairings.
+4. If pass → execute Phase 1 exit (REVIVAL_PLAN line 250): archive the
+   matrix, R10 diary entry (before/after tables, draft release notes for the
+   player-facing changes: timeout tiebreaker, cost/counter changes, crystal
+   regen), update Appendix B and the handoff section. Docs-only → no version
+   bump.
+5. If a previously-passing criterion regresses (unlikely), re-read this file
+   before touching any lever.
+6. Then start **Phase 2 Task 2.1** (frame skip) — after re-reading
+   `/root/fable-crystalfront-diagnosis.md` per standing project practice.
