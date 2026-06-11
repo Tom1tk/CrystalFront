@@ -15,7 +15,7 @@ This section is the orientation point for any agent picking up the project. Ever
 - **v0.3.2-ML is live in production.** `models/policy-v0.3.2-ML.onnx`. Not changing until v0.5.0-ML eval gates pass (see `docs/REVIVAL_PLAN.md` Task 3.3).
 - **Phase 0 of the revival plan is complete** (v0.5.0-ML). The three root causes of the v0.4.0-ML failure were diagnosed and fixed: (1) autoreset config-override bug in `stdioVecRunner.ts`, (2) static MAP constants in observation/geometry code, (3) MacroBot crash. Code base is now trustworthy.
 - **Phase 1 (balance) is COMPLETE** (v0.5.4-ML, exited 2026-06-11). Task 1.3's tuning loop ran 5 iterations, hit REVIVAL_PLAN line 244's stop clause (criterion 2's `turtle` leg is structurally unsatisfiable — `turtle` never attacks, so its only win path vs a sustained rush is the timeout tiebreak, which criterion 5 caps), and the acceptance criteria were **amended** per user direction (criterion 2 drops the `turtle` leg, criterion 5 scoped to rush-vs-non-rush pairings, KI-1 accepted for rush-internal attrition). The v0.5.4-ML confirmation matrix (4050 matches, `docs/balance/matrix_v0.5.4_task1.3_confirm.json`) **passes all 5 amended criteria** — see Iteration 12 for the full before/after table and a noteworthy macro-mirror tiebreak swing (66%→48%, both within band).
-- **Phase 2 (MDP restructure) is in progress.** **Task 2.1 (frame skip, decision_interval k=8) is DONE** (v0.5.5-ML, 2026-06-11) — see Iteration 13. **Task 2.2 (reward rescale and terminal redesign) is DONE** (v0.5.6-ML, 2026-06-11) — see Iteration 14. Next: **Task 2.3 (PPO hyperparameters for the new MDP — γ=0.99, num_steps=256, num_minibatches=4, LR-anneal guard)** per `docs/REVIVAL_PLAN.md` §Phase 2.
+- **Phase 2 (MDP restructure) is in progress.** **Task 2.1 (frame skip, decision_interval k=8) is DONE** (v0.5.5-ML, 2026-06-11) — see Iteration 13. **Task 2.2 (reward rescale and terminal redesign) is DONE** (v0.5.6-ML, 2026-06-11) — see Iteration 14. **Task 2.3 (PPO hyperparameters: γ=0.99, num_steps=256, num_minibatches=4, LR-anneal guard) is DONE** (v0.5.7-ML, 2026-06-11) — see Iteration 15. Next: **Task 2.4 (curriculum promotion at update boundaries)** per `docs/REVIVAL_PLAN.md` §Phase 2.
 
 See `docs/REVIVAL_PLAN.md` for the full implementation plan and Appendix B for task status.
 
@@ -71,7 +71,7 @@ python3 -m training.ppo.train --curriculum --curriculum_stage 0 \
 | Ship v0.3.2-ML bot | ✅ Live in production |
 | Phase 0: fix infra bugs | ✅ Complete (v0.5.0-ML, 2026-06-09) |
 | Phase 1: balance game | ✅ Complete (v0.5.4-ML, 2026-06-11) — amended criteria all pass, see Iteration 12 diary entry |
-| Phase 2: restructure MDP | 🔄 In progress — Task 2.1 (frame skip) done (v0.5.5-ML), Task 2.2 (reward rescale) done (v0.5.6-ML), Task 2.3 (PPO hyperparams) next |
+| Phase 2: restructure MDP | 🔄 In progress — Tasks 2.1 (frame skip, v0.5.5-ML), 2.2 (reward rescale, v0.5.6-ML), 2.3 (PPO hyperparams, v0.5.7-ML) done; Task 2.4 (curriculum at update boundaries) next |
 | Phase 3: retrain + ship v0.5.0-ML | ⬜ After Phase 2 |
 
 ---
@@ -2112,3 +2112,42 @@ One incidental fix in `training/ppo/train.py` (line 706): the console diagnostic
 - **GPU note**: the GPU was busy with another process for part of this session; the smoke run above was deliberately CPU-only (`--device cpu --no-compile_agent`) to avoid contention. Note that *even* `--device cpu` runs call `torch.cuda.manual_seed_all(seed)` (line 246) and `torch.autocast(device_type="cuda", ...)` (lines 576/789/838, hardcoded regardless of `cfg.device`) — so "CPU" runs still touch the CUDA context. If the GPU is busy with another process, defer *all* `training.ppo.train` invocations (CPU or GPU flag), not just `--device cuda` ones. This is a pre-existing quirk, not something to fix as part of Phase 2.
 
 **Phase 2 Task 2.3 (PPO hyperparameters for the new MDP) is next**, per `docs/REVIVAL_PLAN.md` §Phase 2 Task 2.3 — in `training/ppo/train.py` `Config` defaults: `gamma: 0.995 → 0.99`, `num_steps: 1536 → 256`, `num_minibatches: 6 → 4` (keep minibatch ≈1280 with 20 envs × 256 steps), leave `gae_lambda`/`ent_coef`/`learning_rate`/clip unchanged, plus an LR-anneal-schedule-compression warning when resuming a checkpoint whose `update` ≥ 80% of the *current* run's `num_updates`.
+
+### 2026-06-11 — v0.5.7-ML Phase 2: Iteration 15 (Task 2.3 — PPO hyperparameters for the new MDP)
+
+**What was done:**
+
+Updated three `Config` defaults in `training/ppo/train.py` per `docs/REVIVAL_PLAN.md` §Phase 2 Task 2.3:
+
+- `gamma: 0.995 → 0.99` — at k=8 (Task 2.1's decision interval), half-life ≈ 69 decisions ≈ 550 ticks of game time, matching the new decision granularity.
+- `num_steps: 1536 → 256` — episodes are now ≤750 decisions (vs 6000 ticks pre-Task-2.1), so the old 1536-step rollout horizon was overkill; 256 gives faster updates.
+- `num_minibatches: 6 → 4` — with the default `num_envs=20`, new `batch_size = 20×256 = 5120` (vs old `20×1536 = 30720`) and new `minibatch_size = 5120/4 = 1280` (vs old `30720/6 = 5120`), per the plan's explicit "keep minibatch ≈1280" target.
+
+Inline comments on all three fields updated to explain the new values. `gae_lambda=0.95`, `ent_coef=0.02`, `learning_rate=3e-4`, and clip params (`clip_coef`, `clip_vloss`, `norm_adv`, `max_grad_norm`) left untouched per the plan ("they're correct for ±1 rewards").
+
+Two LR-anneal robustness changes:
+
+1. **Clamp**: `frac = 1.0 - (update - 1) / num_updates` → `frac = max(1.0 - (update - 1) / num_updates, 0.0)`. Previously, resuming a checkpoint with `update >= num_updates` would drive `frac` negative, making `optimizer.param_groups[0]["lr"]` negative (gradient ascent on the loss — silently wrong).
+2. **Schedule-compression warning**: immediately after `num_updates = cfg.total_timesteps // cfg.batch_size` is computed, if `cfg.anneal_lr and _ckpt is not None and (start_update - 1) >= 0.8 * num_updates`, print a loud `⚠️  WARNING` showing the resumed `update`/`num_updates`/percentage and suggesting either a larger `--total_timesteps` or `--no-anneal_lr`. This catches the "schedule compression trap": resuming a long-trained checkpoint into a short follow-up run whose `--total_timesteps` implies a `num_updates` the checkpoint has already exceeded, which (even with the clamp) means LR is pinned near/at zero for the *entire* follow-up run.
+
+**Verification:**
+
+- `python3 -c "from training.ppo.train import Config; ..."`: confirmed `gamma=0.99`, `num_steps=256`, `num_minibatches=4`, `batch_size=5120`, `minibatch_size=1280`.
+- **Fresh run** (`--total_timesteps 20000 --num_envs 4 --vec_size 2 --decision_interval 8 --opponent idle --device cpu --no-compile_agent`): banner correctly shows `Batch size: 1024 (steps=256 × envs=4)` / `Minibatch: 256 (4 minibatches × 4 epochs)` (4 envs here, not the default 20). Completed cleanly, checkpoint saved at `update=19` (`num_updates = 20000 // 1024 = 19`).
+- **Resume test 1** (`--checkpoint <update=19 ckpt> --total_timesteps 20480`, giving `num_updates=20`): `start_update=20`, `(start_update-1)=19 >= 0.8*20=16` → **warning fired**: `update 19/20 (95%)`. One update ran with `frac = max(1 - 19/20, 0) = 0.05` (positive, no clamp needed here but exercises the path).
+- **Resume test 2** (`--checkpoint <update=19 ckpt> --total_timesteps 15360`, giving `num_updates=15 < start_update-1=19`): **warning fired**: `update 19/15 (127%)`. The `range(20, 16)` update loop is empty — zero updates run, program completes cleanly with "Training complete" and no negative-LR crash (the clamp wasn't even reached since the loop body never executes, but this confirms the guard handles `num_updates < start_update` without error).
+- `npm test`: 470/470 (no `headless/src` files touched this task; ran for regression safety per R6, no `npm run build:headless` needed).
+
+**What was decided and why:**
+
+- **Version bumped to `0.5.7-ML`** across all 5 `package.json` (R1 — training-config change).
+- **No `BALANCE_HISTORY` entry added** — PPO hyperparameters only; no engine, reward, or replay-affecting change.
+- Appendix B row 2.3 marked ✅; "Current handoff state" and "Open commitments" updated to point at Task 2.4 next.
+
+**What would you tell the next agent NOT to waste time on?**
+
+- Don't second-guess `gae_lambda=0.95`/`ent_coef=0.02`/`learning_rate=3e-4`/clip params — the plan explicitly says these are correct for the new ±1.0 reward scale (Task 2.2) and decision interval (Task 2.1); Task 2.3's scope was only `gamma`/`num_steps`/`num_minibatches`/the LR-anneal guard.
+- The "minibatch ≈1280" smoke-test banners above show 4 envs (256 batch / 4 minibatches = 256 each) because the smoke run used `--num_envs 4` for speed — the **default** `num_envs=20` is what produces the target `5120/4=1280` minibatch; this was confirmed analytically via the `Config()` defaults check, not by running a 20-env smoke (too slow for a smoke test).
+- Don't try to make the schedule-compression warning "smarter" (e.g. auto-adjusting `total_timesteps`) — the plan asks for a warning only; the user should decide whether to extend `--total_timesteps` or pass `--no-anneal_lr`.
+
+**Phase 2 Task 2.4 (curriculum promotion at update boundaries) is next**, per `docs/REVIVAL_PLAN.md` §Phase 2 Task 2.4 — `train.py` currently rebuilds the vec envs *inside* rollout collection when a stage promotes/regresses, splicing two stages into one rollout buffer with no episode boundary (corrupts GAE for that update). Fix: set `pending_stage_change = +1 | -1` in the win-window check instead of rebuilding immediately; after the PPO update for the current rollout completes, apply the change (rebuild envs, reset, update `cur_stage`, log); delete the in-loop rebuild blocks. Verify: short curriculum training from stage 0 with a low promotion threshold; confirm the promote log line appears *between* update logs and training continues without error.
