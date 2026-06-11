@@ -1,0 +1,90 @@
+
+CrystalFront Balance Report
+  Blue bots: ['idle', 'passive', 'rush_weak', 'rush_weak_medium', 'rush_medium', 'turtle', 'macro', 'heavy', 'rush']
+  Red bots:  ['idle', 'passive', 'rush_weak', 'rush_weak_medium', 'rush_medium', 'turtle', 'macro', 'heavy', 'rush']
+  Matches per pair: 50
+  Total matches:    4050
+
+  [1/81] idle vs idle … 50 matches in 51.9s — idle WR: 0.50
+  [2/81] idle vs passive … 50 matches in 61.9s — idle WR: 0.00
+  [3/81] idle vs rush_weak … 50 matches in 45.7s — idle WR: 0.00
+  [4/81] idle vs rush_weak_medium … 50 matches in 47.3s — idle WR: 0.00
+  [5/81] idle vs rush_medium … 50 matches in 57.4s — idle WR: 0.00
+  [6/81] idle vs turtle … 50 matches in 63.8s — idle WR: 0.00
+  [7/81] idle vs macro … 50 matches in 67.8s — idle WR: 0.00
+  [8/81] idle vs heavy … 50 matches in 85.3s — idle WR: 0.00
+  [9/81] idle vs rush … 50 matches in 58.1s — idle WR: 0.00
+  [10/81] passive vs idle … 50 matches in 61.6s — passive WR: 1.00
+  [11/81] passive vs passive … 50 matches in 61.2s — passive WR: 0.48
+  [12/81] passive vs rush_weak … 50 matches in 55.6s — passive WR: 0.00
+  [13/81] passive vs rush_weak_medium … 50 matches in 56.4s — passive WR: 0.00
+  [14/81] passive vs rush_medium … 50 matches in 67.2s — passive WR: 0.00
+  [15/81] passive vs turtle … 50 matches in 70.9s — passive WR: 0.00
+  [16/81] passive vs macro … 50 matches in 68.7s — passive WR: 0.00
+  [17/81] passive vs heavy … 50 matches in 96.2s — passive WR: 0.00
+  [18/81] passive vs rush … 50 matches in 68.7s — passive WR: 0.00
+  [19/81] rush_weak vs idle … 50 matches in 45.1s — rush_weak WR: 1.00
+  [20/81] rush_weak vs passive … 50 matches in 55.0s — rush_weak WR: 1.00
+  [21/81] rush_weak vs rush_weak … 50 matches in 58.0s — rush_weak WR: 0.44
+  [22/81] rush_weak vs rush_weak_medium … 50 matches in 58.3s — rush_weak WR: 0.02
+  [23/81] rush_weak vs rush_medium … 50 matches in 70.5s — rush_weak WR: 0.00
+  [24/81] rush_weak vs turtle … 50 matches in 71.0s — rush_weak WR: 0.00
+  [25/81] rush_weak vs macro … 50 matches in 70.6s — rush_weak WR: 0.28
+  [26/81] rush_weak vs heavy … 50 matches in 92.6s — rush_weak WR: 0.00
+  [27/81] rush_weak vs rush … 50 matches in 72.4s — rush_weak WR: 0.00
+  [28/81] rush_weak_medium vs idle … 50 matches in 46.5s — rush_weak_medium WR: 1.00
+  [29/81] rush_weak_medium vs passive … 50 matches in 56.4s — rush_weak_medium WR: 1.00
+  [30/81] rush_weak_medium vs rush_weak … 50 matches in 58.0s — rush_weak_medium WR: 0.98
+  [31/81] rush_weak_medium vs rush_weak_medium … 50 matches in 61.4s — rush_weak_medium WR: 0.48
+  [32/81] rush_weak_medium vs rush_medium … 50 matches in 74.6s — rush_weak_medium WR: 0.00
+  [33/81] rush_weak_medium vs turtle … 50 matches in 72.6s — rush_weak_medium WR: 0.00
+  [34/81] rush_weak_medium vs macro … 50 matches in 72.2s — rush_weak_medium WR: 0.22
+  [35/81] rush_weak_medium vs heavy … 50 matches in 95.7s — rush_weak_medium WR: 0.00
+  [36/81] rush_weak_medium vs rush … 50 matches in 79.1s — rush_weak_medium WR: 0.00
+  [37/81] rush_medium vs idle … 50 matches in 56.0s — rush_medium WR: 1.00
+  [38/81] rush_medium vs passive … 50 matches in 67.0s — rush_medium WR: 1.00
+  [39/81] rush_medium vs rush_weak … 50 matches in 69.8s — rush_medium WR: 1.00
+  [40/81] rush_medium vs rush_weak_medium … 50 matches in 74.3s — rush_medium WR: 1.00
+  [41/81] rush_medium vs rush_medium … 50 matches in 117.4s — rush_medium WR: 0.56
+  [42/81] rush_medium vs turtle … 50 matches in 106.4s — rush_medium WR: 1.00
+  [43/81] rush_medium vs macro … 50 matches in 94.6s — rush_medium WR: 0.54
+  [44/81] rush_medium vs heavy … 50 matches in 128.7s — rush_medium WR: 0.58
+  [45/81] rush_medium vs rush … 50 matches in 131.8s — rush_medium WR: 0.30
+  [46/81] turtle vs idle … 50 matches in 62.8s — turtle WR: 1.00
+  [47/81] turtle vs passive … 50 matches in 71.8s — turtle WR: 1.00
+  [48/81] turtle vs rush_weak … 50 matches in 70.9s — turtle WR: 1.00
+  [49/81] turtle vs rush_weak_medium … 50 matches in 72.3s — turtle WR: 1.00
+  [50/81] turtle vs rush_medium … 50 matches in 105.5s — turtle WR: 0.00
+  [51/81] turtle vs turtle … 50 matches in 72.4s — turtle WR: 0.50
+  [52/81] turtle vs macro … 50 matches in 103.2s — turtle WR: 0.28
+  [53/81] turtle vs heavy … 50 matches in 121.5s — turtle WR: 0.14
+  [54/81] turtle vs rush … 50 matches in 121.7s — turtle WR: 0.00
+  [55/81] macro vs idle … 50 matches in 68.2s — macro WR: 1.00
+  [56/81] macro vs passive … 50 matches in 68.9s — macro WR: 1.00
+  [57/81] macro vs rush_weak … 50 matches in 70.4s — macro WR: 0.78
+  [58/81] macro vs rush_weak_medium … 50 matches in 72.4s — macro WR: 0.82
+  [59/81] macro vs rush_medium … 50 matches in 94.9s — macro WR: 0.46
+  [60/81] macro vs turtle … 50 matches in 103.7s — macro WR: 0.82
+  [61/81] macro vs macro … 50 matches in 116.9s — macro WR: 0.66
+  [62/81] macro vs heavy … 50 matches in 122.2s — macro WR: 0.02
+  [63/81] macro vs rush … 50 matches in 106.7s — macro WR: 0.64
+  [64/81] heavy vs idle … 50 matches in 85.2s — heavy WR: 1.00
+  [65/81] heavy vs passive … 50 matches in 96.1s — heavy WR: 1.00
+  [66/81] heavy vs rush_weak … 50 matches in 92.7s — heavy WR: 1.00
+  [67/81] heavy vs rush_weak_medium … 50 matches in 95.6s — heavy WR: 1.00
+  [68/81] heavy vs rush_medium … 50 matches in 129.5s — heavy WR: 0.42
+  [69/81] heavy vs turtle … 50 matches in 122.3s — heavy WR: 0.80
+  [70/81] heavy vs macro … 50 matches in 125.6s — heavy WR: 0.94
+  [71/81] heavy vs heavy … 50 matches in 156.5s — heavy WR: 0.60
+  [72/81] heavy vs rush … 50 matches in 146.2s — heavy WR: 0.50
+  [73/81] rush vs idle … 50 matches in 57.8s — rush WR: 1.00
+  [74/81] rush vs passive … 50 matches in 69.1s — rush WR: 1.00
+  [75/81] rush vs rush_weak … 50 matches in 72.4s — rush WR: 1.00
+  [76/81] rush vs rush_weak_medium … 50 matches in 80.5s — rush WR: 1.00
+  [77/81] rush vs rush_medium … 50 matches in 131.3s — rush WR: 0.74
+  [78/81] rush vs turtle … 50 matches in 122.2s — rush WR: 1.00
+  [79/81] rush vs macro … 50 matches in 101.8s — rush WR: 0.58
+  [80/81] rush vs heavy … 50 matches in 145.5s — rush WR: 0.44
+  [81/81] rush vs rush … 50 matches in 146.8s — rush WR: 0.54
+
+Report written to docs/balance/matrix_v0.5.3_task1.3.json
