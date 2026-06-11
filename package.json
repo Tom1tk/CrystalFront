@@ -1,6 +1,6 @@
 {
   "name": "crystalfront-rts",
-  "version": "0.5.6-ML",
+  "version": "0.5.7-ML",
   "private": true,
   "description": "A multiplayer browser RTS prototype",
   "scripts": {

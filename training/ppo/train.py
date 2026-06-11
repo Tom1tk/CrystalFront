@@ -169,13 +169,13 @@ class Config:
     anneal_lr:     bool  = True
 
     # PPO rollout
-    num_steps:      int   = 1536       # longer rollout for better GAE horizon
-    gamma:          float = 0.995
+    num_steps:      int   = 256        # episodes are now <=750 decisions (k=8); shorter rollout, faster updates
+    gamma:          float = 0.99       # at k=8, half-life ~= 69 decisions ~= 550 ticks of game time
     gae_lambda:     float = 0.95
 
     # PPO update
     update_epochs:    int   = 4
-    num_minibatches:  int   = 6        # 20×1536 / 6 = 5120 per minibatch
+    num_minibatches:  int   = 4        # 20×256 / 4 = 1280 per minibatch
     clip_coef:        float = 0.2
     norm_adv:         bool  = True
     clip_vloss:       bool  = True
@@ -510,6 +510,18 @@ def train(cfg: Config) -> None:
     # ── bookkeeping ───────────────────────────────────────────────────────────
     buffer = RolloutBuffer(cfg.num_steps, cfg.num_envs, device)
     num_updates          = cfg.total_timesteps // cfg.batch_size
+
+    if cfg.anneal_lr and _ckpt is not None and (start_update - 1) >= 0.8 * num_updates:
+        print(
+            f"  ⚠️  WARNING: schedule compression — resumed checkpoint is at update "
+            f"{start_update - 1}/{num_updates} ({100 * (start_update - 1) / num_updates:.0f}%) "
+            f"of THIS run's anneal schedule. The LR will start near zero (or be clamped to "
+            f"zero immediately if update {start_update - 1} >= {num_updates}). "
+            f"Increase --total_timesteps to give this run a fresh anneal horizon, or pass "
+            f"--no-anneal_lr if that's intended.",
+            flush=True,
+        )
+
     global_step          = 0
     _cur_forcing_scale   = cfg.action_forcing_scale  # tracks current live scale for fade
     episode_rewards     = [0.0] * cfg.num_envs
@@ -544,7 +556,7 @@ def train(cfg: Config) -> None:
     for update in range(start_update, num_updates + 1):
 
         if cfg.anneal_lr:
-            frac = 1.0 - (update - 1) / num_updates
+            frac = max(1.0 - (update - 1) / num_updates, 0.0)
             optimizer.param_groups[0]["lr"] = cfg.learning_rate * frac
 
         # ── action forcing fade schedule ──────────────────────────────────────
