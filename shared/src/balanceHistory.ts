@@ -18,6 +18,51 @@ export interface BalanceSnapshot {
 }
 
 export const BALANCE_HISTORY: Readonly<Record<string, BalanceSnapshot>> = {
+  // ── 0.5.4-ML ──────────────────────────────────────────────────────────
+  // Phase 1 balance iteration 3 (REVIVAL_PLAN Task 1.3, line 244 lever list):
+  //   MediumRushBot.FIRST_PUSH_TICK 200 → 300 (bot-internal constant, not
+  //   part of replay state — no BalanceSnapshot field needed);
+  //   crystal slow-regen +0.05 HP/tick when no enemy within 300px
+  //   (HEALING.crystalRegenHpPerTick/crystalRegenRange, server/src/match/
+  //   engine/repair.ts processCrystalRegen). This is an unconditional
+  //   engine-tick change, NOT gated by replay version — replaying a
+  //   pre-0.5.4-ML command log will now diverge from its recorded outcome
+  //   (regen wasn't simulated when it was recorded). No BalanceSnapshot-
+  //   tracked numeric changes vs 0.5.3-ML.
+  "0.5.4-ML": {
+    workerCost:            35,
+    workerSpeed:            1.7,
+    skirmisherSpeed:        2.0,
+    skirmisherDamage:      12,
+    passiveWinThreshold: 4500,
+  },
+
+  // ── 0.5.3-ML ──────────────────────────────────────────────────────────
+  // Phase 1 balance iteration 7 (REVIVAL_PLAN Task 1.3, Appendix C):
+  //   H5 mirror chooseBuildPosition fix (headless/src/actionSpace.ts) —
+  //   no BalanceSnapshot-tracked numeric changes vs 0.5.2-ML.
+  "0.5.3-ML": {
+    workerCost:            35,
+    workerSpeed:            1.7,
+    skirmisherSpeed:        2.0,
+    skirmisherDamage:      12,
+    passiveWinThreshold: 4500,
+  },
+
+  // ── 0.5.2-ML ──────────────────────────────────────────────────────────
+  // Phase 1 balance iteration 2 (REVIVAL_PLAN Task 1.3, commit f376905):
+  //   skirmisher cost 50 → 60, skirmisher speed 3.0 → 2.0;
+  //   turret cost 60 → 50, turret cooldown 8 → 6.
+  // Turret/cost changes not wired into MatchConfig overrides yet — replay
+  // accuracy for those fields requires a future MatchConfig extension.
+  "0.5.2-ML": {
+    workerCost:            35,
+    workerSpeed:            1.7,
+    skirmisherSpeed:        2.0,
+    skirmisherDamage:      12,
+    passiveWinThreshold: 4500,
+  },
+
   // ── 0.5.1-ML ──────────────────────────────────────────────────────────
   // Phase 1 balance iteration 1 (REVIVAL_PLAN Task 1.3):
   //   worker cost 50 → 35; turret HP 400 → 600, cooldown 12 → 8;

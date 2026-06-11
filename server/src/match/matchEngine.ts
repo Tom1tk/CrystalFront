@@ -22,7 +22,7 @@ import { computeVisibility } from "./engine/visibility.js";
 import { processMovement } from "./engine/movement.js";
 import { processCombat } from "./engine/combat.js";
 import { processGathering } from "./engine/gathering.js";
-import { processRepairAndHealing } from "./engine/repair.js";
+import { processRepairAndHealing, processCrystalRegen } from "./engine/repair.js";
 import { dist } from "./engine/utils.js";
 import {
   validatePlacement,
@@ -1084,6 +1084,7 @@ if (command.type === "gather") {
 
     // Phase 6: Repair & Medic healing
     processRepairAndHealing(match);
+    processCrystalRegen(match);
 
     // Phase 7: Fog of war — compute visibility per player
     computeVisibility(match);

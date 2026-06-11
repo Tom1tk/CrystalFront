@@ -1885,3 +1885,80 @@ Ran the full Task 1.3 acceptance matrix: `python3 training/balance_report.py --m
 - Don't reopen Appendix C / re-litigate criterion 4 over the single macro-mirror=66% data point here — already addressed above; revisit only if it recurs.
 - Don't treat the 4 idle/passive pairings as balance bugs — they cannot resolve by design (neither bot ever issues an attack command). This is a scope/interpretation question for criterion 5, not a lever to pull.
 - `turtle`'s 100% `turret,turret,turret` build order (450/450) is confirmed correct/intentional (pure-defense bot) — don't "fix" it as a bug; its win conditions are resource-win and timeout-tiebreak by design.
+
+---
+
+### 2026-06-11 — v0.5.3-ML Phase 1: Iteration 9 (Levers 1+2 — FIRST_PUSH_TICK 200→300 and crystal slow-regen — both zero effect on criterion 2's turtle failure; lever list exhausted)
+
+**What was done:**
+
+Applied the two remaining items from REVIVAL_PLAN's "further levers" ordered list (turret cost 60→50 and skirmisher cost 50→60 were already applied in Iteration 2/`f376905`):
+
+1. **`MediumRushBot.FIRST_PUSH_TICK` 200→300** (`headless/src/bots/mediumRushBot.ts`) — gives `turtle`/`macro` 100 extra ticks to build up defenses before the first rush wave.
+2. **Crystal slow-regen**: `+0.05 HP/tick when no enemy within 300px` (REVIVAL_PLAN's exact spec). Added `HEALING.crystalRegenHpPerTick = 0.05` and `HEALING.crystalRegenRange = 300` to `shared/src/gameBalance.ts`; new `processCrystalRegen(match)` in `server/src/match/engine/repair.ts`, wired into `matchEngine.ts` tick() Phase 6 (after `processRepairAndHealing`). 3 new tests added to the canonical suite (`tests/index.ts`, "Combat: Crystal Regen" block) — suite is 470/470. (vitest's `matchEngine.test.ts` was NOT used for these tests: its `.js`-extension imports resolve to stale, pre-existing committed `.js` siblings under `server/src/match/` that predate the 2026-06-10 recovery commit `622c5c7`, so it doesn't see current `.ts` source — this is a pre-existing infrastructure bug, out of scope, doesn't affect production/dev/`npm test`.)
+
+After each lever, ran a targeted re-measurement (`training/balance_report.py --matches 50`, both color directions, `turtle`/`macro` vs `rush_medium`) rather than the full 81-pair matrix (~113 min), per Iteration 8's re-measurement strategy.
+
+**What was observed:**
+
+| Lever | turtle vs rush_medium (both colors, n=100) | macro vs rush_medium (both colors, n=100) | turtle_vs_rush_medium avg duration |
+|---|---|---|---|
+| Iteration 8 baseline | 0/100 (0%) | 46%/46% ≈ 46% | ~5070-5134 ticks |
+| + Lever 1 (FIRST_PUSH_TICK=300) | 0/100 (0%) | 21+22=43/100 (43%) | ~5087 ticks |
+| + Lever 2 (crystal regen) | 0/100 (0%) | 27+24=51/100 (51%) | ~5119 ticks |
+
+- **Both levers, individually and combined, have ZERO effect on `turtle` vs `rush_medium`**: still a hard 0/100 across both colors, `flags` empty (no `__timeout`), avg duration unchanged (~5070-5170 ticks either way). `rush_medium` still grinds through `turtle`'s turret wall via combat in essentially the same number of ticks regardless of the 100-tick push delay or the 0.05 HP/tick crystal regen.
+- `macro` vs `rush_medium` stayed within criterion 2's ≥30% band throughout (43%→51%, noise-level movement), so neither lever caused a regression there.
+- **REVIVAL_PLAN's explicit 4-item "further levers" list (line 244) is now fully exhausted**: turret cost 60→50 (iter 2), skirmisher cost 50→60 (iter 2), `FIRST_PUSH_TICK` 200→300 (this iteration), crystal slow-regen (this iteration). Combined effect on the only remaining criterion-2 failure (`turtle` vs `rush_medium`): **zero**.
+
+**Structural root-cause analysis (new this iteration):**
+
+`turtle`'s defense is **fixed/capped** (3 turrets × 600 HP = 1800 HP total, plus repair from ≤7 workers), while `rush_medium`'s offense is effectively **uncapped** (continuous worker/combat-unit training over the full ~5100-tick match ≈ 137 push-cycles at `PUSH_INTERVAL=35` after `FIRST_PUSH_TICK`). This is a war of attrition that `turtle` is structurally guaranteed to lose by raw arithmetic — neither a ±100-tick push delay nor +0.05 HP/tick regen (≈ <2 HP recovered per 35-tick push cycle, against turret HP in the hundreds and skirmisher damage of 12/hit) can plausibly close a gap of this magnitude. None of REVIVAL_PLAN's 4 listed levers target the actual bottleneck: the FIXED turret count vs the UNCAPPED attacking army.
+
+**What was decided and why:**
+
+- **Keep both Lever 1 and Lever 2.** Both are independently defensible per REVIVAL_PLAN's own spec (Lever 2 is REVIVAL_PLAN's exact suggested numbers), neither regresses any other criterion (criteria 1/3/4 unaffected — no source touched that they depend on beyond what's already measured; macro/rush_medium stays in-band), and reverting them gains nothing (zero effect either way on the actual blocker). Removing now-tested, harmless, spec-compliant code would be churn for its own sake.
+- **Do NOT yet invoke REVIVAL_PLAN line 244's "stop, write `docs/balance/FINDINGS.md`" clause.** That threshold is "~6 iterations" with criteria 1-2 still failing; this is iteration 3 of the tuning loop (iter 1 = `0ec33be`, iter 2 = `f376905`, iter 3 = this one, in progress). The "further levers" list reads as illustrative starting points, not an exhaustive/exclusive set — and the structural analysis above identifies a concrete, addressable bottleneck (`turtle`'s fixed turret count) that the listed levers simply don't touch.
+- **Next lever (in progress, not yet measured): `TurtleBot.TURRET_CAP` 3→5** (`headless/src/bots/turtleBot.ts`). This directly targets the structural bottleneck identified above (more static defense HP), is the same kind of "bot curriculum tuning" as `MediumRushBot`'s existing `FIRST_PUSH_TICK`/`SOFT_CAP` constants (a tunable scripted-bot parameter, not an engine/balance change), and does not violate `TurtleBot`'s documented "no barracks, no combat units, never attacks" design — turrets are static defense, not an attack capability. Verified via `actionSpace.ts`'s `chooseBuildPosition` (16-attempt grid search, STEP=80) that the "forward" xZone has room for 5 turrets without placement failures. `npm run build:headless` done, `npm test` still 470/470. Targeted re-measurement (turtle vs rush_medium, both colors, n=100) launched; results to be recorded in the next diary entry.
+
+**What would you tell the next agent NOT to waste time on?**
+
+- Don't expect any combination of REVIVAL_PLAN line 244's 4 listed levers to move `turtle` vs `rush_medium` off 0% — all 4 are now applied (2 in iter 2, 2 in iter 3) with a measured combined effect of exactly zero. The bottleneck is structural (fixed defense vs uncapped offense), not a numeric-tuning problem these levers address.
+- Don't try to add the 3 crystal-regen tests to `server/src/match/matchEngine.test.ts` (vitest) — its `.js`-extension imports resolve to stale committed `.js` files under `server/src/match/` (last touched `508494f`, predating the `622c5c7` recovery commit) instead of current `.ts` source, so the tests will silently exercise old code and fail. This is a pre-existing, out-of-scope infrastructure bug affecting ~12 other vitest tests too — production (`tsc -b` + `node dist/index.js`), dev (`tsx watch`), and the canonical `npm test` (`tsx tests/index.ts`) are all unaffected. Add new engine tests to `tests/index.ts` instead.
+- Don't re-run the full 81-pair matrix yet — still iterating on criterion 2's `turtle` failure; full matrix is for after a candidate fix looks promising (per Iteration 8's strategy).
+
+---
+
+### 2026-06-11 — v0.5.3-ML Phase 1: Iteration 10 (TURRET_CAP exploration — criteria 2 and 5 are in direct opposition; REVIVAL_PLAN line 244 stop clause invoked, FINDINGS.md written)
+
+**What was done:**
+
+Continued Iteration 9's `TurtleBot.TURRET_CAP` exploration (3→5→7), targeted-re-measuring `turtle` vs `rush_medium` (both colors, n=100) at each step via `training/balance_report.py --matches 50`.
+
+**What was observed:**
+
+| TURRET_CAP | turtle vs rush_medium win rate (n=100) | turtle_vs_rush_medium timeout rate (n=100) | avg duration |
+|---|---|---|---|
+| 3 (baseline, Iteration 8) | 0/100 (0%) | 0/100 (0%) | ~5070-5134 ticks |
+| 5 | 12/100 (12%) | 12/100 (12%) | ~5215-5252 ticks |
+| 7 | 92/100 (92%) | 95/100 (95%) | ~5989-5992 ticks (≈ maxTicks=6000) |
+
+- **Win rate and timeout rate move together, almost 1:1, at every measured cap** (0≈0, 12≈12, 92≈95). This is not a coincidence: `turtle` has **zero offense by design** (REVIVAL_PLAN-confirmed, "no barracks, no combat units, never attacks") — its only win conditions are resource-win (reach `passiveWinThreshold`=4500 first) or the timeout-tiebreak (survive to `maxTicks`=6000, win on crystal HP then lifetime resources). Every win counted above IS a timeout-tiebreak win; `turtle` never wins by combat or resource-win against `rush_medium` at any cap tested.
+- **TURRET_CAP=5**: marginal improvement (0%→12%), but `turtle` still fails criterion 2 (12% < 30%), and the timeout rate for this pairing rose from 0%→12% (still under criterion 5's 30% cap, so no new failure — but moving in the wrong direction).
+- **TURRET_CAP=7**: `turtle` now numerically PASSES criterion 2 (92% ≥ 30%) — but the SAME pairing's timeout rate exploded to 95%, catastrophically failing criterion 5 (<30%) on a pairing that had **0% timeouts at baseline**. This is a sharp, non-gradual phase transition between cap=5 and cap=7: below some threshold, `rush_medium`'s continuously-reinforced army eventually breaks `turtle`'s wall before tick 6000 (combat loss); above it, the wall never breaks, every match runs to `maxTicks`, and the tiebreaker (crystal HP, then lifetime resources) overwhelmingly favors `turtle` (its base stays intact and its ≤7-worker economy keeps accumulating resources, while `rush_medium`'s resources are continuously sunk into units that die uselessly against turrets).
+- **Reverted TURRET_CAP entirely** — `headless/src/bots/turtleBot.ts` is back to its committed state (byte-identical `git diff`, confirmed). `npm run build:headless` + `npm test` (470/470) confirm no regression.
+
+**What was decided and why:**
+
+- **Criteria 2 and 5 are in direct, mechanism-level opposition for `turtle` vs `rush_medium`**: any change that gives `turtle` enough static defense to survive `rush_medium`'s attrition necessarily pushes the match to the timeout-tiebreak (the ONLY mechanism by which `turtle` can "beat" an opponent it never attacks), which criterion 5 caps at <30%. Given win-rate ≈ timeout-rate at both measured points, no `TURRET_CAP` value can plausibly put criterion 2 ≥30% while keeping criterion 5 <30% on this pairing — the two move together, not independently. This is the same mechanism (turtle = 0% combat/resource-win wins, 100% of its wins are tiebreak wins) regardless of the specific cap value; only the *frequency* of wins/timeouts shifts.
+- **REVIVAL_PLAN line 244's explicit stop condition is now met.** Counting iterations as "apply lever(s), re-measure, evaluate": iteration 1 = `0ec33be`, iteration 2 = `f376905` (turret cost 60→50, skirmisher cost 50→60 — 2 of 4 "further levers"), iteration 3 = this work-in-progress commit (`FIRST_PUSH_TICK` 200→300 + crystal slow-regen — the other 2 of 4 "further levers", **zero combined effect**, Iteration 9), iteration 4-5 = `TURRET_CAP` 3→5→7 (this entry, **structural dead end**: the only lever that moves criterion 2 at all does so exclusively by trading it for a criterion-5 violation on the same pairing). That's 5 iterations, against a "~6 iteration" budget, with: (a) REVIVAL_PLAN's full explicit lever list exhausted with zero effect, and (b) a clean, mechanism-level proof that the next obvious lever (more turtle defense) cannot satisfy criteria 2 and 5 simultaneously, by construction. A 6th iteration probing `TURRET_CAP=6` would only interpolate between these two points — both criteria would likely still be in the same near-1:1 relationship, so it would not change the conclusion. Per REVIVAL_PLAN line 244 ("If after ~6 iterations criteria 1–2 still fail, stop and write up findings in `docs/balance/FINDINGS.md` — do not proceed to Phase 2 with an unbeatable rush"), **stopping here**.
+- **`docs/balance/FINDINGS.md` written** (new file) — full root-cause writeup: what passes (criteria 1, 3, 4 — robust across all measurements), what fails (criterion 2's `turtle`/`rush_medium` leg only — `macro`/`rush_medium` passes throughout at 43-54%; criterion 5's 14/81 pairings, 4 of which are `idle`/`passive`-only and structurally unresolvable by design), the structural diagnosis above (turtle has no combat/resource-win path vs a sustained rush — criteria 2 and 5 are mutually exclusive for this pairing under the current win-condition set), and what a Phase-2-blocking redesign would need to consider (e.g., giving `turtle` *some* limited counter-offense capability so it can win by combat/resource-win rather than only by timeout-tiebreak; reconsidering whether criterion 2's "beat ≥30%" should explicitly exclude or cap timeout-tiebreak wins; or revisiting the criteria themselves as a human/design decision — explicitly out of scope for autonomous "lever tuning").
+- **Final state for this commit**: KEEP Lever 1 (`FIRST_PUSH_TICK` 200→300) and Lever 2 (crystal slow-regen) — both are spec-compliant, tested, harmless (no criteria regress because of them), REVIVAL_PLAN-listed levers; their zero-effect-on-turtle result is exactly the kind of evidence FINDINGS.md exists to record. `TURRET_CAP` experiments are fully reverted (turtleBot.ts byte-identical to its prior committed state) — they were exploratory probes for FINDINGS.md, not a shippable change (cap=5 doesn't pass criterion 2; cap=7 "passes" criterion 2 only by badly failing criterion 5 on the same pairing).
+- Per R1, this is a balance-relevant change (gameBalance.ts `HEALING` constants + `mediumRushBot.ts` `FIRST_PUSH_TICK`) → version bump to `0.5.4-ML` across all 5 `package.json`, plus a `0.5.4-ML` `balanceHistory.ts` snapshot (same values as `0.5.3-ML`: the new `HEALING.crystalRegenHpPerTick`/`crystalRegenRange` constants don't appear to be part of `BalanceSnapshot`'s tracked fields — confirm before adding).
+- **Phase 2 is NOT started** — per REVIVAL_PLAN line 244 and the standing instruction's own qualifier ("proceed toward Phase 2 only after acceptance criteria pass"), and per FINDINGS.md's explicit recommendation that the remaining gap requires a human/design decision, not further autonomous lever-pulling.
+
+**What would you tell the next agent NOT to waste time on?**
+
+- Don't try more `TURRET_CAP` values (4, 6, 8...) expecting to find a value where criterion 2 ≥30% AND criterion 5 <30% simultaneously for `turtle`/`rush_medium` — the win-rate≈timeout-rate relationship at cap=5 (12%≈12%) and cap=7 (92%≈95%) is the whole story: 100% of `turtle`'s wins against `rush_medium` are timeout-tiebreak wins at every cap, so pushing one metric across its threshold pushes the other across its threshold too, in the same direction.
+- Don't look for a "Lever 6" numeric tweak to `mediumRushBot.ts` or `gameBalance.ts` either — the structural problem is `turtle`'s win-condition set (no combat/resource-win path vs sustained pressure), not a numeric imbalance. Any further fix here is a `TurtleBot` *behavior* change (e.g., giving it some counter-offense) or a criteria/design change — both are human decisions per FINDINGS.md, not autonomous balance tuning.
+- Read `docs/balance/FINDINGS.md` before doing ANY further Task 1.3 work — it's the authoritative summary of what's been tried (iterations 1-5) and why Phase 2 is blocked.
