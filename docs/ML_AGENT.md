@@ -309,29 +309,31 @@ The policy outputs a single integer `a ∈ [0, 80]`. `indexToAction(a)` converts
 
 | Signal | Magnitude | When |
 |--------|-----------|------|
-| Crystal damage dealt | `+5.0 × delta_healthFrac` | enemy crystal visible (both prev and curr > 0) |
-| Crystal damage taken | `−2.0 × delta_healthFrac` | every tick |
-| First barracks built | `+10.0` | one-time |
-| First combat unit trained | `+5.0` | one-time |
-| Second combat unit trained | `+3.0` | one-time (v0.4.0-ML+) |
-| Third combat unit trained | `+2.0` | one-time (v0.4.0-ML+) |
-| Fourth combat unit trained | `+1.0` | one-time (v0.4.0-ML+) |
-| Time penalty | `−0.001` | every tick (−6 over a 6000-tick episode) |
+| Crystal damage dealt | `+0.05 × delta_healthFrac` | enemy crystal visible (both prev and curr > 0) |
+| Crystal damage taken | `−0.02 × delta_healthFrac` | every tick |
+| First barracks built | `+0.10` | one-time |
+| First combat unit trained | `+0.05` | one-time |
+| Second combat unit trained | `+0.03` | one-time (v0.4.0-ML+) |
+| Third combat unit trained | `+0.02` | one-time (v0.4.0-ML+) |
+| Fourth combat unit trained | `+0.01` | one-time (v0.4.0-ML+) |
+| Time penalty | `−0.00001` | every tick (−0.06 over a 6000-tick episode) |
 
-**Max achievable shaping per episode:** ~+26 (crystal dmg full + barracks + 4 unit milestones) − 6 time. Terminal still dominates.
+**Max achievable shaping per episode:** ≈+0.26 (crystal dmg full + barracks + 4 unit milestones) − 0.06 time. Terminal (±1.0) still dominates, but "almost won" beats "got crushed".
 
 ### 4.2 Terminal
 
 ```
-done && winner == blueId && winType != "resource"  → +100.0
-otherwise (loss, draw, timeout, resource-win)      → −100.0
+done && winner == blueId  → +1.0
+otherwise (loss, timeout) → −1.0
 ```
 
-**Draw = loss.** Refusing to engage cannot be the optimal strategy. Resource wins are also penalised — the bot is a combat agent, not an accountant.
+`winner === null` is handled as `−1.0` only as a defensive fallback — the Phase 1 timeout tiebreaker guarantees a winner, so this case should not occur. **Draw = loss.** Refusing to engage cannot be the optimal strategy. Resource wins now count as a normal win (+1.0) — see v0.5.6-ML below.
 
 ### 4.3 Why the shape changed (v0.3.0-ML and beyond)
 
 v0.3.0-ML simplified the reward from ~20 components (which had accumulated to ~+150 shaping/ep, masking the terminal) to 6 components capped at ~+14 shaping. v0.4.0-ML added three more one-time milestones (+3, +2, +1 for units 2/3/4) specifically to provide a positive signal for multi-unit play. The extended milestones did **not** rescue rush_medium performance — see `ML_BOT_ACTION_PLAN.md` for the post-mortem.
+
+**v0.5.6-ML (Phase 2 Task 2.2)** rescaled every component by ÷100 (terminal ±100 → ±1.0, shaping scaled to match) so the reward magnitude matches the new k=8 decision interval and standard PPO assumptions (advantages/returns near unit scale). It also dropped the `winType !== "resource"` clause from the terminal: any win (combat, resource, or timeout) now scores +1.0.
 
 ### 4.4 Milestones struct
 

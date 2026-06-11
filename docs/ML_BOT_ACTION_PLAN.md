@@ -2,7 +2,7 @@
 
 **Branch:** `CrystalFront-ML`
 **Status:** v0.3.2-ML **SHIPPED** (2026-05-22). v0.4.0-ML **HALTED** (2026-05-23) — Option B action-masking and Option γ RND both failed to break `trn=0%` ceiling.
-**Last updated:** 2026-06-11
+**Last updated:** 2026-06-11 (Task 2.2)
 
 ---
 
@@ -15,7 +15,7 @@ This section is the orientation point for any agent picking up the project. Ever
 - **v0.3.2-ML is live in production.** `models/policy-v0.3.2-ML.onnx`. Not changing until v0.5.0-ML eval gates pass (see `docs/REVIVAL_PLAN.md` Task 3.3).
 - **Phase 0 of the revival plan is complete** (v0.5.0-ML). The three root causes of the v0.4.0-ML failure were diagnosed and fixed: (1) autoreset config-override bug in `stdioVecRunner.ts`, (2) static MAP constants in observation/geometry code, (3) MacroBot crash. Code base is now trustworthy.
 - **Phase 1 (balance) is COMPLETE** (v0.5.4-ML, exited 2026-06-11). Task 1.3's tuning loop ran 5 iterations, hit REVIVAL_PLAN line 244's stop clause (criterion 2's `turtle` leg is structurally unsatisfiable — `turtle` never attacks, so its only win path vs a sustained rush is the timeout tiebreak, which criterion 5 caps), and the acceptance criteria were **amended** per user direction (criterion 2 drops the `turtle` leg, criterion 5 scoped to rush-vs-non-rush pairings, KI-1 accepted for rush-internal attrition). The v0.5.4-ML confirmation matrix (4050 matches, `docs/balance/matrix_v0.5.4_task1.3_confirm.json`) **passes all 5 amended criteria** — see Iteration 12 for the full before/after table and a noteworthy macro-mirror tiebreak swing (66%→48%, both within band).
-- **Phase 2 (MDP restructure) is in progress.** **Task 2.1 (frame skip, decision_interval k=8) is DONE** (v0.5.5-ML, 2026-06-11) — see Iteration 13. Next: **Task 2.2 (reward rescale and terminal redesign)** per `docs/REVIVAL_PLAN.md` §Phase 2.
+- **Phase 2 (MDP restructure) is in progress.** **Task 2.1 (frame skip, decision_interval k=8) is DONE** (v0.5.5-ML, 2026-06-11) — see Iteration 13. **Task 2.2 (reward rescale and terminal redesign) is DONE** (v0.5.6-ML, 2026-06-11) — see Iteration 14. Next: **Task 2.3 (PPO hyperparameters for the new MDP — γ=0.99, num_steps=256, num_minibatches=4, LR-anneal guard)** per `docs/REVIVAL_PLAN.md` §Phase 2.
 
 See `docs/REVIVAL_PLAN.md` for the full implementation plan and Appendix B for task status.
 
@@ -71,7 +71,7 @@ python3 -m training.ppo.train --curriculum --curriculum_stage 0 \
 | Ship v0.3.2-ML bot | ✅ Live in production |
 | Phase 0: fix infra bugs | ✅ Complete (v0.5.0-ML, 2026-06-09) |
 | Phase 1: balance game | ✅ Complete (v0.5.4-ML, 2026-06-11) — amended criteria all pass, see Iteration 12 diary entry |
-| Phase 2: restructure MDP | 🔄 In progress — Task 2.1 (frame skip) done (v0.5.5-ML), Task 2.2 (reward rescale) next |
+| Phase 2: restructure MDP | 🔄 In progress — Task 2.1 (frame skip) done (v0.5.5-ML), Task 2.2 (reward rescale) done (v0.5.6-ML), Task 2.3 (PPO hyperparams) next |
 | Phase 3: retrain + ship v0.5.0-ML | ⬜ After Phase 2 |
 
 ---
@@ -2067,3 +2067,48 @@ Implemented `decision_interval` (frame skip, default k=8) per `docs/REVIVAL_PLAN
 - Don't add `decision_interval` support to `training/env/crystalfront_env.py` (single-env BC path) as part of cleanup — that's explicitly Task 3.1's responsibility (re-recording BC demos at k=8), and `stdioRunner.ts`'s `DECISION_INTERVAL` already defaults safely to 1 if the field is absent from the `reset` message.
 
 **Phase 2 Task 2.2 (reward rescale and terminal redesign) is next**, per `docs/REVIVAL_PLAN.md` §Phase 2 Task 2.2 — rewrite `headless/src/reward.ts` constants per the table there (terminal ±1.0 including resource/timeout wins, crystal damage ±0.05/±0.02, first barracks +0.10, combat units +0.05/+0.03/+0.02/+0.01, time penalty −0.00001).
+
+### 2026-06-11 — v0.5.6-ML Phase 2: Iteration 14 (Task 2.2 — reward rescale and terminal redesign)
+
+**What was done:**
+
+Rewrote every constant in `headless/src/reward.ts` per `docs/REVIVAL_PLAN.md` §Phase 2 Task 2.2's table — structure (the additive shaping + one-time milestones + terminal pattern) is unchanged, only magnitudes:
+
+| Component | Old | New |
+|---|---|---|
+| Crystal damage dealt | `+5.0 × Δfrac` | `+0.05 × Δfrac` |
+| Crystal damage taken | `−2.0 × Δfrac` | `−0.02 × Δfrac` |
+| First barracks | `+10.0` | `+0.10` |
+| Combat units 1–4 | `+5/+3/+2/+1` | `+0.05/+0.03/+0.02/+0.01` |
+| Time penalty/tick | `−0.001` | `−0.00001` |
+| Terminal win/loss | `±100.0` (combat-only win) | `±1.0` (any win incl. resource/timeout) |
+
+The terminal line's `winType !== "resource"` clause was deleted: `terminalReturn = (winner === blueId) ? 1.0 : -1.0`, with `winner === null` falling into `-1.0` as a defensive fallback only (the Phase 1 timeout tiebreaker guarantees a winner — see Iteration 12). The file's header-comment magnitude list (lines 5-15) was updated to match.
+
+`headless/src/reward.ts` is the single source of truth imported by both `stdioRunner.ts` and `stdioVecRunner.ts` — neither runner needed any changes. Their `warn_loss_positive_reward`/`warn_no_pressure` info flags are sign-based (`(lastTerminalReturn + episodeShaping) > 0`, `minOppCrystalHealthFrac >= 1.0`), not magnitude-based, so they're scale-invariant.
+
+One incidental fix in `training/ppo/train.py` (line 706): the console diagnostic `ep_ret_mean = int(mean(terminal_reward_list))` truncated to 0 for nearly every logging window once terminal rewards shrank from ±100 to ±1.0 (mean of ±1.0 values truncates to 0 unless the window is 100% one-sided). Rescaled to `int(100 * mean(...))` so `ep_ret={ep_ret_mean}` in the per-update print line stays on the same ±100 display scale as before — purely a logging fix, no effect on the actual reward signal fed to PPO.
+
+`docs/ML_AGENT.md` §4 updated to match: §4.1 table values, §4.1 "max shaping per episode" (now ≈+0.26 −0.06 time vs terminal ±1.0), §4.2 terminal block (removed the resource-win penalty, documented `winner === null` as defensive-only), and §4.3 got a new "v0.5.6-ML" paragraph explaining the ÷100 rescale and the dropped `winType` clause.
+
+**Verification:**
+
+- `npm run build:headless`: clean.
+- `npm test`: 470/470 (reward.ts has no direct test coverage — confirmed via grep, no test references `computeReward`/`reward.ts`/`reward.js`).
+- `python3 -m training.test_env`: SMOKE TEST PASSED. 10-step total reward = `-0.0001` = exactly `10 × -0.00001`, confirming the new time-penalty constant is live (old constant would have given `-0.01`).
+- **Smoke training run**: `python3 -m training.ppo.train --total_timesteps 20000 --num_envs 4 --vec_size 2 --decision_interval 8 --opponent idle --device cpu --no-compile_agent --log_dir /tmp/runs_task22_smoke` — completed cleanly (24 episodes, fresh random policy, all 6000-tick timeouts). `game/episode_reward` (= `terminalReturn + episodeShaping`, the same quantity `rewards/final_reward_mean` would average) ranged `-1.06` to `-0.96` across all 24 episodes — terminal `-1.0` (loss via tiebreaker for this random policy) plus shaping ≈ `-0.06` (just the new per-tick time penalty over 6000 ticks; no barracks/unit/crystal-damage shaping fired for this random rollout). This is **well within the [−1.3, +1.3] target** (would have been ≈ `-106` under the old constants — a clean 100× check). `rewards/final_reward_mean` itself needs `WIN_WINDOW=100` episodes to log to TensorBoard and wasn't reached in this 20k-timestep smoke run, but `game/episode_reward` is logged every episode and is the identical per-episode quantity, so this is conclusive.
+
+**What was decided and why:**
+
+- **Version bumped to `0.5.6-ML`** across all 5 `package.json` (R1 — reward/training-signal change).
+- **No `BALANCE_HISTORY` entry added.** Task 2.2 changes only the RL reward signal computed by the headless runners for training telemetry — it does not touch the engine, `MatchConfig`, or anything `replayRunner.ts`'s `getBalanceForVersion()` tracks. A `0.5.6-ML` replay is engine-identical to `0.5.5-ML`/`0.5.4-ML`.
+- **Kept the function signature unchanged** (`winType: string | null` is now an unused parameter inside `computeReward`). Removing it would require updating both call sites in `stdioRunner.ts` and `stdioVecRunner.ts` for a cosmetic gain; esbuild/tsx (this project's build/test toolchain) don't enable `noUnusedParameters`, so it causes no build or test failure. Flagging here per CLAUDE.md "notice but don't delete" — a future cleanup pass (not gating Phase 2) could drop it from all three signatures.
+- Appendix B row 2.2 marked ✅; "Current handoff state" and "Open commitments" updated to point at Task 2.3 next.
+
+**What would you tell the next agent NOT to waste time on?**
+
+- Don't try to force a 100-episode window to get `rewards/final_reward_mean` logged for "more rigorous" verification — `game/episode_reward` is the same per-episode value and already gives a clean, conclusive 100× magnitude check against the old constants.
+- Don't go looking for reward-magnitude-dependent code elsewhere (RND intrinsic-reward scaling, advantage normalization, etc.) as part of this task — Task 2.3 (PPO hyperparameters: γ=0.99, num_steps=256, num_minibatches=4) is the place where the new ±1.0 reward scale interacts with PPO hyperparameters, and the plan explicitly says the existing `gae_lambda`/`ent_coef`/`learning_rate`/clip params are "correct for ±1 rewards" already — no separate audit needed.
+- **GPU note**: the GPU was busy with another process for part of this session; the smoke run above was deliberately CPU-only (`--device cpu --no-compile_agent`) to avoid contention. Note that *even* `--device cpu` runs call `torch.cuda.manual_seed_all(seed)` (line 246) and `torch.autocast(device_type="cuda", ...)` (lines 576/789/838, hardcoded regardless of `cfg.device`) — so "CPU" runs still touch the CUDA context. If the GPU is busy with another process, defer *all* `training.ppo.train` invocations (CPU or GPU flag), not just `--device cuda` ones. This is a pre-existing quirk, not something to fix as part of Phase 2.
+
+**Phase 2 Task 2.3 (PPO hyperparameters for the new MDP) is next**, per `docs/REVIVAL_PLAN.md` §Phase 2 Task 2.3 — in `training/ppo/train.py` `Config` defaults: `gamma: 0.995 → 0.99`, `num_steps: 1536 → 256`, `num_minibatches: 6 → 4` (keep minibatch ≈1280 with 20 envs × 256 steps), leave `gae_lambda`/`ent_coef`/`learning_rate`/clip unchanged, plus an LR-anneal-schedule-compression warning when resuming a checkpoint whose `update` ≥ 80% of the *current* run's `num_updates`.

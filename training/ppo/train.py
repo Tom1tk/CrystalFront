@@ -703,7 +703,7 @@ def train(cfg: Config) -> None:
                         pct_wkr_mv  = int(100 * action_counts[66:71].sum() / total_acts)
                         no_pres_pct = int(100 * warn_no_pressure_window / window_episodes)
                         ecd_mean    = int(sum(enemy_crystal_dmg_pct_list) / len(enemy_crystal_dmg_pct_list)) if enemy_crystal_dmg_pct_list else 0
-                        ep_ret_mean = int(sum(terminal_reward_list) / len(terminal_reward_list)) if terminal_reward_list else 0
+                        ep_ret_mean = int(100 * sum(terminal_reward_list) / len(terminal_reward_list)) if terminal_reward_list else 0
                         print(
                             f"  update={update:5d} | step={global_step:8d} | "
                             f"win_rate={win_rate:.2f} ({wins_last_window}/{window_episodes}) | "

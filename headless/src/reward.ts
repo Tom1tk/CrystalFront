@@ -3,15 +3,15 @@
  * Imported by both stdioRunner.ts and stdioVecRunner.ts to prevent drift.
  *
  * Reward components (9 total):
- *   +5 × crystal healthFrac delta dealt   (continuous)
- *   -2 × crystal healthFrac delta taken   (continuous)
- *   +10 one-time first barracks built
- *   +5  one-time first combat unit trained   (bootstrap shaping)
- *   +3  one-time second combat unit trained  (bootstrap shaping)
- *   +2  one-time third combat unit trained   (bootstrap shaping — needed for rush_medium)
- *   +1  one-time fourth combat unit trained  (bootstrap shaping — needed for rush_medium)
- *   -0.001/tick time penalty
- *   ±100 terminal (win/loss)
+ *   +0.05 × crystal healthFrac delta dealt   (continuous)
+ *   -0.02 × crystal healthFrac delta taken   (continuous)
+ *   +0.10 one-time first barracks built
+ *   +0.05  one-time first combat unit trained   (bootstrap shaping)
+ *   +0.03  one-time second combat unit trained  (bootstrap shaping)
+ *   +0.02  one-time third combat unit trained   (bootstrap shaping — needed for rush_medium)
+ *   +0.01  one-time fourth combat unit trained  (bootstrap shaping — needed for rush_medium)
+ *   -0.00001/tick time penalty
+ *   ±1.0 terminal (win/loss)
  */
 
 import type { PlayerObservation } from "./types.js";
@@ -46,7 +46,7 @@ export function freshMilestones(): Milestones {
 
 export interface RewardResult {
   reward: number;
-  terminalReturn: number;  // 0 unless done; ±100 on terminal tick
+  terminalReturn: number;  // 0 unless done; ±1.0 on terminal tick
   shapingReturn: number;   // shaping component only (excl. terminal)
 }
 
@@ -61,29 +61,29 @@ export function computeReward(
 ): RewardResult {
   let r = 0;
 
-  // Crystal damage dealt (+5 per full crystal HP lost)
+  // Crystal damage dealt (+0.05 per full crystal HP lost)
   // Both prev and curr must be > 0 to avoid false rewards from visibility changes.
   if (prev.global.oppCrystalHealthFrac > 0 && curr.global.oppCrystalHealthFrac > 0) {
     const delta = prev.global.oppCrystalHealthFrac - curr.global.oppCrystalHealthFrac;
-    if (delta > 0) r += 5.0 * delta;
+    if (delta > 0) r += 0.05 * delta;
   }
 
-  // Crystal damage taken (-2 per full crystal HP lost)
+  // Crystal damage taken (-0.02 per full crystal HP lost)
   const ownDelta = prev.global.ownCrystalHealthFrac - curr.global.ownCrystalHealthFrac;
-  if (ownDelta > 0) r -= 2.0 * ownDelta;
+  if (ownDelta > 0) r -= 0.02 * ownDelta;
 
-  // First barracks built (+10 one-time)
+  // First barracks built (+0.10 one-time)
   if (!milestones.hasBuiltBarracks) {
     const hadBarracks = prev.entities.some(e => e.owner === 1 && e.typeIndex === 6);
     const hasBarracks = curr.entities.some(e => e.owner === 1 && e.typeIndex === 6);
     if (!hadBarracks && hasBarracks) {
-      r += 10.0;
+      r += 0.10;
       milestones.hasBuiltBarracks = true;
       milestones.firstBarracksTick = curr.tick;
     }
   }
 
-  // Combat units trained — one-time bootstrap shaping (5/3/2/1 for units 1/2/3/4)
+  // Combat units trained — one-time bootstrap shaping (0.05/0.03/0.02/0.01 for units 1/2/3/4)
   const allUnitMilestonesFired = milestones.hasTrainedCombatUnit &&
     milestones.hasTrainedSecondCombatUnit &&
     milestones.hasTrainedThirdCombatUnit &&
@@ -93,24 +93,24 @@ export function computeReward(
     const currCombat = curr.entities.filter(e => e.owner === 1 && e.typeIndex >= 2 && e.typeIndex <= 4).length;
     if (currCombat > prevCombat) {
       if (!milestones.hasTrainedCombatUnit) {
-        r += 5.0;
+        r += 0.05;
         milestones.hasTrainedCombatUnit = true;
         milestones.firstCombatUnitTick = curr.tick;
       } else if (!milestones.hasTrainedSecondCombatUnit) {
-        r += 3.0;
+        r += 0.03;
         milestones.hasTrainedSecondCombatUnit = true;
       } else if (!milestones.hasTrainedThirdCombatUnit) {
-        r += 2.0;
+        r += 0.02;
         milestones.hasTrainedThirdCombatUnit = true;
       } else if (!milestones.hasTrainedFourthCombatUnit) {
-        r += 1.0;
+        r += 0.01;
         milestones.hasTrainedFourthCombatUnit = true;
       }
     }
   }
 
-  // Time penalty (-0.001/tick = -6 over a 6000-tick episode)
-  r -= 0.001;
+  // Time penalty (-0.00001/tick = -0.06 over a 6000-tick episode)
+  r -= 0.00001;
 
   // Diagnostic tracking (no reward) — only update when crystal is visible (> 0)
   if (milestones.firstAttackTick < 0
@@ -128,7 +128,8 @@ export function computeReward(
   let terminalReturn = 0;
 
   if (done) {
-    terminalReturn = (winner === blueId && winType !== "resource") ? 100.0 : -100.0;
+    // winner === null only as a defensive fallback (Phase 1 tiebreaker guarantees a winner on timeout).
+    terminalReturn = (winner === blueId) ? 1.0 : -1.0;
     r += terminalReturn;
   }
 
