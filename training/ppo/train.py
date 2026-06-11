@@ -396,6 +396,7 @@ def train(cfg: Config) -> None:
     cur_stage_idx  = cfg.curriculum_stage if cfg.curriculum else -1
     cur_stage      = CURRICULUM[cur_stage_idx] if cfg.curriculum else None
     stage_step_start = 0  # global_step when current stage began
+    pending_stage_change = 0  # +1 promote / -1 regress, applied at the next update boundary
 
     def _resolve_env_params() -> tuple[dict, int, str, dict | None]:
         """Return (config_overrides, max_ticks, opponent, pre_place) for current stage or cfg defaults."""
@@ -739,43 +740,18 @@ def train(cfg: Config) -> None:
                         action_counts[:] = 0
 
                         # ── curriculum promotion check ──────────────────────
+                        # Stage changes are deferred to the update boundary (see below the
+                        # PPO update) so a single rollout buffer never spans two stages.
                         if cur_stage is not None:
                             _stage_steps = global_step - stage_step_start
                             if win_rate >= cur_stage.promotion_threshold:
-                                next_idx = cur_stage_idx + 1
-                                if next_idx < len(CURRICULUM):
-                                    cur_stage_idx  = next_idx
-                                    cur_stage      = CURRICULUM[cur_stage_idx]
-                                    stage_step_start = global_step
-                                    print(f"\n  *** CURRICULUM PROMOTE → stage {cur_stage.name} "
-                                          f"(map={cur_stage.map_width or 'default'}, opp={cur_stage.opponent}) ***\n", flush=True)
-                                    writer.add_scalar("curriculum/stage", cur_stage_idx, global_step)
-                                    for ve in vec_envs: ve.close()
-                                    _ov, _mt, _op, _pp = _resolve_env_params()
-                                    vec_envs = _build_vec_envs(_ov, _mt, _op, _pp, forcing_scale=_cur_forcing_scale)
-                                    # Re-init obs by resetting all envs
-                                    _init = list(executor.map(_do_reset_vec,
-                                        [(vec_envs[k], k, [[{}]*cfg.vec_size][0]) for k in range(cfg.num_procs)]))
-                                    _flat = [r for batch in _init for r in batch]
-                                    obs_list  = [r[0] for r in _flat]
-                                    info_list = [r[1] for r in _flat]
+                                if cur_stage_idx + 1 < len(CURRICULUM):
+                                    pending_stage_change = +1
                                 else:
                                     print(f"\n  *** CURRICULUM COMPLETE — all stages solved ***\n", flush=True)
                                     cur_stage = None
                             elif _stage_steps > cur_stage.max_steps and cur_stage_idx > 0:
-                                cur_stage_idx -= 1
-                                cur_stage      = CURRICULUM[cur_stage_idx]
-                                stage_step_start = global_step
-                                print(f"\n  *** CURRICULUM REGRESS → stage {cur_stage.name} (stuck) ***\n", flush=True)
-                                writer.add_scalar("curriculum/stage", cur_stage_idx, global_step)
-                                for ve in vec_envs: ve.close()
-                                _ov, _mt, _op, _pp = _resolve_env_params()
-                                vec_envs = _build_vec_envs(_ov, _mt, _op, _pp, forcing_scale=_cur_forcing_scale)
-                                _init = list(executor.map(_do_reset_vec,
-                                    [(vec_envs[k], k, [[{}]*cfg.vec_size][0]) for k in range(cfg.num_procs)]))
-                                _flat = [r for batch in _init for r in batch]
-                                obs_list  = [r[0] for r in _flat]
-                                info_list = [r[1] for r in _flat]
+                                pending_stage_change = -1
 
                     episode_rewards[i] = 0.0
                     episode_lengths[i] = 0
@@ -951,6 +927,29 @@ def train(cfg: Config) -> None:
                 for n, s in sorted(matrix.items())
             )
             writer.add_text("league/win_rate_matrix", f"update {update}\n{matrix_text}", global_step)
+
+        # ── apply pending curriculum stage change (update boundary) ────────────
+        if pending_stage_change != 0:
+            cur_stage_idx   += pending_stage_change
+            cur_stage        = CURRICULUM[cur_stage_idx]
+            stage_step_start = global_step
+            if pending_stage_change > 0:
+                print(f"\n  *** CURRICULUM PROMOTE → stage {cur_stage.name} "
+                      f"(map={cur_stage.map_width or 'default'}, opp={cur_stage.opponent}) ***\n", flush=True)
+            else:
+                print(f"\n  *** CURRICULUM REGRESS → stage {cur_stage.name} (stuck) ***\n", flush=True)
+            writer.add_scalar("curriculum/stage", cur_stage_idx, global_step)
+            for ve in vec_envs: ve.close()
+            _ov, _mt, _op, _pp = _resolve_env_params()
+            vec_envs = _build_vec_envs(_ov, _mt, _op, _pp, forcing_scale=_cur_forcing_scale)
+            _init = list(executor.map(_do_reset_vec,
+                [(vec_envs[k], k, [[{}]*cfg.vec_size][0]) for k in range(cfg.num_procs)]))
+            _flat = [r for batch in _init for r in batch]
+            obs_list  = [r[0] for r in _flat]
+            info_list = [r[1] for r in _flat]
+            episode_rewards = [0.0] * cfg.num_envs
+            episode_lengths = [0]   * cfg.num_envs
+            pending_stage_change = 0
 
     # ── final save ───────────────────────────────────────────────────────────
     final_path = ckpt_path / "final.pt"
