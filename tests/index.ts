@@ -9,7 +9,7 @@ import { ALL_ACTIONS, ACTION_SPACE_SIZE, actionToIndex, indexToAction, legalMask
 import { getLegalActions } from "../headless/src/legalActions.js";
 import { expandMacroAction } from "../headless/src/actionSpace.js";
 import { buildObservation } from "../headless/src/observation.js";
-import { ECONOMY } from "../shared/src/gameBalance.js";
+import { ECONOMY, HEALING } from "../shared/src/gameBalance.js";
 import { saveReplay, getReplay, listReplays } from "../server/src/match/replayRunner.js";
 import { mirrorState, deepCloneMatchState, diffStates } from "../server/src/match/engine/mirror.js";
 import { MediumRushBot } from "../headless/src/bots/mediumRushBot.js";
@@ -776,6 +776,54 @@ console.log("\n--- Combat: Crystal Destruction Ends Match ---");
   const finalMatch = engine.getMatch(match.id);
   assert(finalMatch!.phase === "ended", "Match ended when crystal was destroyed");
   assert(finalMatch!.result!.winner === p1.id, "Blue player wins when red crystal is destroyed");
+
+}
+
+// ---- Combat: Crystal Regen ----
+console.log("\n--- Combat: Crystal Regen ---");
+{
+  const mgr = new LobbyManager();
+  const host = mgr.createLobby("HostUser");
+  mgr.joinLobby(host.code, "JoinUser");
+  const lobby = mgr.getLobby(host.code)!;
+  const p1 = lobby.players[0]!;
+  const p2 = lobby.players[1]!;
+
+  const engine = new MatchEngine();
+  const players: [PlayerSlot | null, PlayerSlot | null] = [
+    { playerId: p1.id, username: p1.username, color: p1.color, score: p1.score, wsId: "ws1" },
+    { playerId: p2.id, username: p2.username, color: p2.color, score: p2.score, wsId: "ws2" },
+  ];
+  const match = engine.createMatch(host.code, players);
+  engine.startMatch(match.id);
+
+  const blueCrystal = Array.from(match.entities.values()).find(
+    (e) => e.type === "crystal" && e.ownerId === p1.id
+  )!;
+
+  // No enemy nearby -> crystal regenerates
+  blueCrystal.health = blueCrystal.maxHealth - 10;
+  engine.tick(match.id);
+  assert(
+    Math.abs(blueCrystal.health - (blueCrystal.maxHealth - 10 + HEALING.crystalRegenHpPerTick)) < 1e-9,
+    "Crystal regenerates when below max HP and no enemy is nearby"
+  );
+
+  // Enemy worker moves next to the crystal -> regen blocked
+  const enemyWorker = Array.from(match.entities.values()).find(
+    (e) => e.type === "worker" && e.ownerId === p2.id
+  )!;
+  enemyWorker.x = blueCrystal.x;
+  enemyWorker.y = blueCrystal.y;
+  const healthBefore = blueCrystal.health;
+  engine.tick(match.id);
+  assert(blueCrystal.health === healthBefore, "Crystal does not regenerate when an enemy is nearby");
+
+  // Move enemy worker away and verify regen does not exceed max HP
+  enemyWorker.x = blueCrystal.x - 1000;
+  blueCrystal.health = blueCrystal.maxHealth - 0.03;
+  engine.tick(match.id);
+  assert(blueCrystal.health === blueCrystal.maxHealth, "Crystal regen does not exceed max HP");
 
 }
 

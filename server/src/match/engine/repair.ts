@@ -39,3 +39,22 @@ export function processRepairAndHealing(match: MatchState): void {
     }
   }
 }
+
+// Crystals slowly regenerate when undefended, giving turtling players a path
+// back to full HP between enemy pushes.
+export function processCrystalRegen(match: MatchState): void {
+  for (const crystal of match.entities.values()) {
+    if (crystal.type !== "crystal" || crystal.health >= crystal.maxHealth) continue;
+    let enemyNearby = false;
+    for (const other of match.entities.values()) {
+      if (other.ownerId === crystal.ownerId) continue;
+      if (dist(crystal.x, crystal.y, other.x, other.y) <= HEALING.crystalRegenRange) {
+        enemyNearby = true;
+        break;
+      }
+    }
+    if (!enemyNearby) {
+      crystal.health = Math.min(crystal.maxHealth, crystal.health + HEALING.crystalRegenHpPerTick);
+    }
+  }
+}

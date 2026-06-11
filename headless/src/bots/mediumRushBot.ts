@@ -5,7 +5,7 @@ import type { MatchState } from "../../../server/src/match/types.js";
  * MediumRushBot — intermediate curriculum opponent.
  *
  * Between WeakRushBot and full RushBot:
- *   - First push at tick 200 (early enough to be threatening, late enough to react)
+ *   - First push at tick 300 (early enough to be threatening, late enough to react)
  *   - Cap of 7 skirmishers before going unlimited
  *   - Push every 35 ticks (slower than RushBot's 25)
  *   - No second barracks
@@ -21,7 +21,7 @@ export class MediumRushBot implements Agent {
   private totalSkirmishersTrained = 0;
 
   private readonly SOFT_CAP = 7;     // push regardless of count after this
-  private readonly FIRST_PUSH_TICK = 200;
+  private readonly FIRST_PUSH_TICK = 300;  // was 200 (REVIVAL_PLAN Task 1.3 iteration 3)
   private readonly PUSH_INTERVAL = 35;
 
   init(playerId: string, match: MatchState): void {
