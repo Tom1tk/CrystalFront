@@ -103,6 +103,7 @@ const REPLAYS_DIR = resolve(REPO_ROOT, "replays");
 const BLUE_ID        = "headless-blue";
 const RED_ID         = "headless-red";
 let MAX_TICKS        = 6000;
+let DECISION_INTERVAL = 1;       // read from reset_all; ticks held per macro-decision
 let ACTION_FORCING_SCALE = 0.0;  // read from reset_all; 0 = forcing off
 
 // ── per-slot state ────────────────────────────────────────────────────────────
@@ -202,33 +203,49 @@ function stepSlot(slot: SlotState, actionIdx: number): {
     if (result.success) slot.commandLog.push({ tick: match.tick, playerId: BLUE_ID, command: cmd as Record<string, unknown> });
   }
 
-  const redObs   = buildObservation(match, RED_ID);
-  const redLegal = getLegalActions(match, RED_ID);
-  let redActions: ReturnType<typeof redBot.step> = [];
-  try {
-    redActions = redBot.step(redObs, redLegal);
-  } catch (e) {
-    process.stderr.write(`[bot crash] ${slot.opponentName}: ${(e as Error).message}\n`);
-    slot.botCrashCount++;
-  }
-  for (const ra of redActions) {
-    const redCmds = expandMacroAction(ra, match, RED_ID);
-    for (const cmd of redCmds) {
-      const result = engine.processCommand(match.id, RED_ID, cmd as Parameters<MatchEngine["processCommand"]>[2]);
-      if (result.success) slot.commandLog.push({ tick: match.tick, playerId: RED_ID, command: cmd as Record<string, unknown> });
+  // Hold the macro-action for DECISION_INTERVAL ticks. The red bot acts and
+  // reward is accumulated every tick so crystal-delta and milestone semantics
+  // (computeReward's per-tick deltas) stay exact regardless of k.
+  let reward      = 0;
+  let done        = false;
+  let winner: string | null  = null;
+  let winType: string | null = null;
+  let blueObs     = prevBlueObs;
+  let tickPrevObs = prevBlueObs;
+
+  for (let t = 0; t < DECISION_INTERVAL; t++) {
+    const redObs   = buildObservation(match, RED_ID);
+    const redLegal = getLegalActions(match, RED_ID);
+    let redActions: ReturnType<typeof redBot.step> = [];
+    try {
+      redActions = redBot.step(redObs, redLegal);
+    } catch (e) {
+      process.stderr.write(`[bot crash] ${slot.opponentName}: ${(e as Error).message}\n`);
+      slot.botCrashCount++;
     }
+    for (const ra of redActions) {
+      const redCmds = expandMacroAction(ra, match, RED_ID);
+      for (const cmd of redCmds) {
+        const result = engine.processCommand(match.id, RED_ID, cmd as Parameters<MatchEngine["processCommand"]>[2]);
+        if (result.success) slot.commandLog.push({ tick: match.tick, playerId: RED_ID, command: cmd as Record<string, unknown> });
+      }
+    }
+
+    engine.tick(match.id);
+
+    done    = match.phase !== "playing" || match.tick >= MAX_TICKS;
+    winner  = match.result?.winner ?? null;
+    winType = (match.result?.winType ?? null) as string | null;
+
+    blueObs = buildObservation(match, BLUE_ID);
+    const tickResult = computeReward(tickPrevObs, blueObs, done, winner, winType, slot.milestones, BLUE_ID);
+    reward += tickResult.reward;
+    slot.episodeShaping += tickResult.shapingReturn;
+    if (done) slot.lastTerminalReturn = tickResult.terminalReturn;
+    tickPrevObs = blueObs;
+
+    if (done) break;
   }
-
-  engine.tick(match.id);
-
-  const done    = match.phase !== "playing" || match.tick >= MAX_TICKS;
-  const winner  = match.result?.winner ?? null;
-  const winType = (match.result?.winType ?? null) as string | null;
-
-  const blueObs = buildObservation(match, BLUE_ID);
-  const { reward, terminalReturn, shapingReturn } = computeReward(prevBlueObs, blueObs, done, winner, winType, slot.milestones, BLUE_ID);
-  slot.episodeShaping += shapingReturn;
-  if (done) slot.lastTerminalReturn = terminalReturn;
   slot.prevBlueObs = blueObs;
 
   const info: Record<string, unknown> = {};
@@ -330,6 +347,7 @@ rl.on("line", (raw) => {
         const cfgOverrides = msg.config_overrides as Partial<import("../../server/src/match/types.js").MatchConfig> | undefined;
         const prePlaceMsg  = msg.pre_place as PrePlace | undefined;
         if (msg.max_ticks !== undefined) MAX_TICKS = msg.max_ticks as number;
+        if (msg.decision_interval !== undefined) DECISION_INTERVAL = msg.decision_interval as number;
         if (msg.action_forcing_scale !== undefined) ACTION_FORCING_SCALE = msg.action_forcing_scale as number;
 
         slots = [];

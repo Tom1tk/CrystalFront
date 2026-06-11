@@ -2,7 +2,7 @@
 
 **Branch:** `CrystalFront-ML`
 **Status:** v0.3.2-ML **SHIPPED** (2026-05-22). v0.4.0-ML **HALTED** (2026-05-23) — Option B action-masking and Option γ RND both failed to break `trn=0%` ceiling.
-**Last updated:** 2026-06-09
+**Last updated:** 2026-06-11
 
 ---
 
@@ -15,7 +15,7 @@ This section is the orientation point for any agent picking up the project. Ever
 - **v0.3.2-ML is live in production.** `models/policy-v0.3.2-ML.onnx`. Not changing until v0.5.0-ML eval gates pass (see `docs/REVIVAL_PLAN.md` Task 3.3).
 - **Phase 0 of the revival plan is complete** (v0.5.0-ML). The three root causes of the v0.4.0-ML failure were diagnosed and fixed: (1) autoreset config-override bug in `stdioVecRunner.ts`, (2) static MAP constants in observation/geometry code, (3) MacroBot crash. Code base is now trustworthy.
 - **Phase 1 (balance) is COMPLETE** (v0.5.4-ML, exited 2026-06-11). Task 1.3's tuning loop ran 5 iterations, hit REVIVAL_PLAN line 244's stop clause (criterion 2's `turtle` leg is structurally unsatisfiable — `turtle` never attacks, so its only win path vs a sustained rush is the timeout tiebreak, which criterion 5 caps), and the acceptance criteria were **amended** per user direction (criterion 2 drops the `turtle` leg, criterion 5 scoped to rush-vs-non-rush pairings, KI-1 accepted for rush-internal attrition). The v0.5.4-ML confirmation matrix (4050 matches, `docs/balance/matrix_v0.5.4_task1.3_confirm.json`) **passes all 5 amended criteria** — see Iteration 12 for the full before/after table and a noteworthy macro-mirror tiebreak swing (66%→48%, both within band).
-- **Phase 2 (MDP restructure) is next.** Start with **Task 2.1 (frame skip, decision_interval k=8)**. See `docs/REVIVAL_PLAN.md` §Phase 2. Re-read `/root/fable-crystalfront-diagnosis.md` before starting it.
+- **Phase 2 (MDP restructure) is in progress.** **Task 2.1 (frame skip, decision_interval k=8) is DONE** (v0.5.5-ML, 2026-06-11) — see Iteration 13. Next: **Task 2.2 (reward rescale and terminal redesign)** per `docs/REVIVAL_PLAN.md` §Phase 2.
 
 See `docs/REVIVAL_PLAN.md` for the full implementation plan and Appendix B for task status.
 
@@ -71,7 +71,7 @@ python3 -m training.ppo.train --curriculum --curriculum_stage 0 \
 | Ship v0.3.2-ML bot | ✅ Live in production |
 | Phase 0: fix infra bugs | ✅ Complete (v0.5.0-ML, 2026-06-09) |
 | Phase 1: balance game | ✅ Complete (v0.5.4-ML, 2026-06-11) — amended criteria all pass, see Iteration 12 diary entry |
-| Phase 2: restructure MDP | 🔄 Next — Task 2.1 (frame skip) not yet started |
+| Phase 2: restructure MDP | 🔄 In progress — Task 2.1 (frame skip) done (v0.5.5-ML), Task 2.2 (reward rescale) next |
 | Phase 3: retrain + ship v0.5.0-ML | ⬜ After Phase 2 |
 
 ---
@@ -2031,3 +2031,39 @@ Ran the v0.5.4-ML confirmation matrix per Iteration 11's handoff: `python3 train
 (c) **What to skip going forward**: skip any further Task 1.3 balance tuning entirely (criteria met, lever list exhausted, structural dead ends documented). Skip re-deriving the diagnosis — `/root/fable-crystalfront-diagnosis.md` Phase 2 root cause (γ-horizon) is the active blocker now.
 
 **Phase 1 is now COMPLETE.** Next: Phase 2 Task 2.1 (frame skip, decision_interval k=8) per `docs/REVIVAL_PLAN.md` §Phase 2.
+
+---
+
+### 2026-06-11 — v0.5.5-ML Phase 2: Iteration 13 (Task 2.1 — frame skip, decision_interval k=8)
+
+**What was done:**
+
+Implemented `decision_interval` (frame skip, default k=8) per `docs/REVIVAL_PLAN.md` §Phase 2 Task 2.1, across all four specified files:
+
+1. **`headless/src/stdioVecRunner.ts`** — module-level `let DECISION_INTERVAL = 1;`, set from `reset_all`'s `msg.decision_interval`. `stepSlot()` now applies the blue macro-action **once**, then loops `for (let t = 0; t < DECISION_INTERVAL; t++)`: red bot observes+acts every tick (unchanged), `engine.tick()`, build the new blue observation, call `computeReward(prevBlueObs, blueObs, …)` **per tick** and accumulate the reward sum, update `prevBlueObs`/`tickPrevObs` each tick (preserves exact crystal-delta/milestone semantics), `break` immediately on `done`.
+2. **`training/env/crystalfront_vec_env.py`** — constructor param `decision_interval: int = 1`, sent in the `reset_all` message.
+3. **`training/ppo/train.py`** — `Config.decision_interval: int = 8`, passed to `CrystalFrontVecEnv(...)`, printed in the run banner. Per the plan's explicit semantics-shift warning (`global_step` now counts decisions, each worth k ticks), divided every `max_steps` value in the `CURRICULUM` list by 4 (not 8, "keep slack" per the plan): 7×4,000,000→1,000,000; 3×5,000,000→1,250,000; 1×8,000,000→2,000,000; 4×2,000,000→500,000; 1×20,000,000→5,000,000; 4×3,000,000→750,000 (20 entries total, verified by grep). The `CurriculumStage` dataclass field default (`max_steps: int = 2_000_000`, never used — every stage overrides it explicitly) was left unchanged per R3.
+4. **`headless/src/stdioRunner.ts`** (BC/demo path) — same `DECISION_INTERVAL` plumbing via `handleReset`'s new `newDecisionInterval` param (from `msg.decision_interval`). `handleStep()` restructured: non-demo mode applies Python's macro-action once before the k-tick loop (as in the vec runner); demo mode (`blueBot` set) now has the scripted blue bot **observe and act every tick with its full action list** (applying *all* returned commands, not just `[0]` — fixes the "lobotomised expert" defect from the old single-tick BC recording), and `demoAction` is recorded as the **first non-noop** macro-action issued anywhere in the window (else 0/noop), via `actionToIndex`. Red bot + `engine.tick()` + per-tick `computeReward()` accumulation mirror the vec runner.
+
+**Verification:**
+
+- `npm run build:headless`: clean, no TS errors.
+- `npm test`: 470/470 (no regressions from the loop restructure).
+- `python3 -m training.test_env`: SMOKE TEST PASSED (k=1 default — `crystalfront_env.py` doesn't send `decision_interval` yet, Task 3.1's responsibility; behaviour is identical to pre-Task-2.1 since a 1-iteration loop = the old single-tick body).
+- **k=1 ↔ k=8 reward-accumulation equivalence** (direct `CrystalFrontVecEnv` test, `idle` opponent, seed 42, `max_ticks=6000`): k=1 → 6000 decisions / 6000 final ticks; k=8 → 750 decisions / 6000 final ticks. **Total accumulated reward identical in both: −106.00000.** This confirms the per-tick `computeReward` accumulation with `prevBlueObs` updated every tick reproduces the k=1 baseline exactly, regardless of k.
+- **BC path (`stdioRunner.ts`) k=8 check** (raw protocol, `demo_bot=macro` vs `idle`, seed 42): tick deltas per decision are 8 (full window) with one final delta of 4 (the window in which `done` fired mid-loop, `episodeOutcome=combat_win`, `finalReward=122.68`). `demoAction` is non-zero in 69/403 ≈ 17% of decisions at k=8, vs 15/1001 ≈ 1.5% at k=1 over the same opening — consistent with the "lobotomised expert" fix (the bot's full per-tick action list is now sampled across an 8-tick window instead of just the first tick).
+- **1k-decision smoke training run**: `python3 -m training.ppo.train --total_timesteps 20000 --num_envs 4 --vec_size 2 --decision_interval 8 --opponent idle --device cpu --no-compile_agent` completed cleanly, run banner correctly printed `Decision interval: 8 ticks/decision (800ms game time)`. (Run was on CPU with `torch.compile` disabled — the GPU in this environment hit an unrelated ROCm `HSA_STATUS_ERROR_EXCEPTION`/`hipErrorLaunchFailure` on the first `--device cuda` attempt; this is a pre-existing environment issue, not caused by this change, and is out of scope for Task 2.1.)
+
+**What was decided and why:**
+
+- **Version bumped to `0.5.5-ML`** across all 5 `package.json` (R1 — training/config change).
+- **No `BALANCE_HISTORY` entry added.** Task 2.1 makes zero engine-level or replay-affecting changes (verified above: identical reward/outcome regardless of k). `DEFAULT_CONFIG`'s `BalanceSnapshot`-tracked fields (`workerTrainCost=35`, `workerSpeed=1.7`, `skirmisherSpeed=2.0`, `skirmisherDamage=12`, `passiveWinThreshold=4500`) already equal the `0.5.4-ML` snapshot, so `getBalanceForVersion("0.5.5-ML")` falling back to `undefined`→`DEFAULT_CONFIG` for any `0.5.5-ML` replay produces identical values to the `0.5.4-ML` entry. Adding a redundant entry would be churn.
+- **`docs/ML_AGENT.md` not updated.** Per Appendix B, syncing `ML_AGENT.md` §4/§8 is task **P2** (the Phase 2 diary/phase-boundary entry), not part of Task 2.1 itself — `decision_interval` isn't part of the documented observation/action/reward/curriculum specs that §4/§8 cover, and the curriculum stage *table* (§5) doesn't list `max_steps` values, so nothing there is now stale.
+- Appendix B row 2.1 marked ✅; "Current handoff state" and "Open commitments" updated to point at Task 2.2 next.
+
+**What would you tell the next agent NOT to waste time on?**
+
+- Don't try to re-run the GPU smoke training run to "confirm" it — the CPU run already validates the `decision_interval` plumbing end-to-end (correct banner, correct env construction, completes without error); the ROCm crash is an unrelated environment flake unconnected to this change.
+- Don't add `decision_interval` support to `training/env/crystalfront_env.py` (single-env BC path) as part of cleanup — that's explicitly Task 3.1's responsibility (re-recording BC demos at k=8), and `stdioRunner.ts`'s `DECISION_INTERVAL` already defaults safely to 1 if the field is absent from the `reset` message.
+
+**Phase 2 Task 2.2 (reward rescale and terminal redesign) is next**, per `docs/REVIVAL_PLAN.md` §Phase 2 Task 2.2 — rewrite `headless/src/reward.ts` constants per the table there (terminal ±1.0 including resource/timeout wins, crystal damage ±0.05/±0.02, first barracks +0.10, combat units +0.05/+0.03/+0.02/+0.01, time penalty −0.00001).

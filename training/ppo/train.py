@@ -96,30 +96,30 @@ CURRICULUM: list[CurriculumStage] = [
     # 0a: pre-placed barracks + 2 skirmishers — agent only needs attack_move (Phase A)
     CurriculumStage("0a", map_width=800, crystal_health=50, starting_resources=200, max_ticks=2000, opponent="idle",
                     pre_place_barracks=True, pre_place_units=["skirmisher", "skirmisher"],
-                    promotion_threshold=0.85, max_steps=2_000_000),
+                    promotion_threshold=0.85, max_steps=500_000),
     # 0b: pre-placed barracks only — Phase B, resumes directly from 0a weights (no 0a5)
     # With 0a value function (100% wins with 2 skirmishers), the gradient for
     # "train 1 unit → attack → win" is strong enough to solve 0b immediately.
     CurriculumStage("0b", map_width=800, crystal_health=50, starting_resources=200, max_ticks=2000, opponent="idle",
                     pre_place_barracks=True, pre_place_units=[],
-                    promotion_threshold=0.70, max_steps=2_000_000),
+                    promotion_threshold=0.70, max_steps=500_000),
     # 0b5: no scaffolding, 200 resources — build immediately, no gathering needed yet
     CurriculumStage("0b5", map_width=800, crystal_health=50, starting_resources=200, max_ticks=2000, opponent="idle",
-                    promotion_threshold=0.70, max_steps=2_000_000),
+                    promotion_threshold=0.70, max_steps=500_000),
     # 0c: no scaffolding, 50 resources — must gather before building
-    CurriculumStage("0c", map_width=800,  crystal_health=50,  starting_resources=50,  max_ticks=2000, opponent="idle",        promotion_threshold=0.70, max_steps=2_000_000),
+    CurriculumStage("0c", map_width=800,  crystal_health=50,  starting_resources=50,  max_ticks=2000, opponent="idle",        promotion_threshold=0.70, max_steps=500_000),
     # Review §9.5 Day 5 exact config — the target breakthrough stage
-    CurriculumStage("day5", map_width=1500, crystal_health=200, starting_resources=50,  max_ticks=3000, opponent="idle",        promotion_threshold=0.50, max_steps=5_000_000),
-    CurriculumStage("1a",   map_width=1500, crystal_health=100, starting_resources=50,  max_ticks=3000, opponent="idle",        promotion_threshold=0.70, max_steps=3_000_000),
-    CurriculumStage("1b", map_width=1500, crystal_health=100, starting_resources=50,  max_ticks=3000, opponent="passive",     promotion_threshold=0.70, max_steps=3_000_000),
-    CurriculumStage("2a", map_width=3000, crystal_health=300, starting_resources=50,  max_ticks=5000, opponent="passive",     promotion_threshold=0.70, max_steps=4_000_000),
+    CurriculumStage("day5", map_width=1500, crystal_health=200, starting_resources=50,  max_ticks=3000, opponent="idle",        promotion_threshold=0.50, max_steps=1_250_000),
+    CurriculumStage("1a",   map_width=1500, crystal_health=100, starting_resources=50,  max_ticks=3000, opponent="idle",        promotion_threshold=0.70, max_steps=750_000),
+    CurriculumStage("1b", map_width=1500, crystal_health=100, starting_resources=50,  max_ticks=3000, opponent="passive",     promotion_threshold=0.70, max_steps=750_000),
+    CurriculumStage("2a", map_width=3000, crystal_health=300, starting_resources=50,  max_ticks=5000, opponent="passive",     promotion_threshold=0.70, max_steps=1_000_000),
     # Rule R3: one slider at a time. 2a5→2a6→2b slides starting_resources 200→75→50.
     # 200: build immediately, no gathering. 75: build immediately, must gather for units.
     # 50: must gather before building AND for units (full chain).
-    CurriculumStage("2a5", map_width=3000, crystal_health=300, starting_resources=200, max_ticks=5000, opponent="rush_weak",   promotion_threshold=0.50, max_steps=3_000_000),
-    CurriculumStage("2a6", map_width=3000, crystal_health=300, starting_resources=75,  max_ticks=5000, opponent="rush_weak",   promotion_threshold=0.50, max_steps=3_000_000),
-    CurriculumStage("2b", map_width=3000, crystal_health=300, starting_resources=50,  max_ticks=5000, opponent="rush_weak",   promotion_threshold=0.50, max_steps=5_000_000),
-    CurriculumStage("3a",   map_width=0, crystal_health=0, starting_resources=50,  max_ticks=6000, opponent="passive",     promotion_threshold=0.70, max_steps=5_000_000),
+    CurriculumStage("2a5", map_width=3000, crystal_health=300, starting_resources=200, max_ticks=5000, opponent="rush_weak",   promotion_threshold=0.50, max_steps=750_000),
+    CurriculumStage("2a6", map_width=3000, crystal_health=300, starting_resources=75,  max_ticks=5000, opponent="rush_weak",   promotion_threshold=0.50, max_steps=750_000),
+    CurriculumStage("2b", map_width=3000, crystal_health=300, starting_resources=50,  max_ticks=5000, opponent="rush_weak",   promotion_threshold=0.50, max_steps=1_250_000),
+    CurriculumStage("3a",   map_width=0, crystal_health=0, starting_resources=50,  max_ticks=6000, opponent="passive",     promotion_threshold=0.70, max_steps=1_250_000),
     # Rule R3 — one variable at a time through the rush_medium wall (§A6.3 second review):
     # 3a_rw:     passive→rush_weak on 6000px (skill transfer from 3000px, clears in ~1 window)
     # 3a_rwm:    rush_weak→rush_weak_medium on 6000px (6 units, push@300 — needs 2 agent units)
@@ -128,20 +128,20 @@ CURRICULUM: list[CurriculumStage] = [
     # 3a2:       remove 1 skirmisher — agent must train one more unit
     # 3a5:       remove all scaffold — agent builds and trains from scratch (200 res head start)
     # 3b:        reduce starting resources to 50 — full difficulty
-    CurriculumStage("3a_rw",    map_width=0,    crystal_health=0,   starting_resources=200, max_ticks=6000, opponent="rush_weak",        promotion_threshold=0.50, max_steps=4_000_000),
-    CurriculumStage("3a_rwm",   map_width=0,    crystal_health=0,   starting_resources=200, max_ticks=6000, opponent="rush_weak_medium",  promotion_threshold=0.50, max_steps=4_000_000),
+    CurriculumStage("3a_rw",    map_width=0,    crystal_health=0,   starting_resources=200, max_ticks=6000, opponent="rush_weak",        promotion_threshold=0.50, max_steps=1_000_000),
+    CurriculumStage("3a_rwm",   map_width=0,    crystal_health=0,   starting_resources=200, max_ticks=6000, opponent="rush_weak_medium",  promotion_threshold=0.50, max_steps=1_000_000),
     CurriculumStage("3a_rm_3k", map_width=3000, crystal_health=300, starting_resources=200, max_ticks=5000, opponent="rush_medium",
                     pre_place_units=["skirmisher", "skirmisher"],
-                    promotion_threshold=0.50, max_steps=4_000_000),
+                    promotion_threshold=0.50, max_steps=1_000_000),
     CurriculumStage("3a1",      map_width=0,    crystal_health=0,   starting_resources=200, max_ticks=6000, opponent="rush_medium",
                     pre_place_units=["skirmisher", "skirmisher"],
-                    promotion_threshold=0.50, max_steps=4_000_000),
+                    promotion_threshold=0.50, max_steps=1_000_000),
     CurriculumStage("3a2",      map_width=0,    crystal_health=0,   starting_resources=200, max_ticks=6000, opponent="rush_medium",
                     pre_place_units=["skirmisher"],
-                    promotion_threshold=0.50, max_steps=4_000_000),
-    CurriculumStage("3a5",      map_width=0,    crystal_health=0,   starting_resources=200, max_ticks=6000, opponent="rush_medium", promotion_threshold=0.50, max_steps=4_000_000),
-    CurriculumStage("3b",  map_width=0, crystal_health=0, starting_resources=50,  max_ticks=6000, opponent="rush_medium", promotion_threshold=0.50, max_steps=8_000_000),
-    CurriculumStage("4",  map_width=0,    crystal_health=0,   starting_resources=50,  max_ticks=6000, opponent="league",      promotion_threshold=0.60, max_steps=20_000_000),
+                    promotion_threshold=0.50, max_steps=1_000_000),
+    CurriculumStage("3a5",      map_width=0,    crystal_health=0,   starting_resources=200, max_ticks=6000, opponent="rush_medium", promotion_threshold=0.50, max_steps=1_000_000),
+    CurriculumStage("3b",  map_width=0, crystal_health=0, starting_resources=50,  max_ticks=6000, opponent="rush_medium", promotion_threshold=0.50, max_steps=2_000_000),
+    CurriculumStage("4",  map_width=0,    crystal_health=0,   starting_resources=50,  max_ticks=6000, opponent="league",      promotion_threshold=0.60, max_steps=5_000_000),
 ]
 
 
@@ -159,6 +159,7 @@ class Config:
     vec_size:           int = 4        # games per Node process; num_procs = num_envs // vec_size
     opponent:           str = "idle"
     save_replay_every:  int = 10
+    decision_interval:  int = 8        # engine ticks held per agent decision (frame skip)
 
     # Training duration
     total_timesteps: int = 5_000_000
@@ -366,6 +367,7 @@ def train(cfg: Config) -> None:
     else:
         print(f"  Opponent:   {cfg.opponent}")
     print(f"  Envs:       {cfg.num_envs}  (vec_size={cfg.vec_size}, procs={cfg.num_procs})")
+    print(f"  Decision interval: {cfg.decision_interval} ticks/decision ({cfg.decision_interval * 100}ms game time)")
     print(f"  Batch size: {cfg.batch_size}  (steps={cfg.num_steps} × envs={cfg.num_envs})")
     print(f"  Minibatch:  {cfg.minibatch_size}  ({cfg.num_minibatches} minibatches × {cfg.update_epochs} epochs)")
     print(f"  Device:     {device}")
@@ -425,6 +427,7 @@ def train(cfg: Config) -> None:
                 max_ticks=max_ticks,
                 pre_place=pre_place,
                 action_forcing_scale=forcing_scale,
+                decision_interval=cfg.decision_interval,
             )
             for i in range(cfg.num_procs)
         ]
