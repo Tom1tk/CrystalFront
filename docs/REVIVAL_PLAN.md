@@ -439,7 +439,7 @@ tensorboard --logdir runs --bind_all
 | 0.1 | Persist configOverrides across autoreset | 0.2 test | ✅ |
 | 0.2 | Config echo + regression test | test bites on revert | ✅ |
 | 0.3 | Config-aware geometry in observation/actionSpace/legalActions | npm test + xNorm assertion | ✅ |
-| 0.4 | MacroBot fix + try/catch bot steps + botCrashCount | 5-match macro vs rush_medium script | ⚠️ |
+| 0.4 | MacroBot fix + try/catch bot steps + botCrashCount | 5-match macro vs rush_medium script | ✅ |
 | 0.5 | build:headless script + dist staleness guard | touch-file test | ⚠️ |
 | 0.6 | Action table regenerated from code | spot-check 5 indices | ✅ |
 | 0.7 | Deprecation comments on forcing/RND | n/a | ✅ |

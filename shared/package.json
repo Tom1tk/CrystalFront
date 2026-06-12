@@ -1,6 +1,6 @@
 {
   "name": "@crystalfront/shared",
-  "version": "0.5.10-ML",
+  "version": "0.5.11-ML",
   "private": true,
   "type": "module",
   "main": "dist/index.js",
