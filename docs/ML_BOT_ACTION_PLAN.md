@@ -2370,3 +2370,38 @@ All 5 tasks ✅ in Appendix B (`docs/REVIVAL_PLAN.md`); `npm test` 470/470 throu
 **Version bumped to `0.5.11-ML`** across all 5 `package.json` (R1 — training-code change). No `BALANCE_HISTORY` entry (trainer-only diagnostics/guards, no engine/reward/replay effect).
 
 **Phase 3 Task 3.2 (curriculum run) is next** — pre-flight is now clear. Launch: `python -m training.ppo.train --curriculum --curriculum_stage 0 --checkpoint bc_warmup_v05.pt --decision_interval 8 --num_envs 20 --vec_size 4 --total_timesteps 20000000`, per `docs/REVIVAL_PLAN.md` §Phase 3 "Pre-flight findings" (now closed) and the stop-the-line conditions listed there.
+
+---
+
+### 2026-06-12 — v0.5.11-ML Phase 3: Iteration 21 (Task 3.2 curriculum run — launched, STOPPED after a 3x cascading regression / policy collapse)
+
+**What happened:** Task 3.2 was launched (user-operated, per [[user-runs-training-himself]] — Claude in support/advisory role only) with the exact command from Iteration 20's handoff: `nohup python3 -m training.ppo.train --curriculum --curriculum_stage 0 --checkpoint bc_warmup_v05.pt --decision_interval 8 --num_envs 20 --vec_size 4 --total_timesteps 20000000 > train_task32.log 2>&1 &`. Run name `crystalfront_ppo__0_5_11-ML__idle__1__1781254439`. (Note: the first two launch attempts failed on shell syntax — missing `>` before the log filename — and left 3 tiny stray run dirs that were deleted as clutter; no training occurred in those.)
+
+**Promotions (updates 1–66, steps 4280–334240):** raced through `0a → 0b → 0b5 → 0c → day5 → 1a → 1b → 2a → 2a5 → 2a6 → 2b → 3a → 3a_rw → 3a_rwm`, win rates 57–100%. `Realised config` printed correctly at every single promotion (GAP-3 confirmed working on real GPU). Notable waypoints: **3a_rw** 100% (update 54), **3a_rwm** 61% (update 66, already 35% timeout rate — first sign of difficulty).
+
+**Promoted to `3a_rm_3k`** (update 66, step 334240; map=3000, opp=`rush_medium`, startingResources=200). Win rate collapsed 21%→13%→0% within 3 windows (updates 76–93) and stayed at **exactly 0.00 for 174 updates** (~890K decisions, updates 93–266). `crys_dmg=0%`/`no_pres=100%` throughout — the agent never once damaged the enemy crystal on this stage.
+
+**REGRESS #1 → `3a_rwm`** (update 266, step 1361920, "stuck"). The *same* stage that scored 61% just 200 updates earlier now scores **0.00** — `atk_mv` collapsed from 47%→0%, `tgt=0%`, `bld=0%`. Stayed at 0.00 for ~200 updates (274–466, ~1M decisions).
+
+**REGRESS #2 → `3a_rw`** (update 466, step 2385920, "stuck"). The *same* stage that scored 100% at update 54 now scores **0.00**, still `atk_mv=0% tgt=0% crys_dmg=0%`. Ran updates 476–674 (~1M decisions), still 0.00 throughout; `tmt` (timeout rate) drifted 0.21–0.83.
+
+**REGRESS #3 → `3a`** (~update 674–689, step ~3.45–3.53M, "stuck"). The *same* stage that scored 100% at update 46 (vs `passive`) now scores **0.00**, `tmt=1.00` (100% timeouts now), `bld=0% trn≤1%`, `wkr_mv` climbed to 57–60%, `crys_dmg=0%`.
+
+**Stopped by user** at update 718 (step 3675880 ≈ 3.68M decisions, ~73 min wall time), via `pkill -f training.ppo.train`. Last checkpoint: `checkpoints/crystalfront_ppo__0_5_11-ML__idle__1__1781254439/update_000700.pt`.
+
+**Diagnosis (root cause NOT yet identified — flagged for follow-up before any resume):**
+
+- **Not stop-the-line condition 2 (entropy collapse).** `ppo/entropy_bonus` *rose* from 0.6072 (step 5120) to 1.8665 (step 3727360, run end) — the opposite of collapse. The policy became *more* random over the run, not less.
+- **Not a KL/clip instability.** `ppo/approx_kl_divergence` stayed in ~0.007–0.013 and `ppo/clip_fraction` in ~0.02–0.06 throughout — both numerically normal/stable.
+- **`ppo/value_function_loss` collapsed to 0.0001** by run end (from 0.0183 at step 5120) — consistent with the critic learning "every episode = −1" with near-total confidence once the agent stopped winning anywhere, leaving little differentiating gradient signal for the actor.
+- **No GAP-2/GAP-3 guard fired** — zero `botCrashCount` warnings, and every `Realised config` print matched its stage definition exactly (15 promotions + 3 regressions, all checked). The pre-flight guards from Iteration 20 are confirmed working correctly on GPU; this is a learning-dynamics problem, not a config/infra bug.
+- **Working hypothesis:** the `3a_rwm` (61% win) → `3a_rm_3k` (`rush_medium`, map shrinks 6000→3000) promotion step is too steep a difficulty cliff. ~890K decisions of uniformly −1 reward with zero positive examples appears to have driven catastrophic forgetting of attack behavior (`atk_mv`/`tgt` both → 0%), which then "infected" the two easier stages the curriculum regressed back into — each regression made things *worse*, not better, which is the cascading-regression pattern the training guide (`/root/TRAINING_GUIDE.md` §6/§7) flags as worth stopping for even though it isn't literally one of the 5 enumerated conditions.
+
+**Recovery point:** `checkpoints/crystalfront_ppo__0_5_11-ML__idle__1__1781254439/update_000050.pt` — update 50, stage `3a_rw`, win_rate=1.00, saved *before* the agent ever reached `3a_rm_3k`.
+
+**Next steps (not yet decided — do not resume blindly):**
+1. Inspect `3a_rm_3k`'s definition (map/opponent/`promotion_threshold`/`max_steps`) against neighboring stages in `train.py`'s `CURRICULUM` table — is the `6000→3000` map shrink + `rush_weak_medium→rush_medium` opponent jump combined too large for one step?
+2. Consider whether resuming from `update_000050.pt` with `--curriculum_stage 12` (3a_rw) just repeats the same cliff at `3a_rm_3k`, or whether the stage itself needs a softer intermediate rung or a higher `--ent_coef`/lower `max_steps` (fail faster, regress sooner — 890K decisions of zero signal before the first regression may itself be part of the problem).
+3. Cross-check against the existing root-cause analysis in `/root/fable-crystalfront-diagnosis.md` (2026-06 diagnosis) before designing a fix — this collapse pattern may be related to the previously-identified "rush-dominated balance" or "per-tick γ horizon" findings.
+
+**No version bump** — no code changed; this entry documents a training-run outcome only (R1 n/a).
