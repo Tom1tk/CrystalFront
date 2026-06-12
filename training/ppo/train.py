@@ -551,6 +551,11 @@ def train(cfg: Config) -> None:
     entities_discovered_list:   list[int]   = []
     action_counts = np.zeros(ACTION_SPACE_SIZE, dtype=np.int64)
 
+    # GAP-3: print the realised env config (from the first post-reset done-step
+    # info) alongside the stage definition, once at run start and again after
+    # every curriculum stage entry/env rebuild.
+    _pending_realised_config_print = True
+
     start_time = time.time()
 
     # ── main training loop ────────────────────────────────────────────────────
@@ -641,6 +646,16 @@ def train(cfg: Config) -> None:
                     elif outcome == "loss":  loss_window    += 1
                     if info.get("warn_no_pressure"):       warn_no_pressure_window     += 1
                     if info.get("warn_loss_positive_reward"): warn_loss_pos_reward_window += 1
+
+                    bot_crash_count = info.get("botCrashCount", 0)
+                    if bot_crash_count:
+                        print(f"  ⚠️  WARNING: opponent bot crashed {bot_crash_count}x during episode "
+                              f"(env {i}, global_step={global_step}) — episode difficulty invalidated", flush=True)
+
+                    if _pending_realised_config_print and "nextEpisodeConfig" in info:
+                        stage_label = cur_stage.name if cur_stage is not None else "default"
+                        print(f"  Realised config (stage {stage_label}): {info['nextEpisodeConfig']}", flush=True)
+                        _pending_realised_config_print = False
 
                     fr = info.get("finalReward");      final_reward_list.append(float(fr)) if fr is not None else None
                     tr = info.get("terminalReward");   terminal_reward_list.append(float(tr)) if tr is not None else None
@@ -856,7 +871,10 @@ def train(cfg: Config) -> None:
 
                 optimizer.zero_grad()
                 loss.backward()
-                nn.utils.clip_grad_norm_(agent.parameters(), cfg.max_grad_norm)
+                grad_norm = nn.utils.clip_grad_norm_(agent.parameters(), cfg.max_grad_norm)
+                if not torch.isfinite(grad_norm):
+                    optimizer.zero_grad()
+                    continue
                 optimizer.step()
 
         # ── RND predictor update (after PPO epochs) ───────────────────────────
@@ -950,6 +968,7 @@ def train(cfg: Config) -> None:
             episode_rewards = [0.0] * cfg.num_envs
             episode_lengths = [0]   * cfg.num_envs
             pending_stage_change = 0
+            _pending_realised_config_print = True
 
     # ── final save ───────────────────────────────────────────────────────────
     final_path = ckpt_path / "final.pt"

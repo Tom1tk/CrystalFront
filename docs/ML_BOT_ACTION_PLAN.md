@@ -2351,3 +2351,22 @@ All 5 tasks ✅ in Appendix B (`docs/REVIVAL_PLAN.md`); `npm test` 470/470 throu
 - `bc_warmup_v05.pt` (repo root, gitignored via `*.pt`) is the Task 3.2 `--checkpoint` input — already in the right format (`{"update": 0, "global_step": 0, "agent": ..., "optimizer": ..., "config": ...}`, checkpoint-compatible with `train.py`).
 
 **Phase 3 Task 3.2 (curriculum run, `--checkpoint bc_warmup_v05.pt --decision_interval 8 --num_envs 20 --vec_size 4 --total_timesteps 20000000`) is next**, per `docs/REVIVAL_PLAN.md` §Phase 3.
+
+### 2026-06-12 — v0.5.11-ML Phase 3: Iteration 20 (Task 3.2 pre-flight — GAP-1/2/3 closed in `train.py`)
+
+**What was done:** closed all three gaps flagged by the 2026-06-12 implementation audit (`8e7317a`), all in `training/ppo/train.py`:
+
+- **GAP-1 (launch blocker):** ported the `isfinite(grad_norm)` skip-guard from `bc_pretrain.py` (~lines 251-253) into the PPO update loop (~line 857-862). `clip_grad_norm_`'s return value is now captured; if non-finite, `optimizer.zero_grad()` + `continue` skips the step instead of corrupting weights with `inf*0=nan`. RND optimizer (~867-870) left untouched as the audit recommended (default-off, deprecated).
+- **GAP-2:** added a `botCrashCount > 0` warning in the done-step processing block (next to the existing `warn_no_pressure`/`warn_loss_positive_reward` reads) — prints `⚠️  WARNING: opponent bot crashed Nx during episode (env i, global_step=…) — episode difficulty invalidated`. Completes Task 0.4 step 2; Appendix B row 0.4 flipped back ⚠️→✅.
+- **GAP-3:** added a `_pending_realised_config_print` flag (set at run start and again after every curriculum stage rebuild). On the first done-step info containing `nextEpisodeConfig` after each set, prints `Realised config (stage <name>): {...}` and clears the flag. Stop-the-line condition 4 (realised config ≠ stage config) is now directly observable in the console log.
+
+**Verify:**
+
+- `npm test` 470/470 (no `headless/src` files touched; ran per R6).
+- `python -m training.test_env` SMOKE TEST PASSED (10-step total reward = −0.0001, unchanged).
+- Non-curriculum CPU smoke (`--total_timesteps 20000 --num_envs 4 --vec_size 2 --decision_interval 8 --opponent idle --no-compile_agent --device cpu`): completed cleanly, printed `Realised config (stage default): {'mapWidth': 6000, 'crystalHealth': 1000, 'startingResources': 50}` once at run start (GAP-3 confirmed for the no-curriculum path).
+- Curriculum CPU smoke (`--curriculum --curriculum_stage 0 --checkpoint bc_warmup_v05.pt --decision_interval 8 --num_envs 4 --vec_size 2 --total_timesteps 20000 --no-compile_agent --device cpu`, the actual Task 3.2 launch config at reduced scale): loaded `bc_warmup_v05.pt` cleanly (`update 0, step 0`), printed `Realised config (stage 0a): {...}` at run start, promoted `0a → 0b` at update 5 (`win_rate=1.00 (100/100)`, matching Task 2.4's "near-free win" prediction) printing `Realised config (stage 0b): {...}` immediately after the promote line, then promoted `0b → 0b5` at update 11 (`win_rate=0.99`) printing `Realised config (stage 0b5): {...}` — confirming GAP-3 fires correctly on every stage entry/rebuild. No `botCrashCount` warnings in either smoke (opponent `idle` never crashes — expected, no false positives). GAP-1's guard added zero observable behaviour change on CPU (no `inf` grad norms expected off-GPU) — its effect is ROCm-specific and will only be exercised during the real GPU run.
+
+**Version bumped to `0.5.11-ML`** across all 5 `package.json` (R1 — training-code change). No `BALANCE_HISTORY` entry (trainer-only diagnostics/guards, no engine/reward/replay effect).
+
+**Phase 3 Task 3.2 (curriculum run) is next** — pre-flight is now clear. Launch: `python -m training.ppo.train --curriculum --curriculum_stage 0 --checkpoint bc_warmup_v05.pt --decision_interval 8 --num_envs 20 --vec_size 4 --total_timesteps 20000000`, per `docs/REVIVAL_PLAN.md` §Phase 3 "Pre-flight findings" (now closed) and the stop-the-line conditions listed there.
