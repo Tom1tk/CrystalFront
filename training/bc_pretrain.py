@@ -43,9 +43,9 @@ from training.ppo.policy import CrystalFrontAgent
 
 @dataclass
 class Config:
-    episodes:        int   = 1000     # review §4.10 recommends ~1000. WARNING: full game config (map_width=0)
-                                     # produces ~3000 ticks/ep → ~3M transitions at 1000 eps → OOM on 24GB.
-                                     # Use ≤300 for full game config; 1000 is safe only for 1500px config.
+    episodes:        int   = 1000     # review §4.10 recommends ~1000. At decision_interval=8, a
+                                     # 6000-tick full-game episode is <=750 decisions/ep —
+                                     # ~750k transitions at 1000 eps, well under 24GB.
     epochs:          int   = 5
     batch_size:      int   = 256
     learning_rate:   float = 1e-3
@@ -56,10 +56,12 @@ class Config:
     seed:            int   = 42
     noop_keep_frac:  float = 0.05    # keep only 5% of noop transitions (subtract redundant noops)
     min_train_actions: int = 0       # filter: only keep episodes with >= N train_unit actions (0 = no filter)
-    # Match the target training config so BC observations transfer directly
-    map_width:       int   = 1500    # Day 5 config (review §9.5)
-    crystal_health:  int   = 200     # Day 5 config
-    max_ticks:       int   = 3000    # Day 5 config
+    # Match the target training config so BC observations transfer directly (Phase 3 Task 3.1:
+    # default full-game config — mapWidth=6000/crystalHealth=1000 via DEFAULT_CONFIG, maxTicks=6000)
+    map_width:       int   = 0       # 0 = no override, use DEFAULT_CONFIG (mapWidth=6000)
+    crystal_health:  int   = 0       # 0 = no override, use DEFAULT_CONFIG (crystalHealth=1000)
+    max_ticks:       int   = 6000    # full-game config
+    decision_interval: int = 8       # frame skip (Phase 2 Task 2.1) — <=750 decisions/episode
     # network dims — must match train.py defaults
     entity_d_model:  int   = 64
     entity_n_heads:  int   = 4
@@ -68,7 +70,7 @@ class Config:
     mlp_hidden:      int   = 384
 
 
-GAMMA = 0.995  # must match train.py
+GAMMA = 0.99  # must match train.py (Phase 2 Task 2.3)
 
 def collect_demonstrations(cfg: Config) -> tuple[list[dict], list[int], list[float]]:
     """
@@ -92,7 +94,8 @@ def collect_demonstrations(cfg: Config) -> tuple[list[dict], list[int], list[flo
 
     # Build one env per distinct opponent; sample round-robin with env rotation
     envs = {opp: CrystalFrontEnv(opponent=opp, demo_bot=cfg.demo_bot,
-                                  config_overrides=cfg_ov or None, max_ticks=cfg.max_ticks)
+                                  config_overrides=cfg_ov or None, max_ticks=cfg.max_ticks,
+                                  decision_interval=cfg.decision_interval)
             for opp in opponents}
 
     opp_label = cfg.opponent if len(opponents) == 1 else f"mixed({cfg.opponent})"
@@ -245,7 +248,12 @@ def train_bc(cfg: Config) -> None:
 
             optimizer.zero_grad()
             loss.backward()
-            nn.utils.clip_grad_norm_(agent.parameters(), 1.0)
+            grad_norm = nn.utils.clip_grad_norm_(agent.parameters(), 1.0)
+            if not torch.isfinite(grad_norm):
+                # Occasional non-finite grad norm on ROCm (ROCm 7.2 / torch
+                # 2.12.0); skip this update rather than poisoning the weights.
+                optimizer.zero_grad()
+                continue
             optimizer.step()
 
             total_loss += loss.item()
@@ -287,7 +295,10 @@ def train_bc(cfg: Config) -> None:
             vloss = mse(value, mb_rets)
             critic_opt.zero_grad()
             vloss.backward()
-            nn.utils.clip_grad_norm_(agent.critic_head.parameters(), 1.0)
+            grad_norm = nn.utils.clip_grad_norm_(agent.critic_head.parameters(), 1.0)
+            if not torch.isfinite(grad_norm):
+                critic_opt.zero_grad()
+                continue
             critic_opt.step()
             total_vloss += vloss.item()
             n_vbatches  += 1

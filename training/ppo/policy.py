@@ -144,6 +144,30 @@ def layer_init(layer: nn.Linear, std: float = np.sqrt(2), bias: float = 0.0) -> 
     return layer
 
 
+class LayerNorm(nn.Module):
+    """
+    LayerNorm composed from basic ops (mean/var/normalise).
+
+    nn.LayerNorm's CUDA backward kernel on ROCm (torch 2.12.0+rocm7.2)
+    corrupts roughly half of grad_weight/grad_bias with leftover memory
+    (observed as `inf` elements), which poisons the optimizer step and
+    propagates NaNs through the whole network within a few batches. This
+    composition avoids the buggy fused kernel.
+    """
+
+    def __init__(self, dim: int, eps: float = 1e-5):
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(dim))
+        self.bias   = nn.Parameter(torch.zeros(dim))
+        self.eps = eps
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        mean = x.mean(-1, keepdim=True)
+        var  = x.var(-1, keepdim=True, unbiased=False)
+        x_norm = (x - mean) / torch.sqrt(var + self.eps)
+        return x_norm * self.weight + self.bias
+
+
 # ── set encoder ───────────────────────────────────────────────────────────────
 
 class SetEncoder(nn.Module):
@@ -219,10 +243,10 @@ class CrystalFrontAgent(nn.Module):
         trunk_in = GLOBAL_DIM + entity_d_model + node_d_model
         self.trunk = nn.Sequential(
             layer_init(nn.Linear(trunk_in, mlp_hidden)),
-            nn.LayerNorm(mlp_hidden),
+            LayerNorm(mlp_hidden),
             nn.ReLU(),
             layer_init(nn.Linear(mlp_hidden, mlp_hidden)),
-            nn.LayerNorm(mlp_hidden),
+            LayerNorm(mlp_hidden),
             nn.ReLU(),
         )
 

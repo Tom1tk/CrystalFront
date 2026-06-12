@@ -51,6 +51,7 @@ class Config:
     map_width:      int       = 0
     crystal_health: int       = 0
     max_ticks:      int       = 6000
+    decision_interval: int    = 8   # frame skip (Phase 2 Task 2.1) — must match the policy's training MDP
     # Override network dims if needed (defaults match train.py)
     entity_d_model:  int = 64
     entity_n_heads:  int = 4
@@ -68,10 +69,12 @@ def eval_vs_opponent(
     deterministic: bool,
     config_overrides: dict | None = None,
     max_ticks: int = 6000,
+    decision_interval: int = 8,
 ) -> dict:
     env = CrystalFrontEnv(opponent=opponent,
                           config_overrides=config_overrides or None,
-                          max_ticks=max_ticks)
+                          max_ticks=max_ticks,
+                          decision_interval=decision_interval)
     wins       = 0
     total_ticks: list[int]   = []
     crys_dmg:   list[float]  = []
@@ -164,6 +167,7 @@ def main(cfg: Config) -> None:
             deterministic=cfg.deterministic,
             config_overrides=cfg_ov or None,
             max_ticks=cfg.max_ticks,
+            decision_interval=cfg.decision_interval,
         )
         results.append(r)
         print(

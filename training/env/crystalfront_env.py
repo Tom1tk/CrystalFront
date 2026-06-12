@@ -80,13 +80,15 @@ class CrystalFrontEnv(gym.Env):
 
     def __init__(self, opponent: str = "macro", save_replay_every: int = 0,
                  startup_delay: float = 0.0, demo_bot: str | None = None,
-                 config_overrides: dict | None = None, max_ticks: int = 6000):
+                 config_overrides: dict | None = None, max_ticks: int = 6000,
+                 decision_interval: int = 1):
         """
         Args:
             opponent:          scripted bot to play against
             save_replay_every: save a replay every N episodes (0 = never)
             startup_delay:     seconds to wait before spawning the subprocess
                                (stagger env startups to avoid simultaneous tsx spikes)
+            decision_interval: engine ticks held per decision (frame skip, Phase 2 Task 2.1)
         """
         super().__init__()
         self.opponent = opponent
@@ -95,6 +97,7 @@ class CrystalFrontEnv(gym.Env):
         self._demo_bot = demo_bot
         self._config_overrides = config_overrides or {}
         self._max_ticks = max_ticks
+        self._decision_interval = decision_interval
         self._proc: subprocess.Popen | None = None
         self._episode_count = 0
         self._last_legal_mask = np.ones(ACTION_SPACE_SIZE, dtype=bool)
@@ -179,7 +182,8 @@ class CrystalFrontEnv(gym.Env):
             and self._episode_count % self.save_replay_every == 0
         )
         msg_reset: dict = {"type": "reset", "seed": rng_seed, "opponent": opponent,
-                           "save_replay": do_save, "max_ticks": self._max_ticks}
+                           "save_replay": do_save, "max_ticks": self._max_ticks,
+                           "decision_interval": self._decision_interval}
         if self._demo_bot:
             msg_reset["demo_bot"] = self._demo_bot
         if self._config_overrides:
