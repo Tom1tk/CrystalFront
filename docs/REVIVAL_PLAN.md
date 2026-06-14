@@ -1,6 +1,6 @@
 # CrystalFront Revival Plan — implementation guide
 
-**Status:** Phases 0–2 and Task 3.1 are complete (see Appendix B for per-task status and deviation footnotes). Task 3.2's first curriculum run was launched 2026-06-12 and **stopped** after a cascading regression on stage `3a_rm_3k` (Iteration 21) — root-cause investigation needed before relaunch (see Appendix B row 3.2). *(Original status "Ready to implement — nothing started" superseded by the 2026-06-12 audit.)*
+**Status:** Phases 0–2 and Task 3.1 are complete (see Appendix B for per-task status and deviation footnotes). Task 3.2's first curriculum run was launched 2026-06-12 and **stopped** after a cascading regression on stage `3a_rm_3k` (Iteration 21). Root cause diagnosed and fixed 2026-06-14 (Iteration 22 — new `3a_rm` curriculum stage + `max_steps` cuts, v0.5.12-ML); relaunch from the Iteration 21 recovery checkpoint is pending user confirmation (Checkpoint 2). *(Original status "Ready to implement — nothing started" superseded by the 2026-06-12 audit.)*
 **Source:** Derived from the 2026-06-09 diagnostic report (`/root/fable-crystalfront-diagnosis.md`, outside the repo). This document is self-contained — you do not need the report to execute the plan, but read it if you want the full evidence.
 **Audience:** An implementing agent. Follow phases **in order**. Do not skip ahead: each phase de-confounds the next. Training before the game is balanced will rediscover that rush_medium is unbeatable, slowly and expensively.
 
