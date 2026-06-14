@@ -2,11 +2,11 @@
 
 **Branch:** `CrystalFront-ML`
 **Status:** v0.3.2-ML **SHIPPED** (2026-05-22). v0.4.0-ML **HALTED** (2026-05-23) — Option B action-masking and Option γ RND both failed to break `trn=0%` ceiling.
-**Last updated:** 2026-06-11 (Phase 3 Task 3.1, Iteration 19)
+**Last updated:** 2026-06-12 (Phase 3 Task 3.2 first run stopped, Iteration 21)
 
 ---
 
-## Current handoff state (2026-06-11) — START HERE
+## Current handoff state (2026-06-12) — START HERE
 
 This section is the orientation point for any agent picking up the project. Everything else in this file is either reference (sections 1–11) or chronological development history (section 12).
 
@@ -16,7 +16,8 @@ This section is the orientation point for any agent picking up the project. Ever
 - **Phase 0 of the revival plan is complete** (v0.5.0-ML). The three root causes of the v0.4.0-ML failure were diagnosed and fixed: (1) autoreset config-override bug in `stdioVecRunner.ts`, (2) static MAP constants in observation/geometry code, (3) MacroBot crash. Code base is now trustworthy.
 - **Phase 1 (balance) is COMPLETE** (v0.5.4-ML, exited 2026-06-11). Task 1.3's tuning loop ran 5 iterations, hit REVIVAL_PLAN line 244's stop clause (criterion 2's `turtle` leg is structurally unsatisfiable — `turtle` never attacks, so its only win path vs a sustained rush is the timeout tiebreak, which criterion 5 caps), and the acceptance criteria were **amended** per user direction (criterion 2 drops the `turtle` leg, criterion 5 scoped to rush-vs-non-rush pairings, KI-1 accepted for rush-internal attrition). The v0.5.4-ML confirmation matrix (4050 matches, `docs/balance/matrix_v0.5.4_task1.3_confirm.json`) **passes all 5 amended criteria** — see Iteration 12 for the full before/after table and a noteworthy macro-mirror tiebreak swing (66%→48%, both within band).
 - **Phase 2 (MDP restructure) is COMPLETE** (v0.5.9-ML, exited 2026-06-11). All 5 tasks landed: **Task 2.1** (frame skip, `decision_interval=8`, v0.5.5-ML, Iteration 13), **Task 2.2** (reward rescale to ±1.0 terminal + draw outcome removed, v0.5.6-ML, Iteration 14), **Task 2.3** (PPO hyperparameters for the new MDP — γ=0.99, num_steps=256, num_minibatches=4, LR-anneal guard, v0.5.7-ML, Iteration 15), **Task 2.4** (curriculum promotion deferred to update boundaries, v0.5.8-ML, Iteration 16), **Task 2.5** (BC label off-by-one fix, v0.5.9-ML, Iteration 17). The phase-boundary exit task **P2** (diary "Reflections", `ML_AGENT.md` §4/§8 sync, handoff rewrite) is done — see Iteration 18. **All 5 Phase 2 tasks ✅ in Appendix B.**
-- **Phase 3 ("Retrain, honestly this time") is underway** (v0.5.10-ML). **Task 3.1** (re-record BC demos at k=8) is ⚠️ done-with-deviation — see Iteration 19. Along the way, root-caused and fixed a `nan`-loss bug in `CrystalFrontAgent` (`nn.LayerNorm`'s ROCm CUDA-backward corruption; shared fix benefits Task 3.2/PPO too) plus a residual non-finite-grad-norm skip-guard in `bc_pretrain.py`. The literal BC top-1-accuracy gate (≥55%) was missed (50.6% final, 53.2% peak), but the action-distribution diagnostic is healthy (8.1% noop) and the eval-vs-`idle` gate passed overwhelmingly (10/10, 100%). `bc_warmup_v05.pt` is ready as the **Task 3.2** curriculum-run checkpoint, which is next.
+- **Phase 3 ("Retrain, honestly this time") is underway** (v0.5.10-ML). **Task 3.1** (re-record BC demos at k=8) is ⚠️ done-with-deviation — see Iteration 19. Along the way, root-caused and fixed a `nan`-loss bug in `CrystalFrontAgent` (`nn.LayerNorm`'s ROCm CUDA-backward corruption; shared fix benefits Task 3.2/PPO too) plus a residual non-finite-grad-norm skip-guard in `bc_pretrain.py`. The literal BC top-1-accuracy gate (≥55%) was missed (50.6% final, 53.2% peak), but the action-distribution diagnostic is healthy (8.1% noop) and the eval-vs-`idle` gate passed overwhelmingly (10/10, 100%). `bc_warmup_v05.pt` is ready as the **Task 3.2** curriculum-run checkpoint.
+- **Task 3.2's first curriculum run was launched and STOPPED** (v0.5.11-ML, 2026-06-12, Iteration 21). It promoted cleanly through 14 stages (`0a→3a_rwm`, win rates 57-100%, `Realised config`/`botCrashCount` checks all clean — GAP-2/3 confirmed working), then collapsed to 0.00 win rate on `3a_rm_3k` for 174 updates and cascaded through 3 regressions (`3a_rm_3k→3a_rwm→3a_rw→3a`), each landing at 0.00 on stages that had previously scored 61-100%. Not an entropy collapse (entropy *rose* 0.61→1.87) — `ppo/value_function_loss` collapsed to ~0, consistent with the critic learning "always −1". Stopped by user at update 718. **Root cause not yet identified.** Recovery checkpoint: `update_000050.pt` (stage `3a_rw`, win_rate=1.00, pre-`3a_rm_3k`). Full evidence and open next-steps in Iteration 21. **Do not relaunch Task 3.2 until the `3a_rwm→3a_rm_3k` difficulty-cliff hypothesis is investigated** (see `docs/REVIVAL_PLAN.md` Appendix B row 3.2).
 
 See `docs/REVIVAL_PLAN.md` for the full implementation plan and Appendix B for task status.
 
@@ -73,7 +74,7 @@ python3 -m training.ppo.train --curriculum --curriculum_stage 0 \
 | Phase 0: fix infra bugs | ✅ Complete (v0.5.0-ML, 2026-06-09) |
 | Phase 1: balance game | ✅ Complete (v0.5.4-ML, 2026-06-11) — amended criteria all pass, see Iteration 12 diary entry |
 | Phase 2: restructure MDP | ✅ Complete (v0.5.9-ML, 2026-06-11) — all 5 tasks (2.1 v0.5.5-ML, 2.2 v0.5.6-ML, 2.3 v0.5.7-ML, 2.4 v0.5.8-ML, 2.5 v0.5.9-ML) + P2 phase-boundary exit, see Iteration 18 |
-| Phase 3: retrain + ship v0.5.0-ML | 🔄 In progress — Task 3.1 ⚠️ done-with-deviation (v0.5.10-ML, Iteration 19; `bc_warmup_v05.pt` ready). Task 3.2 (curriculum run, `--checkpoint bc_warmup_v05.pt`) is next, see `docs/REVIVAL_PLAN.md` §Phase 3 |
+| Phase 3: retrain + ship v0.5.0-ML | 🔄 In progress — Task 3.1 ⚠️ done-with-deviation (v0.5.10-ML, Iteration 19). Task 3.2 first curriculum run STOPPED after a 3x cascading regression (v0.5.11-ML, Iteration 21) — root-cause investigation needed before relaunch, see `docs/REVIVAL_PLAN.md` Appendix B row 3.2 |
 
 ---
 
