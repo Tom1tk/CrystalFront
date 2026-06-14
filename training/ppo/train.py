@@ -123,16 +123,27 @@ CURRICULUM: list[CurriculumStage] = [
     # Rule R3 — one variable at a time through the rush_medium wall (§A6.3 second review):
     # 3a_rw:     passive→rush_weak on 6000px (skill transfer from 3000px, clears in ~1 window)
     # 3a_rwm:    rush_weak→rush_weak_medium on 6000px (6 units, push@300 — needs 2 agent units)
-    # 3a_rm_3k:  rush_weak_medium→rush_medium on 3000px (familiar map, full-strength opponent)
+    # 3a_rm:     rush_weak_medium→rush_medium on 6000px (Iteration 22 — isolates the
+    #            categorical opponent-tier jump; rush_weak_medium is 0/50 vs rush_medium
+    #            per docs/balance/matrix_v0.5.3_task1.3.json)
+    # 3a_rm_3k:  rush_medium on 3000px w/ 2 pre-placed skirmishers (map+HP+scaffold step;
+    #            opponent already met in 3a_rm)
     # 3a1:       3000px→6000px rush_medium, 2 pre-placed skirmishers (map scale-up with scaffold)
     # 3a2:       remove 1 skirmisher — agent must train one more unit
     # 3a5:       remove all scaffold — agent builds and trains from scratch (200 res head start)
     # 3b:        reduce starting resources to 50 — full difficulty
+    #
+    # Iteration 22: 3a_rwm→3a_rm_3k previously changed FOUR variables at once (map,
+    # crystal HP, opponent, pre-placement) and cascaded into a 3x regression
+    # (Iteration 21). 3a_rm splits out the opponent variable; 3a_rm and 3a_rm_3k both
+    # get max_steps cut 1M→300K so a zero-signal stage regresses before the policy
+    # drifts far (Iteration 21 next-step #2).
     CurriculumStage("3a_rw",    map_width=0,    crystal_health=0,   starting_resources=200, max_ticks=6000, opponent="rush_weak",        promotion_threshold=0.50, max_steps=1_000_000),
     CurriculumStage("3a_rwm",   map_width=0,    crystal_health=0,   starting_resources=200, max_ticks=6000, opponent="rush_weak_medium",  promotion_threshold=0.50, max_steps=1_000_000),
+    CurriculumStage("3a_rm",    map_width=0,    crystal_health=0,   starting_resources=200, max_ticks=6000, opponent="rush_medium",       promotion_threshold=0.50, max_steps=300_000),
     CurriculumStage("3a_rm_3k", map_width=3000, crystal_health=300, starting_resources=200, max_ticks=5000, opponent="rush_medium",
                     pre_place_units=["skirmisher", "skirmisher"],
-                    promotion_threshold=0.50, max_steps=1_000_000),
+                    promotion_threshold=0.50, max_steps=300_000),
     CurriculumStage("3a1",      map_width=0,    crystal_health=0,   starting_resources=200, max_ticks=6000, opponent="rush_medium",
                     pre_place_units=["skirmisher", "skirmisher"],
                     promotion_threshold=0.50, max_steps=1_000_000),

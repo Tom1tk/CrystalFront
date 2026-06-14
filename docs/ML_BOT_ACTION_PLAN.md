@@ -2,7 +2,7 @@
 
 **Branch:** `CrystalFront-ML`
 **Status:** v0.3.2-ML **SHIPPED** (2026-05-22). v0.4.0-ML **HALTED** (2026-05-23) — Option B action-masking and Option γ RND both failed to break `trn=0%` ceiling.
-**Last updated:** 2026-06-12 (Phase 3 Task 3.2 first run stopped, Iteration 21)
+**Last updated:** 2026-06-14 (Phase 3 Task 3.2 cascade diagnosed + fixed, Iteration 22 — relaunch pending Checkpoint 2)
 
 ---
 
@@ -17,7 +17,8 @@ This section is the orientation point for any agent picking up the project. Ever
 - **Phase 1 (balance) is COMPLETE** (v0.5.4-ML, exited 2026-06-11). Task 1.3's tuning loop ran 5 iterations, hit REVIVAL_PLAN line 244's stop clause (criterion 2's `turtle` leg is structurally unsatisfiable — `turtle` never attacks, so its only win path vs a sustained rush is the timeout tiebreak, which criterion 5 caps), and the acceptance criteria were **amended** per user direction (criterion 2 drops the `turtle` leg, criterion 5 scoped to rush-vs-non-rush pairings, KI-1 accepted for rush-internal attrition). The v0.5.4-ML confirmation matrix (4050 matches, `docs/balance/matrix_v0.5.4_task1.3_confirm.json`) **passes all 5 amended criteria** — see Iteration 12 for the full before/after table and a noteworthy macro-mirror tiebreak swing (66%→48%, both within band).
 - **Phase 2 (MDP restructure) is COMPLETE** (v0.5.9-ML, exited 2026-06-11). All 5 tasks landed: **Task 2.1** (frame skip, `decision_interval=8`, v0.5.5-ML, Iteration 13), **Task 2.2** (reward rescale to ±1.0 terminal + draw outcome removed, v0.5.6-ML, Iteration 14), **Task 2.3** (PPO hyperparameters for the new MDP — γ=0.99, num_steps=256, num_minibatches=4, LR-anneal guard, v0.5.7-ML, Iteration 15), **Task 2.4** (curriculum promotion deferred to update boundaries, v0.5.8-ML, Iteration 16), **Task 2.5** (BC label off-by-one fix, v0.5.9-ML, Iteration 17). The phase-boundary exit task **P2** (diary "Reflections", `ML_AGENT.md` §4/§8 sync, handoff rewrite) is done — see Iteration 18. **All 5 Phase 2 tasks ✅ in Appendix B.**
 - **Phase 3 ("Retrain, honestly this time") is underway** (v0.5.10-ML). **Task 3.1** (re-record BC demos at k=8) is ⚠️ done-with-deviation — see Iteration 19. Along the way, root-caused and fixed a `nan`-loss bug in `CrystalFrontAgent` (`nn.LayerNorm`'s ROCm CUDA-backward corruption; shared fix benefits Task 3.2/PPO too) plus a residual non-finite-grad-norm skip-guard in `bc_pretrain.py`. The literal BC top-1-accuracy gate (≥55%) was missed (50.6% final, 53.2% peak), but the action-distribution diagnostic is healthy (8.1% noop) and the eval-vs-`idle` gate passed overwhelmingly (10/10, 100%). `bc_warmup_v05.pt` is ready as the **Task 3.2** curriculum-run checkpoint.
-- **Task 3.2's first curriculum run was launched and STOPPED** (v0.5.11-ML, 2026-06-12, Iteration 21). It promoted cleanly through 14 stages (`0a→3a_rwm`, win rates 57-100%, `Realised config`/`botCrashCount` checks all clean — GAP-2/3 confirmed working), then collapsed to 0.00 win rate on `3a_rm_3k` for 174 updates and cascaded through 3 regressions (`3a_rm_3k→3a_rwm→3a_rw→3a`), each landing at 0.00 on stages that had previously scored 61-100%. Not an entropy collapse (entropy *rose* 0.61→1.87) — `ppo/value_function_loss` collapsed to ~0, consistent with the critic learning "always −1". Stopped by user at update 718. **Root cause not yet identified.** Recovery checkpoint: `update_000050.pt` (stage `3a_rw`, win_rate=1.00, pre-`3a_rm_3k`). Full evidence and open next-steps in Iteration 21. **Do not relaunch Task 3.2 until the `3a_rwm→3a_rm_3k` difficulty-cliff hypothesis is investigated** (see `docs/REVIVAL_PLAN.md` Appendix B row 3.2).
+- **Task 3.2's first curriculum run was launched and STOPPED** (v0.5.11-ML, 2026-06-12, Iteration 21). It promoted cleanly through 14 stages (`0a→3a_rwm`, win rates 57-100%, `Realised config`/`botCrashCount` checks all clean — GAP-2/3 confirmed working), then collapsed to 0.00 win rate on `3a_rm_3k` for 174 updates and cascaded through 3 regressions (`3a_rm_3k→3a_rwm→3a_rw→3a`), each landing at 0.00 on stages that had previously scored 61-100%. Not an entropy collapse (entropy *rose* 0.61→1.87) — `ppo/value_function_loss` collapsed to ~0, consistent with the critic learning "always −1". Stopped by user at update 718. Recovery checkpoint: `update_000050.pt` (stage `3a_rw`, win_rate=1.00, pre-`3a_rm_3k`). Full evidence in Iteration 21.
+- **Root cause identified and fixed** (v0.5.12-ML, 2026-06-14, Iteration 22 — Claude now operates Task 3.2 onward autonomously, see [[user-runs-training-himself]]). `3a_rwm→3a_rm_3k` changed 4 variables at once, including a categorical 0%/100% opponent-tier gap (`rush_weak_medium` vs `rush_medium`, per `docs/balance/matrix_v0.5.3_task1.3.json`) — 890K decisions of zero signal (`crys_dmg=0%`) flattened the actor gradient, and the no-rollback regression mechanism then cascaded the resulting randomized policy into previously-solved stages. **Fix:** new `3a_rm` stage (idx 14) isolates the opponent jump on the familiar 6000px map; `max_steps` cut 1M→300K on `3a_rm` and `3a_rm_3k`. `npm test` 470/470, `test_env` smoke PASSED. **Relaunch pending Checkpoint 2** (user confirmation) — plan: resume `update_000050.pt` at `--curriculum_stage 12` (stage `3a_rw`, unchanged by the insertion), see Iteration 22 for the full command.
 
 See `docs/REVIVAL_PLAN.md` for the full implementation plan and Appendix B for task status.
 
@@ -60,10 +61,11 @@ python3 -m training.test_env               # 5s smoke test
 python3 -m training.test_config_persistence # config-override regression test
 python3 training/balance_report.py --matches 20   # bot matrix (Phase 1)
 
-# Phase 3 Task 3.2 curriculum run (Task 3.1 done, bc_warmup_v05.pt ready)
-python3 -m training.ppo.train --curriculum --curriculum_stage 0 \
-  --checkpoint bc_warmup_v05.pt --decision_interval 8 \
-  --num_envs 20 --vec_size 4 --total_timesteps 20000000
+# Phase 3 Task 3.2 curriculum run — relaunch from Iteration 21's recovery checkpoint
+# at the fixed curriculum (Iteration 22, pending Checkpoint 2)
+python3 -m training.ppo.train --curriculum --curriculum_stage 12 \
+  --checkpoint checkpoints/crystalfront_ppo__0_5_11-ML__idle__1__1781254439/update_000050.pt \
+  --decision_interval 8 --num_envs 20 --vec_size 4 --total_timesteps 20000000
 ```
 
 ### Open commitments
@@ -74,7 +76,7 @@ python3 -m training.ppo.train --curriculum --curriculum_stage 0 \
 | Phase 0: fix infra bugs | ✅ Complete (v0.5.0-ML, 2026-06-09) |
 | Phase 1: balance game | ✅ Complete (v0.5.4-ML, 2026-06-11) — amended criteria all pass, see Iteration 12 diary entry |
 | Phase 2: restructure MDP | ✅ Complete (v0.5.9-ML, 2026-06-11) — all 5 tasks (2.1 v0.5.5-ML, 2.2 v0.5.6-ML, 2.3 v0.5.7-ML, 2.4 v0.5.8-ML, 2.5 v0.5.9-ML) + P2 phase-boundary exit, see Iteration 18 |
-| Phase 3: retrain + ship v0.5.0-ML | 🔄 In progress — Task 3.1 ⚠️ done-with-deviation (v0.5.10-ML, Iteration 19). Task 3.2 first curriculum run STOPPED after a 3x cascading regression (v0.5.11-ML, Iteration 21) — root-cause investigation needed before relaunch, see `docs/REVIVAL_PLAN.md` Appendix B row 3.2 |
+| Phase 3: retrain + ship v0.5.0-ML | 🔄 In progress — Task 3.1 ⚠️ done-with-deviation (v0.5.10-ML, Iteration 19). Task 3.2 first curriculum run STOPPED after a 3x cascading regression (v0.5.11-ML, Iteration 21); root cause diagnosed + fixed (v0.5.12-ML, Iteration 22) — relaunch pending Checkpoint 2, see `docs/REVIVAL_PLAN.md` Appendix B row 3.2 |
 
 ---
 
@@ -2406,3 +2408,49 @@ All 5 tasks ✅ in Appendix B (`docs/REVIVAL_PLAN.md`); `npm test` 470/470 throu
 3. Cross-check against the existing root-cause analysis in `/root/fable-crystalfront-diagnosis.md` (2026-06 diagnosis) before designing a fix — this collapse pattern may be related to the previously-identified "rush-dominated balance" or "per-tick γ horizon" findings.
 
 **No version bump** — no code changed; this entry documents a training-run outcome only (R1 n/a).
+
+---
+
+### 2026-06-14 — v0.5.12-ML Phase 3: Iteration 22 (Task 3.2 cascade diagnosis + fix — new `3a_rm` stage isolates the rush_medium opponent jump, `max_steps` cut on both rush_medium-entry stages)
+
+**Context:** [[user-runs-training-himself]] reversed — the user authorized Claude to operate Task 3.2 onward autonomously (diagnose → fix → relaunch → monitor → eval), pausing only at 3 checkpoints (mission brief: memory `project-task32-goal-2026-06-14`). This entry covers Step 1 (diagnosis) and Step 2 (fix + smoke-test) for Iteration 21's 3x cascading regression. Checkpoint 1 (diagnosis + fix design) was approved by the user before any code changed.
+
+**Diagnosis (root cause identified):**
+
+- The `3a_rwm → 3a_rm_3k` promotion in the old curriculum changed **four variables in one step**: map_width 6000→3000, crystal_health 1000→300, opponent `rush_weak_medium`→`rush_medium`, and pre-placement 0→2 skirmishers. This violates the curriculum's own "one variable at a time" design (the `# Rule R3` comment block in `train.py` — every *other* adjacent transition changes exactly one axis).
+- **New evidence (`docs/balance/matrix_v0.5.3_task1.3.json`):** `rush_weak_medium` vs `rush_medium` = **0/50 (0%)**, while `rush_medium` vs `rush_weak_medium` = 50/50 (100%). The opponent-tier jump alone is a categorical 0%/100% gap, independent of the map/HP/scaffolding changes bundled into the same step.
+- **Mechanism:** with the opponent jump bundled in, the agent scored `crys_dmg=0%` for the entire 174-update budget on `3a_rm_3k` — zero positive reward signal for ~890K decisions. Under reward≡−1, GAE advantages collapse toward 0, so the critic learns "always −1" (`ppo/value_function_loss`→0.0001, matching Iteration 21's observation) and the actor gradient goes flat — leaving the entropy bonus as the dominant term, which explains the observed entropy *rise* (0.61→1.87) rather than the more commonly-suspected collapse.
+- Because curriculum regression only decrements `cur_stage_idx` (no checkpoint rollback, per Task 2.4's design), the *randomized* policy produced by `3a_rm_3k`'s zero-signal stall was then dropped back into `3a_rwm`/`3a_rw`/`3a` — stages it had previously solved at 61-100% — where it scored 0.00 too, because the **policy** had degraded, not because those stages got harder. This is the cascade mechanism for REGRESS #1-3.
+
+**Fix (`training/ppo/train.py` CURRICULUM table, approved at Checkpoint 1):**
+
+- Inserted a new stage **`3a_rm`** (idx 14, between `3a_rwm` and `3a_rm_3k`): same 6000px/default-HP/no-pre-placement config as `3a_rwm`, opponent flipped to `rush_medium`. This isolates the categorical opponent-tier jump as its own single-variable step, on the map size the agent already knows.
+- Cut `max_steps` **1,000,000 → 300,000** on both `3a_rm` (new) and `3a_rm_3k` — addresses Iteration 21 next-step #2 ("890K decisions of zero signal before the first regression may itself be part of the problem"). If `3a_rm` is *still* a zero-signal wall in isolation, the curriculum now regresses after ~300K decisions instead of ~890K, limiting how far the policy can drift before correction.
+- `3a_rm_3k` is otherwise unchanged — it still adds the map shrink (6000→3000), crystal HP cut (1000→300), and 2 pre-placed skirmishers, but the opponent (`rush_medium`) will already be familiar from `3a_rm`.
+- New 21-stage CURRICULUM ordering (0-indexed): `0a 0b 0b5 0c day5 1a 1b 2a 2a5 2a6 2b 3a 3a_rw 3a_rwm` **`3a_rm`** `3a_rm_3k 3a1 3a2 3a5 3b 4` (bold = new; everything from `3a_rm_3k` onward shifted +1).
+
+**Verify:**
+
+- `python3 -c "from training.ppo.train import CURRICULUM; ..."` → 21 stages; `3a_rm`=idx14 (`opponent=rush_medium, map_width=0, max_steps=300_000`), `3a_rm_3k`=idx15 (`max_steps=300_000`, all else unchanged). Indices 0-13 unchanged — `update_000050.pt`'s `3a_rw`=idx12 is still valid.
+- `npm test`: 470/470 (no TS files touched).
+- `python -m training.test_env`: SMOKE TEST PASSED (10-step total reward = −0.0001, unchanged).
+- `/root/TRAINING_GUIDE.md` updated: §4 `curriculum/stage` chart row (`0=0a … 19=4` → `0=0a … 20=4`) and §7's resume stage-index table (inserted `3a_rm`=14, shifted `3a_rm_3k`→15 ... `4`→20).
+
+**Version bumped to `0.5.12-ML`** across all 5 `package.json` (R1 — curriculum/training-code change). No `BALANCE_HISTORY` entry (trainer-only curriculum change, no engine/reward/replay effect).
+
+**What would you tell the next agent NOT to waste time on?**
+
+- Don't re-derive the "one variable at a time" violation — it's now structurally fixed by `3a_rm`'s insertion.
+- The pre-placement / `cfgOverrides` persistence across autoresets (`stdioVecRunner.ts:308` `resetSlot(..., slot.cfgOverrides, slot.prePlace)`) was re-confirmed correct this session (Phase 0's fix still holds) — not the bug.
+- `docs/ML_AGENT.md` §5's curriculum table is still the pre-Phase-2 stale 17-stage version (flagged in Iteration 18, deliberately deferred) — now *additionally* stale re: this change. Out of scope for this fix (R8); leave it.
+
+**Relaunch plan (Checkpoint 2, pending user confirmation):** resume from the Iteration 21 recovery checkpoint — `checkpoints/crystalfront_ppo__0_5_11-ML__idle__1__1781254439/update_000050.pt` (stage `3a_rw`, idx 12, win_rate=1.00, pre-collapse) — with `--curriculum_stage 12`. The run will re-promote through `3a_rwm` → **`3a_rm`** (new, the critical test of this fix) → `3a_rm_3k` → ... naturally. Command:
+
+```bash
+nohup python3 -m training.ppo.train --curriculum --curriculum_stage 12 \
+  --checkpoint checkpoints/crystalfront_ppo__0_5_11-ML__idle__1__1781254439/update_000050.pt \
+  --decision_interval 8 --num_envs 20 --vec_size 4 --total_timesteps 20000000 \
+  > train_task32_v2.log 2>&1 &
+```
+
+(New log filename `train_task32_v2.log` — preserves Iteration 21's `train_task32.log` as evidence.)
