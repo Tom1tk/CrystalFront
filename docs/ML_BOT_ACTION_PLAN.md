@@ -2,7 +2,7 @@
 
 **Branch:** `CrystalFront-ML`
 **Status:** v0.3.2-ML **SHIPPED** (2026-05-22). v0.4.0-ML **HALTED** (2026-05-23) — Option B action-masking and Option γ RND both failed to break `trn=0%` ceiling.
-**Last updated:** 2026-06-14 (Phase 3 Task 3.2 relaunch #2 STOPPED, Iteration 24 — same cascade triggered one stage earlier; new fix proposal pending user sign-off)
+**Last updated:** 2026-06-14 (Phase 3 Task 3.2 — Iteration 25: both Iteration-24 fixes implemented (`ent_coef` 0.01, stage-entry snapshot rollback), v0.5.13-ML, smoke-tested; relaunch #3 next)
 
 ---
 
@@ -19,7 +19,8 @@ This section is the orientation point for any agent picking up the project. Ever
 - **Phase 3 ("Retrain, honestly this time") is underway** (v0.5.10-ML). **Task 3.1** (re-record BC demos at k=8) is ⚠️ done-with-deviation — see Iteration 19. Along the way, root-caused and fixed a `nan`-loss bug in `CrystalFrontAgent` (`nn.LayerNorm`'s ROCm CUDA-backward corruption; shared fix benefits Task 3.2/PPO too) plus a residual non-finite-grad-norm skip-guard in `bc_pretrain.py`. The literal BC top-1-accuracy gate (≥55%) was missed (50.6% final, 53.2% peak), but the action-distribution diagnostic is healthy (8.1% noop) and the eval-vs-`idle` gate passed overwhelmingly (10/10, 100%). `bc_warmup_v05.pt` is ready as the **Task 3.2** curriculum-run checkpoint.
 - **Task 3.2's first curriculum run was launched and STOPPED** (v0.5.11-ML, 2026-06-12, Iteration 21). It promoted cleanly through 14 stages (`0a→3a_rwm`, win rates 57-100%, `Realised config`/`botCrashCount` checks all clean — GAP-2/3 confirmed working), then collapsed to 0.00 win rate on `3a_rm_3k` for 174 updates and cascaded through 3 regressions (`3a_rm_3k→3a_rwm→3a_rw→3a`), each landing at 0.00 on stages that had previously scored 61-100%. Not an entropy collapse (entropy *rose* 0.61→1.87) — `ppo/value_function_loss` collapsed to ~0, consistent with the critic learning "always −1". Stopped by user at update 718. Recovery checkpoint: `update_000050.pt` (stage `3a_rw`, win_rate=1.00, pre-`3a_rm_3k`). Full evidence in Iteration 21.
 - **Iteration 22 fix landed** (v0.5.12-ML, Claude now operates Task 3.2 onward autonomously, see [[user-runs-training-himself]]): new `3a_rm` stage (idx14) isolates the `rush_weak_medium→rush_medium` opponent jump on the familiar 6000px map; `max_steps` cut 1M→300K on `3a_rm`/`3a_rm_3k`. Still valid, still in the curriculum.
-- **Relaunch #2 (Iteration 23) ran and STOPPED again (Iteration 24, 2026-06-14)** — fresh from `bc_warmup_v05.pt`, promoted cleanly through `0a→3a_rw`, but the **first window on `3a_rwm` scored only 13%** (vs 61% in Iteration 21) and collapsed to 0.00 for ~190 updates, then regressed to `3a_rw` which ALSO scored 0.00 for 8 windows (a stage that scored 100% earlier this same run). **The run never reached `3a_rm` — Iteration 22's fix was not exercised.** New diagnosis: `ppo/entropy_bonus` has been on a slow uptrend since stage ~7-8 (fixed `ent_coef=0.02`, no annealing) and plateaus ~1.4-2.0 once a stage's first window is unlucky — an **absorbing state** that curriculum regression cannot escape because regression doesn't reload `agent`/`optimizer` weights (`train.py` lines 960-982). **Proposed fix (pending sign-off, NOT YET IMPLEMENTED):** (1) reduce/anneal `ent_coef`, (2) checkpoint rollback on regression (reload pre-stage-entry weights when "stuck"). Full evidence in Iteration 24. Recovery checkpoint for the next attempt: `checkpoints/crystalfront_ppo__0_5_12-ML__idle__1__1781436946/update_000050.pt` (stage `3a_rw`, win_rate=1.00).
+- **Relaunch #2 (Iteration 23) ran and STOPPED again (Iteration 24, 2026-06-14)** — fresh from `bc_warmup_v05.pt`, promoted cleanly through `0a→3a_rw`, but the **first window on `3a_rwm` scored only 13%** (vs 61% in Iteration 21) and collapsed to 0.00 for ~190 updates, then regressed to `3a_rw` which ALSO scored 0.00 for 8 windows (a stage that scored 100% earlier this same run). **The run never reached `3a_rm` — Iteration 22's fix was not exercised.** New diagnosis: `ppo/entropy_bonus` has been on a slow uptrend since stage ~7-8 (fixed `ent_coef=0.02`, no annealing) and plateaus ~1.4-2.0 once a stage's first window is unlucky — an **absorbing state** that curriculum regression cannot escape because regression doesn't reload `agent`/`optimizer` weights (`train.py` lines 960-982).
+- **Iteration 25 fix landed (v0.5.13-ML, 2026-06-14)** — implemented BOTH of Iteration 24's proposed fixes, per user delegation to Claude's judgment grounded in REVIVAL_PLAN/TRAINING_GUIDE: (1) `ent_coef` 0.02→0.01 (flat reduction, simplicity-first over annealing), (2) in-memory `stage_entry_snapshot` dict — on regression, restores `agent`/`optimizer` to the state captured when the now-stuck stage was entered (proven-good policy), before decrementing `cur_stage_idx`. Smoke-tested end-to-end on GPU+`torch.compile` (forced regression → rollback → promotion → snapshot overwrite → second rollback, all clean). `npm test` 470/470. Recovery checkpoint for relaunch #3: `checkpoints/crystalfront_ppo__0_5_12-ML__idle__1__1781436946/update_000050.pt` (stage `3a_rw` idx12, win_rate=1.00, step 278840).
 
 See `docs/REVIVAL_PLAN.md` for the full implementation plan and Appendix B for task status.
 
@@ -62,11 +63,11 @@ python3 -m training.test_env               # 5s smoke test
 python3 -m training.test_config_persistence # config-override regression test
 python3 training/balance_report.py --matches 20   # bot matrix (Phase 1)
 
-# Phase 3 Task 3.2 curriculum run — relaunch on the fixed curriculum (Iteration 22),
-# fresh from bc_warmup_v05.pt per Checkpoint 2 decision
-python3 -m training.ppo.train --curriculum --curriculum_stage 0 \
-  --checkpoint bc_warmup_v05.pt --decision_interval 8 \
-  --num_envs 20 --vec_size 4 --total_timesteps 20000000
+# Phase 3 Task 3.2 curriculum run — relaunch #3 (Iteration 25 fixes: ent_coef=0.01 +
+# stage-entry snapshot rollback), resuming from the Iteration 24 recovery checkpoint
+python3 -m training.ppo.train --curriculum --curriculum_stage 12 \
+  --checkpoint checkpoints/crystalfront_ppo__0_5_12-ML__idle__1__1781436946/update_000050.pt \
+  --decision_interval 8 --num_envs 20 --vec_size 4 --total_timesteps 20000000
 ```
 
 ### Open commitments
@@ -77,7 +78,7 @@ python3 -m training.ppo.train --curriculum --curriculum_stage 0 \
 | Phase 0: fix infra bugs | ✅ Complete (v0.5.0-ML, 2026-06-09) |
 | Phase 1: balance game | ✅ Complete (v0.5.4-ML, 2026-06-11) — amended criteria all pass, see Iteration 12 diary entry |
 | Phase 2: restructure MDP | ✅ Complete (v0.5.9-ML, 2026-06-11) — all 5 tasks (2.1 v0.5.5-ML, 2.2 v0.5.6-ML, 2.3 v0.5.7-ML, 2.4 v0.5.8-ML, 2.5 v0.5.9-ML) + P2 phase-boundary exit, see Iteration 18 |
-| Phase 3: retrain + ship v0.5.0-ML | 🔄 In progress — Task 3.1 ⚠️ done-with-deviation (v0.5.10-ML, Iteration 19). Task 3.2: 1st run STOPPED (3x cascade, Iteration 21); curriculum fix landed (v0.5.12-ML, Iteration 22); 2nd run STOPPED again, same cascade one stage earlier (Iteration 23/24) — new entropy-runaway/no-rollback diagnosis, fix proposal pending user sign-off, see `docs/REVIVAL_PLAN.md` Appendix B row 3.2 |
+| Phase 3: retrain + ship v0.5.0-ML | 🔄 In progress — Task 3.1 ⚠️ done-with-deviation (v0.5.10-ML, Iteration 19). Task 3.2: 1st run STOPPED (3x cascade, Iteration 21); curriculum fix landed (v0.5.12-ML, Iteration 22); 2nd run STOPPED again, same cascade one stage earlier (Iteration 23/24); entropy/rollback fixes landed (v0.5.13-ML, Iteration 25, smoke-tested); relaunch #3 next, see `docs/REVIVAL_PLAN.md` Appendix B row 3.2 |
 
 ---
 
@@ -2494,3 +2495,30 @@ Both are evidence-driven by the same entropy/value-loss data from two independen
 **Recovery checkpoint for next relaunch:** `checkpoints/crystalfront_ppo__0_5_12-ML__idle__1__1781436946/update_000050.pt` (stage `3a_rw`, win_rate=1.00, step 278840 — pre-`3a_rwm`, this run's equivalent of Iteration 21's recovery point).
 
 **No version bump** — this entry documents diagnosis only; fix implementation is pending Checkpoint sign-off (R1 n/a for this entry).
+
+---
+
+### 2026-06-14 — v0.5.13-ML Phase 3: Iteration 25 (Task 3.2 relaunch #2 fix — `ent_coef` 0.02→0.01 + in-memory stage-entry snapshot rollback on regression)
+
+**Context:** in response to Iteration 24's findings, the user delegated the fix-design call back to Claude: *"Based on docs/REVIVAL_PLAN.md and TRAINING_GUIDE.md as sources of truth, what do you believe to be the best course of action?"* This entry is that answer plus the implementation.
+
+**Decision: implement BOTH of Iteration 24's proposed fixes**, not just one — they address complementary halves of the same mechanism (fix 1 slows/prevents the entropy runaway; fix 2 recovers if it happens anyway), and Iteration 24 explicitly noted neither alone closes the gap (ent_coef-only doesn't help if a runaway still occurs before the new value takes effect; rollback-only doesn't stop a runaway from recurring on the very stages Iteration 22 just added). Both are small, additive, single-purpose diffs — consistent with R8 (surgical changes) and REVIVAL_PLAN's "one variable at a time" ethos applied at the *mechanism* level (each fix targets one half of the absorbing-state mechanism, independently justified by Iteration 24's evidence).
+
+**Fix 1 — `ent_coef: float = 0.02 → 0.01`** (`training/ppo/train.py` line ~194, `Config` dataclass default). Chose a **flat reduction over annealing** for Simplicity First: annealing would add a new schedule (shape, floor, decay rate) with no empirical basis yet — premature complexity for a problem we've only observed in one direction so far. TRAINING_GUIDE §6 stop-condition 2 already treats `ent_coef` as the lever for entropy-direction problems (its remedy for *too-low* entropy is `--ent_coef 0.05`, i.e. raise it); Iteration 24's problem is the mirror image (entropy too *high*), so lowering the same lever is the natural, minimal first move. If 0.01 still runs away over a multi-day run, that would be new empirical evidence to justify annealing as a follow-up — not something to design speculatively now. `--ent_coef` remains CLI-overridable (`tyro.cli(Config)`) if a future run needs a different value without a code change.
+
+**Fix 2 — in-memory stage-entry snapshot + rollback on regression** (`training/ppo/train.py`, ~30 lines across 3 spots):
+- New `stage_entry_snapshot: dict[int, dict]` (near the curriculum-state init, ~line 414), holding `copy.deepcopy(agent.state_dict())` + `copy.deepcopy(optimizer.state_dict())` per stage index.
+- Populated once at run-init for the starting stage (right after optimizer/checkpoint setup, ~line 511) — handles fresh-start and resumed runs uniformly.
+- Populated again on every **promotion**, after `cur_stage_idx` is incremented — this snapshot is "the policy that just proved itself on the stage we came from, about to attempt the new one."
+- On **regression**, *before* decrementing `cur_stage_idx`, restore `stage_entry_snapshot[cur_stage_idx]` (the snapshot taken when the now-stuck stage was entered) into `agent`/`optimizer`, then decrement as before.
+
+This is a refinement of Iteration 24's literal proposal ("reload from the most recent checkpoint saved at-or-before the failing stage's entry"). Disk checkpoints are only saved every `save_interval=50` updates, so "most recent at-or-before" would be an approximation up to 50 updates stale and would need path bookkeeping. The in-memory snapshot is exact (precisely the stage-entry policy, zero staleness) and avoids disk I/O entirely — same intent ("restore the policy that was proven on the easier stage"), better precision, smaller diff. Memory cost is negligible: ~3.7MB × ≤21 stages ≈ 84MB, no pruning needed.
+
+**Verification (R6):**
+- `npm test` — 470/470 (no engine files touched).
+- `python3 -m training.test_env` — 5s pipeline smoke, PASSED.
+- **Targeted GPU smoke test** (throwaway, reverted after — `git diff --stat` before/after shows only the persistent 26-line `train.py` diff): temporarily set `WIN_WINDOW=2` (from 100) and stage `0b`'s `promotion_threshold=1.1`/`max_steps=1` (from 0.70/500,000), then ran the real launch config's defaults (`--curriculum --curriculum_stage 1 --checkpoint bc_warmup_v05.pt --decision_interval 8 --num_envs 4 --vec_size 2 --total_timesteps 3100`, `--compile_agent` default-on, `--device cuda` default). Over 3 updates this exercised every new code path on the production GPU+`torch.compile(reduce-overhead)` configuration: initial snapshot at stage `0b` entry → update 1 stuck (impossible threshold) → `*** ROLLBACK → restored agent/optimizer to entry-state of stage 0b ***` → `*** CURRICULUM REGRESS → stage 0a (stuck) ***` → update 2 on `0a` promotes (`win_rate=1.00 (2/2) >= 0.85`) → `*** CURRICULUM PROMOTE → stage 0b ***` (new snapshot for stage 1 overwrites the init one) → update 3 stuck again → second `ROLLBACK` (restoring the *overwritten* snapshot, proving the overwrite path works) → `REGRESS → 0a` again. `Training complete.` printed, no errors/tracebacks. Smoke run artifacts deleted; both temporary edits reverted.
+
+**Version bumped to `0.5.13-ML`** (all 5 `package.json`, R1).
+
+**Next:** relaunch attempt #3 from the Iteration 24 recovery checkpoint (`checkpoints/crystalfront_ppo__0_5_12-ML__idle__1__1781436946/update_000050.pt`, stage `3a_rw` idx12, win_rate=1.00, step 278840) with `--curriculum_stage 12`, resume Step 3 monitoring — this time watching whether `ppo/entropy_bonus` stays bounded across stage transitions, whether any `ROLLBACK` lines fire (and whether they break a cascade if so), and whether `3a_rm`/`3a_rm_3k` (Iteration 22's stages) finally get reached/exercised.

@@ -35,6 +35,7 @@ os.environ.setdefault("MIOPEN_FIND_MODE",                        "FAST") # skip 
 os.environ.setdefault("MIOPEN_USER_DB_PATH",      "/root/.cache/miopen") # persistent kernel cache
 os.environ.setdefault("HSA_OVERRIDE_GFX_VERSION",                "11.0.0")
 
+import copy
 import random
 import sys
 import time
@@ -190,7 +191,8 @@ class Config:
     clip_coef:        float = 0.2
     norm_adv:         bool  = True
     clip_vloss:       bool  = True
-    ent_coef:         float = 0.02
+    ent_coef:         float = 0.01        # lowered from 0.02 (Iteration 24/25): fixed 0.02 let entropy
+                                           # creep into an absorbing high-entropy/0%-win state on hard stages
     vf_coef:          float = 0.5
     max_grad_norm:    float = 0.5
 
@@ -408,6 +410,10 @@ def train(cfg: Config) -> None:
     cur_stage      = CURRICULUM[cur_stage_idx] if cfg.curriculum else None
     stage_step_start = 0  # global_step when current stage began
     pending_stage_change = 0  # +1 promote / -1 regress, applied at the next update boundary
+    # Iteration 24/25: snapshot of agent+optimizer state taken at the moment each stage was
+    # entered (keyed by stage index), so a regression can roll back to the policy that just
+    # proved itself on the easier stage instead of carrying forward a collapsed one.
+    stage_entry_snapshot: dict[int, dict] = {}
 
     def _resolve_env_params() -> tuple[dict, int, str, dict | None]:
         """Return (config_overrides, max_ticks, opponent, pre_place) for current stage or cfg defaults."""
@@ -498,6 +504,12 @@ def train(cfg: Config) -> None:
         # BC warmup checkpoints (update=0) use a different optimizer config
         # (lr=1e-3, CE objective) whose Adam momentum fights the PPO gradient.
         optimizer.load_state_dict(_ckpt["optimizer"])
+
+    if cfg.curriculum and cur_stage_idx >= 0:
+        stage_entry_snapshot[cur_stage_idx] = {
+            "agent":     copy.deepcopy(agent.state_dict()),
+            "optimizer": copy.deepcopy(optimizer.state_dict()),
+        }
 
     # ── thread pool ───────────────────────────────────────────────────────────
     # One thread per Node process — much fewer threads than old 1-game-per-proc design.
@@ -959,12 +971,24 @@ def train(cfg: Config) -> None:
 
         # ── apply pending curriculum stage change (update boundary) ────────────
         if pending_stage_change != 0:
+            if pending_stage_change < 0:
+                # Iteration 24/25: roll back to the policy that proved itself on entry to
+                # this (now-stuck) stage, instead of carrying a collapsed policy forward.
+                _snap = stage_entry_snapshot[cur_stage_idx]
+                agent.load_state_dict(_snap["agent"])
+                optimizer.load_state_dict(_snap["optimizer"])
+                print(f"\n  *** ROLLBACK → restored agent/optimizer to entry-state of stage "
+                      f"{cur_stage.name} ***\n", flush=True)
             cur_stage_idx   += pending_stage_change
             cur_stage        = CURRICULUM[cur_stage_idx]
             stage_step_start = global_step
             if pending_stage_change > 0:
                 print(f"\n  *** CURRICULUM PROMOTE → stage {cur_stage.name} "
                       f"(map={cur_stage.map_width or 'default'}, opp={cur_stage.opponent}) ***\n", flush=True)
+                stage_entry_snapshot[cur_stage_idx] = {
+                    "agent":     copy.deepcopy(agent.state_dict()),
+                    "optimizer": copy.deepcopy(optimizer.state_dict()),
+                }
             else:
                 print(f"\n  *** CURRICULUM REGRESS → stage {cur_stage.name} (stuck) ***\n", flush=True)
             writer.add_scalar("curriculum/stage", cur_stage_idx, global_step)
