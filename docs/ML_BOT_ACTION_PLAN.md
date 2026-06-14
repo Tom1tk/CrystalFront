@@ -61,11 +61,11 @@ python3 -m training.test_env               # 5s smoke test
 python3 -m training.test_config_persistence # config-override regression test
 python3 training/balance_report.py --matches 20   # bot matrix (Phase 1)
 
-# Phase 3 Task 3.2 curriculum run — relaunch from Iteration 21's recovery checkpoint
-# at the fixed curriculum (Iteration 22, pending Checkpoint 2)
-python3 -m training.ppo.train --curriculum --curriculum_stage 12 \
-  --checkpoint checkpoints/crystalfront_ppo__0_5_11-ML__idle__1__1781254439/update_000050.pt \
-  --decision_interval 8 --num_envs 20 --vec_size 4 --total_timesteps 20000000
+# Phase 3 Task 3.2 curriculum run — relaunch on the fixed curriculum (Iteration 22),
+# fresh from bc_warmup_v05.pt per Checkpoint 2 decision
+python3 -m training.ppo.train --curriculum --curriculum_stage 0 \
+  --checkpoint bc_warmup_v05.pt --decision_interval 8 \
+  --num_envs 20 --vec_size 4 --total_timesteps 20000000
 ```
 
 ### Open commitments
@@ -2444,13 +2444,23 @@ All 5 tasks ✅ in Appendix B (`docs/REVIVAL_PLAN.md`); `npm test` 470/470 throu
 - The pre-placement / `cfgOverrides` persistence across autoresets (`stdioVecRunner.ts:308` `resetSlot(..., slot.cfgOverrides, slot.prePlace)`) was re-confirmed correct this session (Phase 0's fix still holds) — not the bug.
 - `docs/ML_AGENT.md` §5's curriculum table is still the pre-Phase-2 stale 17-stage version (flagged in Iteration 18, deliberately deferred) — now *additionally* stale re: this change. Out of scope for this fix (R8); leave it.
 
-**Relaunch plan (Checkpoint 2, pending user confirmation):** resume from the Iteration 21 recovery checkpoint — `checkpoints/crystalfront_ppo__0_5_11-ML__idle__1__1781254439/update_000050.pt` (stage `3a_rw`, idx 12, win_rate=1.00, pre-collapse) — with `--curriculum_stage 12`. The run will re-promote through `3a_rwm` → **`3a_rm`** (new, the critical test of this fix) → `3a_rm_3k` → ... naturally. Command:
+**Checkpoint 2 decision (2026-06-14):** offered resume-from-`update_000050.pt` (minimal time lost) vs fresh-from-`bc_warmup_v05.pt` (full clean re-walk of the now-fixed curriculum). User chose **fresh from `bc_warmup_v05.pt` at `--curriculum_stage 0`** — a fully clean end-to-end validation of the new `3a_rm` stage and every stage before it. Command:
 
 ```bash
-nohup python3 -m training.ppo.train --curriculum --curriculum_stage 12 \
-  --checkpoint checkpoints/crystalfront_ppo__0_5_11-ML__idle__1__1781254439/update_000050.pt \
-  --decision_interval 8 --num_envs 20 --vec_size 4 --total_timesteps 20000000 \
+nohup python3 -m training.ppo.train --curriculum --curriculum_stage 0 \
+  --checkpoint bc_warmup_v05.pt --decision_interval 8 \
+  --num_envs 20 --vec_size 4 --total_timesteps 20000000 \
   > train_task32_v2.log 2>&1 &
 ```
 
-(New log filename `train_task32_v2.log` — preserves Iteration 21's `train_task32.log` as evidence.)
+(New log filename `train_task32_v2.log` — preserves Iteration 21's `train_task32.log` as evidence. `update_000050.pt` remains available as a fallback resume point if this run reproduces issues before `3a_rwm`.)
+
+---
+
+### 2026-06-14 — v0.5.12-ML Phase 3: Iteration 23 (Task 3.2 relaunch — fresh run on the fixed curriculum, launched)
+
+**What happened:** launched the Checkpoint-2-approved command (fresh from `bc_warmup_v05.pt`, `--curriculum_stage 0`, fixed 21-stage curriculum from Iteration 22) as a background process. Run name `crystalfront_ppo__0_5_12-ML__idle__1__1781436946`, log `train_task32_v2.log`. Started cleanly: `torch.compile` succeeded, `Realised config (stage 0a): {'mapWidth': 800, 'crystalHealth': 50, 'startingResources': 200}` printed correctly (GAP-3 still working), update 1 scored `win_rate=1.00 (100/100)` — matches Iteration 21's "stage 0a is a near-free win" observation.
+
+**Monitoring plan (Step 3):** poll `train_task32_v2.log` periodically for the 5 stop-the-line conditions (`/root/TRAINING_GUIDE.md` §6) and the Iteration-21 cascading-regression pattern (≥2 stages each scoring 0% after previously scoring >50%, `ppo/value_function_loss`→~0). Particular attention at the new `3a_rm` stage (idx 14) — the direct test of this iteration's fix — and at `3a_rm_3k` (idx 15) immediately after. On any stop condition: `pkill -f training.ppo.train`, diary entry before any further action, diagnose before resuming.
+
+**No version bump** — no code changed; this entry documents a run launch only (R1 n/a).
