@@ -353,3 +353,4 @@ None blocking. The remaining numbers (detour ratio, brush amount and spacing, te
 | 2026-11-10 | G-6 high ground | ✅ | units get +15% range **and** +15% vision (buildings +25%/+25%) |
 | 2026-11-10 | G-7 review | ✅ | user manually tests and signs off every pool map; detour ratio tuned from that |
 | 2026-11-10 | G-9f | ✅ | shift-queue waypoints and control groups included |
+| 2026-11-10 | U5/U6 | ✅ shipped v0.6.6 | G-8 lever (b) node-control win; balance gates pass (mirror per `--mirror --games 24`); release notes `docs/RELEASE_NOTES_v0.6.6.md`; deployed. Pool maps still await user sign-off |
