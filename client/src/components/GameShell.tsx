@@ -629,6 +629,8 @@ export default function GameShell({
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [debugSpawnMode, setDebugSpawnMode] = useState<string | null>(null);
   const [rallyMode, setRallyMode] = useState<{ buildingId: string } | null>(null);
+  // G-1: A arms attack-move; the next left-click issues it, right-click/Escape cancels.
+  const [attackMoveMode, setAttackMoveMode] = useState(false);
   const [debugDragMode, setDebugDragMode] = useState(false);
   const [debugCollapsed, setDebugCollapsed] = useState(true);
   const [debugDraggingNodeId, setDebugDraggingNodeId] = useState<string | null>(null);
@@ -646,6 +648,7 @@ export default function GameShell({
     | "build_foundry"
     | "build_turret"
     | "toggle_auto_attack"
+    | "attack_move"
     | "unit_stop"
     | "retreat"
     | "fortify"
@@ -713,8 +716,10 @@ export default function GameShell({
       { key: "q", action: crystalSelected ? "train_worker" : barracksSelected ? "train_skirmisher" : "none", label: crystalSelected ? "Worker (25)" : barracksSelected ? "Skirmisher (50)" : "", icon: crystalSelected ? "👷" : barracksSelected ? "⚔️" : "" },
       { key: "w", action: barracksSelected ? "train_gunner" : "none", label: barracksSelected ? "Gunner (75)" : "", icon: barracksSelected ? "🔫" : "" },
       { key: "e", action: foundrySelected ? "train_bruiser" : "none", label: foundrySelected ? "Bruiser (100)" : "", icon: foundrySelected ? "🛡️" : "" },
-      { key: "r", action: foundrySelected ? "train_medic" : "none", label: foundrySelected ? "Medic (60)" : "", icon: foundrySelected ? "💊" : "" },
-      { key: "a", action: hasCombatUnits ? "toggle_auto_attack" : "none", label: hasCombatUnits ? "Attack" : "", icon: hasCombatUnits ? "⚔️" : "" },
+      foundrySelected
+        ? { key: "r", action: "train_medic", label: "Medic (60)", icon: "💊" }
+        : { key: "r", action: hasCombatUnits ? "toggle_auto_attack" : "none", label: hasCombatUnits ? "Auto-attack" : "", icon: hasCombatUnits ? "🎯" : "" },
+      { key: "a", action: hasCombatUnits ? "attack_move" : "none", label: hasCombatUnits ? "Attack-move" : "", icon: hasCombatUnits ? "⚔️" : "" },
       { key: "s", action: hasCombatUnits ? "unit_stop" : "none", label: hasCombatUnits ? "Stop" : "", icon: hasCombatUnits ? "⏹" : "" },
       { key: "d", action: hasCombatUnits ? "retreat" : "none", label: hasCombatUnits ? "Retreat" : "", icon: hasCombatUnits ? "↩️" : "" },
       { key: "f", action: hasProductionBuilding ? "set_rally" : "none", label: hasProductionBuilding ? "Rally" : "", icon: hasProductionBuilding ? "🚩" : "" },
@@ -746,6 +751,7 @@ export default function GameShell({
   const isDraggingRef = useRef(isDragging);
   const dragStartRef = useRef<{ x: number; y: number } | null>(dragStart);
   const debugSpawnModeRef = useRef<string | null>(null);
+  const attackMoveModeRef = useRef(false);
   const playerRef = useRef(safePlayer);
   const minimapDraggingRef = useRef(false);
 
@@ -767,6 +773,7 @@ export default function GameShell({
     isDraggingRef.current = isDragging;
     dragStartRef.current = dragStart;
     debugSpawnModeRef.current = debugSpawnMode;
+    attackMoveModeRef.current = attackMoveMode;
   });
 
   const isMyEntity = useCallback(
@@ -947,6 +954,23 @@ export default function GameShell({
           return;
         }
 
+        // Attack-move: enemy under cursor → attack it, otherwise attack-move to the point
+        if (attackMoveMode) {
+          setAttackMoveMode(false);
+          const ids = [...(selectedEntityIds.size > 0 ? selectedEntityIds : (selectedEntityId ? [selectedEntityId] : []))];
+          const enemy = (matchState?.entities ?? []).find((ent) =>
+            ent.ownerId !== safePlayer.id && Math.hypot(worldX - ent.x, worldY - ent.y) <= ent.radius
+          );
+          for (const id of ids) {
+            const ent = myEntities.find((m) => m.id === id);
+            if (!ent || ent.type === "crystal" || ent.type === "building") continue;
+            onGameCommand(enemy
+              ? { type: "attack", entityId: id, targetEntityId: enemy.id }
+              : { type: "attack_move", entityId: id, targetX: worldX, targetY: worldY });
+          }
+          return;
+        }
+
         // Debug spawn mode: spawn entity at clicked position
         if (debugSpawnMode) {
           const isBuilding = debugSpawnMode.startsWith("building:");
@@ -976,6 +1000,10 @@ export default function GameShell({
 
       // Right click: commands
       if (e.button === 2) {
+        if (attackMoveMode) {
+          setAttackMoveMode(false);
+          return;
+        }
         if (buildMode) {
           setBuildMode(false);
           setSelectedBuildingType(null);
@@ -1083,7 +1111,7 @@ export default function GameShell({
         }
       }
     },
-    [myEntities, selectedEntityId, selectedEntityIds, resourceNodes, onGameCommand, buildMode, selectedBuildingType, myCrystal, matchState, handleMinimapClick, safePlayer.id, rallyMode, debugDragMode, debugDraggingNodeId, debugSpawnMode]
+    [myEntities, selectedEntityId, selectedEntityIds, resourceNodes, onGameCommand, buildMode, selectedBuildingType, myCrystal, matchState, handleMinimapClick, safePlayer.id, rallyMode, attackMoveMode, debugDragMode, debugDraggingNodeId, debugSpawnMode]
   );
 
   const handleContextMenu = useCallback(
@@ -1143,6 +1171,10 @@ export default function GameShell({
       }
       if (e.key === "Escape" && rallyMode) {
         setRallyMode(null);
+        return;
+      }
+      if (e.key === "Escape" && attackMoveMode) {
+        setAttackMoveMode(false);
         return;
       }
       if (e.key === "Escape" && (debugDragMode || debugDraggingNodeId)) {
@@ -1232,6 +1264,10 @@ export default function GameShell({
             // Enter build mode — identical to bottom bar buttons
             const buildingType = hotkey.action.replace("build_", "") as BuildingType;
             handleBuildClick(buildingType);
+            break;
+          }
+          case "attack_move": {
+            if (movableUnitIds.length > 0) setAttackMoveMode(true);
             break;
           }
           case "toggle_auto_attack": {
@@ -1333,7 +1369,7 @@ export default function GameShell({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [rallyMode, selectedEntityId, selectedEntityIds, matchState, safePlayer.id, hotkeys]);
+  }, [rallyMode, attackMoveMode, selectedEntityId, selectedEntityIds, matchState, safePlayer.id, hotkeys]);
 
   const handleMouseUp = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -1989,6 +2025,22 @@ export default function GameShell({
         ctx.stroke();
         ctx.restore();
       }
+    }
+
+    // Attack-move targeting indicator
+    if (attackMoveModeRef.current && hoverPos) {
+      ctx.beginPath();
+      ctx.arc(hoverPos.x, hoverPos.y, 9, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(255, 80, 80, 0.9)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(hoverPos.x - 14, hoverPos.y);
+      ctx.lineTo(hoverPos.x + 14, hoverPos.y);
+      ctx.moveTo(hoverPos.x, hoverPos.y - 14);
+      ctx.lineTo(hoverPos.x, hoverPos.y + 14);
+      ctx.lineWidth = 1;
+      ctx.stroke();
     }
 
     // Rally point placement indicator

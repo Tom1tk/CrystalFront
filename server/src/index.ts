@@ -717,7 +717,7 @@ wss.on("connection", (ws) => {
           unitType?: string;
         };
         const result = matchEngine.processCommand(matchId, playerId, {
-          type: cmd.type as "move" | "deselect" | "gather" | "train_worker" | "train_unit" | "cancel_queue" | "build" | "assign_build" | "repair" | "attack" | "heal" | "set_rally" | "toggle_auto_attack" | "retreat" | "stop" | "debug_move_node" | "debug_save_layout" | "debug_mirror_nodes",
+          type: cmd.type as "move" | "attack_move" | "deselect" | "gather" | "train_worker" | "train_unit" | "cancel_queue" | "build" | "assign_build" | "repair" | "attack" | "heal" | "set_rally" | "toggle_auto_attack" | "retreat" | "stop" | "debug_move_node" | "debug_save_layout" | "debug_mirror_nodes",
           entityId: cmd.entityId,
           entityIds: cmd.entityIds,
           targetX: cmd.targetX,

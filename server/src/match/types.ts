@@ -115,7 +115,9 @@ export interface MatchEntity {
   attackCooldown: number;
   healTargetId?: EntityId;
   autoAttackEnabled: boolean;
-  commandedTicks?: number;
+  /** Active player move order (G-1). attack=false: plain move, ignores enemies until
+   *  arrival. attack=true: attack-move, fights anything met, then resumes to (x,y). */
+  moveOrder?: { x: number; y: number; attack: boolean };
 }
 
 export interface CommandEntry {

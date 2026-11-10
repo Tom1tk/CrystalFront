@@ -172,6 +172,7 @@ export interface PlayerSlot {
 
 export type CommandType =
   | "move"
+  | "attack_move"
   | "select"
   | "deselect"
   | "gather"

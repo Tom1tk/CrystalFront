@@ -27,6 +27,7 @@ export function processMovement(match: MatchState): void {
 
     if (distance <= arrivalThreshold) {
       entity.moveTarget = undefined;
+      if (!entity.attackTargetId) entity.moveOrder = undefined;
       continue;
     }
 
@@ -48,6 +49,7 @@ export function processMovement(match: MatchState): void {
     }
     if (arrivedAtEntity) {
       entity.moveTarget = undefined;
+      if (!entity.attackTargetId) entity.moveOrder = undefined;
       continue;
     }
 
@@ -62,6 +64,7 @@ export function processMovement(match: MatchState): void {
 
     if (dist(entity.x, entity.y, entity.moveTarget.x, entity.moveTarget.y) <= arrivalThreshold) {
       entity.moveTarget = undefined;
+      if (!entity.attackTargetId) entity.moveOrder = undefined;
     }
   }
 

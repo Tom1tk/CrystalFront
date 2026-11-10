@@ -65,7 +65,7 @@ export function expandMacroAction(
         cmds.push({ type: "toggle_auto_attack", entityIds: needAutoAttack });
       }
       for (const e of group) {
-        cmds.push({ type: "move", entityId: e.id, targetX: target.x, targetY: target.y });
+        cmds.push({ type: "attack_move", entityId: e.id, targetX: target.x, targetY: target.y });
       }
       return cmds;
     }
@@ -119,8 +119,8 @@ export function expandMacroAction(
       // Use the stop command per-unit approach: stop clears moveTarget without touching autoAttack.
       for (const e of group) {
         // The stop command clears attackTargetId and disables autoAttack, which is wrong.
-        // Instead issue move to own current position to freeze movement while preserving auto-attack.
-        cmds.push({ type: "move", entityId: e.id, targetX: e.x, targetY: e.y });
+        // Instead attack-move to own current position: freezes movement, keeps fighting.
+        cmds.push({ type: "attack_move", entityId: e.id, targetX: e.x, targetY: e.y });
       }
       // Re-enable auto_attack (the move command above may have preserved it, but ensure it's on)
       const allIds = group.map(e => e.id);

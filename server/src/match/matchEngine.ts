@@ -327,6 +327,7 @@ export class MatchEngine {
     command: {
       type:
         | "move"
+        | "attack_move"
         | "deselect"
         | "gather"
         | "train_worker"
@@ -369,7 +370,7 @@ export class MatchEngine {
       return ok();
     }
 
-if (command.type === "move") {
+if (command.type === "move" || command.type === "attack_move") {
        const entity = command.entityId ? match.entities.get(command.entityId) : undefined;
        if (!entity || entity.ownerId !== playerId) return { success: false, message: "Entity not found" };
 
@@ -382,10 +383,12 @@ if (command.type === "move") {
          // Clamp to map bounds
          const clampedX = Math.max(entity.radius, Math.min(config.mapWidth - entity.radius, command.targetX));
          const clampedY = Math.max(entity.radius, Math.min(config.mapHeight - entity.radius, command.targetY));
+         const attack = command.type === "attack_move";
          entity.moveTarget = { x: clampedX, y: clampedY };
+         entity.moveOrder = { x: clampedX, y: clampedY, attack };
          entity.attackTargetId = undefined;
          entity.healTargetId = undefined;
-         entity.commandedTicks = 1;
+         if (attack) entity.autoAttackEnabled = true;
        }
 
        // Clean up gathering assignment when moving
@@ -439,6 +442,7 @@ if (command.type === "gather") {
          return { success: false, message: "Node is full" };
 
        worker.gatheringNodeId = targetNode.id;
+       worker.moveOrder = undefined;
        targetNode.gathererSlots.add(worker.id);
        return ok();
      }
@@ -657,6 +661,7 @@ if (command.type === "gather") {
          if (worker) {
            worker.buildTargetId = building.id;
            worker.moveTarget = { x: targetX, y: targetY };
+           worker.moveOrder = undefined;
            // Clear gathering if active
            if (worker.gatheringNodeId) {
              const prevNode = match.resourceNodes.find((n) => n.id === worker.gatheringNodeId);
@@ -717,6 +722,7 @@ if (command.type === "gather") {
       building.buildWorkerIds.add(worker.id);
       worker.buildTargetId = building.id;
       worker.moveTarget = { x: building.x, y: building.y };
+      worker.moveOrder = undefined;
 
       return ok();
     }
@@ -760,6 +766,7 @@ if (command.type === "gather") {
 
       // Set repair target on building
       building.repairTargetId = workerId;
+      worker.moveOrder = undefined;
 
       return ok();
     }
@@ -782,6 +789,7 @@ if (command.type === "gather") {
 
      entity.attackTargetId = targetId;
         entity.moveTarget = undefined;
+        entity.moveOrder = undefined;
         entity.healTargetId = undefined;
 
        // Cancel gathering if worker
@@ -827,6 +835,7 @@ if (command.type === "gather") {
 
       medic.healTargetId = targetId;
       medic.attackTargetId = undefined;
+      medic.moveOrder = undefined;
 
       return ok();
     }
@@ -888,8 +897,9 @@ if (command.type === "gather") {
         const entity = match.entities.get(eid);
         if (!entity || entity.ownerId !== playerId) continue;
         if (entity.type === "building") continue;
-        // Path toward own crystal. Keep autoAttackEnabled so units fire while retreating.
+        // Path toward own crystal as a plain move: ignores enemies until arrival (G-1).
         entity.moveTarget = { x: crystal.x, y: crystal.y };
+        entity.moveOrder = { x: crystal.x, y: crystal.y, attack: false };
         entity.attackTargetId = undefined;
         entity.healTargetId = undefined;
         // Cancel gathering
@@ -921,6 +931,7 @@ if (command.type === "gather") {
         if (!entity || entity.ownerId !== playerId) continue;
         if (entity.type === "building") continue;
         entity.moveTarget = undefined;
+        entity.moveOrder = undefined;
         entity.attackTargetId = undefined;
         entity.autoAttackEnabled = false;
         entity.healTargetId = undefined;

@@ -9,10 +9,8 @@ export function processCombat(match: MatchState): Map<string, number> {
   // Auto-attack acquisition: idle combat units find nearest enemy in range
   for (const entity of entities) {
     if (!entity.autoAttackEnabled) continue;
-    if (entity.commandedTicks !== undefined && entity.commandedTicks > 0) {
-      entity.commandedTicks--;
-    }
-    if (entity.commandedTicks !== undefined && entity.commandedTicks > 0) continue;
+    // Plain move order: ignore enemies until arrival (G-1)
+    if (entity.moveOrder && !entity.moveOrder.attack) continue;
     if (entity.type === "building") {
       if (entity.constructionProgress < 100) continue;
     }
@@ -32,6 +30,10 @@ export function processCombat(match: MatchState): Map<string, number> {
       }
     }
     if (nearestId) entity.attackTargetId = nearestId;
+    // Attack-move with nothing to fight: resume toward the order's destination
+    else if (entity.moveOrder?.attack && !entity.moveTarget) {
+      entity.moveTarget = { x: entity.moveOrder.x, y: entity.moveOrder.y };
+    }
   }
 
   // Attack chase: units with attackTargetId move toward target if out of range.

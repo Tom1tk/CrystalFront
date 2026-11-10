@@ -2159,6 +2159,91 @@ console.log("\n--- Mirror-invariance property test (Appendix C exp. 4) ---");
     (firstViolation ? ` — first: ${firstViolation}` : ""));
 }
 
+// ---- G-1: Move vs attack-move ----
+console.log("\n--- G-1: Move vs attack-move ---");
+{
+  const setup = () => {
+    const engine = new MatchEngine();
+    const players: [PlayerSlot | null, PlayerSlot | null] = [
+      { playerId: "pb", username: "B", color: "blue", score: 0 },
+      { playerId: "pr", username: "R", color: "red", score: 0 },
+    ];
+    const match = engine.createMatch("g1-orders", players);
+    engine.startMatch(match.id);
+    const spawn = (owner: string, type: "skirmisher" | "worker", x: number, y: number) => {
+      const before = new Set(match.entities.keys());
+      engine.debugSpawn(match.id, owner, type, x, y);
+      return [...match.entities.values()].find(e => !before.has(e.id))!;
+    };
+    return { engine, match, spawn };
+  };
+
+  // 1. A plain move disengages a unit that is already fighting.
+  {
+    const { engine, match, spawn } = setup();
+    const midX = match.config.mapWidth / 2;
+    const blue = spawn("pb", "skirmisher", midX, 300);
+    const red  = spawn("pr", "skirmisher", midX + 20, 300);
+    assert(blue.autoAttackEnabled && red.autoAttackEnabled, "G-1: spawned units auto-attack by default");
+    engine.tick(match.id);
+    assert(blue.attackTargetId === red.id, "G-1: blue skirmisher auto-acquires adjacent enemy");
+
+    const destX = midX - 300;
+    engine.processCommand(match.id, "pb", { type: "move", entityId: blue.id, targetX: destX, targetY: 300 });
+    let reacquired = false;
+    let arrived = false;
+    for (let i = 0; i < 200 && match.phase === "playing"; i++) {
+      engine.tick(match.id);
+      if (!match.entities.has(blue.id)) break;
+      if (blue.attackTargetId) reacquired = true;
+      if (Math.abs(blue.x - destX) <= 1) { arrived = true; break; }
+    }
+    assert(!reacquired, "G-1: move order ignores enemies in range until arrival");
+    assert(arrived, "G-1: moving unit reaches its destination while being chased");
+    engine.tick(match.id);
+    assert(blue.moveOrder === undefined, "G-1: move order cleared on arrival");
+  }
+
+  // 2. Attack-move fights what it meets, then resumes to the destination.
+  {
+    const { engine, match, spawn } = setup();
+    const midX = match.config.mapWidth / 2;
+    const blue   = spawn("pb", "skirmisher", midX - 200, 300);
+    const victim = spawn("pr", "worker", midX, 300);
+    const destX = midX + 200;
+    engine.processCommand(match.id, "pb", { type: "attack_move", entityId: blue.id, targetX: destX, targetY: 300 });
+    assert(blue.autoAttackEnabled, "G-1: attack-move enables auto-attack");
+    let fought = false;
+    let arrived = false;
+    for (let i = 0; i < 600 && match.phase === "playing"; i++) {
+      engine.tick(match.id);
+      if (blue.attackTargetId === victim.id) fought = true;
+      if (Math.abs(blue.x - destX) <= 1 && Math.abs(blue.y - 300) <= 1) { arrived = true; break; }
+    }
+    assert(fought, "G-1: attack-move engages an enemy met on the way");
+    assert(!match.entities.has(victim.id), "G-1: attack-move kills the enemy it engaged");
+    assert(arrived, "G-1: attack-move resumes to its destination after the fight");
+  }
+
+  // 3. Retreat is a real disengage (plain move to own crystal).
+  {
+    const { engine, match, spawn } = setup();
+    const midX = match.config.mapWidth / 2;
+    const blue = spawn("pb", "skirmisher", midX, 300);
+    const red  = spawn("pr", "skirmisher", midX + 20, 300);
+    assert(blue.autoAttackEnabled && red.autoAttackEnabled, "G-1: spawned units auto-attack by default");
+    engine.tick(match.id);
+    engine.processCommand(match.id, "pb", { type: "retreat", entityIds: [blue.id] });
+    let reacquired = false;
+    for (let i = 0; i < 20; i++) {
+      engine.tick(match.id);
+      if (blue.attackTargetId) reacquired = true;
+    }
+    assert(!reacquired, "G-1: retreating unit does not re-engage");
+    assert(blue.x < midX - 40, "G-1: retreating unit moves toward own crystal");
+  }
+}
+
 console.log(`\n${"=".repeat(40)}`);
 console.log(`Results: ${passed} passed, ${failed} failed`);
 console.log("=".repeat(40) + "\n");
