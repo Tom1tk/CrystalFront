@@ -1,289 +1,354 @@
-# ML_RETRAIN_PLAN — G-10: an adaptive "thinking" bot
+# ML_RETRAIN_PLAN — G-10: an adaptive decision-making bot (v2)
 
-**Status:** DRAFT for review (2026-11-10). **No training starts until every item in the sign-off table (§12) is ✅.**
-**Supersedes:** `REVIVAL_PLAN.md` Task 3.2 onward (shelved) and the 21-stage scripted curriculum.
-**Inputs:** `GAME_UPDATE_PLAN.md` G-10 (approved direction), `/root/fable-crystalfront-diagnosis.md` (2026-06 root causes), the shipped v0.7.0 game.
+**Status:** DRAFT v2 for review (2026-11-10). **No training starts until the sign-off table (§13) is ✅.**
+**v2 = v1 audited against the published record of AlphaStar, OpenAI Five and their successors, and against our own harness code.** The audit found 14 problems in v1, 5 of them serious (§2). v1 is in git history (`37e86f3`).
+**Supersedes:** `REVIVAL_PLAN.md` Task 3.2 onward and the 21-stage scripted curriculum.
 
 ---
 
-## 0. Goal, stated so it can be tested
+## 0. Goal
 
-> An AI opponent that "would react to a player's decisions and change how it thinks on the fly, rather than regurgitate a pre-determined 'best path'."
+> An AI opponent that "would react to a player's decisions and change how it thinks on the fly, rather than regurgitate a pre-determined 'best path'" — a learned decision-making model in the family of AlphaStar and OpenAI Five.
 
-An RL policy is a learned function, so "thinking on the fly" has to be built from three concrete properties. Each one gets a measurable test in §9:
+Those systems share one recipe, and it is what this plan builds:
 
-| Property | What it means in play | How it is built |
+1. a neural policy with **memory** (an LSTM core in both);
+2. trained by **self-play against a varied population**, so no single fixed plan survives;
+3. started from **imitation** of existing play, so it explores sensible strategies;
+4. with **long credit horizons** and rewards that make the whole game matter.
+
+**Honest scale statement.** AlphaStar's league trained for 44 days on 256 TPU cores and about 4,100 CPU cores, running 16,000 games at once. ROA-Star, a 2023 successor whose authors describe it as using "orders of magnitude less resources", still used 64 V100 GPUs and 4,600 CPU cores. We have one Tesla P100 and 12 vCPUs. The reference class that matches our budget is the microRTS competition agents: RAISocketAI (first deep-RL winner, about 70 GPU-days) and UECD (2026, beats RAISocketAI on 9.5 GPU-days). CrystalFront is far smaller than StarCraft (5 unit types, 4 buildings, macro-level orders), so the recipe is feasible here. The target is **a bot that beats every scripted bot, resists purpose-trained exploiters at our budget, and visibly adapts to you**. It is not a superhuman agent.
+
+Win rate alone is not the success metric (§10).
+
+---
+
+## 1. What the research says (and what we take from it)
+
+| Source | What they did | What it means for us |
 |---|---|---|
-| **Remembers** | It acts on what it scouted 2 minutes ago, not only on what is on screen now. | Recurrent policy plus explicit "last seen" memory in the observation (§3, §5). |
-| **Notices change** | If you switch from a skirmisher rush to turrets plus gunners, its build and army follow within a short window. | Training opponents that switch plans mid-match, and an observation that shows composition and tech (§3, §6). |
-| **Has no single answer** | Its opening and plan differ by map and by opponent. No fixed build beats everything. | A self-play league with exploiters that punish fixed strategies, and a pool of 8 training maps (§6). |
+| **AlphaStar** (Vinyals et al., Nature 2019) | LSTM policy; supervised start from human replays; league of main agents, main exploiters and league exploiters with prioritised fictitious self-play (PFSP); policy conditioned on a strategy statistic `z` (a build order sampled from human games). | **Its own ablations (Fig. 3) rank the ingredients:** <br>• no human data: Elo 149; supervised only 936; human init + RL 1,020; + KL penalty toward the supervised policy 1,400; + `z` conditioning 1,540. Imitation and staying near it early are worth far more than league structure. <br>• plain self-play reached nearly the same Elo as PFSP + self-play (1,519 vs 1,540) but its worst win rate against past versions was 46% vs 71%: **pure self-play forgets**. |
+| **OpenAI Five** (Berner et al., 2019) | One LSTM (4,096 units), PPO, no league: 80% of games against the latest self, 20% against past versions sampled by a quality score. Shaped rewards made **zero-sum** (subtract the enemy's), scaled down over game time (×0.6 per 10 min). Acts every 4th frame. BPTT over 16 steps. Credit horizon started at 180 s (γ=0.9993) and was lengthened; longer horizons kept helping up to 6–12 min. | A simple 80/20 self-play scheme is proven at scale and is far cheaper than a league. Long horizons matter. Win/loss-only reward does work but learns much more slowly than shaped. |
+| **ROA-Star** (Huang et al., NeurIPS 2023) | AlphaStar plus (a) an **opponent-modelling auxiliary task**: predict the enemy's hidden units, tech and building locations from what has been seen; (b) a **scouting reward** equal to the drop in that prediction's error; (c) goal-conditioned exploiters. | Worst-case win rate rose from 1% to 44%. They note AlphaStar "rarely conducts effective scouting" and was fragile to unusual strategies. Opponent modelling is the most direct published mechanism for "notices what you're doing", and the simulator gives us its labels for free. |
+| **RAISocketAI** (Goodfriend, 2024; microRTS winner) | PPO; half the envs against the latest self and half against older checkpoints, then fine-tuned against the strongest scripted bots. **Three value heads** (shaped, win/loss, cost) each with its own discount: γ=0.99 for shaped, γ=0.999 for win/loss. Reward weights moved from shaped to win/loss over training. BC then PPO matched the full agent without per-map tuning. | The closest match to our budget. Per-head discounts solve the "short shaping horizon vs long win horizon" conflict. On a long-game map (3,500 steps) BC + PPO *fell below* its BC start: long episodes are where credit assignment breaks. |
+| **UECD** (Delsart, 2026; microRTS) | Ablated 12 features, 3 seeds each. The top four all **enrich the training signal**: richer observation (+26 points), tighter action masks (+23), weighting samples toward ~50% matchups (+20), **opponent-modelling head (+20)**. Optimiser tricks and autoregressive actions gave +5 to +13 with high variance. | Spend effort on observation, masks and opponent modelling first. |
+| **UECD, "rush collapse"** | Annealing shaped reward to zero with γ=0.99 made the agent collapse into a worker rush: episode length fell 1,200 → 300 frames, and win rate against unseen bots fell from 56% to 0%. Cause: with terminal-only reward, discounting pays for *finishing sooner* (shortening a game from 750 to 300 steps multiplies the terminal signal by ~90). Fix: keep the shaped weight floored at 0.1. | **This is exactly what v1 of this plan proposed** (anneal shaping to 0, γ=0.99), in a project whose history is rush dominance. See F-1. |
+| **Recurrent PPO practice** ("Generalization, Mayhems and Limits in Recurrent PPO", 2022, and others) | Common bugs: wrong reshaping before the recurrent layer; hidden state not reset at episode ends; stale stored states; padding not masked in the loss. | Each gets a unit test before any long run (§9). |
+| **LLM + RL hybrids** (2024–2026) | TextStarCraft II: LLMs beat the built-in AI at "Harder". JEV-Star (2026): a fast controller plus an LLM planner won games at Lv5–Lv7 at about **$3.71 per game**, mostly planner cost. A 2026 study with a small local LLM picking tactics for a PPO policy found it chose the same tactic 83.8% of the time regardless of opponent. | Workable but costly per game, and small models don't differentiate. Still deferred (§8). |
 
-Win rate alone is **not** the success metric. A bot that wins with one memorised rush fails the goal.
-
----
-
-## 1. Where we start
-
-### 1.1 Already fixed from the 2026-06 diagnosis (verify, don't redo)
-| Diagnosis item | Current state |
-|---|---|
-| §2.1 overrides dropped on autoreset | fixed (`slot.cfgOverrides` is passed on autoreset); **re-verify on pool maps** (P-5) |
-| §2.2 obs and actions use static `MAP` | `observation.ts` uses `match.config.mapWidth/Height`; `actionSpace.ts` zone resolution **must be re-checked** on the new map sizes |
-| §3.3 draws, no tiebreaker | the engine always names a winner (tiebreaker), and the G-8 control win exists |
-| §4.1 per-tick decisions with γ=0.995 | `decision_interval` (k=8) exists in `stdioVecRunner`; `train.py` uses γ=0.99 and λ=0.95 |
-| §4.2 and §4.3 reward scale and terminal | `reward.ts` terminal is ±1 for any win type; shaping is ≤0.3 in total |
-| §2.3 MacroBot crash | fixed |
-
-### 1.2 Still open or new
-- **Throughput regression.** `npm run bench` gives **3,232 ticks/s** on classic today. It was 5,315 at U2 and 5,358 at U3. The workload changed since then (U4/U5 control nodes, double resource nodes, bigger maps), and 12 matches now total 37k ticks instead of 61k, so this is not apples-to-apples. On pool maps the 6-match bench gives 2,127 ticks/s on shardfall and 2,182 on glimmerfen. **This needs profiling before training (P-4).** Training cost scales with it directly.
-- **The action table is pre-update.** It has no named zone anchors, still carries the `xZone`/`yZone` legacy, and its targets (`midfield`, `contested_node` and so on) assume the old corridor. The G-10 prerequisite "map-generic macro actions via named anchors in `MapLayout`" has **not** been built.
-- **The observation has none of the G-10 hooks:** no terrain/LOS grid, no last-seen memory, no terrain under each entity. It also misses enemy gunner, medic, foundry and depot counts.
-- **The policy is memoryless:** a set-transformer over the current snapshot only.
-- **The scripted bots** were written for the corridor. They need to work on all pool maps (they serve as BC teachers and league members).
-- **Hardware is now an NVIDIA Tesla P100 16 GB (CUDA, torch 2.14.1+cu126) with 12 vCPUs and 24 GB RAM.** The ROCm `nn.LayerNorm` warning in memory was for the previous GPU. `policy.py` already uses a custom LayerNorm. Keep it, and re-test `nn.LayerNorm` once (P-6) instead of assuming.
+Sources are listed in §14.
 
 ---
 
-## 2. Prerequisites (game and harness), done before any learning code
+## 2. Audit of v1: findings
+
+Severity: 🔴 would likely have sunk the run; 🟠 significant; 🟡 improvement.
+
+| # | Sev | Finding | Evidence | Change in v2 |
+|---|---|---|---|---|
+| F-1 | 🔴 | **Reward/discount design reproduces a documented collapse.** v1 kept γ=0.99 at 0.8 s per decision (a horizon of ~80 s; a win 400 decisions away is discounted to 2%) and annealed shaping to zero. | UECD rush collapse; `train.py:185`; our own rush-dominance history | Separate value heads with their own discounts (win/loss γ=0.999, shaped γ=0.99); shaping is zero-sum, decays with game time, and is floored, not removed (§7.4) |
+| F-2 | 🔴 | **Self-play does not exist in the harness.** v1 said the league would be "built on the existing `league.py`". In fact the learner is hard-wired as blue, red is always a scripted bot inside Node, and checkpoint opponents are marked inactive ("need ONNX"). | `stdioVecRunner.ts:103–249`; `league.py:46` | New two-seat environment where Python controls either or both players (P-2). This is the largest piece of harness work |
+| F-3 | 🔴 | **Too many new parts at once.** v1 introduced a new observation, new action space, memory, a 3-agent league and exploiters together. That is how this project failed before: compounding defects nobody could separate. | 2026-06 diagnosis | A staged build: one new component per stage, each with a learning test it must pass first (§9), and ablations at short budgets |
+| F-4 | 🔴 | **The 6,000-tick cap is shorter than real games, and the tiebreak is a training-only win condition.** Live games have no cap. With an 18,000 cap, natural games ran 2,600–13,800 ticks. A capped agent learns to win tiebreaks (e.g. chip the crystal, then hide), which does not exist in live play. | game-length experiment (§3.2); `matchEngine.ts:1116` | Cap raised to 12,000 ticks and treated as a **truncation** (value bootstrapped, counted as a draw in evaluation), not a win (§7.4) |
+| F-5 | 🔴 | **Three learners on one machine.** v1's main agent + 2 exploiters would split a CPU-bound sample budget three ways from day one. AlphaStar's own ablation shows main-agent-only training gets most of the Elo; exploiters buy robustness. | AlphaStar Fig. 3 | One learner with 80/20 self-play first. Exploiters become a **periodic test that feeds the pool** (§7.3), not permanent learners |
+| F-6 | 🟠 | **No opponent modelling.** v1 relied on memory plus "switcher bots" to produce adaptation. The literature's most effective, cheapest mechanism was missing. | ROA-Star; UECD ablation | Auxiliary head predicting the enemy's hidden composition and tech (§6). It also gives a readable "what the bot thinks you're doing" for free |
+| F-7 | 🟠 | **BC was "optional", with no protection once RL starts.** Imitation was AlphaStar's single biggest factor, and the KL penalty toward the imitation policy was worth +380 Elo. Our earlier runs lost their BC prior in early PPO updates. | AlphaStar Fig. 3e; diary ("BC prior overwritten") | BC is required; value heads are fitted during BC; a KL-to-BC penalty is annealed over early RL (§7.1) |
+| F-8 | 🟠 | **No strategy conditioning.** Nothing in v1 forced the *learner* to have more than one style; variety was supposed to come only from opponents. | AlphaStar `z` (+140 Elo and diversity) | Policy conditioned on a strategy token `z` drawn from scripted build templates, or "free" (§7.2) |
+| F-9 | 🟠 | **Up to 3 sequential sub-actions per decision.** Later sub-actions' legality depends on earlier ones (resources spent), so masks would be wrong or need an engine round trip. UECD measured autoregressive sampling at only +5.7 with high variance. | UECD Table II | Two **parallel** heads per decision: one economy/production action and one army order. Their masks are independent (§5) |
+| F-10 | 🟠 | **The policy must play both seats.** Observations are in map coordinates, not the player's own frame, and the learner has only ever been blue. Half the pool maps use rotational symmetry. | `observation.ts` (`xNorm = x / mapW`); manifest `symmetry` | Own-frame observation and actions for both seats and both symmetries, with a seat-symmetry test (P-3) |
+| F-11 | 🟠 | **Gates had no statistics.** A past run promoted on a noisy peak and cascaded. | diary Iteration 27 | Fixed evaluation seeds, ≥200 games per matchup, gates on the lower bound of a 95% interval, never on one window (§10) |
+| F-12 | 🟠 | **Ship path understated.** v1 said the server's ML bot "gains a GRU state". The server has no neural inference at all today; bots are scripted classes. | no `onnxruntime` dependency; `server/src/index.ts:560` | Listed as real work in M4 |
+| F-13 | 🟡 | **Throughput target lacked a diagnosis.** | profile (§3.3): 80%+ of time is in the engine itself | P-5 targets the engine's hot spots; the observation is only ~6% |
+| F-14 | 🟡 | **Human testing came only at the end.** Self-play agents are known to be brittle against odd human play. | ROA-Star's note on AlphaStar | You playtest a snapshot at every milestone from M1 on |
+
+Kept from v1 after checking against the research: recurrent core; spatial grid plus last-seen enemy memory; asymmetric (full-state) critic; anchors as action targets; switcher bots; 8 train / 2 held-out maps; difficulty by snapshot; LLM deferred; the stop rule.
+
+---
+
+## 3. Where we start (measured 2026-11-10)
+
+### 3.1 Already fixed from the 2026-06 diagnosis
+- Config overrides now survive autoreset (`slot.cfgOverrides`).
+- Terminal reward is ±1 for any win type.
+- `decision_interval` (k=8) exists.
+- MacroBot no longer crashes.
+
+All of these get re-verified on pool maps in M0.
+
+### 3.2 Game-length and balance experiment (new)
+5 scripted bots, 10 pairings, 4 games each, on shardfall, glimmerfen and ironreed, cap 18,000 ticks:
+- **No timeouts.** Games ended between 2,591 and 13,829 ticks. Most ended by 4,500; rush vs turtle on glimmerfen ran to 13,000+.
+- **Both win types occur:** crystal kills (rush mirrors, heavy vs rush) and control wins (anything involving turtle or macro).
+- **Turtle wins most pairings by control:** 12/12 vs rush_medium, 12/12 vs heavy, 10/12 vs rush, 6/12 vs macro. Rush no longer dominates, but a passive control strategy may. 4 games per pairing is a small sample; P-6 runs it properly.
+
+### 3.3 Throughput (new)
+- `npm run bench`: 3,232 ticks/s on classic, about 2,100 on pool maps. It was 5,315 on classic after the movement update.
+- CPU profile on shardfall:
+  - `tick` itself: 25%
+  - movement: 19%
+  - visibility: 11%
+  - pathfinding: ~10%
+  - observation: 6%
+  - legal actions: 2%
+- The engine is the cost, not the observation or the bots.
+
+### 3.4 Other facts
+- GPU is a Tesla P100 16 GB (CUDA, torch 2.14.1). The old AMD-only `nn.LayerNorm` bug needs a re-test, not an assumption.
+- Action table (81 flat actions) and observation predate the map update: no anchors, no terrain, no memory.
+- All 10 pool maps are still `approved: null`.
+
+---
+
+## 4. Prerequisites (M0), before any learning code
 
 | ID | Item | Done when |
 |---|---|---|
-| **P-1** | **Named zone anchors in `MapLayout`.** `mapgen` and the hand-made maps emit: `own_base`, `own_pocket_{1..n}`, `centre_{1..n}`, `enemy_pocket_{1..n}`, `enemy_base`, `node_{i}` (each contested node), and `choke_{i}` (narrowest points on the base→centre paths, from the nav grid). Mirrored per side, so "own"/"enemy" are relative. | anchors exist on all 10 pool maps plus classic and testbed, and a golden test checks symmetry |
-| **P-2** | **Scripted bots on anchors.** Rush, macro, turtle, heavy and the rush tiers target anchors, so they play sensibly on every pool map. Plus new **switcher bots** (§6.3). | round-robin on every pool map; no crashes; a sanity matrix is recorded |
-| **P-3** | **Bot round-robin per map → balance report.** This repeats the diagnosis §1.1 experiment on the new game, on every pool map. If one strategy wins everything on a map, self-play will converge to it there. | report in `docs/`; no strategy above ~80% against all others on a map, or the map/balance issue is logged and fixed first |
-| **P-4** | **Throughput.** Profile `stdioVecRunner` on a pool map (observation build, flow fields, LOS, IPC). | target ≥4,000 ticks/s per core on pool maps (bench), or a documented reason the lower figure is acceptable |
-| **P-5** | **Harness correctness on pool maps.** Overrides survive autoreset. `mapId` reaches every slot. Observation and action geometry match the map. | a test asserts per-slot `mapId` and config after 3 autoresets |
-| **P-6** | **GPU sanity.** A short PPO smoke run on CUDA, plus a one-off `nn.LayerNorm` gradient check on the P100. | the smoke run's loss falls, with no NaN |
-| **P-7** | **Maps signed off by you.** All 10 pool maps are `approved: null` today. Training on a map you later reject wastes the run. | the manifest has dates, and the held-out split (§6.4) is chosen from approved maps |
+| **P-1** | **Named anchors in `MapLayout`:** `own_base`, `own_pocket_i`, `centre_i`, `enemy_pocket_i`, `enemy_base`, `node_i`, `choke_i`. Relative to the player. | present on all 12 maps; a symmetry test passes |
+| **P-2** | **Two-seat environment.** Python can control blue, red or both; the other seat can be a scripted bot. Returns each controlled seat's observation, masks and reward. Seat is randomised per episode. In self-play both seats' experience trains the learner. | a scripted-vs-scripted match driven through the new interface reproduces `runMatch` tick for tick |
+| **P-3** | **Own-frame observation and actions** for both seats and both symmetry types (mirror, rotate). | test: a mirrored game state gives identical observations and masks to both seats |
+| **P-4** | **Tick cap 12,000 as truncation**, with a flag the trainer can see. Live play stays uncapped. | test: truncated episodes are flagged; the value is bootstrapped |
+| **P-5** | **Throughput:** find what the 25% inside `tick` is; cut movement and visibility cost. | ≥4,000 ticks/s per core on pool maps, or a written reason why not. Measured end to end: decisions/s through the full Python loop |
+| **P-6** | **Balance matrix on every pool map** (all bots, ≥20 games per pairing, both seats, cap 12,000), including win types and game length. | no bot above ~80% against every other on a map. Otherwise the balance issue is fixed first, because self-play will find and sit on a dominant strategy |
+| **P-7** | **Scripted bots on anchors, plus variety:** parameterised openings (build order, timing, target) so the BC data has many styles; and **switcher bots** that change plan at a random tick. | round-robin on every map without crashes; each parameterisation is tagged with its strategy token `z` |
+| **P-8** | **Harness checks:** per-slot `mapId` and config survive autoreset; **every legal action has an effect** (no legal-but-nothing actions); deterministic replay reproduces observations. | tests in `npm test` |
+| **P-9** | **GPU checks:** short PPO smoke run; `nn.LayerNorm` gradient check. | loss falls, no NaN |
+| **P-10** | **Your map sign-off** and the choice of 2 held-out maps. | manifest has dates |
 
 ---
 
-## 3. Observation (R-1)
+## 5. Observation and actions
 
-The current design stays (an entity set, a node set and globals), with these additions:
-
-1. **Spatial grid, 40 px cells (the vision-grid resolution), pooled to about 48×24 on the largest map and padded.** Channels:
-   - blocked
-   - rough
-   - high ground
-   - water
-   - brush
-   - **currently visible**
-   - **ever seen**
-   - **ticks since last seen** (normalised and capped)
-   - own influence (combat supply, blurred)
-   - **last-seen enemy influence** (decays with time since seen)
-
-   Static channels are computed once per map and sent once per episode, so IPC stays small.
-2. **Enemy memory set.** Every enemy structure ever seen, kept at its last-seen position with its type, HP fraction and `ticksSinceSeen`, and marked destroyed if seen dying. The engine already decides visibility, so this memory is honest: it only holds what this player's fog allowed. It lives in the observation builder, per player, and resets per episode.
-3. **Per-entity terrain under the unit:** high, brush, rough, and in-enemy-LOS-as-far-as-known.
+### 5.1 Observation (in the player's own frame)
+1. **Entity set** (as today), plus terrain under each unit (high ground, brush, rough).
+2. **Enemy memory set:** every enemy building and unit group ever seen, at its last-seen place, with type, health and age. Built only from what this player's fog allowed.
+3. **Spatial grid** (about 48×24). Channels:
+   - blocked, rough, high ground, water, brush
+   - currently visible, ever seen, time since seen
+   - own army influence
+   - last-seen enemy influence
 4. **Globals:**
-   - enemy gunner, medic, foundry and depot counts (last seen, with age)
-   - own production queues
-   - supply-blocked flag
-   - control-race state (already present)
-   - **time since the last enemy army sighting**
-5. **No privileged information for the policy.** The **value head may see full state** (asymmetric actor-critic). This is standard and cuts value noise a lot under fog. It is only used in training and never ships.
+   - own economy and production queues
+   - control-race state
+   - last-seen enemy counts per unit and building type, with ages
+   - time since the enemy army was last seen
+5. **Strategy token `z`** (§7.2).
+6. **Critic only:** the full state of both players. Used in training, never shipped.
 
-The observation stays deterministic and seeded, so replays reproduce what the bot saw.
+Static grid channels are sent once per episode.
 
----
+### 5.2 Actions: two parallel heads per decision (every 8 ticks = 0.8 s)
+- **Economy head** (one per decision):
+  - `noop`
+  - `train(unit type)`
+  - `build(building, anchor)`
+  - `assign_workers(node, count)`
+- **Army head** (one per decision): `noop` or `(group, order, target)`.
+  - **group:** all combat, army A, army B, one unit type, one scout
+  - **order:** attack-move, move, hold, retreat, assign-to-army
+  - **target:** an anchor, or an entry in the enemy-memory set
+- Each head has its own legality mask. Because one head spends resources and the other doesn't, the masks don't interact.
+- At most 2 orders per 0.8 s (150 per minute). Scripted bots are capped to the same budget, in training and in BC data.
 
-## 4. Action space (R-2)
-
-The table is rebuilt from scratch. There is no legacy constraint.
-
-**Recommendation: a factored, autoregressive action** `(verb, subject, target)` with legality masks at each head, instead of a flat 81-way table:
-- **verb:**
-  - `noop`, `train(unit)`, `build(building)`
-  - `move`, `attack_move`, `hold`, `retreat`
-  - `gather(node)`, `scout`, `focus(target rule)`
-- **subject:**
-  - `all_combat`, `army_A`, `army_B` (two control groups the bot assigns)
-  - per unit type
-  - `idle_workers`, `n_workers`, `one_worker` (for scouting)
-- **target:** a named anchor (P-1), or a slot from the enemy-memory set (attack *that* last-seen foundry)
-- **build placement:** an anchor plus the existing validated placement search
-
-Why this matters for the goal:
-- Targets can point at **remembered** things. That is the hook for memory to change behaviour.
-- **Two armies** make splits, flanks and holding chokes possible.
-
-**APM (diagnosis §4.6).** Each decision (k=8 ticks, 0.8 s) may emit **up to 3 sub-actions**: the autoregressive head loops, and `noop` ends the loop. Scripted bots are capped to the same budget, so comparisons are fair and humans see a non-superhuman rate. About 225 actions per minute at most, usually far fewer.
-
-*Alternative (simpler, weaker):* keep a flat table of about 150 entries over anchors. It is easier to debug, but it can't reference memory slots and it scales poorly. **I recommend the factored version.**
+Targets that point at remembered enemy buildings are what let memory change behaviour. Two armies allow splits and flanks.
 
 ---
 
-## 5. Policy (R-3)
+## 6. Policy
 
 - **Encoders:**
-  - entity set → the existing set-transformer
-  - enemy-memory set → its own small set-transformer
-  - spatial grid → a small CNN (3 conv layers)
-  - globals → an MLP
-- **Core:** a **GRU (hidden size 256)** over decisions. This is the "remembers" part. Training uses BPTT over rollout chunks of 64 decisions, with the hidden state stored per env and reset on episode boundaries.
-  - *Alternative:* a transformer over the last N decision embeddings. It is more expressive but costlier and harder to export. GRU first; switch only if the memory metrics in §9 fail.
-- **Heads:** autoregressive action heads (§4) and an asymmetric value head (§3.5).
-- **Size:** about 2–4 M parameters. Inference must run in the server at k=8 for one bot well under 5 ms on CPU (ONNX, with GRU state carried between calls). This replaces today's stateless ONNX path. The parity test (TS vs PyTorch) is extended to sequences.
-- **Norm layers:** keep the custom LayerNorm unless P-6 clears `nn.LayerNorm`.
+  - entity set → set-transformer (existing)
+  - enemy memory → small set-transformer
+  - grid → small CNN
+  - globals and `z` → MLP
+- **Core:** one **LSTM, 256–384 units**, as in both reference systems. Training uses truncated BPTT over 32 decisions with stored hidden states. States are reset at episode ends.
+- **Heads:**
+  - economy and army policy heads
+  - **three value heads:** win/loss, shaped, and an auxiliary economy/army differential
+  - **opponent-model head:** predicts the enemy's true unit counts per type, tech buildings and army location bucket, from the policy's own (fogged) inputs. Trained with supervised loss against the simulator's ground truth. Its output is also fed back as an input to the policy heads.
+- **Size:** 2–4 M parameters. Must run under 5 ms per decision on CPU.
+
+**What the opponent-model head gives us:**
+- pressure to scout and remember, which is the "notices change" property;
+- a measurable quantity: how accurate is the bot's belief about you, and how quickly does it update after you switch (§10);
+- an honest, displayable readout ("expects: gunners + turrets, army near centre") with no LLM.
 
 ---
 
-## 6. Training regime (R-4)
+## 7. Training
 
-### 6.1 Phase A: behaviour-cloning warm start (short)
-- Record scripted bots playing each other on the training maps, using the **multi-action** budget (§4), and pair each action with its **own** observation. This fixes both defects from diagnosis §2.4.
-- Train BC to roughly 60–70% action accuracy. **Do not over-fit.** BC only makes PPO start from "plays the game"; it is not the target.
-- *Optional:* skip BC entirely if PPO from scratch against a weak league clears M1 (§10) within budget. That is decided by experiment, not up front.
+### 7.1 Stage A: imitation (required)
+- Data: the parameterised scripted bots (P-7) playing each other on the training maps, generated online. Each action is paired with its own observation and its strategy token. This fixes both defects from diagnosis §2.4.
+- Train the policy heads (cross-entropy), the value heads (on real outcomes) and the opponent-model head together.
+- **Gate:** the BC policy alone wins ≥40% against the scripted pool. If it can't, the observation or action design is wrong, and RL would not have fixed it.
+- When RL starts, a **KL penalty toward the BC policy** is annealed to zero over the first stage, so early noisy updates don't erase the prior.
 
-### 6.2 Phase B: self-play league (the main phase)
-Built on the existing `league.py` PFSP, extended in the AlphaStar-lite style, sized for one GPU:
+### 7.2 Strategy token `z`
+- In each episode the learner is either given a `z` (e.g. "fast expand", "skirmisher timing", "turtle to control", "bruiser tech") with a small pseudo-reward for following it, or given "free" and plays as it likes.
+- Evaluation and shipped play use "free".
+- Purpose: the learner keeps several styles alive, and its self-play opponents are varied, without needing a league of separate networks.
+- New tokens can be added from clusters of the agent's own games later.
 
-| Population member | Count | Trains against | Purpose |
-|---|---|---|---|
-| **Main agent** | 1 | 35% self-play, 40% PFSP over all frozen snapshots plus scripted bots, 25% exploiters | the bot we ship |
-| **Main exploiter** | 1 | the current main agent only | finds and punishes whatever fixed plan main relies on; reset to BC every ~N updates |
-| **League exploiter** | 1 | PFSP over the whole league | finds strategies the league as a whole is weak to |
-| **Frozen snapshots** | every ~2 M decisions | (not trained) | stops forgetting; PFSP weights the ones main loses to |
-| **Scripted pool** | about 10 | (not trained) | rush tiers, macro, turtle, heavy, **switchers**; diversity anchors |
+### 7.3 Stage B: self-play with a pool (one learner)
+Opponent mix per episode, to be tuned:
 
-On one P100 these run **round-robin by update** (not in parallel processes), with each member's rollouts on the shared CPU env pool. CPU, not GPU, is the bottleneck, so the cost is mostly env steps.
-
-### 6.3 Switcher bots: the direct pressure toward "notices change"
-New scripted bots that **change plan at a random tick between 1,500 and 4,000**:
-- rush → turtle with gunners
-- macro → all-in bruiser timing
-- fake expansion, then a hidden army through brush
-- turtle → late control-node grab
-
-A memoryless or plan-locked policy loses to these, so the gradient favours noticing the switch.
-
-### 6.4 Maps
-- **8 training maps, 2 held out** (chosen from your approved maps, P-7).
-- Classic and testbed are kept for regression only.
-- Map sampling is uniform at first, then up-weighted on maps where main wins least.
-
-### 6.5 Reward (R-5)
-- Terminal: **+1 for any win type, −1 for a loss**. There are no draws, thanks to the tiebreaker.
-- Shaping stays small. It is **annealed to 0 by the end of Phase B's first third**, so the final policy optimises winning, not milestones.
-- **No reward for "adapting".** Adaptation has to emerge from opponents that punish non-adaptation. Rewarding it directly would be gamed.
-- Truncation (if any remains) bootstraps `V(s_T)`. It is not treated as terminal.
-
-### 6.6 Compute budget (estimate, to be confirmed in P-4)
-- Assume 10 env processes at about 2,500 ticks/s each, minus about 40% observation/IPC overhead: roughly 15k ticks/s, or **about 1,900 decisions/s at k=8**.
-- One 6,000-tick game is 750 decisions, so about 2.5 games/s, or about 200k games/day.
-- **Budget:** M1 in about 1 day, M2 in about 4–5 days, M3 in up to 2 weeks of wall time. Every run checkpoints and resumes, and none needs the GPU exclusively.
-
----
-
-## 7. LLM strategist plus RL executor: evaluate, don't build first (R-6)
-
-**Idea:** an LLM reads a text summary of the match every ~20–30 game-seconds and outputs an **intent** from a fixed vocabulary:
-- `defend`, `expand`, `tech_foundry`, `harass_workers`, `timing_attack@anchor`, `contest_node_i`, `scout`
-- plus a one-line reason
-
-The RL policy is conditioned on the intent: an extra observation input, and training samples intents randomly so the policy learns to follow them.
-
-**Pros:**
-- Genuinely legible "thinking": the reason string can be shown to the player as the bot's taunt or log.
-- Plan changes are explicit.
-
-**Cons:**
-- Latency and API cost per game.
-- Not usable in headless training at scale. The executor must be trained on *sampled* intents, and the strategist's choices are never optimised for winning.
-- Depends on a network service.
-- Nondeterministic, which breaks replays unless intents are logged.
-
-**Recommendation:**
-1. **Build pure RL first** (M1–M3).
-2. At M3, run a **cheap offline experiment**: replay 50 M3 games, ask an LLM for intents at decision points, and compare them with what the policy actually did. If the LLM's calls are plausibly better, build the intent-conditioned head as an **optional "commentated" mode**.
-- The model choice and cost estimate are made at that point, against the then-current API, not now.
-
----
-
-## 8. What ships, and how (R-8)
-
-- The server's ML bot gains a GRU state per match and loads the new ONNX model.
-- The old v0.3.2-ML path is retired. There are no live users, so no legacy service is needed.
-- Bot difficulty is set by **league snapshot**, not by handicaps: Easy is an early snapshot, Normal mid, Hard is the final main agent. This gives real variety in skill rather than artificial nerfs.
-- **The R9 rule still applies:** replacing the production model, the ONNX export and the release notes need your explicit go-ahead.
-- Every training, reward or config change bumps all 5 `package.json` versions with the `-ML` suffix (version-bump rule).
-
----
-
-## 9. Evaluation: "adapted to me", not just win rate (R-7)
-
-Run on the **held-out maps**, with fixed seeds, at every milestone. Results go in the diary.
-
-| # | Metric | Measures | Pass bar (proposed) |
-|---|---|---|---|
-| E-1 | Win rate vs each scripted bot, held-out maps | baseline competence | ≥80% vs every non-switcher bot by M2 |
-| E-2 | Win rate vs **switcher** bots | notices change | ≥70% by M3, and higher than a memoryless ablation (E-5) by ≥15 points |
-| E-3 | **Reaction latency:** decisions between the opponent's first visible switch and a significant shift in the bot's production mix (KL above a threshold) | reacts on the fly | median under 40 decisions (~30 s) |
-| E-4 | **Exploitability:** win rate a fresh exploiter reaches against the frozen main agent after a fixed budget (e.g. 2 M decisions) | no single beatable plan | falls each milestone; under 60% by M3 |
-| E-5 | **Memory ablation:** the same model with its GRU state zeroed each step, and with the memory set blanked | memory is actually used | win-rate drop ≥10 points vs switchers and hidden-army bots |
-| E-6 | **Opening diversity:** entropy of first-3-minute build orders across maps and opponents; and conditional divergence (does the opening differ by map?) | no fixed best path | above the scripted bots' entropy; non-trivial divergence across maps |
-| E-7 | **Scout use:** fraction of games where a scout reaches the enemy base before tick 1,500, and whether production changes after it | scouting feeds decisions | reported (no hard bar) |
-| E-8 | **Elo in the league** (main vs all snapshots) | steady progress, no cycling | monotone over the last three milestones |
-| E-9 | **Human playtest (you):** 5+ games across 3 strategies, including at least one mid-game switch; a short form ("did it respond?", "did it feel scripted?") | the actual goal | your call; this is the final gate |
-
-A replay viewer overlay that shows the bot's top-3 intents (from the action heads) helps E-9. It is optional and cheap because replays already exist.
-
----
-
-## 10. Milestones and gates
-
-| Milestone | Contents | Gate to continue |
+| Share | Opponent | Why |
 |---|---|---|
-| **M0: Prerequisites** | P-1 to P-7 | all P-items done, reviewed by you |
-| **M1: Plays the game** | new observation/action/GRU policy, BC (if used), PPO vs the scripted pool | E-1 ≥60% vs rush_medium, macro and turtle on training maps; no NaN; memory ablation runs |
-| **M2: League** | full league, switchers, shaping annealed | E-1, E-4 trending down, E-8 rising |
-| **M3: Adaptive** | longer league run | E-2, E-3, E-5, E-6 pass; then **your E-9 playtest** |
-| **M4: Ship** | ONNX + GRU in the server, difficulty snapshots | your go-ahead (R9) |
-| **(M5 optional)** | LLM strategist experiment (§7) | your call after M3 |
+| 50% | latest self, with a random `z` | main source of improvement |
+| 25% | past snapshots, sampled toward the ones it loses to | prevents forgetting and cycles (AlphaStar: 46% → 71% worst-case) |
+| 25% | scripted pool, including switcher bots and converged exploiters | anchors against drift; direct pressure to notice plan changes |
 
-**Stop rule (avoids repeating the 2026-06 spiral).** If a milestone misses its gate after 2 diagnosed iterations:
-1. Stop.
-2. Write the diagnosis.
-3. Check you agree before changing more than one variable.
+- Samples are weighted toward close matchups (UECD's matchup weighting): games that are 95–5 either way teach little.
+- Maps: 8 training maps, sampled toward the ones where the learner does worst.
 
-Every relaunch follows the existing R10 rule: diagnosis, fix and reasoning are documented first.
+**Exploiter cycles (replaces v1's permanent exploiters).** At each milestone:
+1. Freeze the main agent.
+2. Train a fresh exploiter from the BC start against only that frozen agent, for a fixed budget.
+3. Record its final win rate. This is the exploitability metric (E-4).
+4. Add the exploiter to the opponent pool and resume the main agent.
+
+This is league training done in sequence. It costs about a day per cycle instead of a permanent 2/3 of all samples.
+
+### 7.4 Reward and horizon
+- **Win/loss head:** +1 / −1 on a real win (crystal or control). Truncation at the cap is not a terminal. γ=0.999 (a horizon of about 13 game-minutes), λ=0.99.
+- **Shaped head:** zero-sum differentials (my change minus the opponent's change) in:
+  - resources gathered
+  - army value
+  - damage dealt to units and buildings
+  - control progress
+
+  γ=0.99, λ=0.95. Scaled down with game time, as in OpenAI Five.
+- **Mixing:** advantage weights move from shaped-heavy to win/loss-heavy over training, with the **shaped weight floored at about 0.1**. Never zero.
+- **Rush-collapse monitors** (alarms, not gates): mean episode length, win-type split, production counts, opening entropy. A sharp fall in episode length while win rate rises is the published warning sign.
+- No reward for "adapting". The scouting bonus from ROA-Star (reward for reducing opponent-model error) is held in reserve and only added if E-7 shows the bot doesn't scout.
+- The one-time milestone bonuses in today's `reward.ts` are removed.
+
+### 7.5 Compute
+- Estimate: 10 processes × ~2,000 ticks/s ≈ 20,000 ticks/s ≈ **2,500 decisions/s**, before P-5 and before Python overhead. That is roughly 100–200 M decisions per day.
+- For scale: UECD used 350 M steps in total, RAISocketAI's base model 300 M.
+- These numbers are unmeasured for the new harness. P-5 replaces them with a measurement.
 
 ---
 
-## 11. Risks
+## 8. LLM strategist
+
+Still deferred, now on evidence. Published hybrids work but cost dollars per game in planner calls, and small local models showed little strategic differentiation. The opponent-model head already gives a readable account of what the bot believes. Revisit after M3 as an optional "commentary" layer. Model choice and cost are estimated then.
+
+---
+
+## 9. How we avoid failing the same way
+
+Earlier failures here came from silent harness defects and from changing several things at once. v2 makes verification part of the plan.
+
+**Learning tests ("probes"), run in the real engine, minutes each. Every one must pass before a long run, and they re-run after any harness change:**
+
+| Probe | Passes when | Proves |
+|---|---|---|
+| Overfit one BC batch | loss → ~0 | the data path and heads are wired correctly |
+| Beat the idle bot | ≥95% within a small fixed budget | reward, masks and actions work end to end |
+| Memory probe: enemy army shown early, then hidden; the right counter must be built later | LSTM agent ≥90%; the same agent with memory zeroed fails | recurrent state is stored, reset and used correctly |
+| Seat/symmetry probe | same win rate from both seats on mirror and rotate maps | own-frame observation is right |
+| Truncation probe | value near the cap is not biased toward ±1 | bootstrap is right |
+| Opponent-model probe | prediction error falls after a scout sees the enemy base | labels and fog are right |
+
+**Rules:**
+1. **One new component per stage.** Each must beat the previous stage in a 3-seed short-budget comparison before it stays.
+2. **Every relaunch** has its diagnosis, change and expected effect written in the diary first.
+3. **Gates use statistics** (§10). No promotion on a single evaluation window.
+4. **Experiment registry:** one row per run (commit, config, seeds, result) in `docs/`.
+5. **Stop rule:** a milestone that misses its gate after 2 diagnosed iterations stops for your review.
+6. **Time boxes** (§11). Going over a box triggers the stop rule.
+
+---
+
+## 10. Evaluation
+
+All on fixed seeds, both seats, with 95% intervals. A gate is passed when the **lower bound** clears the bar.
+
+| # | Metric | Pass bar (proposed) |
+|---|---|---|
+| E-1 | Win rate vs each scripted bot, ≥200 games each, training and **held-out** maps | ≥80% each by M2; held-out within 10 points of training maps |
+| E-2 | Win rate vs **switcher** bots | ≥70% by M3 |
+| E-3 | **Belief update:** after a switcher changes plan, time until the opponent-model head reflects it | reported at M2; the bar is set from that measurement |
+| E-4 | **Reaction:** time from the switch until the bot's production mix shifts | median under ~30 s of game time by M3 |
+| E-5 | **Exploitability:** win rate of a fixed-budget exploiter vs the frozen agent | falls with each cycle; under 60% by M3 |
+| E-6 | **Memory ablation:** same model with LSTM state zeroed and memory set blanked | drops ≥10 points vs switchers and hidden-army bots |
+| E-7 | **Scouting:** share of games with a scout reaching the enemy base early; opponent-model accuracy over time | reported; triggers the scouting bonus if poor |
+| E-8 | **Variety:** entropy of opening builds across maps and opponents; win-type split | above the scripted bots'; no single opening above ~50% |
+| E-9 | **No forgetting:** latest vs every past snapshot | ≥60% vs each |
+| E-10 | **Your playtest**, at every milestone from M1: 5+ games, 3 strategies, at least one mid-game switch | your judgement; the final gate |
+
+---
+
+## 11. Milestones
+
+| Milestone | Contents | Gate | Time box |
+|---|---|---|---|
+| **M0: Harness** | P-1…P-10 | all done; balance matrix reviewed with you | ~2 weeks of build work |
+| **M1: First learner** | new observation and actions, LSTM, BC, then PPO vs the scripted pool only. No self-play yet | all probes pass; BC ≥40%; after PPO, E-1 ≥70% on training maps; your first playtest | 1 week |
+| **M2: Self-play** | 80/20 + scripted pool, `z` conditioning, opponent-model head feeding the policy, all 8 maps | E-1, E-9; beats the M1 agent ≥70%; no rush-collapse alarms | 1–2 weeks |
+| **M3: Robust and adaptive** | 2–3 exploiter cycles; switcher pressure; reward mix toward win/loss | E-2 to E-8; your playtest | 2 weeks |
+| **M4: Ship** | neural inference in the server (new: ONNX runtime, LSTM state per match, parity tests on sequences); Easy/Normal/Hard as snapshots | **your explicit go-ahead** | 3–4 days |
+| **M5 (optional)** | LLM commentary experiment; show the bot's read of you in the UI | your call | — |
+
+Within M1 and M2, components are added in this order, each tested against the last: observation and masks → LSTM → BC + KL → opponent-model head → self-play → `z` → matchup weighting.
+
+---
+
+## 12. Risks
 
 | Risk | Mitigation |
 |---|---|
-| Self-play collapses onto one strategy (cycling or a dominant rush) | P-3 balance check, exploiters, PFSP over snapshots, scripted anchors, E-4 and E-6 tracking |
-| Throughput too low for the league | P-4 profiling; k could rise to 12; fewer, longer rollouts |
-| GRU/BPTT bugs (hidden state leaks across episodes) | unit test: the hidden state resets on done; parity test over sequences |
-| The value head can't learn under fog | asymmetric critic (full state) |
-| Bot feels superhuman (perfect micro) | the APM cap (§4); reaction delay is built in by k=8 |
-| Overfits to the pool maps | 2 held-out maps, and new maps can be generated from `mapgen` |
-| Scope creep (LLM, transformer core) | each is behind its own gate |
+| A dominant strategy in the game itself (turtle/control looks strong) | P-6 before training; fix balance first |
+| Rush collapse or other degenerate equilibrium | reward floor, per-head discounts, monitors, snapshot pool |
+| BC prior too narrow (scripted bots only, no human data) | parameterised bot variety, `z` tokens, exploiter cycles. Later option: use your own saved replays as evaluation scenarios |
+| Recurrent PPO bugs | memory probe and state-reset tests |
+| Throughput too low | P-5; raise k for the economy head only; smaller grid |
+| Strong vs bots, brittle vs humans | playtests at every milestone; switcher and exploiter opponents |
+| Overfitting to the pool maps | held-out maps; fresh `mapgen` maps for a final check |
+| Scope creep | one component per stage; time boxes; stop rule |
 
 ---
 
-## 12. Sign-off (per item)
+## 13. Sign-off
 
 Mark each ✅ (approved), ✏️ (change, with a note) or ❌ (drop).
 
 | ID | Item | Recommendation | Your call |
 |---|---|---|---|
-| P-1…P-7 | Prerequisites (§2) | do all before any learning code | ⬜ |
-| R-1 | Observation: grid + enemy memory + terrain-under-me + asymmetric critic (§3) | as written | ⬜ |
-| R-2 | Factored autoregressive actions with anchors, memory targets, 2 armies, ≤3 sub-actions per decision (§4) | factored (not flat) | ⬜ |
-| R-3 | GRU-256 core, set + CNN encoders, ONNX with state (§5) | GRU first | ⬜ |
-| R-4 | BC warm start + PFSP league with main/exploiters/snapshots/scripted + switcher bots; 8 train / 2 held-out maps (§6) | as written | ⬜ |
-| R-5 | ±1 terminal, shaping annealed to 0, no "adapt" reward (§6.5) | as written | ⬜ |
-| R-6 | LLM strategist: offline experiment after M3 only (§7) | defer | ⬜ |
-| R-7 | Evaluation metrics E-1…E-9 and pass bars (§9) | as written; bars can be tuned | ⬜ |
-| R-8 | Ship path: GRU ONNX, difficulty by snapshot, R9 still applies (§8) | as written | ⬜ |
-| R-9 | Milestones and the stop rule (§10) | as written | ⬜ |
+| P-1…P-10 | Prerequisites (§4), ~2 weeks before any training | do all | ⬜ |
+| R-1 | Observation: own-frame, grid, enemy memory, full-state critic (§5.1) | as written | ⬜ |
+| R-2 | Actions: two parallel heads, anchors and memory targets, 2 armies (§5.2) | as written | ⬜ |
+| R-3 | Policy: LSTM core, three value heads, opponent-model head (§6) | as written | ⬜ |
+| R-4 | Imitation start with KL protection (§7.1) | required, not optional | ⬜ |
+| R-5 | Strategy token `z` (§7.2) | as written | ⬜ |
+| R-6 | One learner, 50/25/25 self-play pool, exploiter cycles instead of a permanent league (§7.3) | as written | ⬜ |
+| R-7 | Reward: per-head discounts, zero-sum shaping floored at 0.1, 12,000-tick truncation (§7.4) | as written | ⬜ |
+| R-8 | LLM strategist deferred (§8) | defer | ⬜ |
+| R-9 | Probes, rules and stop rule (§9) | as written | ⬜ |
+| R-10 | Evaluation metrics and bars (§10) | bars can be tuned | ⬜ |
+| R-11 | Milestones and time boxes (§11) | as written | ⬜ |
 
-**Open questions for you:**
-1. Which 2 maps should be held out? (I'd pick one open map and one terrain-heavy one, after P-7.)
-2. Should Easy/Normal/Hard be league snapshots (recommended), or one model with handicaps?
-3. Do you want the bot's "intent" visible to the player (a log or taunt line)? That favours building the R-6 commentary mode later.
+**Questions for you:**
+1. Which 2 maps are held out? (I'd pick one open and one terrain-heavy, after your map sign-off.)
+2. Easy/Normal/Hard as training snapshots (recommended) or one model with handicaps?
+3. Should the bot's read of you (from the opponent-model head) be shown in the UI or in replays?
+4. If the balance matrix (P-6) confirms turtle/control is dominant, do you want to fix that in the game before training (recommended), even if it delays M1?
+5. Are you willing to playtest a rough snapshot at M1 and M2, not only the final one?
+
+---
+
+## 14. Sources
+
+- Vinyals et al., "Grandmaster level in StarCraft II using multi-agent reinforcement learning", Nature 2019: https://gwern.net/doc/reinforcement-learning/model-free/alphastar/2019-vinyals.pdf
+- Berner et al., "Dota 2 with Large Scale Deep Reinforcement Learning", 2019: https://arxiv.org/abs/1912.06680
+- Huang et al., "A Robust and Opponent-Aware League Training Method for StarCraft II" (ROA-Star), NeurIPS 2023: https://proceedings.neurips.cc/paper_files/paper/2023/hash/94796017d01c5a171bdac520c199d9ed-Abstract-Conference.html
+- Goodfriend, "A Competition Winning Deep Reinforcement Learning Agent in microRTS" (RAISocketAI), 2024: https://arxiv.org/abs/2402.08112
+- Delsart, UECD microRTS agent and CoG 2026 paper: https://github.com/mathisdelsart/microrts-drl-uecd
+- "Generalization, Mayhems and Limits in Recurrent Proximal Policy Optimization", 2022: https://arxiv.org/abs/2205.11104
+- "A Survey on Self-play Methods in Reinforcement Learning", 2024: https://arxiv.org/abs/2408.01072
+- "Minimax Exploiter: A Data Efficient Approach for Competitive Self-Play", 2023: https://arxiv.org/abs/2311.17190
+- "Large Language Models Play StarCraft II" (TextStarCraft II), NeurIPS 2024: https://arxiv.org/abs/2312.11865
+- "JEV-Star: Fast, Low-Cost StarCraft II Control with Language-Model Planning", 2026: https://arxiv.org/abs/2609.27331
+- "LLM-Guided Reinforcement Learning for Adaptive NPC Behavior in Multi-Agent Combat Games", 2026: https://arxiv.org/abs/2609.02931
+
+RAISocketAI's figures here come from a machine summary of the paper's HTML and should be re-checked against the paper before we copy any hyperparameter. The survey and Minimax Exploiter were located but not read in depth.
