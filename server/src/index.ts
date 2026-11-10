@@ -23,11 +23,22 @@ import { encodeVision } from "./match/engine/visibility.js";
 import { ReplayRunner, listReplays, getReplay, ensureReplaysDir, saveReplay } from "./match/replayRunner.js";
 import type { MatchEntity, MatchState, PlayerSlot, ResourceNode, PlayerEconomy, MatchConfig } from "./match/types.js";
 import { DEFAULT_CONFIG } from "./match/types.js";
-import { DEFAULT_MAP_ID, isKnownMap } from "./match/maps.js";
+import { DEFAULT_MAP_ID, isKnownMap, poolMaps, terrainFor, contestedNodesFor } from "./match/maps.js";
+import { encodeTerrain } from "./match/engine/terrain.js";
 
-/** Live-match config. CF_MAP selects the map until the lobby picker lands (U4). */
-function liveConfig(): MatchConfig {
-  const mapId = process.env.CF_MAP && isKnownMap(process.env.CF_MAP) ? process.env.CF_MAP : DEFAULT_MAP_ID;
+/**
+ * Live-match config for a requested map (G-7): a known map id is used as is;
+ * "random" or anything else picks a random pool map. CF_MAP overrides a
+ * random pick (dev). With an empty pool the default map is used.
+ */
+function liveConfig(requested?: string): MatchConfig {
+  let mapId: string;
+  if (requested && requested !== "random" && isKnownMap(requested)) mapId = requested;
+  else if (process.env.CF_MAP && isKnownMap(process.env.CF_MAP)) mapId = process.env.CF_MAP;
+  else {
+    const pool = poolMaps();
+    mapId = pool.length ? pool[Math.floor(Math.random() * pool.length)].mapId : DEFAULT_MAP_ID;
+  }
   return { ...DEFAULT_CONFIG, mapId };
 }
 import {
@@ -126,6 +137,7 @@ matchEngine.setMatchEndCallback((matchId: string, winner: string) => {
           commandLog:   match.commandLog       ?? [],
           version:      GAME_VERSION,
           mapId:        match.terrain.mapId,
+          mapVersion:   match.terrain.mapVersion,
         });
       }
     } catch (e) {
@@ -479,6 +491,7 @@ wss.on("connection", (ws) => {
     case CLIENT_MSG.START_SOLO_TEST: {
         // Create a solo test lobby with a scripted bot opponent
         const difficulty = (msg.payload as { username: string; difficulty?: string }).difficulty ?? "medium";
+        const soloMapId = (msg.payload as { mapId?: string }).mapId;
         const { code, player } = lobbyManager.createLobby(msg.payload.username);
         
         playerId = player.id;
@@ -521,7 +534,7 @@ wss.on("connection", (ws) => {
             toPlayerSlot(p1),
           ];
           
-          const match = matchEngine.createMatch(code, players, liveConfig());
+          const match = matchEngine.createMatch(code, players, liveConfig(soloMapId));
           lobbyMatchMap.set(code, match.id);
           matchEngine.startMatch(match.id);
           liveRunner.start(match.id);
@@ -555,7 +568,7 @@ wss.on("connection", (ws) => {
       }
 
     case CLIENT_MSG.START_BOT_GAME: {
-        const { username: bgUsername, bot: botName } = msg.payload as { username: string; bot: string };
+        const { username: bgUsername, bot: botName, mapId: bgMapId } = msg.payload as { username: string; bot: string; mapId?: string };
         const { code, player } = lobbyManager.createLobby(bgUsername);
 
         playerId = player.id;
@@ -584,7 +597,7 @@ wss.on("connection", (ws) => {
             toPlayerSlot(lobby.players[0]!),
             toPlayerSlot(lobby.players[1]!),
           ];
-          const match = matchEngine.createMatch(code, players, liveConfig());
+          const match = matchEngine.createMatch(code, players, liveConfig(bgMapId));
           lobbyMatchMap.set(code, match.id);
           matchEngine.startMatch(match.id);
           liveRunner.start(match.id);
@@ -604,6 +617,26 @@ wss.on("connection", (ws) => {
             payload: { match: buildMatchStatePayload(match, undefined, playerId) },
           });
         }
+        break;
+      }
+
+    case CLIENT_MSG.SET_MAP: {
+        const session = playerId ? playerLobbyMap.get(playerId) : undefined;
+        if (!playerId || !session) {
+          sendWS(ws, { type: SERVER_EVT.ERROR, payload: { message: "Not in a lobby." } });
+          return;
+        }
+        const wanted = (msg.payload as { mapId: string }).mapId;
+        if (wanted !== "random" && !isKnownMap(wanted)) {
+          sendWS(ws, { type: SERVER_EVT.ERROR, payload: { message: "Unknown map." } });
+          return;
+        }
+        const result = lobbyManager.setMap(session.code, playerId, wanted);
+        if (!result.success) {
+          sendWS(ws, { type: SERVER_EVT.ERROR, payload: { message: result.message } });
+          return;
+        }
+        broadcastLobbyState(ws, session.code);
         break;
       }
 
@@ -635,7 +668,7 @@ wss.on("connection", (ws) => {
             toPlayerSlot(p1),
           ];
 
-          const match = matchEngine.createMatch(session.code, players, liveConfig());
+          const match = matchEngine.createMatch(session.code, players, liveConfig(result.lobby.mapId));
           lobbyMatchMap.set(session.code, match.id);
 
           // Start the match immediately
@@ -1104,6 +1137,20 @@ app.get("/api/lobbies", (_req: Request, res: Response) => {
 
 app.get("/api/matches", (_req: Request, res: Response) => {
   res.json({ matches: matchEngine.getAllMatches() });
+});
+
+/** G-7: maps the lobby offers (pool first, then dev maps), with thumbnail data. */
+app.get("/api/maps", (_req: Request, res: Response) => {
+  const W = DEFAULT_CONFIG.mapWidth, H = DEFAULT_CONFIG.mapHeight;
+  const describe = (mapId: string, name: string, version: number, approved: string | null, pool: boolean) => {
+    const t = terrainFor(mapId, W, H);
+    return { mapId, name, version, approved, pool, cols: t.cols, rows: t.rows, width: W, height: H, terrain: encodeTerrain(t), nodes: contestedNodesFor(mapId, W, H) ?? null };
+  };
+  res.json([
+    ...poolMaps().map((m) => describe(m.mapId, m.name, m.version, m.approved, true)),
+    describe("testbed", "Testbed (dev)", 1, null, false),
+    describe("classic", "Classic (open, dev)", 1, null, false),
+  ]);
 });
 
 app.get("/api/version", (_req: Request, res: Response) => {

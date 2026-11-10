@@ -5,6 +5,15 @@ import { MatchEngine } from "./matchEngine.js";
 import { DEFAULT_CONFIG } from "./types.js";
 import { actionStateOf, headingOf, staticMapOf } from "./engine/presentation.js";
 import { SIMULATION, ENGINE_VERSION } from "@crystalfront/shared";
+import { isKnownMap, terrainFor } from "./maps.js";
+
+/** G-9e: a replay is playable only on its engine version and its map's current version. */
+function playable(raw: { engineVersion?: number; mapId?: string; mapVersion?: number }): boolean {
+  if (raw.engineVersion !== ENGINE_VERSION) return false;
+  const mapId = raw.mapId ?? "classic";
+  if (!isKnownMap(mapId)) return false;
+  return (raw.mapVersion ?? 1) === terrainFor(mapId, DEFAULT_CONFIG.mapWidth, DEFAULT_CONFIG.mapHeight).mapVersion;
+}
 
 const REPLAYS_DIR = resolve(process.cwd(), "replays");
 
@@ -59,6 +68,7 @@ export interface SaveReplayArgs {
   commandLog:   Array<{ tick: number; playerId: string; command: Record<string, unknown> }>;
   version:      string;
   mapId?:       string;
+  mapVersion?:  number;
 }
 
 export function saveReplay(args: SaveReplayArgs): string {
@@ -74,6 +84,7 @@ export function saveReplay(args: SaveReplayArgs): string {
     version:       args.version,
     engineVersion: ENGINE_VERSION,
     mapId:         args.mapId ?? "classic",
+    mapVersion:    args.mapVersion ?? 1,
     timestamp:     Date.now(),
     outcome: {
       winner:     args.winner,
@@ -204,7 +215,7 @@ export function listReplays(): ReplayMeta[] {
   for (const file of files) {
     try {
       const raw = JSON.parse(readFileSync(join(REPLAYS_DIR, file), "utf8"));
-      if (raw.engineVersion !== ENGINE_VERSION) continue; // G-9e: other engines' replays are dropped
+      if (!playable(raw)) continue; // G-9e: other engines' / map versions' replays are dropped
       const enriched = analyzeReplay(raw);
       const outcome = raw.outcome ?? { winner: null, ticks: 0 };
       metas.push({
@@ -248,7 +259,7 @@ export function getReplay(id: string): ReplayFile | null {
   if (!existsSync(filePath)) return null;
   try {
     const raw = JSON.parse(readFileSync(filePath, "utf8"));
-    if (raw.engineVersion !== ENGINE_VERSION) return null; // G-9e
+    if (!playable(raw)) return null; // G-9e
     return {
       id,
       seed: raw.seed,

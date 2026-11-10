@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { FCT, FctFrame, FctPanel, FctBtn, HEX_CLIP } from "../design/facet";
+import MapPicker from "./MapPicker";
 
 const BOT_OPTIONS: { name: string; label: string; sub: string; type: "ml" | "scripted" }[] = [
   { name: "idle",             label: "Idle",             sub: "does nothing",              type: "scripted" },
@@ -14,12 +16,13 @@ const BOT_OPTIONS: { name: string; label: string; sub: string; type: "ml" | "scr
 
 interface BotSelectMenuProps {
   username: string;
-  onSelect: (bot: string) => void;
+  onSelect: (bot: string, mapId: string) => void;
   onBack: () => void;
 }
 
 export default function BotSelectMenu({ username, onSelect, onBack }: BotSelectMenuProps) {
   const scriptedBots = BOT_OPTIONS.filter(b => b.type === "scripted");
+  const [mapId, setMapId] = useState("random");
 
   return (
     <FctFrame top="PLAY VS BOT">
@@ -33,6 +36,11 @@ export default function BotSelectMenu({ username, onSelect, onBack }: BotSelectM
         </div>
       </div>
 
+      {/* Map */}
+      <div style={{ marginBottom: 14 }}>
+        <MapPicker value={mapId} onChange={setMapId} />
+      </div>
+
       {/* Scripted section */}
       <div style={{ fontFamily: FCT.mono, fontSize: 8, color: FCT.inkDim, letterSpacing: "0.2em", marginBottom: 6 }}>
         SCRIPTED
@@ -44,7 +52,7 @@ export default function BotSelectMenu({ username, onSelect, onBack }: BotSelectM
             full
             sub={bot.sub.toUpperCase()}
             style={{ marginBottom: i < scriptedBots.length - 1 ? 4 : 0 }}
-            onClick={() => onSelect(bot.name)}
+            onClick={() => onSelect(bot.name, mapId)}
           >
             ▷ {bot.label}
           </FctBtn>

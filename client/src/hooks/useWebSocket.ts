@@ -21,7 +21,8 @@ interface UseWebSocketReturn {
   createLobby: (username: string) => void;
   joinLobby: (code: string, username: string) => void;
   startSoloTest: (username: string) => void;
-  startBotGame: (username: string, bot: string) => void;
+  startBotGame: (username: string, bot: string, mapId?: string) => void;
+  setMap: (mapId: string) => void;
   startReplay: (replayId: string) => void;
   stopReplay: () => void;
   setReplaySpeed: (speed: number) => void;
@@ -153,8 +154,15 @@ export function useWebSocket(): UseWebSocketReturn {
   );
 
   const startBotGame = useCallback(
-    (username: string, bot: string) => {
-      sendMessage({ type: "start_bot_game", payload: { username, bot } });
+    (username: string, bot: string, mapId?: string) => {
+      sendMessage({ type: "start_bot_game", payload: { username, bot, mapId } });
+    },
+    [sendMessage]
+  );
+
+  const setMap = useCallback(
+    (mapId: string) => {
+      sendMessage({ type: "set_map", payload: { mapId } });
     },
     [sendMessage]
   );
@@ -238,6 +246,7 @@ export function useWebSocket(): UseWebSocketReturn {
     joinLobby,
     startSoloTest,
     startBotGame,
+    setMap,
     startReplay,
     stopReplay,
     setReplaySpeed,

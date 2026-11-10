@@ -22,6 +22,9 @@ import { isCellBlocked, rebuildNavGrid } from "../server/src/match/engine/navGri
 import { buildTerrain, terrainAt, isObstacleCode, T_ROCK, T_WATER, T_OPEN, T_HIGH, T_CLIFF, T_ROUGH } from "../server/src/match/engine/terrain.js";
 import { getRange, getVisionRange } from "../server/src/match/engine/utils.js";
 import { computeVisibility, encodeVision } from "../server/src/match/engine/visibility.js";
+import { generateMap, validateMap } from "../server/src/match/mapgen.js";
+import { registerMap, poolMaps, isKnownMap } from "../server/src/match/maps.js";
+import { POOL_MAPS } from "../server/src/match/pool/index.js";
 import { readFileSync as _readFileSync, readdirSync as _readdirSync } from "node:fs";
 import { existsSync as _existsSync, unlinkSync as _unlinkSync, writeFileSync as _writeFileSync } from "node:fs";
 import { resolve as _resolve, join as _join } from "node:path";
@@ -1857,6 +1860,11 @@ console.log("\n--- Replay round-trip: playerIds survive save/load ---");
   assert(getReplay(staleId) === null, "G-9e: getReplay rejects replay without matching engineVersion");
   assert(!listReplays().some(r => r.id === staleId), "G-9e: listReplays skips stale-engine replay");
   _unlinkSync(stalePath);
+  _writeFileSync(stalePath, JSON.stringify({ ...full, engineVersion: ENGINE_VERSION, mapId: "classic", mapVersion: 99 }));
+  assert(getReplay(staleId) === null && !listReplays().some(r => r.id === staleId), "G-9e: replays of another map version are dropped");
+  _writeFileSync(stalePath, JSON.stringify({ ...full, engineVersion: ENGINE_VERSION, mapId: "no-such-map", mapVersion: 1 }));
+  assert(getReplay(staleId) === null, "G-9e: replays of an unknown map are dropped");
+  _unlinkSync(stalePath);
 
   // Cleanup
   const path = _join(REPLAYS_DIR, `${id}.json`);
@@ -2906,6 +2914,118 @@ async function determinismTests(): Promise<void> {
   const firstUnit = [...c.entities.values()].find(e => e.type !== "crystal")!;
   firstUnit.x += 0.001;
   assert(hashMatchState(c) !== hashA, "G-9d: state hash changes when any entity moves");
+}
+
+// ---- G-7: Map generator and pool ----
+console.log("\n--- G-7: Map generator ---");
+{
+  // Every generated map validates (connectivity, wide routes, detour, density, node placement).
+  const t0 = Date.now();
+  let bad = 0, firstBad = "";
+  for (let seed = 0; seed < 1000; seed++) {
+    try {
+      const { def } = generateMap(seed);
+      const v = validateMap(def);
+      if (!v.ok) { bad++; firstBad ||= `seed ${seed}: ${v.issues[0]}`; }
+    } catch (e) { bad++; firstBad ||= String(e); }
+  }
+  assert(bad === 0, `G-7: 1000 generated maps validate (${((Date.now() - t0) / 1000).toFixed(1)}s)` + (firstBad ? ` — first: ${firstBad}` : ""));
+  assert(JSON.stringify(generateMap(42).def) === JSON.stringify(generateMap(42).def), "G-7: generation is deterministic per seed");
+  assert(generateMap(4).def.symmetry === "mirror" && generateMap(5).def.symmetry === "rotate", "G-7: generator makes mirror and rotational maps");
+
+  // Symmetry of the rasterised terrain.
+  for (const seed of [4, 5]) {
+    const { def } = generateMap(seed);
+    const t = buildTerrain(def, 5000, 900);
+    let asym = 0;
+    for (let r = 0; r < t.rows; r++) for (let c = 0; c < t.cols; c++) {
+      const img = def.symmetry === "mirror" ? r * t.cols + (t.cols - 1 - c) : (t.rows - 1 - r) * t.cols + (t.cols - 1 - c);
+      if (t.cells[r * t.cols + c] !== t.cells[img]) asym++;
+    }
+    assert(asym === 0, `G-7: ${def.symmetry} map terrain is exactly symmetric`);
+  }
+
+  // "open" shapes carve earlier shapes; later shapes win.
+  {
+    const t = buildTerrain({ id: "carve", name: "c", version: 1, symmetry: "none", shapes: [
+      { kind: "rock", rect: [1000, 100, 1200, 300] }, { kind: "open", circle: [1100, 200, 50] },
+    ] }, 5000, 900);
+    assert(terrainAt(t, 1100, 200) === T_OPEN && terrainAt(t, 1010, 110) === T_ROCK, "G-7: open shapes carve rock");
+  }
+
+  // A rotational pool-style map: contested nodes at the def positions and their images; mirror invariance holds.
+  {
+    const { def } = generateMap(5);
+    registerMap(def);
+    const engine = new MatchEngine();
+    const players: [PlayerSlot | null, PlayerSlot | null] = [
+      { playerId: "headless-blue", username: "B", color: "blue", score: 0 },
+      { playerId: "headless-red", username: "R", color: "red", score: 0 },
+    ];
+    const match = engine.createMatch("g7", players, { ...DEFAULT_CONFIG, mapId: def.id }, 11);
+    const want = def.nodes!.flatMap(([x, y]) => x === 2500 && y === 450 ? [[x, y]] : [[x, y], [5000 - x, 900 - y]]);
+    const contested = match.resourceNodes.slice(8).map((n) => [n.x, n.y]);
+    assertEqual(JSON.stringify(contested), JSON.stringify(want), "G-7: contested nodes come from the map def (rotated images)");
+    assert(match.terrain.mapId === def.id, "G-7: match uses the registered map's terrain");
+    engine.startMatch(match.id);
+    const bots = [new MediumRushBot(), new MediumRushBot()];
+    bots[0].init("headless-blue", match);
+    bots[1].init("headless-red", match);
+    let violations = 0;
+    let first: string | undefined;
+    while (match.phase === "playing" && match.tick < 800) {
+      const acts = (["headless-blue", "headless-red"] as const).map((pid, i) =>
+        bots[i].step(buildObservation(match, pid), getLegalActions(match, pid)));
+      const apply = (i: number) => {
+        const pid = i === 0 ? "headless-blue" : "headless-red";
+        for (const a of acts[i]) for (const c of expandMacroAction(a, match, pid)) engine.processCommand(match.id, pid, c as Parameters<MatchEngine["processCommand"]>[2]);
+      };
+      if (match.tick % 2 === 0) { apply(0); apply(1); } else { apply(1); apply(0); }
+      if (match.tick % 8 === 0) {
+        const s = deepCloneMatchState(match);
+        const ids = new Set(s.entities.keys());
+        const engA = new MatchEngine();
+        (engA as unknown as { matches: Map<string, typeof s> }).matches.set(s.id, deepCloneMatchState(s));
+        engA.tick(s.id);
+        const engB = new MatchEngine();
+        (engB as unknown as { matches: Map<string, typeof s> }).matches.set(s.id, mirrorState(s));
+        engB.tick(s.id);
+        const a = (engA as unknown as { matches: Map<string, typeof s> }).matches.get(s.id)!;
+        const b = (engB as unknown as { matches: Map<string, typeof s> }).matches.get(s.id)!;
+        const d = diffStates(mirrorState(a), b, ids, 0.5);
+        if (d.length && !first) first = `tick ${match.tick + 1}: [${d[0].system}] ${d[0].detail}`;
+        violations += d.length;
+      }
+      engine.tick(match.id);
+    }
+    assert(violations === 0, "G-7: mirror invariance holds on a rotational generated map" + (first ? ` — first: ${first}` : ""));
+  }
+
+  // Frozen pool: every map validates, is registered and is in the manifest.
+  {
+    const pool = poolMaps();
+    for (const def of POOL_MAPS) {
+      const v = validateMap(def);
+      assert(v.ok, `G-7: pool map ${def.id} v${def.version} validates` + (v.ok ? "" : ` — ${v.issues[0]}`));
+      assert(isKnownMap(def.id) && pool.some((p) => p.mapId === def.id && p.version === def.version), `G-7: pool map ${def.id} is registered and in the manifest`);
+    }
+    assert(pool.length === POOL_MAPS.length, `G-7: manifest lists exactly the pool maps (${pool.length})`);
+  }
+
+  // Lobby map choice: host only; a change un-readies both players.
+  {
+    const lm = new LobbyManager();
+    const { code, player: host } = lm.createLobby("HostA");
+    assert(lm.getLobby(code)!.mapId === "random", "G-7: new lobbies default to a random pool map");
+    const joined = lm.joinLobby(code, "GuestB");
+    const guest = joined.success ? joined.player : null!;
+    lm.toggleReady(code, host.id);
+    lm.toggleReady(code, guest.id);
+    assert(!lm.setMap(code, guest.id, "testbed").success, "G-7: the guest can't choose the map");
+    const r = lm.setMap(code, host.id, "testbed");
+    assert(r.success && r.lobby.mapId === "testbed", "G-7: the host chooses the map");
+    assert(!r.success || (!r.lobby.players[0]!.ready && !r.lobby.players[1]!.ready && r.lobby.status === "waiting"), "G-7: changing the map un-readies both players");
+  }
 }
 
 void (async () => {

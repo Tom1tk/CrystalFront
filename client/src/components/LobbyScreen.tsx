@@ -10,6 +10,7 @@ import {
   NOTCH_L,
   NOTCH_R,
 } from "../design/facet";
+import MapPicker from "./MapPicker";
 
 interface LobbyScreenProps {
   lobby: Lobby;
@@ -17,6 +18,7 @@ interface LobbyScreenProps {
   isHost: boolean;
   onReady: () => void;
   onLeave: () => void;
+  onSetMap: (mapId: string) => void;
   error: string | null;
 }
 
@@ -172,6 +174,7 @@ export default function LobbyScreen({
   isHost,
   onReady,
   onLeave,
+  onSetMap,
   error,
 }: LobbyScreenProps) {
   const bothReady = lobby.players[0]?.ready && lobby.players[1]?.ready;
@@ -385,6 +388,9 @@ export default function LobbyScreen({
             }}
           >
             {bottomStatusText}
+            <div style={{ marginTop: 12 }}>
+              <MapPicker value={lobby.mapId ?? "random"} onChange={onSetMap} disabled={!isHost || !!bothReady} />
+            </div>
           </div>
           <div style={{ display: "flex", gap: 10 }}>
             <FctBtn danger onClick={onLeave}>

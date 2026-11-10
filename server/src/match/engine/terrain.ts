@@ -16,9 +16,9 @@ export const T_ROCK = 4;
 export const T_CLIFF = 5;
 export const T_WATER = 6;
 
-export type TerrainKind = "rough" | "high" | "brush" | "rock" | "cliff" | "water";
+export type TerrainKind = "open" | "rough" | "high" | "brush" | "rock" | "cliff" | "water";
 const KIND_CODE: Record<TerrainKind, number> = {
-  rough: T_ROUGH, high: T_HIGH, brush: T_BRUSH, rock: T_ROCK, cliff: T_CLIFF, water: T_WATER,
+  open: T_OPEN, rough: T_ROUGH, high: T_HIGH, brush: T_BRUSH, rock: T_ROCK, cliff: T_CLIFF, water: T_WATER,
 };
 
 /** Rock, cliff and water: blocked for movement and building. */
@@ -34,9 +34,19 @@ export interface MapDef {
   id: string;
   name: string;
   version: number;
-  /** "mirror": shapes describe the left half and are reflected onto the right. */
-  symmetry: "mirror" | "none";
+  /**
+   * "mirror": shapes are also reflected left↔right; "rotate": also rotated 180°
+   * about the map centre. Shapes normally describe the left half.
+   */
+  symmetry: "mirror" | "rotate" | "none";
+  /** Later shapes win; "open" carves earlier shapes away. */
   shapes: TerrainShape[];
+  /**
+   * Contested node positions (px), left half; each is also placed at its
+   * symmetric image (once only, for a node on the centre). Absent: the default
+   * layout from CONTESTED_NODE_OFFSETS.
+   */
+  nodes?: Array<[number, number]>;
 }
 
 export interface Terrain {
@@ -53,40 +63,52 @@ export interface Terrain {
   any: boolean;
 }
 
-function inside(s: TerrainShape, x: number, y: number, mapW: number, mirrored: boolean): boolean {
+/** Copy of a shape under the map's symmetry transform. */
+function imageOf(s: TerrainShape, sym: "mirror" | "rotate", mapW: number, mapH: number): TerrainShape {
   if ("rect" in s) {
-    let [x1, , x2] = s.rect;
-    const [, y1, , y2] = s.rect;
-    if (mirrored) [x1, x2] = [mapW - x2, mapW - x1];
-    return x >= x1 && x <= x2 && y >= y1 && y <= y2;
+    const [x1, y1, x2, y2] = s.rect;
+    return sym === "mirror"
+      ? { kind: s.kind, rect: [mapW - x2, y1, mapW - x1, y2] }
+      : { kind: s.kind, rect: [mapW - x2, mapH - y2, mapW - x1, mapH - y1] };
   }
-  let [cx] = s.circle;
-  const [, cy, r] = s.circle;
-  if (mirrored) cx = mapW - cx;
-  const dx = x - cx, dy = y - cy;
-  return dx * dx + dy * dy <= r * r;
+  const [cx, cy, r] = s.circle;
+  return { kind: s.kind, circle: [mapW - cx, sym === "mirror" ? cy : mapH - cy, r] };
 }
 
-/** Rasterise a map definition (cell centres tested against shapes; later shapes win). */
+/** Rasterise a map definition (cell centres tested against shapes; later shapes win, each with its image). */
 export function buildTerrain(def: MapDef | null, mapW: number, mapH: number): Terrain {
   const cellSize = NAV.cellSize;
   const cols = Math.ceil(mapW / cellSize);
   const rows = Math.ceil(mapH / cellSize);
   const cells = new Uint8Array(cols * rows);
   if (def) {
-    for (let row = 0; row < rows; row++) {
-      const y = (row + 0.5) * cellSize;
-      for (let col = 0; col < cols; col++) {
-        const x = (col + 0.5) * cellSize;
-        for (const s of def.shapes) {
-          if (inside(s, x, y, mapW, false) || (def.symmetry === "mirror" && inside(s, x, y, mapW, true))) {
-            cells[row * cols + col] = KIND_CODE[s.kind];
-          }
-        }
-      }
+    for (const s of def.shapes) {
+      paint(cells, cols, rows, cellSize, s);
+      if (def.symmetry !== "none") paint(cells, cols, rows, cellSize, imageOf(s, def.symmetry, mapW, mapH));
     }
   }
   return finishTerrain(def?.id ?? "classic", def?.version ?? 1, cellSize, cols, rows, cells);
+}
+
+function paint(cells: Uint8Array, cols: number, rows: number, cs: number, s: TerrainShape): void {
+  const code = KIND_CODE[s.kind];
+  const [bx1, by1, bx2, by2] = "rect" in s
+    ? s.rect
+    : [s.circle[0] - s.circle[2], s.circle[1] - s.circle[2], s.circle[0] + s.circle[2], s.circle[1] + s.circle[2]];
+  // Cells whose centre (c + 0.5) * cs can lie in [b1, b2].
+  const c1 = Math.max(0, Math.ceil(bx1 / cs - 0.5)), c2 = Math.min(cols - 1, Math.floor(bx2 / cs - 0.5));
+  const r1 = Math.max(0, Math.ceil(by1 / cs - 0.5)), r2 = Math.min(rows - 1, Math.floor(by2 / cs - 0.5));
+  for (let row = r1; row <= r2; row++) {
+    const y = (row + 0.5) * cs;
+    for (let col = c1; col <= c2; col++) {
+      const x = (col + 0.5) * cs;
+      if ("circle" in s) {
+        const dx = x - s.circle[0], dy = y - s.circle[1];
+        if (dx * dx + dy * dy > s.circle[2] * s.circle[2]) continue;
+      }
+      cells[row * cols + col] = code;
+    }
+  }
 }
 
 function finishTerrain(mapId: string, mapVersion: number, cellSize: number, cols: number, rows: number, cells: Uint8Array): Terrain {

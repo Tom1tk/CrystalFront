@@ -24,7 +24,7 @@ import { processCombat } from "./engine/combat.js";
 import { processGathering } from "./engine/gathering.js";
 import { processRepairAndHealing, processCrystalRegen } from "./engine/repair.js";
 import { dist } from "./engine/utils.js";
-import { terrainFor } from "./maps.js";
+import { contestedNodesFor, terrainFor } from "./maps.js";
 import { rectTouches, isObstacleCode, T_BRUSH } from "./engine/terrain.js";
 import { createNavGrid, rebuildNavGrid, addStructure, removeStructure, anchorsConnected, footprintOf, type Rect } from "./engine/navGrid.js";
 import {
@@ -110,7 +110,7 @@ export class MatchEngine {
     const resolvedSeed = seed ?? (this.clock() & 0xffffffff);
     const rng: [Rng, Rng] = [new Rng(resolvedSeed), new Rng((resolvedSeed ^ 0x9e3779b9) >>> 0)];
     const idGen = new IdGen();
-    const map = createMap(config);
+    const map = createMap(config, contestedNodesFor(config.mapId, config.mapWidth, config.mapHeight));
     const entities = new Map<EntityId, MatchEntity>();
 
     // Create crystals
@@ -1373,7 +1373,7 @@ if (command.type === "gather") {
     match.entities.clear();
 
     // Respawn entities
-    const map = createMap(config);
+    const map = createMap(config, contestedNodesFor(config.mapId, config.mapWidth, config.mapHeight));
     const blueCrystal = this.createEntity(
       match.idGen,
       "crystal",

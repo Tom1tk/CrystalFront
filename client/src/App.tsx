@@ -122,8 +122,8 @@ function useScreenFlow() {
   );
 
   const handleBotGame = useCallback(
-    (name: string, bot: string) => {
-      ws.startBotGame(name, bot);
+    (name: string, bot: string, mapId?: string) => {
+      ws.startBotGame(name, bot, mapId);
       setIsHost(true);
     },
     [ws.startBotGame]
@@ -316,7 +316,7 @@ export default function App() {
       {screen === "bot_select" && (
         <BotSelectMenu
           username={botSelectUsername}
-          onSelect={(bot) => handleBotGame(botSelectUsername, bot)}
+          onSelect={(bot, mapId) => handleBotGame(botSelectUsername, bot, mapId)}
           onBack={handleBotSelectBack}
         />
       )}
@@ -325,7 +325,7 @@ export default function App() {
       )}
       {screen === "watching_replay" && displayMatchState && (
         <GameShell
-          lobby={{ code: "REPLAY", players: [null, null], status: "match", hostId: "" }}
+          lobby={{ code: "REPLAY", players: [null, null], status: "match", hostId: "", mapId: "" }}
           player={{ id: "__observer__", username: "Replay", color: "blue", ready: false, score: 0 }}
           matchState={displayMatchState}
           resourceNodes={displayMatchState.resourceNodes ?? ws.resourceNodes}
@@ -350,6 +350,7 @@ export default function App() {
           player={player}
           isHost={isHost}
           onReady={ws.toggleReady}
+          onSetMap={ws.setMap}
           onLeave={handleLeave}
           error={ws.error}
         />

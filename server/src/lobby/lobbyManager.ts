@@ -58,6 +58,7 @@ export class LobbyManager {
       players: [player, null],
       status: "waiting",
       hostId: player.id,
+      mapId: "random",
     };
 
     this.lobbies.set(code, lobby);
@@ -115,6 +116,20 @@ export class LobbyManager {
       lobby.status = "waiting";
     }
 
+    return { success: true, lobby };
+  }
+
+  /** Host-only map choice; un-readies both players so the guest sees the change before starting. */
+  setMap(code: LobbyCode, playerId: PlayerId, mapId: string): { success: true; lobby: Lobby } | { success: false; message: string } {
+    const lobby = this.lobbies.get(code);
+    if (!lobby) return { success: false, message: "Lobby not found." };
+    if (lobby.hostId !== playerId) return { success: false, message: "Only the host can choose the map." };
+    if (lobby.status === "match") return { success: false, message: "Match already started." };
+    if (lobby.mapId !== mapId) {
+      lobby.mapId = mapId;
+      for (const p of lobby.players) if (p) p.ready = false;
+      lobby.status = "waiting";
+    }
     return { success: true, lobby };
   }
 

@@ -19,6 +19,8 @@ export interface Lobby {
   players: [Player | null, Player | null];
   status: LobbyStatus;
   hostId: PlayerId;
+  /** G-7: chosen map id, or "random" (a random pool map). */
+  mapId: string;
 }
 
 export interface LobbyState {

@@ -1,11 +1,15 @@
 /**
- * Map registry (G-5). "classic" is the open map (no terrain). "testbed" is the
- * hand-authored U3 test map with every terrain type; the U4 generator and map
- * pool add entries here.
+ * Map registry (G-5, G-7). "classic" is the open map (no terrain). "testbed" is
+ * the hand-authored U3 test map with every terrain type. Pool maps are frozen
+ * generator output (pool/*.json, listed in pool/manifest.json with the user's
+ * sign-off date) and are what the lobby offers.
  *
- * Node, spawn and build-zone positions still come from map.ts for every map.
+ * Spawn, safe-node and build-zone positions come from map.ts for every map;
+ * a map def may set its own contested node positions.
  */
 import { buildTerrain, type MapDef, type Terrain } from "./engine/terrain.js";
+import { POOL_MAPS } from "./pool/index.js";
+import manifest from "./pool/manifest.json" with { type: "json" };
 
 export const DEFAULT_MAP_ID = "classic";
 
@@ -45,6 +49,26 @@ const MAPS: Record<string, MapDef | null> = {
   classic: null,
   testbed: TESTBED,
 };
+for (const def of POOL_MAPS) MAPS[def.id] = def;
+
+export interface PoolEntry {
+  mapId: string;
+  name: string;
+  version: number;
+  /** Date the user signed the map off, or null while it is a candidate. */
+  approved: string | null;
+}
+
+/** Pool maps in manifest order (candidates included; the lobby labels them). */
+export function poolMaps(): PoolEntry[] {
+  return (manifest as PoolEntry[]).filter((m) => MAPS[m.mapId]).map(({ mapId, name, version, approved }) => ({ mapId, name, version, approved }));
+}
+
+/** Add or replace a map at runtime (offline tools only: candidates under test). */
+export function registerMap(def: MapDef): void {
+  MAPS[def.id] = def;
+  for (const k of [...cache.keys()]) if (k.startsWith(`${def.id}:`)) cache.delete(k);
+}
 
 export function mapIds(): string[] {
   return Object.keys(MAPS);
@@ -66,4 +90,17 @@ export function terrainFor(mapId: string | undefined, mapW: number, mapH: number
     cache.set(key, t);
   }
   return t;
+}
+
+/** Contested node positions for a map with its own node layout (symmetric images included), else undefined. */
+export function contestedNodesFor(mapId: string | undefined, mapW: number, mapH: number): Array<{ x: number; y: number }> | undefined {
+  const def = mapId && isKnownMap(mapId) ? MAPS[mapId] : null;
+  if (!def?.nodes) return undefined;
+  const out: Array<{ x: number; y: number }> = [];
+  for (const [x, y] of def.nodes) {
+    out.push({ x, y });
+    const ix = mapW - x, iy = def.symmetry === "rotate" ? mapH - y : y;
+    if (def.symmetry !== "none" && (ix !== x || iy !== y)) out.push({ x: ix, y: iy });
+  }
+  return out;
 }

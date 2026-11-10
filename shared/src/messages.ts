@@ -15,6 +15,7 @@ export const WS_EVENT = {
   MATCH_START: "match_start",
   GAME_STATE: "game_state",
   GAME_COMMAND: "game_command",
+  SET_MAP: "set_map",
   START_REPLAY: "start_replay",
   STOP_REPLAY: "stop_replay",
   REPLAY_END: "replay_end",
@@ -33,6 +34,7 @@ export const CLIENT_MSG = {
   MATCH_START: "match_start",
   START_SOLO_TEST: "start_solo_test",
   START_BOT_GAME: "start_bot_game",
+  SET_MAP: "set_map",
   START_REPLAY: "start_replay",
   STOP_REPLAY: "stop_replay",
   REPLAY_SPEED: "replay_speed",
@@ -59,8 +61,9 @@ export type ClientToServerMsg =
   | { type: typeof CLIENT_MSG.USERNAME; payload: { username: string } }
   | { type: typeof CLIENT_MSG.GAME_COMMAND; payload: ClientCommand }
   | { type: typeof CLIENT_MSG.MATCH_START }
-  | { type: typeof CLIENT_MSG.START_SOLO_TEST; payload: { username: string; difficulty?: "easy" | "medium" | "hard" } }
-  | { type: typeof CLIENT_MSG.START_BOT_GAME; payload: { username: string; bot: string } }
+  | { type: typeof CLIENT_MSG.START_SOLO_TEST; payload: { username: string; difficulty?: "easy" | "medium" | "hard"; mapId?: string } }
+  | { type: typeof CLIENT_MSG.START_BOT_GAME; payload: { username: string; bot: string; mapId?: string } }
+  | { type: typeof CLIENT_MSG.SET_MAP; payload: { mapId: string } }
   | { type: typeof CLIENT_MSG.START_REPLAY; payload: { replayId: string } }
   | { type: typeof CLIENT_MSG.STOP_REPLAY }
   | { type: typeof CLIENT_MSG.REPLAY_SPEED; payload: { speed: number } };
