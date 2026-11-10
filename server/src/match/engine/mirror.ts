@@ -24,6 +24,7 @@ import type { Rng } from "./rng.js";
 import type { IdGen } from "./idGen.js";
 import { cloneNavGrid, rebuildNavGrid } from "./navGrid.js";
 import { mirrorTerrain } from "./terrain.js";
+import { computeVisibility } from "./visibility.js";
 
 function shallowClone<T extends object>(obj: T): T {
   return Object.assign(Object.create(Object.getPrototypeOf(obj)), obj);
@@ -47,7 +48,7 @@ function cloneNode(n: ResourceNode): ResourceNode {
 }
 
 export function deepCloneMatchState(match: MatchState): MatchState {
-  return {
+  const clone: MatchState = {
     ...match,
     players: match.players.map((p) => (p ? { ...p } : null)) as [
       PlayerSlot | null,
@@ -67,6 +68,8 @@ export function deepCloneMatchState(match: MatchState): MatchState {
     idGen: shallowClone(match.idGen) as IdGen,
     visibilityData: undefined,
   };
+  computeVisibility(clone);
+  return clone;
 }
 
 /**
@@ -96,12 +99,14 @@ export function mirrorState(match: MatchState): MatchState {
   clone.terrain = mirrorTerrain(clone.terrain);
   clone.nav = rebuildNavGrid(clone);
 
-  return {
+  const mirrored: MatchState = {
     ...clone,
     players: [clone.players[1], clone.players[0]],
     economy: [clone.economy[1], clone.economy[0]],
     rng: [clone.rng[1], clone.rng[0]],
   };
+  computeVisibility(mirrored);
+  return mirrored;
 }
 
 export interface MirrorDiff {

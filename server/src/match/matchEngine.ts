@@ -279,6 +279,7 @@ export class MatchEngine {
     };
 
     match.nav = rebuildNavGrid(match);
+    computeVisibility(match);
     this.matches.set(id, match);
     return match;
   }
@@ -358,6 +359,7 @@ export class MatchEngine {
       building.health = def.health;
       match.entities.set(building.id, building);
       addStructure(match.nav, building);
+      computeVisibility(match); // visible (and seeing) at once, not from next tick
       return { success: true };
     }
 
@@ -376,6 +378,7 @@ export class MatchEngine {
       unitDef.color
     );
     match.entities.set(unit.id, unit);
+    computeVisibility(match);
     return { success: true };
   }
 

@@ -1,6 +1,7 @@
 import { UNIT_DEFS } from "@crystalfront/shared";
 import type { MatchState } from "../types.js";
 import { dist, getRange, getDamage, getAttackCooldown, getCounterMultiplier } from "./utils.js";
+import { isVisibleTo } from "./visibility.js";
 
 export function processCombat(match: MatchState): Map<string, number> {
   const damageLog = new Map<string, number>();
@@ -21,6 +22,8 @@ export function processCombat(match: MatchState): Map<string, number> {
     const range = getRange(entity, match.terrain);
     for (const other of entities) {
       if (other.ownerId === entity.ownerId) continue;
+      // Only what the owner could see at the end of last tick (G-6b)
+      if (!isVisibleTo(match, entity.ownerId, other)) continue;
       // Workers cannot initiate combat on crystals or buildings — only workers and combat units
       if (entity.type === "worker" && (other.type === "crystal" || other.type === "building")) continue;
       const d = dist(entity.x, entity.y, other.x, other.y);
@@ -46,7 +49,8 @@ export function processCombat(match: MatchState): Map<string, number> {
     if (!target) { entity.attackTargetId = undefined; continue; }
     const range = getRange(entity, match.terrain);
     const d = dist(entity.x, entity.y, target.x, target.y);
-    if (d > range + target.radius) {
+    // Out of range, or hidden (brush / high ground): close in until it can be seen and hit.
+    if (d > range + target.radius || !isVisibleTo(match, entity.ownerId, target)) {
       entity.moveTarget = { x: target.x, y: target.y };
     } else {
       entity.moveTarget = undefined;
@@ -76,6 +80,11 @@ export function processCombat(match: MatchState): Map<string, number> {
     const range = getRange(entity, match.terrain);
     const d = dist(entity.x, entity.y, target.x, target.y);
     if (d > range + target.radius) {
+      if (entity.type === "building") entity.attackTargetId = undefined;
+      continue;
+    }
+    // Can't fire at what you can't see (G-6b): towers lose the target, units keep closing in.
+    if (!isVisibleTo(match, entity.ownerId, target)) {
       if (entity.type === "building") entity.attackTargetId = undefined;
       continue;
     }

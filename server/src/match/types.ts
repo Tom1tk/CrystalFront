@@ -10,6 +10,7 @@ import type { Rng } from "./engine/rng.js";
 import type { IdGen } from "./engine/idGen.js";
 import type { NavGrid } from "./engine/navGrid.js";
 import type { Terrain } from "./engine/terrain.js";
+import type { PlayerVision } from "./engine/visibility.js";
 
 export type MatchPhase = "spawn" | "playing" | "ended";
 
@@ -83,8 +84,9 @@ export interface MatchState {
   nav: NavGrid;
   /** G-5 static terrain for config.mapId (shared, read-only; excluded from the hash). */
   terrain: Terrain;
-  // Fog of war — computed per tick, keyed by playerId
-  visibilityData?: Map<PlayerId, { entityIds: Set<EntityId>; nodeIds: Set<string> }>;
+  // Fog of war — computed at the end of each tick, keyed by playerId. Derived from
+  // the state (clones recompute it); combat reads it for target acquisition (G-6b).
+  visibilityData?: Map<PlayerId, PlayerVision>;
   // Determinism — seedable RNG and monotonic ID generator.
   // One RNG stream per player slot so spawn-position randomization for one
   // player never depends on engine processing order relative to the other

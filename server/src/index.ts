@@ -19,6 +19,7 @@ import {
 } from "../../headless/src/bots/index.js";
 import type { Agent } from "../../headless/src/types.js";
 import { actionStateOf, headingOf, staticMapOf, type ActionState } from "./match/engine/presentation.js";
+import { encodeVision } from "./match/engine/visibility.js";
 import { ReplayRunner, listReplays, getReplay, ensureReplaysDir, saveReplay } from "./match/replayRunner.js";
 import type { MatchEntity, MatchState, PlayerSlot, ResourceNode, PlayerEconomy, MatchConfig } from "./match/types.js";
 import { DEFAULT_CONFIG } from "./match/types.js";
@@ -308,11 +309,13 @@ function buildMatchStatePayload(match: MatchState, stateTimestamp?: number, play
   let allNodes = serializeResourceNodes(match.resourceNodes);
 
   // Fog of war: filter by visibility when playerId is provided and visibility data exists
+  let vision: string | undefined;
   if (playerId && match.visibilityData) {
     const vis = match.visibilityData.get(playerId);
     if (vis) {
       allEntities = allEntities.filter(e => vis.entityIds.has(e.id));
       allNodes = allNodes.filter(n => vis.nodeIds.has(n.id));
+      vision = encodeVision(vis.cells);
     }
   }
   if (playerId) {
@@ -329,6 +332,8 @@ function buildMatchStatePayload(match: MatchState, stateTimestamp?: number, play
     ...(stateTimestamp !== undefined ? { stateTimestamp } : { staticMap: staticMapOf(match) }),
     players: match.players,
     entities: allEntities,
+    // Lit fog cells (G-6b): base64 bitset over staticMap.visionCols × visionRows.
+    vision,
     attackLog: match.attackLog,
     result: match.result,
     startedAt: match.startedAt,

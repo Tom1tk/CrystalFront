@@ -139,6 +139,33 @@ function terrainCanvas(sm: StaticMap | undefined): HTMLCanvasElement | null {
   return canvas;
 }
 
+// ─── Fog of war (G-6b) ─────────────────────────────────────────
+let fogCache: { vision: string; canvas: HTMLCanvasElement } | null = null;
+/**
+ * Offscreen canvas with one pixel per vision cell: unlit cells are fog, lit
+ * cells transparent. Drawn scaled up with smoothing on for soft edges.
+ */
+function fogCanvas(vision: string | undefined, sm: StaticMap | undefined): HTMLCanvasElement | null {
+  if (vision === undefined || !sm?.visionCols || !sm.visionRows) return null;
+  if (fogCache?.vision === vision && fogCache.canvas.width === sm.visionCols) return fogCache.canvas;
+  const cols = sm.visionCols, rows = sm.visionRows;
+  const bits = atob(vision);
+  const canvas = fogCache?.canvas.width === cols ? fogCache.canvas : document.createElement("canvas");
+  canvas.width = cols;
+  canvas.height = rows;
+  const c = canvas.getContext("2d")!;
+  const img = c.createImageData(cols, rows);
+  for (let i = 0; i < cols * rows; i++) {
+    const lit = (bits.charCodeAt(i >> 3) >> (i & 7)) & 1;
+    // #050816 at 0.48 alpha, as the old tile fog
+    img.data[i * 4] = 5; img.data[i * 4 + 1] = 8; img.data[i * 4 + 2] = 22;
+    img.data[i * 4 + 3] = lit ? 0 : 122;
+  }
+  c.putImageData(img, 0, 0);
+  fogCache = { vision, canvas };
+  return canvas;
+}
+
 function drawMinimap(
   ctx: CanvasRenderingContext2D,
   mapWidth: number,
@@ -149,7 +176,8 @@ function drawMinimap(
   entities: { id: string; type: string; ownerId: string; x: number; y: number; radius: number; color: string; buildingType?: string }[],
   playerColor: "blue" | "red",
   minimapX: number,
-  minimapY: number
+  minimapY: number,
+  staticMap?: StaticMap
 ) {
   const mmW = MINIMAP_WIDTH;
   const mmH = MINIMAP_HEIGHT;
@@ -158,6 +186,14 @@ function drawMinimap(
 
   ctx.fillStyle = "rgba(0, 0, 12, 0.88)";
   ctx.fillRect(minimapX, minimapY, mmW, mmH);
+
+  // Terrain (G-9b)
+  const tc = terrainCanvas(staticMap);
+  if (tc) {
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(tc, minimapX, minimapY, mmW, mmH);
+    ctx.imageSmoothingEnabled = true;
+  }
 
   ctx.strokeStyle = "rgba(100, 100, 200, 0.4)";
   ctx.lineWidth = 1;
@@ -1861,10 +1897,15 @@ export default function GameShell({
       }
     }
 
-    // ─── Vision fog overlay (tile-based, drawn BEFORE entities) ─
-    // Tiles outside all vision sources are darkened. Drawn before
+    // ─── Vision fog overlay (drawn BEFORE entities) ─
+    // Cells outside the player's vision are darkened. Drawn before
     // entities so player units always render clearly on top.
-    {
+    // G-6b: the server's line-of-sight bitmap; circle tiles as a fallback.
+    const fog = fogCanvas(matchState.vision, matchState.staticMap);
+    if (fog) {
+      const vcs = matchState.staticMap!.visionCellSize ?? 40;
+      ctx.drawImage(fog, 0, 0, fog.width * vcs, fog.height * vcs);
+    } else {
       const myVisionSources = entities.filter(
         (e) => e.ownerId === safePlayer.id && e.health > 0
       );
@@ -2370,11 +2411,15 @@ export default function GameShell({
         entities,
         safePlayer.color,
         minimapX,
-        minimapY
+        minimapY,
+        matchState.staticMap
       );
 
-      // Minimap fog overlay (tile-based, screen space)
-      {
+      // Minimap fog overlay: the G-6b vision bitmap, or circle tiles as a fallback
+      const mmFog = fogCanvas(matchState.vision, matchState.staticMap);
+      if (mmFog) {
+        ctx.drawImage(mmFog, minimapX, minimapY, MINIMAP_WIDTH, MINIMAP_HEIGHT);
+      } else {
         const mmSources = entities.filter(e => e.ownerId === safePlayer.id && e.health > 0);
         if (mmSources.length > 0) {
           const mapW = matchState.mapWidth ?? matchState.config?.mapWidth ?? 5000;

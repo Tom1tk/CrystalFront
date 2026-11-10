@@ -273,7 +273,7 @@ export const ENTITY = {
  * Replays are stamped with it; replays with a different stamp are not listed or
  * played (no compatibility layer).
  */
-export const ENGINE_VERSION = 6;
+export const ENGINE_VERSION = 7;
 
 /** Navigation grid (G-3). */
 export const NAV = {
@@ -288,6 +288,7 @@ export const TERRAIN = {
   highUnitRange: 1.15,      // base weapon range multiplier for units on high ground
   highBuildingRange: 1.25,  // turret range multiplier on high ground
   highVision: 1.15,         // vision range multiplier on high ground
+  visionCellSize: 40,       // px per fog-of-war cell (G-6b; 2×2 nav cells)
 } as const;
 
 export const SIMULATION = {

@@ -7,6 +7,7 @@
  */
 import type { MatchEntity, MatchState } from "../types.js";
 import { encodeTerrain } from "./terrain.js";
+import { visionGridOf } from "./visibility.js";
 
 export type ActionState = "idle" | "moving" | "attacking" | "gathering" | "constructing" | "dying";
 
@@ -55,5 +56,8 @@ export function staticMapOf(match: MatchState) {
     mapId: match.terrain.mapId,
     mapVersion: match.terrain.mapVersion,
     terrain: encodeTerrain(match.terrain),
+    visionCellSize: visionGridOf(match.terrain).cellSize,
+    visionCols: visionGridOf(match.terrain).cols,
+    visionRows: visionGridOf(match.terrain).rows,
   };
 }

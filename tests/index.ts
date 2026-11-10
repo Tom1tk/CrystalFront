@@ -21,6 +21,7 @@ import { actionStateOf, headingOf, staticMapOf } from "../server/src/match/engin
 import { isCellBlocked, rebuildNavGrid } from "../server/src/match/engine/navGrid.js";
 import { buildTerrain, terrainAt, isObstacleCode, T_ROCK, T_WATER, T_OPEN, T_HIGH, T_CLIFF, T_ROUGH } from "../server/src/match/engine/terrain.js";
 import { getRange, getVisionRange } from "../server/src/match/engine/utils.js";
+import { computeVisibility, encodeVision } from "../server/src/match/engine/visibility.js";
 import { readFileSync as _readFileSync, readdirSync as _readdirSync } from "node:fs";
 import { existsSync as _existsSync, unlinkSync as _unlinkSync, writeFileSync as _writeFileSync } from "node:fs";
 import { resolve as _resolve, join as _join } from "node:path";
@@ -500,6 +501,7 @@ console.log("\n--- Combat: Attack Command ---");
   blueWorker.attackCooldown = 0;
 
   // Tick - damage should be dealt
+  computeVisibility(match); // state edited by hand: refresh fog as a tick would (G-6b)
   engine.tick(match.id);
   const redAfter = match.entities.get(redWorker.id)!;
   assert(redAfter.health < redWorker.maxHealth, "Red worker took damage");
@@ -548,6 +550,7 @@ console.log("\n--- Combat: Counter Damage Multipliers ---");
   skirmisher.attackCooldown = 0;
 
   // Tick - skirmisher should deal 1.5x damage to gunner
+  computeVisibility(match); // state edited by hand: refresh fog as a tick would (G-6b)
   engine.tick(match.id);
   const gunnerAfter = match.entities.get(gunner.id)!;
   const baseSkirmisherDamage = 12;  // updated: skirmisher damage was reduced to 12
@@ -587,6 +590,7 @@ console.log("\n--- Combat: Auto-Attack in Range ---");
   // Combat units now spawn with auto-attack enabled by default
   assert(skirmisher.autoAttackEnabled === true, "Skirmisher autoAttackEnabled is true by default");
 
+  computeVisibility(match); // state edited by hand: refresh fog as a tick would (G-6b)
   engine.tick(match.id);
   const skirmAfter = match.entities.get(skirmisher.id)!;
   assert(skirmAfter.attackTargetId === enemyWorker.id, "Skirmisher auto-acquired enemy in range when auto-attack enabled");
@@ -728,6 +732,7 @@ console.log("\n--- Combat: Turret Auto-Attack ---");
   match.entities.set(enemyWorker.id, enemyWorker);
 
   // Tick - turret should auto-attack
+  computeVisibility(match); // state edited by hand: refresh fog as a tick would (G-6b)
   engine.tick(match.id);
   const turretAfter = match.entities.get(turret.id)!;
   assert(turretAfter.autoAttackEnabled === true, "Turret has autoAttackEnabled");
@@ -2608,6 +2613,100 @@ console.log("\n--- G-6: Rough and high ground ---");
     const t = spawn(engine, match, "r", "skirmisher", 1560 + 152, 640);
     for (let i = 0; i < 5; i++) engine.tick(match.id);
     assert(t.health < t.maxHealth, `G-6: high-ground gunner hits at 152 px (hp ${t.health}/${t.maxHealth})`);
+  }
+}
+
+// ---- G-6b: Line of sight, brush and fog ----
+console.log("\n--- G-6b: Line of sight ---");
+{
+  const setup = (mapId = "testbed") => {
+    const engine = new MatchEngine();
+    const players: [PlayerSlot | null, PlayerSlot | null] = [
+      { playerId: "b", username: "B", color: "blue", score: 0 },
+      { playerId: "r", username: "R", color: "red", score: 0 },
+    ];
+    const match = engine.createMatch("g6b", players, { ...DEFAULT_CONFIG, maxTicks: 0, mapId }, 7);
+    engine.startMatch(match.id);
+    return { engine, match };
+  };
+  const spawn = (engine: MatchEngine, match: MatchState, owner: string, type: string, x: number, y: number, bt?: string) => {
+    const before = new Set(match.entities.keys());
+    engine.debugSpawn(match.id, owner, type as any, x, y, bt as any);
+    const e = [...match.entities.values()].find((e) => !before.has(e.id))!;
+    e.autoAttackEnabled = false;
+    return e;
+  };
+  const sees = (match: MatchState, pid: string, e: MatchEntity) => match.visibilityData!.get(pid)!.entityIds.has(e.id);
+
+  // Rock blocks sight; the same positions on the open map are visible
+  for (const mapId of ["testbed", "classic"]) {
+    const { engine, match } = setup(mapId);
+    const b = spawn(engine, match, "b", "skirmisher", 1260, 250);
+    const r = spawn(engine, match, "r", "skirmisher", 1440, 250);
+    assert(sees(match, "b", r) === (mapId === "classic") && sees(match, "r", b) === (mapId === "classic"),
+      `G-6b: 180 px apart across the rock: ${mapId === "classic" ? "visible on classic" : "hidden on testbed"}`);
+  }
+
+  // High ground: the plateau sees down, low ground can't see up
+  {
+    const { engine, match } = setup();
+    const hi = spawn(engine, match, "r", "gunner", 1600, 700);
+    const lo = spawn(engine, match, "b", "gunner", 1400, 700);
+    assert(sees(match, "r", lo), "G-6b: high-ground unit sees the low ground below");
+    assert(!sees(match, "b", hi), "G-6b: low-ground unit can't see onto the plateau");
+  }
+  // ...and high ground hides the low ground behind it (a narrow ridge, in range on either side)
+  {
+    const { engine, match } = setup("classic");
+    const lo = spawn(engine, match, "b", "gunner", 500, 450);
+    const behind = spawn(engine, match, "r", "skirmisher", 760, 450);
+    assert(sees(match, "b", behind), "G-6b: 260 px in the open is visible");
+    match.terrain = buildTerrain({ id: "x", name: "x", version: 1, symmetry: "mirror", shapes: [{ kind: "high", rect: [600, 300, 700, 600] }] }, 5000, 900);
+    match.nav = rebuildNavGrid(match);
+    computeVisibility(match);
+    assert(!sees(match, "b", behind), "G-6b: a ridge between them blocks sight");
+    void lo;
+  }
+
+  // Brush hides units from outside the patch; entering the patch reveals them
+  {
+    const { engine, match } = setup();
+    const hidden = spawn(engine, match, "r", "skirmisher", 1600, 160);
+    const b = spawn(engine, match, "b", "skirmisher", 1600, 260);
+    assert(!sees(match, "b", hidden), "G-6b: unit in brush is hidden 100 px away");
+    assert(sees(match, "r", b), "G-6b: unit in brush still sees out");
+    b.x = 1570; b.y = 165;
+    computeVisibility(match);
+    assert(sees(match, "b", hidden), "G-6b: entering the same brush patch reveals it");
+  }
+
+  // Hidden targets aren't auto-acquired or shot; attackers reveal themselves
+  {
+    const { engine, match } = setup();
+    const turret = spawn(engine, match, "b", "building", 1600, 260, "turret");
+    turret.autoAttackEnabled = true;
+    const lurker = spawn(engine, match, "r", "skirmisher", 1600, 170);
+    for (let i = 0; i < 10; i++) engine.tick(match.id);
+    assert(!turret.attackTargetId && lurker.health === lurker.maxHealth, "G-6b: turret ignores a unit hidden in brush");
+    const hi = spawn(engine, match, "r", "gunner", 1600, 700);
+    const lo = spawn(engine, match, "b", "skirmisher", 1460, 700);
+    hi.attackTargetId = lo.id;
+    for (let i = 0; i < 3; i++) engine.tick(match.id);
+    assert(lo.health < lo.maxHealth && sees(match, "b", hi), "G-6b: a high-ground attacker is revealed to its victim");
+  }
+
+  // Payload: vision grid dims in the static map, bitset sized to match
+  {
+    const { match } = setup();
+    const sm = staticMapOf(match);
+    const vis = match.visibilityData!.get("b")!;
+    const bytes = Buffer.from(encodeVision(vis.cells), "base64");
+    assert(sm.visionCellSize === 40 && sm.visionCols === 125 && sm.visionRows === 23 && bytes.length === Math.ceil(125 * 23 / 8),
+      "G-6b: vision grid 125×23 at 40 px, bitset matches");
+    const crystal = [...match.entities.values()].find((e) => e.type === "crystal" && e.ownerId === "b")!;
+    const ci = Math.floor(crystal.y / 40) * 125 + Math.floor(crystal.x / 40);
+    assert(((bytes[ci >> 3] >> (ci & 7)) & 1) === 1 && vis.cells.reduce((a, c) => a + c, 0) < 125 * 23 / 2,
+      "G-6b: own base lit, most of the map dark");
   }
 }
 
