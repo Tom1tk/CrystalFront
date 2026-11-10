@@ -20,7 +20,15 @@ import {
 import type { Agent } from "../../headless/src/types.js";
 import { actionStateOf, headingOf, staticMapOf, type ActionState } from "./match/engine/presentation.js";
 import { ReplayRunner, listReplays, getReplay, ensureReplaysDir, saveReplay } from "./match/replayRunner.js";
-import type { MatchEntity, MatchState, PlayerSlot, ResourceNode, PlayerEconomy } from "./match/types.js";
+import type { MatchEntity, MatchState, PlayerSlot, ResourceNode, PlayerEconomy, MatchConfig } from "./match/types.js";
+import { DEFAULT_CONFIG } from "./match/types.js";
+import { DEFAULT_MAP_ID, isKnownMap } from "./match/maps.js";
+
+/** Live-match config. CF_MAP selects the map until the lobby picker lands (U4). */
+function liveConfig(): MatchConfig {
+  const mapId = process.env.CF_MAP && isKnownMap(process.env.CF_MAP) ? process.env.CF_MAP : DEFAULT_MAP_ID;
+  return { ...DEFAULT_CONFIG, mapId };
+}
 import {
   CLIENT_MSG,
   SERVER_EVT,
@@ -116,6 +124,7 @@ matchEngine.setMatchEndCallback((matchId: string, winner: string) => {
           winType:      match.result?.winType  ?? null,
           commandLog:   match.commandLog       ?? [],
           version:      GAME_VERSION,
+          mapId:        match.terrain.mapId,
         });
       }
     } catch (e) {
@@ -507,7 +516,7 @@ wss.on("connection", (ws) => {
             toPlayerSlot(p1),
           ];
           
-          const match = matchEngine.createMatch(code, players);
+          const match = matchEngine.createMatch(code, players, liveConfig());
           lobbyMatchMap.set(code, match.id);
           matchEngine.startMatch(match.id);
           liveRunner.start(match.id);
@@ -570,7 +579,7 @@ wss.on("connection", (ws) => {
             toPlayerSlot(lobby.players[0]!),
             toPlayerSlot(lobby.players[1]!),
           ];
-          const match = matchEngine.createMatch(code, players);
+          const match = matchEngine.createMatch(code, players, liveConfig());
           lobbyMatchMap.set(code, match.id);
           matchEngine.startMatch(match.id);
           liveRunner.start(match.id);
@@ -621,7 +630,7 @@ wss.on("connection", (ws) => {
             toPlayerSlot(p1),
           ];
 
-          const match = matchEngine.createMatch(session.code, players);
+          const match = matchEngine.createMatch(session.code, players, liveConfig());
           lobbyMatchMap.set(session.code, match.id);
 
           // Start the match immediately

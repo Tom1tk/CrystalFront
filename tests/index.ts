@@ -18,6 +18,8 @@ import { MacroBot } from "../headless/src/bots/macroBot.js";
 import { LiveMatchRunner } from "../server/src/match/liveMatchRunner.js";
 import { hashMatchState } from "../server/src/match/engine/hash.js";
 import { actionStateOf, headingOf, staticMapOf } from "../server/src/match/engine/presentation.js";
+import { isCellBlocked, rebuildNavGrid } from "../server/src/match/engine/navGrid.js";
+import { buildTerrain, terrainAt, isObstacleCode, T_ROCK, T_WATER, T_OPEN, T_HIGH, T_CLIFF } from "../server/src/match/engine/terrain.js";
 import { readFileSync as _readFileSync, readdirSync as _readdirSync } from "node:fs";
 import { existsSync as _existsSync, unlinkSync as _unlinkSync, writeFileSync as _writeFileSync } from "node:fs";
 import { resolve as _resolve, join as _join } from "node:path";
@@ -2426,6 +2428,123 @@ console.log("\n--- G-9f: Shift-queued orders ---");
     for (let t = 0; t < 300 && !worker.buildTargetId; t++) engine.tick(match.id);
     assert(!!worker.buildTargetId && [...match.entities.values()].some((e) => e.buildingType === "supply_depot"),
       "G-9f: queued build is placed once the worker finishes moving");
+  }
+}
+
+// ---- G-5: Obstacles (testbed map) ----
+console.log("\n--- G-5: Obstacles ---");
+{
+  const setup = (mapId = "testbed") => {
+    const engine = new MatchEngine();
+    const players: [PlayerSlot | null, PlayerSlot | null] = [
+      { playerId: "b", username: "B", color: "blue", score: 0 },
+      { playerId: "r", username: "R", color: "red", score: 0 },
+    ];
+    const match = engine.createMatch("g5", players, { ...DEFAULT_CONFIG, maxTicks: 0, mapId }, 7);
+    engine.startMatch(match.id);
+    match.economy[0]!.resources = 1000;
+    return { engine, match };
+  };
+  const t = setup().match.terrain;
+  const code = (x: number, y: number) => terrainAt(t, x, y);
+
+  // Rasterised terrain: every kind present, mirror-symmetric, classic map empty
+  {
+    assert(code(1350, 250) === T_ROCK && code(5000 - 1350, 250) === T_ROCK, "G-5: rock rasterised on both halves");
+    assert(code(1980, 100) === T_WATER && code(1980, 450) === T_OPEN, "G-5: river with a crossing in the middle");
+    assert(code(1650, 750) === T_HIGH && code(1490, 650) === T_CLIFF && code(1490, 740) === T_HIGH, "G-5: plateau with cliffs and a ramp");
+    let sym = true;
+    for (let r = 0; r < t.rows; r++) for (let c = 0; c < t.cols; c++) if (t.cells[r * t.cols + c] !== t.cells[r * t.cols + t.cols - 1 - c]) sym = false;
+    assert(sym, "G-5: testbed terrain is left-right symmetric");
+    assert(!setup("classic").match.terrain.any, "G-5: classic map has no terrain");
+    assert(isCellBlocked(setup().match.nav, Math.floor(1350 / 20), Math.floor(250 / 20)), "G-5: rock cells are blocked in the nav grid");
+  }
+
+  // A unit routes around rock and over the river crossing, never entering an obstacle
+  {
+    const { engine, match } = setup();
+    engine.debugSpawn(match.id, "b", "skirmisher", 1250, 250);
+    const u = [...match.entities.values()].find((e) => e.type === "skirmisher")!;
+    engine.processCommand(match.id, "b", { type: "move", entityId: u.id, targetX: 2100, targetY: 150 } as any);
+    let ticks = 0, inObstacle = 0;
+    while (u.moveTarget && ticks < 600) {
+      engine.tick(match.id); ticks++;
+      if (isObstacleCode(terrainAt(t, u.x, u.y))) inObstacle++;
+    }
+    assert(!u.moveTarget && Math.hypot(u.x - 2100, u.y - 150) < 2, `G-5: unit reaches the far bank (at ${u.x.toFixed(0)},${u.y.toFixed(0)} after ${ticks})`);
+    assert(inObstacle === 0, `G-5: unit centre never inside rock/water (${inObstacle})`);
+    assert(ticks > Math.hypot(2100 - 1250, 150 - 250) / 4 + 30, `G-5: the route detours (took ${ticks} ticks)`);
+  }
+
+  // No building on obstacles or brush
+  {
+    const { engine, match } = setup();
+    const w = [...match.entities.values()].find((e) => e.type === "worker" && e.ownerId === "b")!;
+    // Testbed rock is outside the build zone; swap in terrain inside it to check the terrain rule's message.
+    const onRock = engine.processCommand(match.id, "b", { type: "build", workerIds: [w.id], buildingType: "supply_depot", targetX: 1350, targetY: 250 } as any);
+    assert(!onRock.success, "G-5: cannot build on rock");
+    const tb = buildTerrain({ id: "x", name: "x", version: 1, symmetry: "mirror", shapes: [{ kind: "rock", rect: [600, 300, 700, 400] }, { kind: "brush", rect: [600, 600, 700, 700] }] }, 5000, 900);
+    match.terrain = tb;
+    match.nav = rebuildNavGrid(match);
+    const r1 = engine.processCommand(match.id, "b", { type: "build", workerIds: [w.id], buildingType: "supply_depot", targetX: 650, targetY: 350 } as any);
+    const r2 = engine.processCommand(match.id, "b", { type: "build", workerIds: [w.id], buildingType: "supply_depot", targetX: 650, targetY: 650 } as any);
+    const r3 = engine.processCommand(match.id, "b", { type: "build", workerIds: [w.id], buildingType: "supply_depot", targetX: 650, targetY: 500 } as any);
+    assert(!r1.success && r1.message === "Blocked by terrain", `G-5: building on rock rejected (${r1.message})`);
+    assert(!r2.success && r2.message === "Blocked by terrain", `G-5: building in brush rejected (${r2.message})`);
+    assert(r3.success, `G-5: building beside them is fine (${r3.message})`);
+  }
+
+  // Static map carries the terrain for the client
+  {
+    const { match } = setup();
+    const sm = staticMapOf(match);
+    let n = 0;
+    for (const run of sm.terrain.split(",")) n += Number(run.split(":")[1]);
+    assert(sm.mapId === "testbed" && n === sm.cols * sm.rows, "G-5: static map has the RLE terrain covering every cell");
+  }
+
+  // Mirror invariance on the testbed map (rush bots path through terrain)
+  {
+    const players: [PlayerSlot | null, PlayerSlot | null] = [
+      { playerId: "headless-blue", username: "Blue", color: "blue", score: 0 },
+      { playerId: "headless-red", username: "Red", color: "red", score: 0 },
+    ];
+    const engine = new MatchEngine();
+    const match = engine.createMatch("mirror-tb", players, { ...DEFAULT_CONFIG, maxTicks: 6000, mapId: "testbed" }, 3);
+    engine.startMatch(match.id);
+    const bots = [new MediumRushBot(), new MediumRushBot()];
+    bots[0].init("headless-blue", match);
+    bots[1].init("headless-red", match);
+    let violations = 0;
+    let first: string | undefined;
+    while (match.phase === "playing" && match.tick < 1200) {
+      const acts = (["headless-blue", "headless-red"] as const).map((pid, i) =>
+        bots[i].step(buildObservation(match, pid), getLegalActions(match, pid)));
+      const apply = (i: number) => {
+        const pid = i === 0 ? "headless-blue" : "headless-red";
+        for (const a of acts[i]) for (const c of expandMacroAction(a, match, pid)) engine.processCommand(match.id, pid, c as Parameters<MatchEngine["processCommand"]>[2]);
+      };
+      if (match.tick % 2 === 0) { apply(0); apply(1); } else { apply(1); apply(0); }
+      if (match.tick % 4 === 0) {
+        const s = deepCloneMatchState(match);
+        const ids = new Set(s.entities.keys());
+        const engA = new MatchEngine();
+        (engA as unknown as { matches: Map<string, typeof s> }).matches.set(s.id, deepCloneMatchState(s));
+        engA.tick(s.id);
+        const engB = new MatchEngine();
+        (engB as unknown as { matches: Map<string, typeof s> }).matches.set(s.id, mirrorState(s));
+        engB.tick(s.id);
+        const a = (engA as unknown as { matches: Map<string, typeof s> }).matches.get(s.id)!;
+        const b = (engB as unknown as { matches: Map<string, typeof s> }).matches.get(s.id)!;
+        const d = diffStates(mirrorState(a), b, ids, 0.5);
+        if (d.length && !first) first = `tick ${match.tick + 1}: [${d[0].system}] ${d[0].detail}`;
+        violations += d.length;
+      }
+      engine.tick(match.id);
+    }
+    const army = [...match.entities.values()].filter((e) => e.type === "skirmisher").length;
+    assert(violations === 0, `G-5: mirror invariance holds on the testbed map` + (first ? ` — first: ${first}` : ""));
+    assert(army > 0 || match.phase === "ended", "G-5: bots still produce and fight on the testbed map");
   }
 }
 

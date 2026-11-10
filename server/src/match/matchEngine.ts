@@ -24,6 +24,8 @@ import { processCombat } from "./engine/combat.js";
 import { processGathering } from "./engine/gathering.js";
 import { processRepairAndHealing, processCrystalRegen } from "./engine/repair.js";
 import { dist } from "./engine/utils.js";
+import { terrainFor } from "./maps.js";
+import { rectTouches, isObstacleCode, T_BRUSH } from "./engine/terrain.js";
 import { createNavGrid, rebuildNavGrid, addStructure, removeStructure, anchorsConnected, footprintOf, type Rect } from "./engine/navGrid.js";
 import {
   validatePlacement,
@@ -269,6 +271,7 @@ export class MatchEngine {
       mapWidth: config.mapWidth,
       mapHeight: config.mapHeight,
       nav: createNavGrid(config.mapWidth, config.mapHeight),
+      terrain: terrainFor(config.mapId, config.mapWidth, config.mapHeight),
       rng,
       idGen,
       seed: resolvedSeed,
@@ -705,6 +708,12 @@ if (command.type === "gather") {
       );
         if (!placement.valid) {
          return { success: false, message: placement.reason };
+       }
+
+       // G-5/G-6b: no building on obstacles or in brush.
+       if (rectTouches(match.terrain, targetX - def.width / 2, targetY - def.height / 2, targetX + def.width / 2, targetY + def.height / 2,
+           (c) => isObstacleCode(c) || c === T_BRUSH)) {
+         return { success: false, message: "Blocked by terrain" };
        }
 
        // G-3 no-seal rule: the new footprint must not cut the crystals off from each other.

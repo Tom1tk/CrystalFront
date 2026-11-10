@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Lobby, Player, MatchState, ResourceNodeDisplay, BuildingType, MatchEntity } from "../types";
+import type { Lobby, Player, MatchState, ResourceNodeDisplay, BuildingType, MatchEntity, StaticMap } from "../types";
 import { FCT, FctMark, FctStat, FctStyles, DbgBtn, HEX_CLIP, NOTCH_R } from "../design/facet";
 
 /** G-4: how long a move order's planned path stays on screen. */
@@ -89,6 +89,55 @@ const UNIT_COSTS: Record<string, { cost: number; supplyCost: number }> = {
   bruiser: { cost: 100, supplyCost: 2 },
   medic: { cost: 60, supplyCost: 1 },
 };
+
+// ─── Terrain rendering (G-5/G-6) ─────────────────────────────────
+/** Fill colours per terrain code; open ground (0) is left transparent. */
+const TERRAIN_COLORS: Record<number, string> = {
+  1: "#3a2e1a", // rough
+  2: "#1f3326", // high ground
+  3: "#1f5a2e", // brush
+  4: "#55566a", // rock
+  5: "#7a6244", // cliff
+  6: "#1d4f8a", // water
+};
+
+function decodeTerrain(sm: { cols: number; rows: number; terrain?: string }): Uint8Array | null {
+  if (!sm.terrain) return null;
+  const out = new Uint8Array(sm.cols * sm.rows);
+  let i = 0;
+  for (const run of sm.terrain.split(",")) {
+    const [code, count] = run.split(":").map(Number);
+    out.fill(code, i, i + count);
+    i += count;
+  }
+  return out;
+}
+
+let terrainCache: { key: string; canvas: HTMLCanvasElement | null; cells: Uint8Array | null } | null = null;
+/** Offscreen canvas with one pixel per nav cell (null for maps with no terrain). */
+function terrainCanvas(sm: StaticMap | undefined): HTMLCanvasElement | null {
+  if (!sm?.terrain) return null;
+  const key = `${sm.mapId}:${sm.mapVersion}:${sm.cols}x${sm.rows}:${sm.terrain.length}`;
+  if (terrainCache?.key === key) return terrainCache.canvas;
+  const cells = decodeTerrain(sm);
+  let canvas: HTMLCanvasElement | null = null;
+  if (cells && cells.some((c) => c !== 0)) {
+    canvas = document.createElement("canvas");
+    canvas.width = sm.cols;
+    canvas.height = sm.rows;
+    const c = canvas.getContext("2d")!;
+    for (let r = 0; r < sm.rows; r++) {
+      for (let col = 0; col < sm.cols; col++) {
+        const color = TERRAIN_COLORS[cells[r * sm.cols + col]];
+        if (!color) continue;
+        c.fillStyle = color;
+        c.fillRect(col, r, 1, 1);
+      }
+    }
+  }
+  terrainCache = { key, canvas, cells };
+  return canvas;
+}
 
 function drawMinimap(
   ctx: CanvasRenderingContext2D,
@@ -1801,6 +1850,16 @@ export default function GameShell({
     ctx.fillRect(0, 0, mapWidth * 0.2, mapHeight);
     ctx.fillStyle = "rgba(255, 92, 243, 0.05)";
     ctx.fillRect(mapWidth * 0.8, 0, mapWidth * 0.2, mapHeight);
+
+    // ─── Terrain (G-5/G-6): cached 1px-per-cell canvas, scaled up ─
+    {
+      const tc = terrainCanvas(matchState.staticMap);
+      if (tc) {
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(tc, 0, 0, tc.width * matchState.staticMap!.cellSize, tc.height * matchState.staticMap!.cellSize);
+        ctx.imageSmoothingEnabled = true;
+      }
+    }
 
     // ─── Vision fog overlay (tile-based, drawn BEFORE entities) ─
     // Tiles outside all vision sources are darkened. Drawn before

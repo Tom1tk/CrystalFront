@@ -23,6 +23,7 @@ import type {
 import type { Rng } from "./rng.js";
 import type { IdGen } from "./idGen.js";
 import { cloneNavGrid, rebuildNavGrid } from "./navGrid.js";
+import { mirrorTerrain } from "./terrain.js";
 
 function shallowClone<T extends object>(obj: T): T {
   return Object.assign(Object.create(Object.getPrototypeOf(obj)), obj);
@@ -92,6 +93,7 @@ export function mirrorState(match: MatchState): MatchState {
   for (const n of clone.resourceNodes) {
     n.x = mirrorX(n.x);
   }
+  clone.terrain = mirrorTerrain(clone.terrain);
   clone.nav = rebuildNavGrid(clone);
 
   return {

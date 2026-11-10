@@ -10,24 +10,32 @@
  */
 import { NAV, BUILDING_DEFS } from "@crystalfront/shared";
 import type { MatchEntity, MatchState } from "../types.js";
+import { isObstacleCode, type Terrain } from "./terrain.js";
 
 export interface NavGrid {
   cellSize: number;
   cols: number;
   rows: number;
-  /** Number of structures overlapping each cell (row-major). */
+  /** Number of structures overlapping each cell (row-major). Terrain obstacles
+   *  (rock, cliff, water) count as one permanent structure (G-5). */
   structures: Uint8Array;
+  /** Static terrain the grid was built on (read-only, shared). */
+  terrain: Terrain | null;
   /** Bumped on every change, so path/flow-field caches can be invalidated (G-4). */
   version: number;
 }
 
 export interface Rect { x1: number; y1: number; x2: number; y2: number }
 
-export function createNavGrid(mapWidth: number, mapHeight: number): NavGrid {
+export function createNavGrid(mapWidth: number, mapHeight: number, terrain: Terrain | null = null): NavGrid {
   const cellSize = NAV.cellSize;
   const cols = Math.ceil(mapWidth / cellSize);
   const rows = Math.ceil(mapHeight / cellSize);
-  return { cellSize, cols, rows, structures: new Uint8Array(cols * rows), version: 0 };
+  const structures = new Uint8Array(cols * rows);
+  if (terrain && terrain.cols === cols && terrain.rows === rows) {
+    for (let i = 0; i < structures.length; i++) if (isObstacleCode(terrain.cells[i])) structures[i] = 1;
+  }
+  return { cellSize, cols, rows, structures, terrain, version: 0 };
 }
 
 export function cloneNavGrid(g: NavGrid): NavGrid {
@@ -77,7 +85,7 @@ export function removeStructure(g: NavGrid, e: MatchEntity): void {
 }
 
 export function rebuildNavGrid(match: MatchState): NavGrid {
-  const g = createNavGrid(match.mapWidth, match.mapHeight);
+  const g = createNavGrid(match.mapWidth, match.mapHeight, match.terrain);
   for (const e of match.entities.values()) addStructure(g, e);
   return g;
 }

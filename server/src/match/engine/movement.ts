@@ -2,6 +2,7 @@ import { UNIT_DEFS, SIMULATION } from "@crystalfront/shared";
 import type { MatchState } from "../types.js";
 import { dist, buildSpatialGrid, getRange, entityIdNum } from "./utils.js";
 import { footprintOf, pushOutOfRect, type Rect } from "./navGrid.js";
+import { isObstacleCode, type Terrain } from "./terrain.js";
 import { cellOf, hasLineOfSight, planPath } from "./pathfinding.js";
 import type { MatchEntity } from "../types.js";
 
@@ -223,7 +224,7 @@ export function processMovement(match: MatchState): void {
     const r = footprintOf(e);
     if (r) solids.push(r);
   }
-  if (solids.length === 0) return;
+  const terrain = match.terrain.any ? match.terrain : null;
   const mapW = match.config.mapWidth;
   const mapH = match.config.mapHeight;
   for (const u of mobile) {
@@ -231,9 +232,37 @@ export function processMovement(match: MatchState): void {
       if (u.x + u.radius <= r.x1 || u.x - u.radius >= r.x2 || u.y + u.radius <= r.y1 || u.y - u.radius >= r.y2) continue;
       pushOutOfRect(u, r);
     }
+    if (terrain) pushOutOfTerrain(terrain, u);
     u.x = Math.max(u.radius, Math.min(mapW - u.radius, u.x));
     u.y = Math.max(u.radius, Math.min(mapH - u.radius, u.y));
   }
+}
+
+/**
+ * G-5: push a unit out of terrain obstacle cells. Each overlapping cell proposes
+ * a displacement from the same starting position; per axis the largest push each
+ * way is applied, so a flat wall of several cells pushes once and the result
+ * doesn't depend on cell iteration order (mirror-safe).
+ */
+function pushOutOfTerrain(t: Terrain, u: { x: number; y: number; radius: number }): void {
+  const cs = t.cellSize;
+  const c1 = Math.max(0, Math.floor((u.x - u.radius) / cs));
+  const c2 = Math.min(t.cols - 1, Math.floor((u.x + u.radius) / cs));
+  const r1 = Math.max(0, Math.floor((u.y - u.radius) / cs));
+  const r2 = Math.min(t.rows - 1, Math.floor((u.y + u.radius) / cs));
+  let maxX = 0, minX = 0, maxY = 0, minY = 0;
+  for (let r = r1; r <= r2; r++) {
+    for (let c = c1; c <= c2; c++) {
+      if (!isObstacleCode(t.cells[r * t.cols + c])) continue;
+      const p = { x: u.x, y: u.y, radius: u.radius };
+      if (!pushOutOfRect(p, { x1: c * cs, y1: r * cs, x2: (c + 1) * cs, y2: (r + 1) * cs })) continue;
+      const dx = p.x - u.x, dy = p.y - u.y;
+      if (dx > maxX) maxX = dx; else if (dx < minX) minX = dx;
+      if (dy > maxY) maxY = dy; else if (dy < minY) minY = dy;
+    }
+  }
+  u.x += maxX + minX;
+  u.y += maxY + minY;
 }
 
 type SnapGrid = Map<number, Array<{ id: string; x: number; y: number; radius: number }>>;

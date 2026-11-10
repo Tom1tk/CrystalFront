@@ -50,6 +50,7 @@ export function useWebSocket(): UseWebSocketReturn {
   const [playerId, setPlayerId] = useState<string | null>(null);
   const [lobbyState, setLobbyState] = useState<LobbyState | null>(null);
   const [matchState, setMatchState] = useState<MatchState | null>(null);
+  const staticMapRef = useRef<MatchState["staticMap"]>(undefined);
   const [matchEnd, setMatchEnd] = useState<{ winner: string } | null>(null);
   const [replayEnd, setReplayEnd] = useState<{ ticks: number; winner: string | null } | null>(null);
   const [resourceNodes, setResourceNodes] = useState<ResourceNodeDisplay[]>([]);
@@ -94,12 +95,16 @@ export function useWebSocket(): UseWebSocketReturn {
         if (msg.type === "match_start" && msg.payload?.match) {
           const ms = msg.payload.match as MatchState;
           ms.attackLog = ms.attackLog ?? [];
+          staticMapRef.current = ms.staticMap;
           setMatchState(ms);
           setResourceNodes(ms.resourceNodes ?? []);
         }
         if (msg.type === "game_state" && msg.payload?.match) {
           const ms = msg.payload.match as MatchState;
           ms.attackLog = ms.attackLog ?? [];
+          // Static map arrives once with match_start; carry it on every state (G-5).
+          if (ms.staticMap) staticMapRef.current = ms.staticMap;
+          else ms.staticMap = staticMapRef.current;
           setMatchState(ms);
           setResourceNodes(ms.resourceNodes ?? []);
         }

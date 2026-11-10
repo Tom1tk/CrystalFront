@@ -58,6 +58,7 @@ export interface SaveReplayArgs {
   winType:      string | null;
   commandLog:   Array<{ tick: number; playerId: string; command: Record<string, unknown> }>;
   version:      string;
+  mapId?:       string;
 }
 
 export function saveReplay(args: SaveReplayArgs): string {
@@ -72,6 +73,7 @@ export function saveReplay(args: SaveReplayArgs): string {
     redPlayerId:   args.redPlayerId,
     version:       args.version,
     engineVersion: ENGINE_VERSION,
+    mapId:         args.mapId ?? "classic",
     timestamp:     Date.now(),
     outcome: {
       winner:     args.winner,
@@ -300,7 +302,8 @@ export class ReplayRunner {
       { playerId: redId,  username: replay.red,  color: "red",  score: 0 },
     ];
 
-    const replayConfig = DEFAULT_CONFIG; // G-9e: only same-engine replays reach here
+    // G-9e: only same-engine replays reach here. G-5: replay on the recorded map.
+    const replayConfig = { ...DEFAULT_CONFIG, mapId: (replay as { mapId?: string }).mapId ?? "classic" };
 
     const match = this.engine.createMatch("replay", players, replayConfig, replay.seed);
     this.engine.startMatch(match.id);

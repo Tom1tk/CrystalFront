@@ -167,7 +167,7 @@ export interface MatchState {
   mapWidth: number;
   mapHeight: number;
   /** G-11: static map data, present on MATCH_START only. */
-  staticMap?: { cellSize: number; cols: number; rows: number };
+  staticMap?: { cellSize: number; cols: number; rows: number; mapId?: string; mapVersion?: number; terrain?: string };
   // Fog of war — per-player visibility (set by server before sending)
   visibleEntityIds?: string[];
   visibleNodeIds?: string[];

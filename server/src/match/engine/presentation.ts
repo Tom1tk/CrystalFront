@@ -6,6 +6,7 @@
  * sprite facing and animation.
  */
 import type { MatchEntity, MatchState } from "../types.js";
+import { encodeTerrain } from "./terrain.js";
 
 export type ActionState = "idle" | "moving" | "attacking" | "gathering" | "constructing" | "dying";
 
@@ -41,11 +42,18 @@ export function headingOf(e: MatchEntity, match: MatchState): number | undefined
   return Math.round(Math.atan2(dy, dx) * 1000) / 1000;
 }
 
-/** Static map data, sent once with MATCH_START. Terrain layers join in U3. */
+/**
+ * Static map data, sent once with MATCH_START. `terrain` is the run-length
+ * encoded nav-cell terrain codes ("code:count,…"; 0 open, 1 rough, 2 high,
+ * 3 brush, 4 rock, 5 cliff, 6 water).
+ */
 export function staticMapOf(match: MatchState) {
   return {
     cellSize: match.nav.cellSize,
     cols: match.nav.cols,
     rows: match.nav.rows,
+    mapId: match.terrain.mapId,
+    mapVersion: match.terrain.mapVersion,
+    terrain: encodeTerrain(match.terrain),
   };
 }

@@ -9,6 +9,7 @@ import {
 import type { Rng } from "./engine/rng.js";
 import type { IdGen } from "./engine/idGen.js";
 import type { NavGrid } from "./engine/navGrid.js";
+import type { Terrain } from "./engine/terrain.js";
 
 export type MatchPhase = "spawn" | "playing" | "ended";
 
@@ -78,8 +79,10 @@ export interface MatchState {
   config: MatchConfig;
   mapWidth: number;
   mapHeight: number;
-  /** G-3 nav grid (derived from structures; excluded from the state hash). */
+  /** G-3 nav grid (derived from structures + terrain; excluded from the state hash). */
   nav: NavGrid;
+  /** G-5 static terrain for config.mapId (shared, read-only; excluded from the hash). */
+  terrain: Terrain;
   // Fog of war — computed per tick, keyed by playerId
   visibilityData?: Map<PlayerId, { entityIds: Set<EntityId>; nodeIds: Set<string> }>;
   // Determinism — seedable RNG and monotonic ID generator.
@@ -195,6 +198,8 @@ export interface MatchConfig {
   gatherRatePerTick: number;
   viewportWidth: number;
   viewportHeight: number;
+  /** Map id (G-5); terrain comes from the map registry. Default "classic" (no terrain). */
+  mapId?: string;
   // ── Per-version balance overrides (populated from BalanceSnapshot for replays) ──
   passiveWinThreshold?: number;   // held resources to win; falls back to ECONOMY constant
   maxTicks?: number;              // tick cap; 0 = no cap; tiebreak resolves the winner

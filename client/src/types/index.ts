@@ -92,4 +92,22 @@ export interface MatchState {
   };
   mapWidth: number;
   mapHeight: number;
+  /** Sent with match_start; the client hook carries it on every later state (G-5). */
+  staticMap?: StaticMap;
+  /** Own vision bitmap (G-6b): base64 bitset over the vision grid, row-major. */
+  vision?: string;
+}
+
+export interface StaticMap {
+  cellSize: number;
+  cols: number;
+  rows: number;
+  mapId?: string;
+  mapVersion?: number;
+  /** RLE terrain codes "code:count,…" — 0 open, 1 rough, 2 high, 3 brush, 4 rock, 5 cliff, 6 water. */
+  terrain?: string;
+  /** Vision grid geometry (G-6b). */
+  visionCellSize?: number;
+  visionCols?: number;
+  visionRows?: number;
 }
