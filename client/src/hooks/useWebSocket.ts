@@ -20,7 +20,7 @@ interface UseWebSocketReturn {
   resourceNodes: ResourceNodeDisplay[];
   createLobby: (username: string) => void;
   joinLobby: (code: string, username: string) => void;
-  startSoloTest: (username: string) => void;
+  startSoloTest: (username: string, mapId?: string) => void;
   startBotGame: (username: string, bot: string, mapId?: string) => void;
   setMap: (mapId: string) => void;
   startReplay: (replayId: string) => void;
@@ -147,8 +147,8 @@ export function useWebSocket(): UseWebSocketReturn {
   );
 
   const startSoloTest = useCallback(
-    (username: string) => {
-      sendMessage({ type: "start_solo_test", payload: { username } });
+    (username: string, mapId?: string) => {
+      sendMessage({ type: "start_solo_test", payload: { username, mapId } });
     },
     [sendMessage]
   );

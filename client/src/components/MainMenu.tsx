@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { FCT, FctFrame, FctPanel, FctBtn, Refract, HEX_CLIP } from "../design/facet";
+import MapPicker from "./MapPicker";
 
 declare const __APP_VERSION__: string;
 
@@ -18,7 +19,7 @@ const BOT_OPTIONS: { name: string; label: string; sub: string; type: "ml" | "scr
 interface MainMenuProps {
   onHost: (username: string) => void;
   onJoin: (code: string, username: string) => void;
-  onSoloTest: (username: string) => void;
+  onSoloTest: (username: string, mapId: string) => void;
   onBotGame: (username: string, bot: string) => void;
   onBotSelect: (username: string) => void;
   onReplays: () => void;
@@ -30,6 +31,7 @@ export default function MainMenu({ onHost, onJoin, onSoloTest, onBotGame: _onBot
   const [error, setError] = useState("");
   const [showJoin, setShowJoin] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [soloMap, setSoloMap] = useState("random");
   // G-11: same key GameShell reads; F3 in game toggles it too.
   const [view3d, setView3d] = useState(() => {
     try { return window.localStorage.getItem("cf.view3d") === "1"; } catch { return false; }
@@ -126,9 +128,8 @@ export default function MainMenu({ onHost, onJoin, onSoloTest, onBotGame: _onBot
                 lineHeight: 1.55,
               }}
             >
-              Real-time strategy prototype. One lane, one resource,
-              one Crystal each. Out-build, out-counter, shatter the
-              opposing core.
+              Real-time 1v1 strategy. Use terrain, fog and high ground,
+              hold the contested nodes, or shatter the enemy Crystal.
             </div>
           </div>
           <div
@@ -415,6 +416,9 @@ export default function MainMenu({ onHost, onJoin, onSoloTest, onBotGame: _onBot
               >
                 Launch a solo game against a dummy opponent to test features.
               </div>
+              <div style={{ marginBottom: 12 }}>
+                <MapPicker value={soloMap} onChange={setSoloMap} />
+              </div>
               <FctBtn
                 primary
                 full
@@ -429,7 +433,7 @@ export default function MainMenu({ onHost, onJoin, onSoloTest, onBotGame: _onBot
                     setError("Username too long.");
                     return;
                   }
-                  onSoloTest(username.trim());
+                  onSoloTest(username.trim(), soloMap);
                 }}
               >
                 ◆ Solo Test

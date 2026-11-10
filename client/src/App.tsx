@@ -114,8 +114,8 @@ function useScreenFlow() {
   );
 
   const handleSoloTest = useCallback(
-    (name: string) => {
-      ws.startSoloTest(name);
+    (name: string, mapId?: string) => {
+      ws.startSoloTest(name, mapId);
       setIsHost(true);
     },
     [ws.startSoloTest]
