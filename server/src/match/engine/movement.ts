@@ -1,6 +1,7 @@
 import { UNIT_DEFS, SIMULATION } from "@crystalfront/shared";
 import type { MatchState } from "../types.js";
 import { dist, buildSpatialGrid, getRange, entityIdNum } from "./utils.js";
+import { footprintOf, pushOutOfRect, type Rect } from "./navGrid.js";
 
 export function processMovement(match: MatchState): void {
   const entities = Array.from(match.entities.values());
@@ -110,5 +111,25 @@ export function processMovement(match: MatchState): void {
       entity.x += px;
       entity.y += pushY.get(entity.id)!;
     }
+  }
+
+  // G-3: structures (buildings, crystals) are solid. Push any unit overlapping a
+  // footprint back out along the shortest way (also covers units standing where a
+  // building was just placed). Proper routing around them arrives with G-4.
+  const solids: Rect[] = [];
+  for (const e of entities) {
+    const r = footprintOf(e);
+    if (r) solids.push(r);
+  }
+  if (solids.length === 0) return;
+  const mapW = match.config.mapWidth;
+  const mapH = match.config.mapHeight;
+  for (const u of mobile) {
+    for (const r of solids) {
+      if (u.x + u.radius <= r.x1 || u.x - u.radius >= r.x2 || u.y + u.radius <= r.y1 || u.y - u.radius >= r.y2) continue;
+      pushOutOfRect(u, r);
+    }
+    u.x = Math.max(u.radius, Math.min(mapW - u.radius, u.x));
+    u.y = Math.max(u.radius, Math.min(mapH - u.radius, u.y));
   }
 }

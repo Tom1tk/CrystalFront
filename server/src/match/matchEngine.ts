@@ -24,6 +24,7 @@ import { processCombat } from "./engine/combat.js";
 import { processGathering } from "./engine/gathering.js";
 import { processRepairAndHealing, processCrystalRegen } from "./engine/repair.js";
 import { dist } from "./engine/utils.js";
+import { createNavGrid, rebuildNavGrid, addStructure, removeStructure, anchorsConnected, footprintOf, type Rect } from "./engine/navGrid.js";
 import {
   validatePlacement,
   findCrystalByColor,
@@ -222,12 +223,14 @@ export class MatchEngine {
       config,
       mapWidth: config.mapWidth,
       mapHeight: config.mapHeight,
+      nav: createNavGrid(config.mapWidth, config.mapHeight),
       rng,
       idGen,
       seed: resolvedSeed,
       commandLog: [],
     };
 
+    match.nav = rebuildNavGrid(match);
     this.matches.set(id, match);
     return match;
   }
@@ -306,6 +309,7 @@ export class MatchEngine {
       building.constructionProgress = 100;
       building.health = def.health;
       match.entities.set(building.id, building);
+      addStructure(match.nav, building);
       return { success: true };
     }
 
@@ -631,6 +635,15 @@ if (command.type === "gather") {
          return { success: false, message: placement.reason };
        }
 
+       // G-3 no-seal rule: the new footprint must not cut the crystals off from each other.
+       const crystalRects = Array.from(match.entities.values())
+         .filter((e) => e.type === "crystal")
+         .map((e) => footprintOf(e) as Rect);
+       const newRect = footprintOf({ type: "building", x: targetX, y: targetY, radius: 0, buildingType });
+       if (!anchorsConnected(match.nav, crystalRects, newRect ?? undefined)) {
+         return { success: false, message: "Would seal off a crystal" };
+       }
+
        // Deduct resources
         economy.resources -= def.cost;
 
@@ -660,6 +673,7 @@ if (command.type === "gather") {
          autoAttackEnabled: buildingType === "turret",
        };
        match.entities.set(building.id, building);
+       addStructure(match.nav, building);  // solid from placement start (G-3)
 
        // Assign workers to building
        for (const wid of workerIds) {
@@ -1238,6 +1252,7 @@ if (command.type === "gather") {
        }
 
       match.entities.delete(entityId);
+      removeStructure(match.nav, entity);
 
       // Crystal destruction = match end
       if (entity.type === "crystal") {
@@ -1408,6 +1423,7 @@ if (command.type === "gather") {
         : null,
     ];
 
+    match.nav = rebuildNavGrid(match);
     return match;
   }
 

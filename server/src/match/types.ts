@@ -8,6 +8,7 @@ import {
 } from "@crystalfront/shared";
 import type { Rng } from "./engine/rng.js";
 import type { IdGen } from "./engine/idGen.js";
+import type { NavGrid } from "./engine/navGrid.js";
 
 export type MatchPhase = "spawn" | "playing" | "ended";
 
@@ -77,6 +78,8 @@ export interface MatchState {
   config: MatchConfig;
   mapWidth: number;
   mapHeight: number;
+  /** G-3 nav grid (derived from structures; excluded from the state hash). */
+  nav: NavGrid;
   // Fog of war — computed per tick, keyed by playerId
   visibilityData?: Map<PlayerId, { entityIds: Set<EntityId>; nodeIds: Set<string> }>;
   // Determinism — seedable RNG and monotonic ID generator.

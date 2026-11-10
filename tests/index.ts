@@ -2,7 +2,7 @@ import { LobbyManager } from "../server/src/lobby/lobbyManager.js";
 import { MatchEngine } from "../server/src/match/matchEngine.js";
 import { createMap } from "../server/src/match/map.js";
 import { DEFAULT_CONFIG } from "../server/src/match/types.js";
-import type { MatchEntity, PlayerSlot, ResourceNode } from "../server/src/match/types.js";
+import type { MatchEntity, MatchState, PlayerSlot, ResourceNode } from "../server/src/match/types.js";
 import type { Player, LobbyCode } from "../shared/src/index.js";
 import { CLIENT_MSG, SERVER_EVT, WS_EVENT } from "../shared/src/messages.js";
 import { ALL_ACTIONS, ACTION_SPACE_SIZE, actionToIndex, indexToAction, legalMask } from "../headless/src/actionIndex.js";
@@ -823,7 +823,7 @@ console.log("\n--- Combat: Crystal Regen ---");
   assert(blueCrystal.health === healthBefore, "Crystal does not regenerate when an enemy is nearby");
 
   // Move enemy worker away and verify regen does not exceed max HP
-  enemyWorker.x = blueCrystal.x - 1000;
+  enemyWorker.x = blueCrystal.x + 1000;
   blueCrystal.health = blueCrystal.maxHealth - 0.03;
   engine.tick(match.id);
   assert(blueCrystal.health === blueCrystal.maxHealth, "Crystal regen does not exceed max HP");
@@ -2170,6 +2170,87 @@ console.log("\n--- Mirror-invariance property test (Appendix C exp. 4) ---");
   assert(violations === 0,
     `mirror-invariance: tick(mirror(s)) ~= mirror(tick(s)) for ${MIRROR_AUDIT_TICKS} ticks (eps=${MIRROR_EPS})` +
     (firstViolation ? ` — first: ${firstViolation}` : ""));
+}
+
+// ---- G-3: Nav grid, solid buildings, no-seal rule ----
+console.log("\n--- G-3: Nav grid and solid buildings ---");
+{
+  const setup = () => {
+    const engine = new MatchEngine();
+    const players: [PlayerSlot | null, PlayerSlot | null] = [
+      { playerId: "b", username: "B", color: "blue", score: 0 },
+      { playerId: "r", username: "R", color: "red", score: 0 },
+    ];
+    const match = engine.createMatch("g3", players, { ...DEFAULT_CONFIG, maxTicks: 0 }, 7);
+    engine.startMatch(match.id);
+    match.economy[0]!.resources = 10000;
+    return { engine, match };
+  };
+  const cellAt = (m: MatchState, x: number, y: number) =>
+    m.nav.structures[Math.floor(y / m.nav.cellSize) * m.nav.cols + Math.floor(x / m.nav.cellSize)];
+
+  // Grid dimensions and crystals stamped at creation
+  {
+    const { match } = setup();
+    assert(match.nav.cols === 250 && match.nav.rows === 45, `G-3: nav grid is 250x45 (got ${match.nav.cols}x${match.nav.rows})`);
+    const crystal = [...match.entities.values()].find((e) => e.type === "crystal")!;
+    assert(cellAt(match, crystal.x, crystal.y) > 0, "G-3: crystal footprint is blocked in the nav grid");
+  }
+
+  // A build order blocks cells from placement start; death clears them
+  {
+    const { engine, match } = setup();
+    const worker = [...match.entities.values()].find((e) => e.type === "worker" && e.ownerId === "b")!;
+    const res = engine.processCommand(match.id, "b", { type: "build", workerIds: [worker.id], buildingType: "barracks", targetX: 600, targetY: 300 } as any);
+    assert(res.success, `G-3: build accepted (${res.message ?? ""})`);
+    assert(cellAt(match, 600, 300) > 0, "G-3: building footprint blocked from placement start");
+    const b = [...match.entities.values()].find((e) => e.type === "building")!;
+    b.health = 1;
+    (engine as any).processDeaths(match, new Map([[b.id, 5]]));
+    assert(cellAt(match, 600, 300) === 0, "G-3: footprint cleared when the building is destroyed");
+  }
+
+  // Units cannot walk through a building
+  {
+    const { engine, match } = setup();
+    engine.debugSpawn(match.id, "b", "building", 800, 450, "barracks");
+    engine.debugSpawn(match.id, "b", "skirmisher", 700, 450);
+    const u = [...match.entities.values()].find((e) => e.type === "skirmisher")!;
+    engine.processCommand(match.id, "b", { type: "move", entityIds: [u.id], targetX: 900, targetY: 450 } as any);
+    let inside = 0;
+    for (let i = 0; i < 60; i++) {
+      engine.tick(match.id);
+      if (u.x + u.radius > 780 + 0.01 && u.x - u.radius < 820 - 0.01 && u.y + u.radius > 430 + 0.01 && u.y - u.radius < 470 - 0.01) inside++;
+    }
+    assert(inside === 0, `G-3: unit never overlaps a solid building footprint (overlapped on ${inside} ticks)`);
+  }
+
+  // Units standing where a building is placed get pushed out
+  {
+    const { engine, match } = setup();
+    engine.debugSpawn(match.id, "b", "skirmisher", 600, 600);
+    const u = [...match.entities.values()].find((e) => e.type === "skirmisher")!;
+    engine.debugSpawn(match.id, "b", "building", 600, 600, "foundry");
+    engine.tick(match.id);
+    const clear = u.x + u.radius <= 578 + 1e-6 || u.x - u.radius >= 622 - 1e-6 || u.y + u.radius <= 578 + 1e-6 || u.y - u.radius >= 622 - 1e-6;
+    assert(clear, `G-3: unit under a new building is pushed out (at ${u.x.toFixed(1)},${u.y.toFixed(1)})`);
+  }
+
+  // No-seal rule: a placement that closes the last gap in a wall is rejected
+  {
+    const wall = (gapTop: number) => {
+      const { engine, match } = setup();
+      for (let y = 20; y <= 380; y += 40) engine.debugSpawn(match.id, "b", "building", 600, y, "barracks");
+      for (let y = gapTop; y <= 900; y += 40) engine.debugSpawn(match.id, "b", "building", 600, y, "barracks");
+      const worker = [...match.entities.values()].find((e) => e.type === "worker" && e.ownerId === "b")!;
+      return engine.processCommand(match.id, "b", { type: "build", workerIds: [worker.id], buildingType: "barracks", targetX: 600, targetY: 430 } as any);
+    };
+    const sealed = wall(480);
+    assert(!sealed.success && sealed.message === "Would seal off a crystal",
+      `G-3: placement that seals the crystal is rejected (got ${sealed.success} "${sealed.message ?? ""}")`);
+    const open = wall(560);
+    assert(open.success, `G-3: same placement with a gap left open is accepted (${open.message ?? ""})`);
+  }
 }
 
 // ---- G-1: Move vs attack-move ----

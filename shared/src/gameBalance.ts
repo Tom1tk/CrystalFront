@@ -275,6 +275,11 @@ export const ENTITY = {
  */
 export const ENGINE_VERSION = 2;
 
+/** Navigation grid (G-3). */
+export const NAV = {
+  cellSize: 20,             // px per nav cell (5000×900 → 250×45)
+} as const;
+
 export const SIMULATION = {
   tickIntervalMs: 100,     // ms per game tick (10 Hz)
   arrivalThreshold: 1,      // pixels — unit stops moving when this close

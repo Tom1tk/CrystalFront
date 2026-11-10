@@ -22,6 +22,7 @@ import type {
 } from "../types.js";
 import type { Rng } from "./rng.js";
 import type { IdGen } from "./idGen.js";
+import { cloneNavGrid, rebuildNavGrid } from "./navGrid.js";
 
 function shallowClone<T extends object>(obj: T): T {
   return Object.assign(Object.create(Object.getPrototypeOf(obj)), obj);
@@ -56,6 +57,7 @@ export function deepCloneMatchState(match: MatchState): MatchState {
     entities: new Map([...match.entities].map(([id, e]) => [id, cloneEntity(e)])),
     resourceNodes: match.resourceNodes.map(cloneNode),
     attackLog: match.attackLog.map((a) => ({ ...a })),
+    nav: cloneNavGrid(match.nav),
     commandLog: match.commandLog.map((c) => ({ ...c })),
     config: { ...match.config },
     rng: [shallowClone(match.rng[0]), shallowClone(match.rng[1])] as [Rng, Rng],
@@ -83,6 +85,7 @@ export function mirrorState(match: MatchState): MatchState {
   for (const n of clone.resourceNodes) {
     n.x = mirrorX(n.x);
   }
+  clone.nav = rebuildNavGrid(clone);
 
   return {
     ...clone,
