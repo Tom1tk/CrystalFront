@@ -2633,3 +2633,28 @@ Verified: `npm test` 470/470, `training.test_env` PASS, `test_config_persistence
 **Balance (moved by G-1, left for G-8):** blue win rate rush-macro 0.50, rush-turtle 1.00, macro-turtle 0.85, turtle-macro 0.20 (20 games/pair).
 
 **Deferred within G-9d:** golden pathing/LOS replays (U2/U3) and the 1000-map connectivity test (U4), since the features they cover don't exist yet.
+
+### 2026-11-10 — v0.6.2: U1 complete (map size, solid buildings, stream hooks, control groups)
+
+**Done (all on `CrystalFront-ML`, each pushed):**
+- `feat(G-2)` `1537610`:
+  - Map is now 5000×900 (`ENGINE_VERSION` 2), drawn fit-to-height with no vertical camera.
+  - Soft collision is now order-independent (Jacobi). The size change had exposed a mirror-invariance failure.
+  - Checked in headless Chromium: no vertical scroll at 1280×720, 1366×768, 1600×900, 1920×1080, 2560×1440 or 960×1000.
+- `feat(G-3)` `0e2de58`:
+  - 20 px nav grid (250×45).
+  - Buildings and crystals are solid; units are pushed out of their footprints.
+  - The no-seal placement rule ("Would seal off a crystal") is enforced through a 4-connected flood fill.
+- `feat(G-11)` `59dc6d5`:
+  - Each entity now carries `heading` and `actionState` (idle/moving/attacking/gathering/constructing/dying).
+  - `staticMap` (nav grid dimensions) goes out once on MATCH_START.
+  - Both values are derived at serialisation time, so the sim, hash and mirror are unaffected.
+  - This commit also fixed the G-3 walk-through test. It sent `entityIds` and never actually moved the unit; it now moves and still passes.
+- `feat(G-9f)`: control groups (client only). Checked in the browser: assign, recall, and double-tap camera jump.
+
+**Gate:** no vertical scroll at any test resolution ✔; buildings solid ✔; connectivity check enforced ✔. `npm test` 506/506.
+
+**Known / carried forward:**
+- Bench after G-3 is ~5,100 ticks/sec. The workload changed: units now collide with buildings.
+- Rush-vs-rush and macro-vs-turtle samples now time out at 6000 ticks. Units snag on buildings because there is no pathing yet; G-4 (U2) addresses this.
+- The hotkey grid overlays the bottom-left of the map.
