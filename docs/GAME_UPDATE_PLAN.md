@@ -303,6 +303,11 @@ The goal is a cosmetic 3D client in the spirit of classic MOBA/MMO art direction
 - **High ground** has a real elevation level in map data, not just a flag, so the 3D view can model plateaus and ramps.
 - **No gameplay logic in the client.** The canvas client stays a pure view (it largely is today). The 3D client becomes a second view, selectable in settings.
 
+**Asset sources (user-picked, 2026-11-10):** Kenney packs (kenney.nl, released as CC0; confirm the licence file in each download and credit Kenney anyway):
+- Models/textures: [mini-characters](https://kenney.nl/assets/mini-characters), [fantasy-town-kit](https://kenney.nl/assets/fantasy-town-kit), [mini-forest](https://kenney.nl/assets/mini-forest), [tower-defense-kit](https://kenney.nl/assets/tower-defense-kit), [nature-kit](https://kenney.nl/assets/nature-kit), [3d-road-tiles](https://kenney.nl/assets/3d-road-tiles)
+- Audio: [interface-sounds](https://kenney.nl/assets/interface-sounds), [impact-sounds](https://kenney.nl/assets/impact-sounds), [rpg-audio](https://kenney.nl/assets/rpg-audio)
+- `VISUAL_PLAN.md` should map each unit, building, node and terrain type to a specific model in these packs. Audio can also land in the 2D client, since it needs no 3D work.
+
 ---
 
 ## Sequencing
