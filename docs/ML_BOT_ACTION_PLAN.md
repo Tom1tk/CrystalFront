@@ -2658,3 +2658,39 @@ Verified: `npm test` 470/470, `training.test_env` PASS, `test_config_persistence
 - Bench after G-3 is ~5,100 ticks/sec. The workload changed: units now collide with buildings.
 - Rush-vs-rush and macro-vs-turtle samples now time out at 6000 ticks. Units snag on buildings because there is no pathing yet; G-4 (U2) addresses this.
 - The hotkey grid overlays the bottom-left of the map.
+
+### 2026-11-10 — v0.6.3: U2 complete (pathfinding, shift-queue)
+
+**Done (all on `CrystalFront-ML`, each pushed):**
+- `feat(G-4)` `c86bba6`:
+  - A* on the nav grid, using scratch buffers stamped by generation. A heap decrease-key bug that broke mirror invariance was fixed.
+  - Flow fields for group moves.
+  - A blocked goal is retargeted to the nearest free point.
+  - Paths are compressed to turning points and then string-pulled.
+  - Stuck detection is now progress-based.
+  - Group arrival: a stuck unit near its goal that is touching an idle unit counts as arrived.
+  - The path is sent only to the unit's owner. The client draws a dashed green line for 1.2 s after a move.
+  - `ENGINE_VERSION` 3.
+- `feat(G-9f)` `7ab8cf3`, shift-queued orders:
+  - Shift+move, attack-move, attack or build on a busy unit appends to a per-unit queue (max 8). An order without Shift clears the queue.
+  - Queues are drained in tick Phase 0 and are mirror-safe.
+  - Shift+build keeps build mode.
+  - Selected units show dotted queue lines.
+  - `ENGINE_VERSION` 4.
+
+**Gate:** pathing and order-queue golden tests ✔ (21 new, `npm test` 527/527). Throughput ✔: the bench runs at 5,315 ticks/sec, against ~5,100 before G-4.
+
+**Balance check after G-4** (scripted 3×3, 20 matches per cell; blue win rate):
+
+| blue \ red | rush | macro | turtle |
+|---|---|---|---|
+| rush   | 0.55 | 1.00 | 0.70 |
+| macro  | 0.00 | 0.35 | 0.75 |
+| turtle | 0.25 | 0.35 | 0.65 |
+
+- Pathing removed the snag timeouts only partly:
+  - Rush-vs-rush went from 15 timeouts to 12.
+  - macro-vs-macro (18), macro-vs-turtle (19) and turtle-vs-macro (16) still mostly time out.
+  - turtle-vs-turtle is still 20/20 resource wins.
+- Rush got markedly stronger now that units path cleanly: it won 20/20 against macro, and rush-vs-macro games average about 2,150 ticks.
+- These are U5 (G-8) problems, not pathing bugs. The fixes are the win-condition rework and the rush counter-levers.
