@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Lobby, Player, MatchState, ResourceNodeDisplay, BuildingType, MatchEntity } from "../types";
 import { FCT, FctMark, FctStat, FctStyles, DbgBtn, HEX_CLIP, NOTCH_R } from "../design/facet";
+
+/** G-4: how long a move order's planned path stays on screen. */
+const PATH_SHOW_MS = 1200;
 import { UNIT_DEFS, BUILDING_DEFS } from "@crystalfront/shared";
 
 interface GameShellProps {
@@ -760,6 +763,8 @@ export default function GameShell({
   const dragStartRef = useRef<{ x: number; y: number } | null>(dragStart);
   const debugSpawnModeRef = useRef<string | null>(null);
   const attackMoveModeRef = useRef(false);
+  // G-4: units whose planned path is drawn briefly after a move order.
+  const pathShowRef = useRef<{ ids: Set<string>; until: number }>({ ids: new Set(), until: 0 });
   const playerRef = useRef(safePlayer);
   const minimapDraggingRef = useRef(false);
 
@@ -967,6 +972,7 @@ export default function GameShell({
           const enemy = (matchState?.entities ?? []).find((ent) =>
             ent.ownerId !== safePlayer.id && Math.hypot(worldX - ent.x, worldY - ent.y) <= ent.radius
           );
+          if (!enemy) pathShowRef.current = { ids: new Set(ids), until: performance.now() + PATH_SHOW_MS };
           for (const id of ids) {
             const ent = myEntities.find((m) => m.id === id);
             if (!ent || ent.type === "crystal" || ent.type === "building") continue;
@@ -1108,6 +1114,10 @@ export default function GameShell({
           }
 
           // Move to ground position
+          if (pathShowRef.current.until < performance.now() + PATH_SHOW_MS - 50) {
+            pathShowRef.current = { ids: new Set(), until: performance.now() + PATH_SHOW_MS };
+          }
+          pathShowRef.current.ids.add(sid);
           onGameCommand({
             type: "move",
             entityId: sid,
@@ -2038,6 +2048,24 @@ export default function GameShell({
           ctx.fillRect(barX, barY, barWidth * healthPct, 4);
         }
       }
+    }
+
+    // G-4: planned path for units just given a move order, fading out.
+    const pathLeft = pathShowRef.current.until - performance.now();
+    if (pathLeft > 0) {
+      ctx.save();
+      ctx.setLineDash([4, 6]);
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = `rgba(120, 220, 140, ${(0.6 * Math.min(1, pathLeft / 400)).toFixed(3)})`;
+      for (const entity of entities) {
+        if (!pathShowRef.current.ids.has(entity.id) || !entity.moveTarget) continue;
+        ctx.beginPath();
+        ctx.moveTo(entity.x, entity.y);
+        for (const p of entity.path ?? []) ctx.lineTo(p.x, p.y);
+        ctx.lineTo(entity.moveTarget.x, entity.moveTarget.y);
+        ctx.stroke();
+      }
+      ctx.restore();
     }
 
     // Rally point markers — always visible for own buildings

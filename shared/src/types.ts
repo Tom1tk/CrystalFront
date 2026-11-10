@@ -73,6 +73,8 @@ export interface Entity {
   heading?: number;
   /** G-11: animation hint. */
   actionState?: "idle" | "moving" | "attacking" | "gathering" | "constructing" | "dying";
+  /** G-4: remaining route waypoints before moveTarget (own units only). */
+  path?: Array<{ x: number; y: number }>;
 }
 
 export type MatchPhase = "spawn" | "playing" | "ended";

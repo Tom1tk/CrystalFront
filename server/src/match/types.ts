@@ -121,6 +121,24 @@ export interface MatchEntity {
   /** Active player move order (G-1). attack=false: plain move, ignores enemies until
    *  arrival. attack=true: attack-move, fights anything met, then resumes to (x,y). */
   moveOrder?: { x: number; y: number; attack: boolean };
+  /** Planned route toward moveTarget (G-4). Recomputed when the goal changes cell,
+   *  the nav grid blocks the remaining route, or the unit is stuck. */
+  route?: EntityRoute;
+}
+
+export interface EntityRoute {
+  /** moveTarget the route was planned for. */
+  goalX: number;
+  goalY: number;
+  /** Remaining intermediate waypoints; the final leg goes straight to moveTarget. */
+  waypoints: { x: number; y: number }[];
+  /** Goal unreachable: stop after the last waypoint (nearest reachable point). */
+  truncated: boolean;
+  /** Nav grid version the route was last validated against. */
+  version: number;
+  /** Stuck detection: closest distance to the current steer point, and ticks since it improved. */
+  bestDist: number;
+  stuckTicks: number;
 }
 
 export interface CommandEntry {

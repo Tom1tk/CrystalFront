@@ -197,6 +197,7 @@ function serializeEntities(match: MatchState): Array<{
   rallyPoint?: { x: number; y: number };
   heading?: number;
   actionState: ActionState;
+  path?: Array<{ x: number; y: number }>;
 }> {
   return Array.from(match.entities.values()).map((e) => ({
     id: e.id,
@@ -229,6 +230,10 @@ function serializeEntities(match: MatchState): Array<{
     rallyPoint: e.rallyPoint,
     heading: headingOf(e, match),
     actionState: actionStateOf(e),
+    // G-4: remaining route waypoints (stripped from other players' units below).
+    path: e.route && e.route.waypoints.length > 0
+      ? e.route.waypoints.map((w) => ({ x: Math.round(w.x), y: Math.round(w.y) }))
+      : undefined,
   }));
 }
 
@@ -294,6 +299,9 @@ function buildMatchStatePayload(match: MatchState, stateTimestamp?: number, play
       allEntities = allEntities.filter(e => vis.entityIds.has(e.id));
       allNodes = allNodes.filter(n => vis.nodeIds.has(n.id));
     }
+  }
+  if (playerId) {
+    for (const e of allEntities) if (e.ownerId !== playerId) e.path = undefined;
   }
 
   return {

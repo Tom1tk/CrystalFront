@@ -1506,6 +1506,8 @@ if (command.type === "gather") {
       attackCooldown: 0,
       healTargetId: undefined,
       autoAttackEnabled,
+      moveOrder: undefined,
+      route: undefined,
     };
   }
 

@@ -12,6 +12,7 @@ import { buildObservation } from "../headless/src/observation.js";
 import { ECONOMY, HEALING, ENGINE_VERSION } from "../shared/src/gameBalance.js";
 import { saveReplay, getReplay, listReplays } from "../server/src/match/replayRunner.js";
 import { mirrorState, deepCloneMatchState, diffStates } from "../server/src/match/engine/mirror.js";
+import { planPath } from "../server/src/match/engine/pathfinding.js";
 import { MediumRushBot } from "../headless/src/bots/mediumRushBot.js";
 import { MacroBot } from "../headless/src/bots/macroBot.js";
 import { LiveMatchRunner } from "../server/src/match/liveMatchRunner.js";
@@ -2252,6 +2253,102 @@ console.log("\n--- G-3: Nav grid and solid buildings ---");
       `G-3: placement that seals the crystal is rejected (got ${sealed.success} "${sealed.message ?? ""}")`);
     const open = wall(560);
     assert(open.success, `G-3: same placement with a gap left open is accepted (${open.message ?? ""})`);
+  }
+}
+
+// ---- G-4: Pathfinding ----
+console.log("\n--- G-4: Pathfinding ---");
+{
+  const setup = () => {
+    const engine = new MatchEngine();
+    const players: [PlayerSlot | null, PlayerSlot | null] = [
+      { playerId: "b", username: "B", color: "blue", score: 0 },
+      { playerId: "r", username: "R", color: "red", score: 0 },
+    ];
+    const match = engine.createMatch("g4", players, { ...DEFAULT_CONFIG, maxTicks: 0 }, 7);
+    engine.startMatch(match.id);
+    return { engine, match };
+  };
+  // Vertical wall of barracks (40x40) centred on x, from y0 to y1 inclusive.
+  const wall = (engine: MatchEngine, m: MatchState, x: number, y0: number, y1: number) => {
+    for (let y = y0; y <= y1; y += 40) engine.debugSpawn(m.id, "b", "building", x, y, "barracks");
+  };
+  const skirmishers = (m: MatchState) => [...m.entities.values()].filter((e) => e.type === "skirmisher");
+  const move = (engine: MatchEngine, m: MatchState, id: string, x: number, y: number) =>
+    engine.processCommand(m.id, "b", { type: "move", entityId: id, targetX: x, targetY: y } as any);
+  // Unit circle overlaps a building footprint (with a small tolerance for push-out rounding).
+  const overlapsBuilding = (m: MatchState, u: { x: number; y: number; radius: number }) =>
+    [...m.entities.values()].some((b) => b.type === "building" &&
+      Math.hypot(u.x - Math.max(b.x - 20, Math.min(b.x + 20, u.x)), u.y - Math.max(b.y - 20, Math.min(b.y + 20, u.y))) < u.radius - 0.5);
+
+  // Golden: path around a wall (A* and flow field agree, deterministic waypoints)
+  {
+    const { engine, match } = setup();
+    wall(engine, match, 1200, 220, 700);
+    const golden = JSON.stringify({ waypoints: [{ x: 1170, y: 190 }, { x: 1230, y: 190 }], truncated: false });
+    const a = JSON.stringify(planPath(match.nav, 1000, 450, 1400, 450, false));
+    const f = JSON.stringify(planPath(match.nav, 1000, 450, 1400, 450, true));
+    assert(a === golden, `G-4: golden A* path around a wall (got ${a})`);
+    assert(f === golden, `G-4: golden flow-field path around a wall (got ${f})`);
+    const direct = planPath(match.nav, 1000, 100, 1400, 100, false);
+    assert(direct.waypoints.length === 0 && !direct.truncated, "G-4: clear line of sight needs no waypoints");
+  }
+
+  // Unreachable goal (inside a building) resolves to the nearest reachable point
+  {
+    const { match, engine } = setup();
+    wall(engine, match, 1200, 220, 700);
+    const p = planPath(match.nav, 1000, 450, 1200, 460, false);
+    const last = p.waypoints[p.waypoints.length - 1];
+    assert(p.truncated && !!last && last.x < 1180 && last.x > 1150 && Math.abs(last.y - 458.6) < 1,
+      `G-4: goal inside a structure resolves to the free point in front of it (got ${JSON.stringify(p)})`);
+  }
+
+  // Group arrival: six units sharing a flow field all reach the goal and stop
+  {
+    const { engine, match } = setup();
+    wall(engine, match, 1200, 220, 700);
+    for (let i = 0; i < 6; i++) engine.debugSpawn(match.id, "b", "skirmisher", 1000, 380 + i * 25);
+    const us = skirmishers(match);
+    for (const u of us) move(engine, match, u.id, 1400, 450);
+    let t = 0, overlaps = 0;
+    while (t < 450 && us.some((u) => u.moveTarget)) {
+      engine.tick(match.id); t++;
+      for (const u of us) if (overlapsBuilding(match, u)) overlaps++;
+    }
+    assert(us.every((u) => !u.moveTarget), `G-4: every unit in a group move arrives and stops (${us.filter((u) => u.moveTarget).length} still moving after ${t} ticks)`);
+    assert(us.every((u) => Math.hypot(u.x - 1400, u.y - 450) < 80), `G-4: group ends clustered at the goal (${us.map((u) => Math.hypot(u.x - 1400, u.y - 450).toFixed(0)).join(",")})`);
+    assert(overlaps === 0, `G-4: no unit overlaps the wall during the group move (${overlaps})`);
+  }
+
+  // Repath when a building is placed across an active route
+  {
+    const { engine, match } = setup();
+    engine.debugSpawn(match.id, "b", "skirmisher", 700, 450);
+    const u = skirmishers(match)[0];
+    move(engine, match, u.id, 1400, 450);
+    for (let i = 0; i < 5; i++) engine.tick(match.id);
+    assert(u.route !== undefined && u.route.waypoints.length === 0, "G-4: open ground route is direct");
+    wall(engine, match, 1000, 300, 620);
+    engine.tick(match.id);
+    assert((u.route?.waypoints.length ?? 0) > 0, "G-4: placing a wall across the route triggers a repath");
+    let t = 0, overlaps = 0;
+    while (t < 400 && u.moveTarget) { engine.tick(match.id); t++; if (overlapsBuilding(match, u)) overlaps++; }
+    assert(!u.moveTarget && Math.hypot(u.x - 1400, u.y - 450) <= 1.5, `G-4: unit reaches the goal around the new wall (at ${u.x.toFixed(1)},${u.y.toFixed(1)})`);
+    assert(overlaps === 0, `G-4: unit never overlaps the new wall (${overlaps})`);
+  }
+
+  // Determinism: same setup twice gives an identical state hash
+  {
+    const run = () => {
+      const { engine, match } = setup();
+      wall(engine, match, 1200, 220, 700);
+      for (let i = 0; i < 6; i++) engine.debugSpawn(match.id, "b", "skirmisher", 1000, 380 + i * 25);
+      for (const u of skirmishers(match)) move(engine, match, u.id, 1400, 450);
+      for (let i = 0; i < 200; i++) engine.tick(match.id);
+      return skirmishers(match).map((u) => `${u.x},${u.y}`).join("|");
+    };
+    assert(run() === run(), "G-4: pathing is deterministic across runs");
   }
 }
 
