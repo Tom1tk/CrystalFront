@@ -261,12 +261,11 @@ console.log("\n--- Camera Config Validation ---");
   const config = DEFAULT_CONFIG;
   assert(config.mapWidth >= config.viewportWidth, "Map width >= viewport width");
   assert(config.mapHeight >= config.viewportHeight, "Map height >= viewport height");
-  assert(config.mapWidth === 6000, "World width is 6000");
-  assert(config.mapHeight === 600, "World height is 600");
+  assert(config.mapWidth === 5000, "World width is 5000 (G-2)");
+  assert(config.mapHeight === 900, "World height is 900 (G-2)");
   assert(config.viewportWidth === 960, "Viewport width is 960");
   assert(config.viewportHeight === 540, "Viewport height is 540");
-  assert(Math.abs(config.mapWidth / config.viewportWidth - 6.25) < 0.01, "World is ~6.25 viewport widths wide");
-}
+  }
 
 // ---- Camera Clamping Logic ----
 console.log("\n--- Camera Clamping Logic ---");
@@ -355,7 +354,7 @@ console.log("\n--- Mirrored Map Placement in Larger World ---");
   assert(map.redCrystal.x > mapWidth - 200, `Red crystal at x=${map.redCrystal.x} (far right)`);
 
   const crystalDistance = map.redCrystal.x - map.blueCrystal.x;
-  assert(crystalDistance > 5000, `Crystal distance is ${crystalDistance} (should be > 5000)`);
+  assert(crystalDistance > 4500, `Crystal distance is ${crystalDistance} (should be > 4500)`);
 
   const blueBuildZoneWidth = map.blueBuildZone.x2 - map.blueBuildZone.x1;
   const redBuildZoneWidth = map.redBuildZone.x2 - map.redBuildZone.x1;

@@ -36,7 +36,10 @@ interface GameShellProps {
 const CANVAS_WIDTH = 960;
 const CANVAS_HEIGHT = 540;
 const MINIMAP_WIDTH = 450;
-const MINIMAP_HEIGHT = 120;
+const MINIMAP_HEIGHT = 81; // 450 × (900/5000): map aspect
+/** G-2: screen pixels reserved at the top for the phase bar + scoreboard; the map is
+ *  drawn fit-to-height in the canvas area below, so there is never vertical scrolling. */
+const HUD_TOP = 88;
 const EDGE_SCROLL_THRESHOLD = 50;
 const EDGE_SCROLL_SPEED = 3;
 
@@ -732,6 +735,8 @@ export default function GameShell({
   const dprRef = useRef(window.devicePixelRatio || 1);
   const cameraXRef = useRef(0);
   const cameraYRef = useRef(0);
+  /** G-2 fit-to-height render scale = (canvas height − HUD_TOP) / map height. */
+  const scaleRef = useRef(1);
   const cameraInitializedRef = useRef(false);
   const mousePosRef = useRef<{ x: number; y: number } | null>(null);
   const matchStateRef = useRef<MatchState | null>(null);
@@ -801,10 +806,10 @@ export default function GameShell({
 
     // Use container dimensions — they're set by CSS flexbox during layout,
     // before effects run. canvas.clientHeight is 0/default until ResizeObserver fires later.
-    const viewW = container.clientWidth;
-    const viewH = container.clientHeight;
-    const mapWidth = matchState.mapWidth ?? matchState.config?.mapWidth ?? 6000;
-    const mapHeight = matchState.mapHeight ?? matchState.config?.mapHeight ?? 600;
+    const mapWidth = matchState.mapWidth ?? matchState.config?.mapWidth ?? 5000;
+    const mapHeight = matchState.mapHeight ?? matchState.config?.mapHeight ?? 900;
+    scaleRef.current = Math.max(0.1, (container.clientHeight - HUD_TOP) / mapHeight);
+    const viewW = container.clientWidth / scaleRef.current;  // world px visible
 
     const myIdx = matchState.players.findIndex((p) => p?.playerId === safePlayer.id);
     const myCrystal = matchState.entities.find((e) => e.type === "crystal" && e.ownerId === safePlayer.id);
@@ -820,10 +825,8 @@ export default function GameShell({
     } else {
       cameraXRef.current = Math.max(0, mapWidth - viewW);
     }
-    // Vertically center the map in the viewport.
-    // Allow negative cameraY — when viewport is taller than the map,
-    // this pushes the map down, centering it visually with equal space above and below.
-    cameraYRef.current = (mapHeight - viewH) / 2;
+    // Fit-to-height (G-2): the whole map height is always visible, no vertical camera.
+    cameraYRef.current = 0;
 
   }, [matchState, safePlayer.id]);
 
@@ -896,8 +899,8 @@ export default function GameShell({
         screenY <= minimapY + MINIMAP_HEIGHT
       ) {
         const fraction = (screenX - minimapX) / MINIMAP_WIDTH;
-        const mapWidth = matchState.mapWidth ?? matchState.config?.mapWidth ?? 6000;
-        const viewW = canvas.clientWidth;
+        const mapWidth = matchState.mapWidth ?? matchState.config?.mapWidth ?? 5000;
+        const viewW = canvas.clientWidth / scaleRef.current;
         cameraXRef.current = Math.max(0, Math.min(fraction * mapWidth - viewW / 2, mapWidth - viewW));
         minimapDraggingRef.current = true;
         return true;
@@ -922,8 +925,8 @@ export default function GameShell({
 
       if (handleMinimapClick(e)) return;
 
-      const worldX = screenX + cameraXRef.current;
-      const worldY = screenY + cameraYRef.current;
+      const worldX = screenX / scaleRef.current + cameraXRef.current;
+      const worldY = (screenY - HUD_TOP) / scaleRef.current;
 
       // Left click: selection + build placement
       if (e.button === 0) {
@@ -1132,8 +1135,8 @@ export default function GameShell({
 
       mousePosRef.current = { x: screenX, y: screenY };
 
-      const worldX = screenX + cameraXRef.current;
-      const worldY = screenY + cameraYRef.current;
+      const worldX = screenX / scaleRef.current + cameraXRef.current;
+      const worldY = (screenY - HUD_TOP) / scaleRef.current;
       setHoverPos(prev => (prev && prev.x === worldX && prev.y === worldY ? prev : { x: worldX, y: worldY }));
 
       // Debug drag resource node (throttled to ~10 cmds/sec)
@@ -1396,8 +1399,8 @@ export default function GameShell({
 
         // Build placement takes priority over selection
         if (buildMode && selectedBuildingType && Math.abs(dx) <= 10 && Math.abs(dy) <= 10) {
-          const worldX = screenX + cameraXRef.current;
-          const worldY = screenY + cameraYRef.current;
+          const worldX = screenX / scaleRef.current + cameraXRef.current;
+          const worldY = (screenY - HUD_TOP) / scaleRef.current;
           const workerIds = Array.from(selectedEntityIds).filter((id) =>
             myEntities.find((ent) => ent.id === id && ent.type === "worker")
           );
@@ -1424,10 +1427,10 @@ export default function GameShell({
           const x2 = Math.max(dragStart.x, screenX);
           const y2 = Math.max(dragStart.y, screenY);
 
-          const worldX1 = x1 + cameraXRef.current;
-          const worldY1 = y1 + cameraYRef.current;
-          const worldX2 = x2 + cameraXRef.current;
-          const worldY2 = y2 + cameraYRef.current;
+          const worldX1 = x1 / scaleRef.current + cameraXRef.current;
+          const worldY1 = (y1 - HUD_TOP) / scaleRef.current;
+          const worldX2 = x2 / scaleRef.current + cameraXRef.current;
+          const worldY2 = (y2 - HUD_TOP) / scaleRef.current;
 
           const boxSelected = new Set<string>();
           for (const entity of matchState?.entities ?? []) {
@@ -1443,8 +1446,8 @@ export default function GameShell({
         }
         // Single-click: hit detection
         else {
-          const worldX = screenX + cameraXRef.current;
-          const worldY = screenY + cameraYRef.current;
+          const worldX = screenX / scaleRef.current + cameraXRef.current;
+          const worldY = (screenY - HUD_TOP) / scaleRef.current;
 
           let clickedEntity: MatchEntity | undefined;
           for (const entity of matchState?.entities ?? []) {
@@ -1522,13 +1525,14 @@ export default function GameShell({
       if (edgeCanvas) {
         const pos = mousePosRef.current;
         if (pos) {
-          const viewW = edgeCanvas.clientWidth;
+          const screenW = edgeCanvas.clientWidth;
+          const viewW = screenW / scaleRef.current;  // world px visible
 
           // Minimap drag: update camera while dragging on minimap (X-axis only)
           if (minimapDraggingRef.current) {
-            const mmX = viewW - MINIMAP_WIDTH - 10;
+            const mmX = screenW - MINIMAP_WIDTH - 10;
             const xFraction = Math.max(0, Math.min(1, (pos.x - mmX) / MINIMAP_WIDTH));
-            const mapWidth = ms.mapWidth ?? 6000;
+            const mapWidth = ms.mapWidth ?? 5000;
             cameraXRef.current = Math.max(0, Math.min(xFraction * mapWidth - viewW / 2, mapWidth - viewW));
           }
 
@@ -1536,9 +1540,9 @@ export default function GameShell({
           if (!minimapDraggingRef.current) {
             let dx = 0;
             if (pos.x < EDGE_SCROLL_THRESHOLD) dx = -EDGE_SCROLL_SPEED;
-            else if (pos.x > viewW - EDGE_SCROLL_THRESHOLD) dx = EDGE_SCROLL_SPEED;
+            else if (pos.x > screenW - EDGE_SCROLL_THRESHOLD) dx = EDGE_SCROLL_SPEED;
             if (dx !== 0) {
-              const mapWidth = ms.mapWidth ?? 6000;
+              const mapWidth = ms.mapWidth ?? 5000;
               cameraXRef.current = Math.max(0, Math.min(mapWidth - viewW, cameraXRef.current + dx));
             }
           }
@@ -1703,8 +1707,11 @@ export default function GameShell({
 
     const cameraX = cameraXRef.current;
     const cameraY = cameraYRef.current;
-    const mapWidth = matchState.mapWidth ?? matchState.config?.mapWidth ?? 6000;
-    const mapHeight = matchState.mapHeight ?? matchState.config?.mapHeight ?? 600;
+    const mapWidth = matchState.mapWidth ?? matchState.config?.mapWidth ?? 5000;
+    const mapHeight = matchState.mapHeight ?? matchState.config?.mapHeight ?? 900;
+    const scale = Math.max(0.1, (cssH - HUD_TOP) / mapHeight);
+    scaleRef.current = scale;
+    const viewWW = cssW / scale;  // visible world width
 
     const getTeamColor = (ownerId: string) => {
       const pIdx = matchState.players.findIndex((p) => p?.playerId === ownerId);
@@ -1717,6 +1724,8 @@ export default function GameShell({
     const combatZoneBottom = mapHeight * 0.7;
 
     ctx.save();
+    ctx.translate(0, HUD_TOP);
+    ctx.scale(scale, scale);
     ctx.translate(-cameraX, -cameraY);
 
     // Lane background
@@ -1758,8 +1767,8 @@ export default function GameShell({
         const TILE = 14;
         const tSX = Math.floor(cameraX / TILE) * TILE;
         const tSY = Math.floor(cameraY / TILE) * TILE;
-        const tEX = cameraX + cssW + TILE;
-        const tEY = cameraY + cssH + TILE;
+        const tEX = cameraX + viewWW + TILE;
+        const tEY = mapHeight + TILE;
 
         ctx.globalAlpha = 0.48;
         ctx.fillStyle = "#050816";
@@ -1806,7 +1815,7 @@ export default function GameShell({
 
     // Resource nodes
     for (const node of resourceNodes) {
-      if (node.x < cameraX - node.radius * 2 || node.x > cameraX + cssW + node.radius * 2) continue;
+      if (node.x < cameraX - node.radius * 2 || node.x > cameraX + viewWW + node.radius * 2) continue;
       ctx.beginPath();
       ctx.arc(node.x, node.y, node.radius + 6, 0, Math.PI * 2);
       const nodePulseA = 0.08 + 0.07 * Math.sin(Date.now() / 2000);
@@ -1841,7 +1850,7 @@ export default function GameShell({
     // Entities
     for (const entity of entities) {
       const hitRadius = entity.type === "building" || entity.type === "crystal" ? 22 : entity.radius;
-      if (entity.x < cameraX - hitRadius * 2 || entity.x > cameraX + cssW + hitRadius * 2) continue;
+      if (entity.x < cameraX - hitRadius * 2 || entity.x > cameraX + viewWW + hitRadius * 2) continue;
       const localIsMyTeam = entity.ownerId === safePlayer.id;
       const localIsSelected = entity.id === selectedEntityId;
       const localIsBuilding = entity.type === "building" || entity.type === "crystal";
@@ -2149,15 +2158,15 @@ export default function GameShell({
         const w = sx2 - sx1;
         const h = sy2 - sy1;
         if (w > 10 || h > 10) {
-          const wx1 = sx1 + cameraX;
-          const wy1 = sy1 + cameraY;
+          const wx1 = sx1 / scale + cameraX;
+          const wy1 = (sy1 - HUD_TOP) / scale;
           ctx.strokeStyle = "rgba(100,150,255,0.6)";
           ctx.lineWidth = 1;
           ctx.setLineDash([4, 4]);
-          ctx.strokeRect(wx1, wy1, w, h);
+          ctx.strokeRect(wx1, wy1, w / scale, h / scale);
           ctx.setLineDash([]);
           ctx.fillStyle = "rgba(100,150,255,0.1)";
-          ctx.fillRect(wx1, wy1, w, h);
+          ctx.fillRect(wx1, wy1, w / scale, h / scale);
         }
       }
     }
@@ -2196,10 +2205,10 @@ export default function GameShell({
       const minimapY = cssH - MINIMAP_HEIGHT - 10;
       drawMinimap(
         ctx,
-        matchState.mapWidth ?? matchState.config?.mapWidth ?? 6000,
-        matchState.mapHeight ?? matchState.config?.mapHeight ?? 600,
+        matchState.mapWidth ?? matchState.config?.mapWidth ?? 5000,
+        matchState.mapHeight ?? matchState.config?.mapHeight ?? 900,
         cameraXRef.current,
-        cssW,
+        viewWW,
         resourceNodes,
         entities,
         safePlayer.color,
@@ -2211,9 +2220,9 @@ export default function GameShell({
       {
         const mmSources = entities.filter(e => e.ownerId === safePlayer.id && e.health > 0);
         if (mmSources.length > 0) {
-          const mapW = matchState.mapWidth ?? matchState.config?.mapWidth ?? 6000;
+          const mapW = matchState.mapWidth ?? matchState.config?.mapWidth ?? 5000;
           const xScale = MINIMAP_WIDTH / mapW;
-          const yScale = MINIMAP_HEIGHT / (matchState.mapHeight ?? matchState.config?.mapHeight ?? 600);
+          const yScale = MINIMAP_HEIGHT / (matchState.mapHeight ?? matchState.config?.mapHeight ?? 900);
 
           const mmData: { sx: number; sy: number; rngSq: number }[] = [];
           for (const src of mmSources) {
@@ -2688,6 +2697,7 @@ const styles = {
     flexDirection: "column" as const,
     width: "100vw",
     height: "100vh",
+    position: "relative" as const,
     background: FCT.bg,
     overflow: "hidden",
     alignItems: "stretch",
@@ -2764,14 +2774,17 @@ const styles = {
     color: FCT.inkDim,
     zIndex: 5,
   },
+  // G-2: overlay, not a reserved strip — toggling build mode must not resize the canvas
+  // (that would change the fit-to-height scale).
   bottomBars: {
-    width: "100%",
+    position: "absolute" as const,
+    left: 0,
+    right: 0,
+    bottom: 0,
     display: "flex",
     flexDirection: "column" as const,
-    flexShrink: 0,
-    overflow: "auto",
-    maxHeight: 180,
-    borderTop: `1px solid ${FCT.line}`,
+    pointerEvents: "none" as const,
+    zIndex: 15,
   },
   trainBar: {
     padding: "8px 16px",

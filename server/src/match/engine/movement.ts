@@ -68,43 +68,47 @@ export function processMovement(match: MatchState): void {
     }
   }
 
-  // Soft collision resolution with spatial grid (two passes for stability)
+  // Soft collision resolution with spatial grid (two passes for stability).
+  // Pushes are accumulated and applied simultaneously (Jacobi), so the result
+  // does not depend on iteration order: mirror-symmetric states stay mirror-symmetric.
   const mobile = entities.filter((e) => e.type !== "crystal" && e.type !== "building");
   const cellSize = SIMULATION.spatialCellSize;
   for (let pass = 0; pass < 2; pass++) {
     const grid = buildSpatialGrid(mobile, cellSize);
-    const checked = new Set<string>();
+    const pushX = new Map<string, number>();
+    const pushY = new Map<string, number>();
     for (const entity of mobile) {
       const cx = Math.floor(entity.x / cellSize);
       const cy = Math.floor(entity.y / cellSize);
       for (let ddx = -1; ddx <= 1; ddx++) {
         for (let ddy = -1; ddy <= 1; ddy++) {
-          const key = `${cx + ddx},${cy + ddy}`;
-          const cell = grid.get(key);
+          const cell = grid.get(`${cx + ddx},${cy + ddy}`);
           if (!cell) continue;
           for (const other of cell) {
-            // Numeric comparison: ids are "e<n>" and lexicographic comparison
-            // is wrong once n reaches double digits (e.g. "e10" < "e9"),
-            // which would otherwise pair entities in an inconsistent order.
+            // Each unordered pair once (numeric id order; "e10" < "e9" lexicographically).
             if (entityIdNum(other.id) <= entityIdNum(entity.id)) continue;
-            if (checked.has(`${entity.id}-${other.id}`)) continue;
-            checked.add(`${entity.id}-${other.id}`);
             const dx = other.x - entity.x;
             const dy = other.y - entity.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
             const minDist = entity.radius + other.radius;
             if (distance < minDist && distance > 0) {
               const push = (minDist - distance) * 0.5;
-              const nx = dx / distance;
-              const ny = dy / distance;
-              entity.x -= nx * push;
-              entity.y -= ny * push;
-              other.x += nx * push;
-              other.y += ny * push;
+              const px = (dx / distance) * push;
+              const py = (dy / distance) * push;
+              pushX.set(entity.id, (pushX.get(entity.id) ?? 0) - px);
+              pushY.set(entity.id, (pushY.get(entity.id) ?? 0) - py);
+              pushX.set(other.id, (pushX.get(other.id) ?? 0) + px);
+              pushY.set(other.id, (pushY.get(other.id) ?? 0) + py);
             }
           }
         }
       }
+    }
+    for (const entity of mobile) {
+      const px = pushX.get(entity.id);
+      if (px === undefined) continue;
+      entity.x += px;
+      entity.y += pushY.get(entity.id)!;
     }
   }
 }

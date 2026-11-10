@@ -208,8 +208,8 @@ export const GATHERING = {
 // ====================================================================
 
 export const MAP = {
-  width: 6000,
-  height: 600,
+  width: 5000,   // G-2: 5000×900, drawn fit-to-height (no vertical scroll)
+  height: 900,
   viewportWidth: 960,
   viewportHeight: 540,
 } as const;
@@ -273,7 +273,7 @@ export const ENTITY = {
  * Replays are stamped with it; replays with a different stamp are not listed or
  * played (no compatibility layer).
  */
-export const ENGINE_VERSION = 1;
+export const ENGINE_VERSION = 2;
 
 export const SIMULATION = {
   tickIntervalMs: 100,     // ms per game tick (10 Hz)
