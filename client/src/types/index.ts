@@ -43,6 +43,10 @@ export interface MatchEntity {
   healTargetId?: string;
   autoAttackEnabled: boolean;
   rallyPoint?: { x: number; y: number };
+  /** G-11: facing in radians toward the current target (undefined = keep last). */
+  heading?: number;
+  /** G-11: animation hint. */
+  actionState?: "idle" | "moving" | "attacking" | "gathering" | "constructing" | "dying";
 }
 
 export interface ResourceNodeDisplay {

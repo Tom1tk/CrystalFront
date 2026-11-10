@@ -16,6 +16,7 @@ import { MediumRushBot } from "../headless/src/bots/mediumRushBot.js";
 import { MacroBot } from "../headless/src/bots/macroBot.js";
 import { LiveMatchRunner } from "../server/src/match/liveMatchRunner.js";
 import { hashMatchState } from "../server/src/match/engine/hash.js";
+import { actionStateOf, headingOf, staticMapOf } from "../server/src/match/engine/presentation.js";
 import { readFileSync as _readFileSync, readdirSync as _readdirSync } from "node:fs";
 import { existsSync as _existsSync, unlinkSync as _unlinkSync, writeFileSync as _writeFileSync } from "node:fs";
 import { resolve as _resolve, join as _join } from "node:path";
@@ -2216,13 +2217,14 @@ console.log("\n--- G-3: Nav grid and solid buildings ---");
     engine.debugSpawn(match.id, "b", "building", 800, 450, "barracks");
     engine.debugSpawn(match.id, "b", "skirmisher", 700, 450);
     const u = [...match.entities.values()].find((e) => e.type === "skirmisher")!;
-    engine.processCommand(match.id, "b", { type: "move", entityIds: [u.id], targetX: 900, targetY: 450 } as any);
+    engine.processCommand(match.id, "b", { type: "move", entityId: u.id, targetX: 900, targetY: 450 } as any);
     let inside = 0;
     for (let i = 0; i < 60; i++) {
       engine.tick(match.id);
       if (u.x + u.radius > 780 + 0.01 && u.x - u.radius < 820 - 0.01 && u.y + u.radius > 430 + 0.01 && u.y - u.radius < 470 - 0.01) inside++;
     }
     assert(inside === 0, `G-3: unit never overlaps a solid building footprint (overlapped on ${inside} ticks)`);
+    assert(u.x !== 700 || u.y !== 450, "G-3: the walk-through unit actually moved");
   }
 
   // Units standing where a building is placed get pushed out
@@ -2251,6 +2253,34 @@ console.log("\n--- G-3: Nav grid and solid buildings ---");
     const open = wall(560);
     assert(open.success, `G-3: same placement with a gap left open is accepted (${open.message ?? ""})`);
   }
+}
+
+// ---- G-11: State-stream presentation hooks ----
+console.log("\n--- G-11: heading / actionState / static map ---");
+{
+  const engine = new MatchEngine();
+  const players: [PlayerSlot | null, PlayerSlot | null] = [
+    { playerId: "b", username: "B", color: "blue", score: 0 },
+    { playerId: "r", username: "R", color: "red", score: 0 },
+  ];
+  const match = engine.createMatch("g11", players, { ...DEFAULT_CONFIG, maxTicks: 0 }, 7);
+  engine.startMatch(match.id);
+  engine.debugSpawn(match.id, "b", "skirmisher", 1000, 450);
+  const u = [...match.entities.values()].find((e) => e.type === "skirmisher")!;
+  assert(actionStateOf(u) === "idle" && headingOf(u, match) === undefined, "G-11: fresh unit is idle with no heading");
+  engine.processCommand(match.id, "b", { type: "move", entityId: u.id, targetX: 1000, targetY: 700 } as any);
+  engine.tick(match.id);
+  assert(actionStateOf(u) === "moving", `G-11: moving unit reports 'moving' (got ${actionStateOf(u)})`);
+  const h = headingOf(u, match)!;
+  assert(Math.abs(h - Math.PI / 2) < 0.01, `G-11: heading points at the move target (got ${h})`);
+  const w = [...match.entities.values()].find((e) => e.type === "worker" && e.ownerId === "b")!;
+  if (!w.gatheringNodeId) w.gatheringNodeId = match.resourceNodes[0].id;
+  assert(actionStateOf(w) === "gathering", `G-11: gathering worker reports 'gathering' (got ${actionStateOf(w)})`);
+  const before = hashMatchState(match);
+  headingOf(u, match); actionStateOf(u);
+  assert(hashMatchState(match) === before, "G-11: hooks are read-only (hash unchanged)");
+  const sm = staticMapOf(match);
+  assert(sm.cols === 250 && sm.rows === 45 && sm.cellSize === 20, "G-11: static map carries nav grid dimensions");
 }
 
 // ---- G-1: Move vs attack-move ----

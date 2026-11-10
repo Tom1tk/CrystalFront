@@ -69,6 +69,10 @@ export interface Entity {
   healTargetId?: string;
   autoAttackEnabled: boolean;
   rallyPoint?: { x: number; y: number };
+  /** G-11: facing in radians toward the current target (undefined = keep last). */
+  heading?: number;
+  /** G-11: animation hint. */
+  actionState?: "idle" | "moving" | "attacking" | "gathering" | "constructing" | "dying";
 }
 
 export type MatchPhase = "spawn" | "playing" | "ended";
@@ -158,6 +162,8 @@ export interface MatchState {
   config: MatchConfig;
   mapWidth: number;
   mapHeight: number;
+  /** G-11: static map data, present on MATCH_START only. */
+  staticMap?: { cellSize: number; cols: number; rows: number };
   // Fog of war — per-player visibility (set by server before sending)
   visibleEntityIds?: string[];
   visibleNodeIds?: string[];

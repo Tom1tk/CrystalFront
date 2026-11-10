@@ -18,6 +18,7 @@ import {
   MediumRushBot, RushBot, TurtleBot, MacroBot, HeavyBot,
 } from "../../headless/src/bots/index.js";
 import type { Agent } from "../../headless/src/types.js";
+import { actionStateOf, headingOf, staticMapOf, type ActionState } from "./match/engine/presentation.js";
 import { ReplayRunner, listReplays, getReplay, ensureReplaysDir, saveReplay } from "./match/replayRunner.js";
 import type { MatchEntity, MatchState, PlayerSlot, ResourceNode, PlayerEconomy } from "./match/types.js";
 import {
@@ -165,7 +166,7 @@ function broadcastLobbyStateForCode(code: string) {
   }
 }
 
-function serializeEntities(entities: Map<string, MatchEntity>): Array<{
+function serializeEntities(match: MatchState): Array<{
   id: string;
   type: EntityType;
   ownerId: string;
@@ -194,8 +195,10 @@ function serializeEntities(entities: Map<string, MatchEntity>): Array<{
   healTargetId?: string;
   autoAttackEnabled: boolean;
   rallyPoint?: { x: number; y: number };
+  heading?: number;
+  actionState: ActionState;
 }> {
-  return Array.from(entities.values()).map((e) => ({
+  return Array.from(match.entities.values()).map((e) => ({
     id: e.id,
     type: e.type,
     ownerId: e.ownerId,
@@ -224,6 +227,8 @@ function serializeEntities(entities: Map<string, MatchEntity>): Array<{
     healTargetId: e.healTargetId,
     autoAttackEnabled: e.autoAttackEnabled,
     rallyPoint: e.rallyPoint,
+    heading: headingOf(e, match),
+    actionState: actionStateOf(e),
   }));
 }
 
@@ -279,7 +284,7 @@ function serializeEconomy(economy: [PlayerEconomy | null, PlayerEconomy | null])
  * stateTimestamp is optional — included for GAME_STATE broadcasts but omitted for MATCH_START.
  */
 function buildMatchStatePayload(match: MatchState, stateTimestamp?: number, playerId?: PlayerId) {
-  let allEntities = serializeEntities(match.entities);
+  let allEntities = serializeEntities(match);
   let allNodes = serializeResourceNodes(match.resourceNodes);
 
   // Fog of war: filter by visibility when playerId is provided and visibility data exists
@@ -297,7 +302,8 @@ function buildMatchStatePayload(match: MatchState, stateTimestamp?: number, play
     phase: match.phase,
     tick: match.tick,
     tickIntervalMs: match.tickIntervalMs,
-    ...(stateTimestamp !== undefined ? { stateTimestamp } : {}),
+    // Static map goes out once, with MATCH_START (no stateTimestamp) — G-11.
+    ...(stateTimestamp !== undefined ? { stateTimestamp } : { staticMap: staticMapOf(match) }),
     players: match.players,
     entities: allEntities,
     attackLog: match.attackLog,

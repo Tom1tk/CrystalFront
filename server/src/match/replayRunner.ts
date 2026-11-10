@@ -3,6 +3,7 @@ import { resolve, join } from "node:path";
 import { WebSocket } from "ws";
 import { MatchEngine } from "./matchEngine.js";
 import { DEFAULT_CONFIG } from "./types.js";
+import { actionStateOf, headingOf, staticMapOf } from "./engine/presentation.js";
 import { SIMULATION, ENGINE_VERSION } from "@crystalfront/shared";
 
 const REPLAYS_DIR = resolve(process.cwd(), "replays");
@@ -310,7 +311,7 @@ export class ReplayRunner {
       cmdsByTick.get(entry.tick)!.push({ playerId: entry.playerId, command: entry.command });
     }
 
-    send(ws, { type: "match_start", payload: { match: serializeMatch(match) } });
+    send(ws, { type: "match_start", payload: { match: { ...serializeMatch(match), ...(match ? { staticMap: staticMapOf(match) } : {}) } } });
 
     const session: ReplaySession = {
       interval: null,
@@ -414,6 +415,8 @@ function serializeMatch(match: import("./types.js").MatchState | undefined): Rec
       healTargetId: e.healTargetId,
       autoAttackEnabled: e.autoAttackEnabled,
       rallyPoint: e.rallyPoint,
+      heading: headingOf(e, match),
+      actionState: actionStateOf(e),
     })),
     attackLog: match.attackLog,
     result: match.result,
