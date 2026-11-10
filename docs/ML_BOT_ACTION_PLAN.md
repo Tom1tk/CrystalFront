@@ -2618,3 +2618,18 @@ Net effect: **~2150 updates (~10.6M steps) since first reaching `3a_rwm`, with z
 - version 0.6.0 in all 5 `package.json`
 
 Verified: `npm test` 470/470, `training.test_env` PASS, `test_config_persistence` PASS, and the bundled runner contains the tiebreaker code.
+
+### 2026-11-10 — v0.6.1: U0 complete (foundations)
+
+**Done (all on `CrystalFront-ML`, each pushed):**
+- `chore(U0.1)`: stale compiled engine removed, headless bundle (entry above).
+- `chore(U0.2)` `2125cb0`: v0.3.2 ML bot retired (MlBot, ONNX models, onnxruntime-node, menu entries). Python export/parity tooling kept for the future bot.
+- `feat(G-1a)` `f0907da`: one movement step per 100 ms tick (sub-stepping removed); unit speeds doubled to px/tick so real-time speed is unchanged.
+- `feat(G-1b)` `35d9fa6`: `moveOrder` replaces `commandedTicks`; plain move ignores enemies until arrival; new `attack_move` command; client A = attack-move, R = toggle auto-attack. Old engine failed all 7 G-1 checks.
+- `test(G-1c/G-9d)` `b49ce31`: injectable clock, `hashMatchState()`, static wall-clock guard, fast-vs-paced (LiveMatchRunner) hash equality test.
+- `feat(G-9e)` `ee56a74`: `ENGINE_VERSION` (=1) stamped in all replay writers; mismatched replays are ignored on list/load.
+- `test(G-9d)`: `npm run bench` throughput benchmark. **Baseline: ~5,800 ticks/sec** (12 seeded matches, macro/rush/turtle mix, 61,689 ticks, this machine). G-4 budget = no worse than ~5,200.
+
+**Balance (moved by G-1, left for G-8):** blue win rate rush-macro 0.50, rush-turtle 1.00, macro-turtle 0.85, turtle-macro 0.20 (20 games/pair).
+
+**Deferred within G-9d:** golden pathing/LOS replays (U2/U3) and the 1000-map connectivity test (U4), since the features they cover don't exist yet.
