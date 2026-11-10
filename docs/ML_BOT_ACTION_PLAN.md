@@ -2780,3 +2780,15 @@ Verified: `npm test` 470/470, `training.test_env` PASS, `test_config_persistence
 - Mirror-only timeouts are still high (rush-rush 45%, turtle-turtle 54%). Equal scripted bots stall each other on node majorities, while games between different strategies resolve.
 - Spawn angles for trained units use each slot's own RNG, so mirror games diverge from the first worker trained. That is fair noise, not bias, and it averages out across seeds.
 - Not changed: supply per depot (+3), crystal self-defence, and node regen (still 0.2/tick per node, so more nodes means more passive regen). None was needed to pass the gates. They remain levers if live play shows rush or turtle problems.
+
+### 2026-11-10 — G-11: 3D skin, first pass (v0.7.0)
+- `feat(G-11)` `58b0d84`: an optional Three.js view (`client/src/three/World3D.ts`), toggled with F3 or the 3D/2D button. Design and model mapping are in `docs/VISUAL_PLAN.md`.
+  - **Rendering:** an orthographic camera at 55° that is pixel-aligned with the 2D view. The 2D canvas stays on top as the input/HUD/fog overlay. Kenney CC0 models, team colours from a colormap hue shift, animation from `actionState`/`heading`.
+  - **Assets:** pruned to the 35 models in use (about 2.2 MB). The dev-only model gallery was removed.
+- **Bug found while making showcase replays:** `getReplay()` dropped `mapId`, so every pool-map replay played back on `classic` and diverged. Fixed, with a regression test. `npm test` 614/614.
+- **Showcase:** headless bot-vs-bot games were saved as replays (ironreed macro–turtle, shardfall rush–macro, twin-spires heavy–rush) and screenshotted in 3D under SwiftShader.
+- **Open:**
+  - performance on a real GPU;
+  - audio packs;
+  - ramps and effects;
+  - team colour is weak on the skirmisher and gunner models (hair and helmet colours aren't in the recoloured hue range), so the rings carry team identity.
