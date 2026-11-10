@@ -5,9 +5,15 @@
 
 import type { EntityId } from "@crystalfront/shared";
 import {
-  UNIT_DEFS, BUILDING_DEFS, SIMULATION, COUNTER_MODIFIER,
+  UNIT_DEFS, BUILDING_DEFS, SIMULATION, COUNTER_MODIFIER, TERRAIN,
 } from "@crystalfront/shared";
 import type { MatchConfig, MatchEntity } from "../types.js";
+import { terrainAt, T_HIGH, type Terrain } from "./terrain.js";
+
+/** Is the entity standing on high ground (G-6)? */
+export function onHighGround(entity: MatchEntity, terrain?: Terrain | null): boolean {
+  return !!terrain && terrain.any && terrainAt(terrain, entity.x, entity.y) === T_HIGH;
+}
 
 // ── Spatial ────────────────────────────────────────────────────────────────────
 
@@ -35,27 +41,30 @@ export function entityIdNum(id: string): number {
 
 // ── Vision ─────────────────────────────────────────────────────────────────────
 
-export function getVisionRange(entity: MatchEntity): number {
+export function getVisionRange(entity: MatchEntity, terrain?: Terrain | null): number {
+  const mult = onHighGround(entity, terrain) ? TERRAIN.highVision : 1;
   if (entity.type === "building" && entity.buildingType) {
     const def = BUILDING_DEFS[entity.buildingType];
-    return def?.visionRange ?? 100;
+    return (def?.visionRange ?? 100) * mult;
   }
   if (entity.type === "crystal") {
-    return SIMULATION.crystalVisionRange;
+    return SIMULATION.crystalVisionRange * mult;
   }
   const def = UNIT_DEFS[entity.type];
-  return def?.visionRange ?? SIMULATION.defaultVisionRange;
+  return (def?.visionRange ?? SIMULATION.defaultVisionRange) * mult;
 }
 
 // ── Combat stats ───────────────────────────────────────────────────────────────
 
-export function getRange(entity: MatchEntity): number {
+/** Weapon/heal range; pass the match terrain to apply the high-ground bonus (G-6). */
+export function getRange(entity: MatchEntity, terrain?: Terrain | null): number {
+  const high = onHighGround(entity, terrain);
   if (entity.type === "building" && entity.buildingType === "turret") {
-    return BUILDING_DEFS.turret.range ?? 150;
+    return (BUILDING_DEFS.turret.range ?? 150) * (high ? TERRAIN.highBuildingRange : 1);
   }
   const unitDef = UNIT_DEFS[entity.type as keyof typeof UNIT_DEFS];
   // Add own radius so melee range is measured from unit edge, not center
-  return (unitDef?.range ?? 20) + entity.radius;
+  return (unitDef?.range ?? 20) * (high ? TERRAIN.highUnitRange : 1) + entity.radius;
 }
 
 export function getDamage(entity: MatchEntity, config?: MatchConfig): number {

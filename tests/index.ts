@@ -19,7 +19,8 @@ import { LiveMatchRunner } from "../server/src/match/liveMatchRunner.js";
 import { hashMatchState } from "../server/src/match/engine/hash.js";
 import { actionStateOf, headingOf, staticMapOf } from "../server/src/match/engine/presentation.js";
 import { isCellBlocked, rebuildNavGrid } from "../server/src/match/engine/navGrid.js";
-import { buildTerrain, terrainAt, isObstacleCode, T_ROCK, T_WATER, T_OPEN, T_HIGH, T_CLIFF } from "../server/src/match/engine/terrain.js";
+import { buildTerrain, terrainAt, isObstacleCode, T_ROCK, T_WATER, T_OPEN, T_HIGH, T_CLIFF, T_ROUGH } from "../server/src/match/engine/terrain.js";
+import { getRange, getVisionRange } from "../server/src/match/engine/utils.js";
 import { readFileSync as _readFileSync, readdirSync as _readdirSync } from "node:fs";
 import { existsSync as _existsSync, unlinkSync as _unlinkSync, writeFileSync as _writeFileSync } from "node:fs";
 import { resolve as _resolve, join as _join } from "node:path";
@@ -2545,6 +2546,68 @@ console.log("\n--- G-5: Obstacles ---");
     const army = [...match.entities.values()].filter((e) => e.type === "skirmisher").length;
     assert(violations === 0, `G-5: mirror invariance holds on the testbed map` + (first ? ` — first: ${first}` : ""));
     assert(army > 0 || match.phase === "ended", "G-5: bots still produce and fight on the testbed map");
+  }
+}
+
+// ---- G-6: Rough ground and high ground ----
+console.log("\n--- G-6: Rough and high ground ---");
+{
+  const setup = (mapId = "testbed") => {
+    const engine = new MatchEngine();
+    const players: [PlayerSlot | null, PlayerSlot | null] = [
+      { playerId: "b", username: "B", color: "blue", score: 0 },
+      { playerId: "r", username: "R", color: "red", score: 0 },
+    ];
+    const match = engine.createMatch("g6", players, { ...DEFAULT_CONFIG, maxTicks: 0, mapId }, 7);
+    engine.startMatch(match.id);
+    return { engine, match };
+  };
+  const spawn = (engine: MatchEngine, match: MatchState, owner: string, type: string, x: number, y: number) => {
+    const before = new Set(match.entities.keys());
+    engine.debugSpawn(match.id, owner, type as any, x, y);
+    return [...match.entities.values()].find((e) => !before.has(e.id))!;
+  };
+  const moveTicks = (engine: MatchEngine, match: MatchState, u: MatchEntity, x: number, y: number) => {
+    engine.processCommand(match.id, u.ownerId, { type: "move", entityId: u.id, targetX: x, targetY: y } as any);
+    let ticks = 0, inRough = 0;
+    while (u.moveTarget && ticks < 600) {
+      engine.tick(match.id); ticks++;
+      if (terrainAt(match.terrain, u.x, u.y) === T_ROUGH) inRough++;
+    }
+    return { ticks, inRough, arrived: Math.hypot(u.x - x, u.y - y) < 2 };
+  };
+
+  // Rough ground slows units (skirmisher 4 px/tick → 2.4 inside the mud)
+  {
+    const { engine, match } = setup();
+    const u = spawn(engine, match, "b", "skirmisher", 2250, 620);
+    const r = moveTicks(engine, match, u, 2350, 620);
+    assert(r.arrived && r.ticks >= 40 && r.ticks <= 48, `G-6: 100 px through mud takes ~42 ticks (${r.ticks})`);
+  }
+
+  // A route skirts a mud field it only clips, and smoothing doesn't cut back into it
+  {
+    const { engine, match } = setup();
+    const u = spawn(engine, match, "b", "skirmisher", 1030, 430);
+    const r = moveTicks(engine, match, u, 1220, 430);
+    assert(r.arrived && r.inRough === 0, `G-6: unit skirts the mud edge (${r.inRough} ticks in mud)`);
+    assert(r.ticks < 60, `G-6: skirting is faster than wading (${r.ticks} ticks)`);
+  }
+
+  // High ground: longer range and vision
+  {
+    const { engine, match } = setup();
+    const g = spawn(engine, match, "b", "gunner", 1560, 640);
+    assert(Math.abs(getRange(g, match.terrain) - (120 * 1.15 + g.radius)) < 1e-9 && getRange(g) === 120 + g.radius,
+      "G-6: gunner range ×1.15 on high ground");
+    assert(getVisionRange(g, match.terrain) > getVisionRange(g), "G-6: vision is longer on high ground");
+    const low = spawn(engine, match, "b", "gunner", 1300, 450);
+    assert(getRange(low, match.terrain) === getRange(low), "G-6: no bonus on low ground");
+
+    // The high gunner hits a target its low-ground range couldn't reach
+    const t = spawn(engine, match, "r", "skirmisher", 1560 + 152, 640);
+    for (let i = 0; i < 5; i++) engine.tick(match.id);
+    assert(t.health < t.maxHealth, `G-6: high-ground gunner hits at 152 px (hp ${t.health}/${t.maxHealth})`);
   }
 }
 

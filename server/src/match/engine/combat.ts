@@ -18,11 +18,11 @@ export function processCombat(match: MatchState): Map<string, number> {
 
     let nearestDist = Infinity;
     let nearestId: string | undefined;
+    const range = getRange(entity, match.terrain);
     for (const other of entities) {
       if (other.ownerId === entity.ownerId) continue;
       // Workers cannot initiate combat on crystals or buildings — only workers and combat units
       if (entity.type === "worker" && (other.type === "crystal" || other.type === "building")) continue;
-      const range = getRange(entity);
       const d = dist(entity.x, entity.y, other.x, other.y);
       if (d <= range + other.radius && d < nearestDist) {
         nearestDist = d;
@@ -44,7 +44,7 @@ export function processCombat(match: MatchState): Map<string, number> {
     if (entity.type === "crystal" || entity.type === "building") continue;
     const target = match.entities.get(entity.attackTargetId);
     if (!target) { entity.attackTargetId = undefined; continue; }
-    const range = getRange(entity);
+    const range = getRange(entity, match.terrain);
     const d = dist(entity.x, entity.y, target.x, target.y);
     if (d > range + target.radius) {
       entity.moveTarget = { x: target.x, y: target.y };
@@ -73,7 +73,7 @@ export function processCombat(match: MatchState): Map<string, number> {
     const target = match.entities.get(entity.attackTargetId!);
     if (!target) { entity.attackTargetId = undefined; continue; }
 
-    const range = getRange(entity);
+    const range = getRange(entity, match.terrain);
     const d = dist(entity.x, entity.y, target.x, target.y);
     if (d > range + target.radius) {
       if (entity.type === "building") entity.attackTargetId = undefined;

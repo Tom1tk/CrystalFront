@@ -10,12 +10,17 @@
  *   (nav grid, goal cell, nav version), shared by every unit sent to that goal.
  * - String-pull smoothing with a thick line-of-sight test, so units walk
  *   straight diagonals instead of grid steps.
+ * - Rough terrain (G-6) costs more to enter, and a smoothed leg may only cross
+ *   rough cells the search itself chose, so smoothing never cuts through mud
+ *   the route went around.
  *
  * Tie-breaking is total and mirror-equivariant (f, h, distance from the
  * start→goal line, row, column distance from goal) so a left-right mirrored
  * state picks the mirrored path.
  */
 import type { NavGrid } from "./navGrid.js";
+import { TERRAIN } from "@crystalfront/shared";
+import { T_ROUGH } from "./terrain.js";
 
 const STRAIGHT = 10;
 const DIAGONAL = 14;
@@ -35,6 +40,10 @@ export interface PathResult {
 }
 
 const blocked = (g: NavGrid, i: number) => g.structures[i] > 0;
+const rough = (g: NavGrid, i: number) => g.terrain !== null && g.terrain.cells[i] === T_ROUGH;
+/** Cost of a step into cell i (base: STRAIGHT or DIAGONAL). */
+const stepCost = (g: NavGrid, i: number, base: number) =>
+  !rough(g, i) ? base : base === STRAIGHT ? TERRAIN.roughStraightCost : TERRAIN.roughDiagonalCost;
 
 export function cellOf(g: NavGrid, x: number, y: number): number {
   // A point exactly on a column boundary goes to the column nearer the map's
@@ -74,6 +83,18 @@ export function hasLineOfSight(g: NavGrid, ax: number, ay: number, bx: number, b
   return true;
 }
 
+/** True if the segment a→b (centre line, half-cell steps) enters a rough cell not in `allowed`. */
+function crossesRough(g: NavGrid, ax: number, ay: number, bx: number, by: number, allowed: Set<number>): boolean {
+  if (!g.terrain || !g.terrain.any) return false;
+  const len = Math.hypot(bx - ax, by - ay);
+  const n = Math.max(1, Math.ceil(len / (g.cellSize / 2)));
+  for (let k = 0; k <= n; k++) {
+    const c = cellOf(g, ax + ((bx - ax) * k) / n, ay + ((by - ay) * k) / n);
+    if (rough(g, c) && !allowed.has(c)) return true;
+  }
+  return false;
+}
+
 // ---- Neighbour expansion -------------------------------------------------
 
 const DIRS: Array<[number, number, number]> = [
@@ -93,7 +114,8 @@ function forNeighbours(g: NavGrid, i: number, fn: (n: number, cost: number) => v
       // Diagonals only through open space: no corner cutting, never into walls.
       if (blocked(g, n) || blocked(g, row * g.cols + c) || blocked(g, r * g.cols + col)) continue;
     }
-    fn(n, blocked(g, n) ? base + BLOCKED_PENALTY : base);
+    const cost = stepCost(g, n, base);
+    fn(n, blocked(g, n) ? cost + BLOCKED_PENALTY : cost);
   }
 }
 
@@ -109,7 +131,8 @@ function forPredecessors(g: NavGrid, i: number, fn: (n: number, cost: number) =>
     if (dc !== 0 && dr !== 0) {
       if (intoBlocked || blocked(g, row * g.cols + c) || blocked(g, r * g.cols + col)) continue;
     }
-    fn(n, intoBlocked ? base + BLOCKED_PENALTY : base);
+    const cost = stepCost(g, i, base);
+    fn(n, intoBlocked ? cost + BLOCKED_PENALTY : cost);
   }
 }
 
@@ -323,7 +346,8 @@ export function planPath(g: NavGrid, sx: number, sy: number, tx: number, ty: num
     goalBlocked = true;
     useField = false; // per-unit approach point, nothing to share
   }
-  if (hasLineOfSight(g, sx, sy, tx, ty)) {
+  if (hasLineOfSight(g, sx, sy, tx, ty) &&
+      !crossesRough(g, sx, sy, tx, ty, new Set([cellOf(g, sx, sy), cellOf(g, tx, ty)]))) {
     return goalBlocked ? { waypoints: [{ x: tx, y: ty }], truncated: true } : { waypoints: [], truncated: false };
   }
   const start = cellOf(g, sx, sy);
@@ -351,12 +375,14 @@ export function planPath(g: NavGrid, sx: number, sy: number, tx: number, ty: num
     else pts.push({ x: tx, y: ty });
   }
 
-  // String-pull: keep a waypoint only when the next one isn't visible from the anchor.
+  // String-pull: keep a waypoint only when the next one isn't visible from the anchor
+  // (or the shortcut would cross rough cells the route avoided).
+  const onRoute = new Set(cells);
   const out: Point[] = [];
   let ax = sx, ay = sy;
   for (let k = 0; k < pts.length; k++) {
     const next = pts[k + 1];
-    if (next && hasLineOfSight(g, ax, ay, next.x, next.y)) continue;
+    if (next && hasLineOfSight(g, ax, ay, next.x, next.y) && !crossesRough(g, ax, ay, next.x, next.y, onRoute)) continue;
     out.push(pts[k]);
     ax = pts[k].x; ay = pts[k].y;
   }

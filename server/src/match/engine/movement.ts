@@ -1,8 +1,8 @@
-import { UNIT_DEFS, SIMULATION } from "@crystalfront/shared";
+import { UNIT_DEFS, SIMULATION, TERRAIN } from "@crystalfront/shared";
 import type { MatchState } from "../types.js";
 import { dist, buildSpatialGrid, getRange, entityIdNum } from "./utils.js";
 import { footprintOf, pushOutOfRect, type Rect } from "./navGrid.js";
-import { isObstacleCode, type Terrain } from "./terrain.js";
+import { isObstacleCode, terrainAt, T_ROUGH, type Terrain } from "./terrain.js";
 import { cellOf, hasLineOfSight, planPath } from "./pathfinding.js";
 import type { MatchEntity } from "../types.js";
 
@@ -71,10 +71,10 @@ export function processMovement(match: MatchState): void {
 
     const unitDef = UNIT_DEFS[entity.type as keyof typeof UNIT_DEFS];
     const baseSpeed = unitDef?.speed ?? 2;
-    const speedPerTick =
+    const speedPerTick = (
       entity.type === "worker"     && match.config.workerSpeed     !== undefined ? match.config.workerSpeed :
       entity.type === "skirmisher" && match.config.skirmisherSpeed !== undefined ? match.config.skirmisherSpeed :
-      baseSpeed;
+      baseSpeed) * (match.terrain.any && terrainAt(match.terrain, entity.x, entity.y) === T_ROUGH ? TERRAIN.roughSpeed : 1);
     if (dist(entity.x, entity.y, entity.moveTarget.x, entity.moveTarget.y) <= arrivalThreshold) {
       arrive(entity);
       continue;
@@ -90,7 +90,7 @@ export function processMovement(match: MatchState): void {
       const dTargetToOther = dist(entity.moveTarget.x, entity.moveTarget.y, other.x, other.y);
       if (dTargetToOther <= other.radius) {
         // The moveTarget is at/inside this large entity; arrive when in attack range
-        if (dist(entity.x, entity.y, other.x, other.y) <= getRange(entity) + other.radius) {
+        if (dist(entity.x, entity.y, other.x, other.y) <= getRange(entity, match.terrain) + other.radius) {
           arrivedAtEntity = true;
           break;
         }

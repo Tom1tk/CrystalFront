@@ -19,7 +19,7 @@ export function computeVisibility(match: MatchState): void {
     for (const mine of myEntities) vis.entityIds.add(mine.id);
 
     for (const src of myEntities) {
-      const vRange = getVisionRange(src);
+      const vRange = getVisionRange(src, match.terrain);
       const vRangeSq = vRange * vRange;
       for (const target of allEntities) {
         if (target.health <= 0) continue;

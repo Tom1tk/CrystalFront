@@ -27,7 +27,7 @@ export function processRepairAndHealing(match: MatchState): void {
       const target = match.entities.get(entity.healTargetId);
       if (!target || target.ownerId !== entity.ownerId) { entity.healTargetId = undefined; continue; }
       if (target.type === "crystal" || target.type === "building") { entity.healTargetId = undefined; continue; }
-      const healRange = getRange(entity);
+      const healRange = getRange(entity, match.terrain);
       const d = dist(entity.x, entity.y, target.x, target.y);
       if (d <= healRange + target.radius && target.health < target.maxHealth) {
         target.health = Math.min(target.maxHealth, target.health + HEALING.healRatePerTick);

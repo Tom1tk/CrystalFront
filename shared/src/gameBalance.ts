@@ -273,11 +273,21 @@ export const ENTITY = {
  * Replays are stamped with it; replays with a different stamp are not listed or
  * played (no compatibility layer).
  */
-export const ENGINE_VERSION = 5;
+export const ENGINE_VERSION = 6;
 
 /** Navigation grid (G-3). */
 export const NAV = {
   cellSize: 20,             // px per nav cell (5000×900 → 250×45)
+} as const;
+
+/** Terrain effects (G-6). */
+export const TERRAIN = {
+  roughSpeed: 0.6,          // speed multiplier on rough ground
+  roughStraightCost: 17,    // path cost to enter a rough cell (open: 10 / 14)
+  roughDiagonalCost: 24,
+  highUnitRange: 1.15,      // base weapon range multiplier for units on high ground
+  highBuildingRange: 1.25,  // turret range multiplier on high ground
+  highVision: 1.15,         // vision range multiplier on high ground
 } as const;
 
 export const SIMULATION = {
