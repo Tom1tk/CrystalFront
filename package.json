@@ -14,7 +14,7 @@
     "start": "node server/dist/index.js",
     "test": "tsx tests/index.ts",
     "test:server": "tsx tests/index.ts",
-    "build:headless": "node_modules/.bin/esbuild headless/src/stdioVecRunner.ts --bundle --platform=node --format=esm --outfile=headless/dist/stdioVecRunner.js --alias:@crystalfront/shared=./shared/src/index.ts --external:onnxruntime-node",
+    "build:headless": "node_modules/.bin/esbuild headless/src/stdioVecRunner.ts --bundle --platform=node --format=esm --outfile=headless/dist/stdioVecRunner.js --alias:@crystalfront/shared=./shared/src/index.ts",
     "balance:matrix": "python3 training/balance_report.py --matches 50"
   },
   "workspaces": [

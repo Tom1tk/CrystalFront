@@ -1,7 +1,6 @@
 import { FCT, FctFrame, FctPanel, FctBtn, HEX_CLIP } from "../design/facet";
 
 const BOT_OPTIONS: { name: string; label: string; sub: string; type: "ml" | "scripted" }[] = [
-  { name: "ml",               label: "ML Bot",          sub: "v0.3.2 · trained policy",  type: "ml"       },
   { name: "idle",             label: "Idle",             sub: "does nothing",              type: "scripted" },
   { name: "passive",          label: "Passive",          sub: "builds, never attacks",     type: "scripted" },
   { name: "rush_weak",        label: "Weak Rush",        sub: "4 units · push @400",       type: "scripted" },
@@ -20,7 +19,6 @@ interface BotSelectMenuProps {
 }
 
 export default function BotSelectMenu({ username, onSelect, onBack }: BotSelectMenuProps) {
-  const mlBots      = BOT_OPTIONS.filter(b => b.type === "ml");
   const scriptedBots = BOT_OPTIONS.filter(b => b.type === "scripted");
 
   return (
@@ -34,25 +32,6 @@ export default function BotSelectMenu({ username, onSelect, onBack }: BotSelectM
           PLAYING AS · {username.toUpperCase()}
         </div>
       </div>
-
-      {/* ML section */}
-      <div style={{ fontFamily: FCT.mono, fontSize: 8, color: FCT.ice, letterSpacing: "0.2em", marginBottom: 6 }}>
-        MACHINE LEARNING
-      </div>
-      <FctPanel clip={HEX_CLIP} style={{ padding: 12, marginBottom: 14 }}>
-        {mlBots.map(bot => (
-          <FctBtn
-            key={bot.name}
-            primary
-            full
-            sub={bot.sub.toUpperCase()}
-            style={{ marginBottom: 4 }}
-            onClick={() => onSelect(bot.name)}
-          >
-            ▷ {bot.label}
-          </FctBtn>
-        ))}
-      </FctPanel>
 
       {/* Scripted section */}
       <div style={{ fontFamily: FCT.mono, fontSize: 8, color: FCT.inkDim, letterSpacing: "0.2em", marginBottom: 6 }}>

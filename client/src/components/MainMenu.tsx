@@ -4,7 +4,6 @@ import { FCT, FctFrame, FctPanel, FctBtn, Refract, HEX_CLIP } from "../design/fa
 declare const __APP_VERSION__: string;
 
 const BOT_OPTIONS: { name: string; label: string; sub: string; type: "ml" | "scripted" }[] = [
-  { name: "ml",               label: "ML Bot",         sub: "v0.3.2 · trained policy",   type: "ml"       },
   { name: "idle",             label: "Idle",            sub: "does nothing",               type: "scripted" },
   { name: "passive",          label: "Passive",         sub: "builds, never attacks",      type: "scripted" },
   { name: "rush_weak",        label: "Weak Rush",       sub: "4 units · push @400",        type: "scripted" },

@@ -1701,13 +1701,13 @@ console.log("\n--- Play vs Bot: start_bot_game flow ---");
   assert(lobbyForHuman!.players[0]?.id === humanPlayer.id, "bot_game: human player is slot 0 (blue)");
 
   // 9. All bot names map to valid bots (no blank-screen from unknown bot name)
-  const validBotNames = ["ml", "idle", "passive", "rush_weak", "rush_weak_medium",
+  const validBotNames = ["idle", "passive", "rush_weak", "rush_weak_medium",
                          "rush_medium", "rush", "turtle", "macro", "heavy"];
   for (const name of validBotNames) {
     // If this doesn't throw, the name is handled (actual agent creation tested via runtime)
     assert(typeof name === "string" && name.length > 0, `bot_game: bot name "${name}" is valid string`);
   }
-  assert(validBotNames.length === 10, "bot_game: 10 bot options available (1 ML + 9 scripted)");
+  assert(validBotNames.length === 9, "bot_game: 9 bot options available (scripted)");
 
   // 10. Match tick advances without error (basic smoke test)
   engine.tick(match.id);

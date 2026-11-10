@@ -14,7 +14,7 @@ import { MatchEngine } from "./match/matchEngine.js";
 import { LiveMatchRunner } from "./match/liveMatchRunner.js";
 import { BotPlayer } from "./match/botPlayer.js";
 import {
-  MlBot, IdleBot, PassiveBot, WeakRushBot, WeakMediumRushBot,
+  IdleBot, PassiveBot, WeakRushBot, WeakMediumRushBot,
   MediumRushBot, RushBot, TurtleBot, MacroBot, HeavyBot,
 } from "../../headless/src/bots/index.js";
 import type { Agent } from "../../headless/src/types.js";
@@ -52,13 +52,8 @@ ensureReplaysDir();
 const lobbyManager = new LobbyManager();
 const matchEngine = new MatchEngine();
 
-// Pre-load MlBot ONNX session at startup so first game has no latency.
-let mlBotSession: MlBot | null = null;
-MlBot.create().then(bot => { mlBotSession = bot; console.log("[server] MlBot ONNX session ready"); }).catch(e => console.warn("[server] MlBot failed to load:", e));
-
 function createBotAgent(name: string): Agent {
   switch (name) {
-    case "ml":               return mlBotSession ?? new IdleBot(); // fallback if still loading
     case "idle":             return new IdleBot();
     case "passive":          return new PassiveBot();
     case "rush_weak":        return new WeakRushBot();

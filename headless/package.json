@@ -7,7 +7,6 @@
     "match": "tsx src/cli.ts"
   },
   "dependencies": {
-    "@crystalfront/shared": "*",
-    "onnxruntime-node": "^1.26.0"
+    "@crystalfront/shared": "*"
   }
 }
