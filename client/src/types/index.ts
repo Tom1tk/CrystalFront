@@ -102,7 +102,8 @@ export interface MatchState {
 
 export interface ControlState {
   holder: 0 | 1 | null;
-  since: number;
+  /** Each slot's control progress toward holdTicks. */
+  progress: [number, number];
   holdTicks: number;
   need: number;
   radius: number;

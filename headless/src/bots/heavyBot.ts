@@ -51,7 +51,8 @@ export class HeavyBot implements Agent {
     const bruisers    = entities.filter(e => e.owner === 1 && e.typeIndex === 4).length;
     const medics      = entities.filter(e => e.owner === 1 && e.typeIndex === 5).length;
     const gunners     = entities.filter(e => e.owner === 1 && e.typeIndex === 3).length;
-    const turretCount = entities.filter(e => e.owner === 1 && e.typeIndex === 9 && e.constructionFrac >= 1).length;
+    // Count unfinished turrets too, or the bot re-queues them while they build.
+    const turretCount = entities.filter(e => e.owner === 1 && e.typeIndex === 9).length;
 
     this.prevTurretCount = turretCount;
 
@@ -76,6 +77,9 @@ export class HeavyBot implements Agent {
       if (avgHealth < 0.35) {
         const retreat = legal.find(a => a.type === "retreat" && a.group === "all_combat");
         if (retreat) actions.push(retreat);
+        // Stay home and regroup: without this the next push order sends the
+        // wounded army straight back in.
+        this.pushing = false;
       }
     }
 

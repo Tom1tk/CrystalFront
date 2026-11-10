@@ -41,8 +41,8 @@ export function buildObservation(match: MatchState, playerId: string): PlayerObs
   const contested = match.resourceNodes.filter(n => n.contested);
   const held = (slot: number) => contested.filter(n => n.controller === slot).length;
   const need = controlNeeded(contested.length);
-  const holdFrac = match.control.holder === null ? 0
-    : Math.min((match.tick - match.control.since) / CONTROL.holdTicks, 1) * (match.control.holder === playerIdx ? 1 : -1);
+  const prog = match.control.progress;
+  const holdFrac = (prog[playerIdx] - prog[1 - playerIdx]) / CONTROL.holdTicks;
   const LIFETIME_NORM = 9000;
   const ownLifetime = economy?.lifetimeResources ?? 0;
   const oppLifetime = canSeeOpp ? (oppEconomy?.lifetimeResources ?? 0) : 0;

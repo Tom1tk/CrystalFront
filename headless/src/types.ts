@@ -13,7 +13,7 @@ export interface GlobalFeatures {
   oppCrystalHealthFrac: number;    // opp crystal hp / max hp (0 if not visible)
   ownControlFrac: number;          // contested nodes held / nodes needed for a control hold ∈ [0,1]
   oppControlFrac: number;          // same for the opponent (control is public)
-  controlHoldFrac: number;         // hold timer progress, + own hold / − opponent's ∈ [-1,1]
+  controlHoldFrac: number;         // (own − opponent's control progress) / holdTicks ∈ [-1,1]
   ownLifetimeResourcesFrac: number; // lifetime gathered / 9000 — for reward signal
   oppLifetimeResourcesFrac: number; // (0 if unknown)
   // Enemy unit composition (visible only) — enables adaptive counter-play
@@ -96,6 +96,12 @@ export interface MacroAction {
   // build / attack_move: a resource node to build next to or move to (G-8). Not
   // enumerated in legal actions; scripted bots set it directly.
   nodeId?: string;
+  // attack_move: nodes that each keep their GARRISON_SIZE nearest units; the rest
+  // of the group moves on to the target (G-8). Not enumerated in legal actions.
+  garrison?: string[];
+  // attack_move: a node where units straggling behind the push gather instead of
+  // walking in alone (G-8). Not enumerated in legal actions.
+  regroupAt?: string;
 }
 
 // ---- Agent interface ----

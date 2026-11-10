@@ -186,13 +186,15 @@ export const ECONOMY = {
 // ====================================================================
 
 /**
- * A side holds a contested node when it has a combat unit or a finished turret
- * within `radius` of it and the opponent has neither. Holding a majority of the
- * contested nodes (more than half) for `holdTicks` in a row wins the match.
+ * A side holds a contested node when it has a combat unit within `radius` of it
+ * and the opponent has none (turrets defend but don't hold). Each tick a side
+ * holds a majority of the contested nodes (more than half), its control
+ * progress rises by 1 and the opponent's falls by 1; with no majority both
+ * pause. Reaching `holdTicks` progress wins the match.
  */
 export const CONTROL = {
   radius: 150,
-  holdTicks: 600,           // 60 s at 10 Hz
+  holdTicks: 600,           // 60 s of net majority hold at 10 Hz
 } as const;
 
 // ====================================================================

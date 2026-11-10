@@ -60,6 +60,7 @@ export function deepCloneMatchState(match: MatchState): MatchState {
     ],
     entities: new Map([...match.entities].map(([id, e]) => [id, cloneEntity(e)])),
     resourceNodes: match.resourceNodes.map(cloneNode),
+    control: { holder: match.control.holder, progress: [...match.control.progress] as [number, number] },
     attackLog: match.attackLog.map((a) => ({ ...a })),
     nav: cloneNavGrid(match.nav),
     commandLog: match.commandLog.map((c) => ({ ...c })),

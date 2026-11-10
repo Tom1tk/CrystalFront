@@ -2,10 +2,11 @@
  * Node control (G-8): the objective win that replaced "hold 4500 resources".
  *
  * Each tick every contested node gets a controller: the side with a combat unit
- * or a finished turret within CONTROL.radius when the other side has neither
- * (both present, or neither, = nobody). A side holding more than half of the
- * contested nodes starts a hold timer; it resets whenever the holder changes.
- * Holding for CONTROL.holdTicks wins.
+ * within CONTROL.radius when the other side has none (both present, or neither,
+ * = nobody). Turrets defend nodes but don't hold them, so control needs an army
+ * on the map. A side holding more than half of the contested nodes gains 1
+ * progress per tick and drains the opponent's by 1 (king of the hill: a brief
+ * loss costs a little, not the whole hold). CONTROL.holdTicks progress wins.
  */
 import { CONTROL } from "@crystalfront/shared";
 import type { MatchEntity, MatchState } from "../types.js";
@@ -13,8 +14,7 @@ import type { MatchEntity, MatchState } from "../types.js";
 const UNIT_TYPES = new Set(["skirmisher", "gunner", "bruiser", "medic"]);
 
 function holds(e: MatchEntity): boolean {
-  return UNIT_TYPES.has(e.type) ||
-    (e.type === "building" && e.buildingType === "turret" && e.constructionProgress >= 100);
+  return UNIT_TYPES.has(e.type);
 }
 
 /** Contested nodes needed for a hold: more than half. */
@@ -47,6 +47,10 @@ export function processControl(match: MatchState): 0 | 1 | null {
 
   const need = controlNeeded(contested.length);
   const holder = counts[0] >= need ? 0 : counts[1] >= need ? 1 : null;
-  if (holder !== match.control.holder) match.control = { holder, since: match.tick };
-  return holder !== null && match.tick - match.control.since >= CONTROL.holdTicks ? holder : null;
+  match.control.holder = holder;
+  if (holder === null) return null;
+  const p = match.control.progress;
+  p[holder]++;
+  p[1 - holder] = Math.max(0, p[1 - holder] - 1);
+  return p[holder] >= CONTROL.holdTicks ? holder : null;
 }

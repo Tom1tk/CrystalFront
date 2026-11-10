@@ -81,8 +81,8 @@ export interface MatchState {
   endedAt: number | null;
   economy: [PlayerEconomy | null, PlayerEconomy | null];
   resourceNodes: ResourceNode[];
-  /** G-8 node control: slot currently holding a majority, and the tick it started. */
-  control: { holder: 0 | 1 | null; since: number };
+  /** G-8 node control: slot holding a majority this tick, and each slot's progress toward CONTROL.holdTicks. */
+  control: { holder: 0 | 1 | null; progress: [number, number] };
   config: MatchConfig;
   mapWidth: number;
   mapHeight: number;

@@ -1,5 +1,6 @@
 import type { Agent, PlayerObservation, MacroAction } from "../types.js";
 import type { MatchState, ResourceNode } from "../../../server/src/match/types.js";
+import { controlView, nextNode } from "./controlTarget.js";
 
 /**
  * TurtleBot — node-control strategy (G-8).
@@ -8,8 +9,8 @@ import type { MatchState, ResourceNode } from "../../../server/src/match/types.j
  *   - Strong economy (up to 7 workers), gathering from all nodes
  *   - A turret beside each contested node on its own half, nearest first
  *   - One barracks of gunners that holds its own nodes at home
- *   - Once the army reaches 8, it takes the nearest enemy-side node to reach a
- *     majority and holds it; below 4 it falls back to its own nodes
+ *   - Once the army reaches 8, it takes the nearest node it doesn't hold until
+ *     it has a majority, then holds the frontier; below 4 it falls back home
  *   - Defends the crystal when enemy units come close
  */
 export class TurtleBot implements Agent {
@@ -40,6 +41,7 @@ export class TurtleBot implements Agent {
     const ownWorkers   = entities.filter(e => e.owner === 1 && e.typeIndex === 1).length;
     const hasDepot     = entities.some(e => e.owner === 1 && e.typeIndex === 8);
     const ownsBarracks = entities.some(e => e.owner === 1 && e.typeIndex === 6);
+    const barracksCount = entities.filter(e => e.owner === 1 && e.typeIndex === 6).length;
     const hasBarracks  = entities.some(e => e.owner === 1 && e.typeIndex === 6 && e.constructionFrac >= 1);
     const armySize     = entities.filter(e => e.owner === 1 && [2, 3, 4, 5].includes(e.typeIndex)).length;
     const oppArmy      = global.oppVisibleSupply ?? 0;
@@ -47,13 +49,8 @@ export class TurtleBot implements Agent {
     // ── Node bookkeeping (node positions and control are public) ──────────
     const crystal = [...match.entities.values()].find(e => e.type === "crystal" && e.ownerId === this.playerId);
     const cx = crystal?.x ?? 0, cy = crystal?.y ?? 0;
-    const byDist = (a: ResourceNode, b: ResourceNode) =>
-      Math.hypot(a.x - cx, a.y - cy) - Math.hypot(b.x - cx, b.y - cy);
-    const mid = match.config.mapWidth / 2;
-    const ownSide = (n: ResourceNode) => (n.x < mid) === (this.slot === 0);
-    const contested = match.resourceNodes.filter(n => n.contested);
-    const ownNodes   = contested.filter(ownSide).sort(byDist);
-    const enemyNodes = contested.filter(n => !ownSide(n)).sort(byDist);
+    const view = controlView(match, this.playerId);
+    const ownNodes = view.own;
     const turrets = [...match.entities.values()].filter(e =>
       e.ownerId === this.playerId && e.type === "building" && e.buildingType === "turret");
     const unturreted = ownNodes.filter(n => !turrets.some(t => Math.hypot(t.x - n.x, t.y - n.y) <= 130));
@@ -80,6 +77,7 @@ export class TurtleBot implements Agent {
       else if (!ownsBarracks) b = legal.find(a => a.type === "build" && a.buildingType === "barracks" && a.xZone === "mid_base");
       else if (global.ownMaxSupply - global.ownSupply * global.ownMaxSupply <= 2) b = legal.find(a => a.type === "build" && a.buildingType === "supply_depot");
       else if (unturreted.length > 0) b = turretAt(unturreted[0]);
+      else if (barracksCount < 2 && global.ownResources * 1000 > 300) b = legal.find(a => a.type === "build" && a.buildingType === "barracks" && a.xZone === "mid_base");
       if (b) { actions.push(b); this.lastBuildTick = tick; }
     }
 
@@ -103,11 +101,15 @@ export class TurtleBot implements Agent {
         move = legal.find(a => a.type === "attack_move" && a.group === "all_combat" && a.targetZone === "defend_crystal");
       } else {
         const lost = ownNodes.find(n => n.controller === opp);
+        const frontier = [...view.nodes].reverse().find(n => n.controller === this.slot);
         const target = this.pushing
-          ? enemyNodes.find(n => n.controller === this.slot) ?? enemyNodes[0]
+          ? (view.held < view.need ? nextNode(view) : frontier)
           : lost ?? ownNodes[ownNodes.length - 1];
+        // Garrison the other held nodes (turrets defend, but only units hold).
+        const garrison = view.nodes.filter(n => n.controller === this.slot && n !== target).map(n => n.id);
         const am = legal.find(a => a.type === "attack_move" && a.group === "all_combat");
-        if (am && target) move = { ...am, nodeId: target.id };
+        const regroupAt = (frontier ?? ownNodes[ownNodes.length - 1])?.id;
+        if (am && target) move = { ...am, nodeId: target.id, garrison, regroupAt: regroupAt !== target?.id ? regroupAt : undefined };
       }
       if (move) { actions.push(move); this.lastMoveTick = tick; }
     }

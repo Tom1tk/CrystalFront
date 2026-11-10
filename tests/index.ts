@@ -1624,7 +1624,7 @@ console.log("\n--- Node Control Win (G-8) ---");
   processControl(match);
   assert(node(0).controller === null, "both sides present: node is contested (no holder)");
   match.entities.delete(r0);
-  // Workers and unfinished turrets don't hold nodes; finished turrets do.
+  // Workers and turrets (finished or not) don't hold nodes; only combat units do.
   const w = place(redId, node(1).x, node(1).y, "worker");
   processControl(match);
   assert(node(1).controller === null, "a worker does not hold a node");
@@ -1636,22 +1636,29 @@ console.log("\n--- Node Control Win (G-8) ---");
   assert(node(1).controller === null, "unfinished turret does not hold a node");
   match.entities.get(t)!.constructionProgress = 100;
   processControl(match);
-  assert(node(1).controller === 1, "finished turret holds a node");
+  assert(node(1).controller === null, "finished turret does not hold a node");
   match.entities.delete(t);
   match.entities.delete(b0);
 
-  // Majority hold: 4 nodes is not enough, 5 starts the timer.
+  // Majority hold: one short is not enough; a majority gains progress.
   for (let k = 0; k < need - 1; k++) place(blueId, node(k).x, node(k).y);
   processControl(match);
-  assert(match.control.holder === null, "holding one short of a majority is not enough");
+  assert(match.control.holder === null && match.control.progress[0] === 0, "holding one short of a majority is not enough");
   const fifth = place(blueId, node(need - 1).x, node(need - 1).y);
-  processControl(match);
-  assert(match.control.holder === 0 && match.control.since === match.tick, "holding a majority starts blue's hold timer");
-  // Losing the majority resets the timer.
+  processControl(match); processControl(match);
+  assert(match.control.holder === 0 && match.control.progress[0] === 2, "holding a majority gains blue progress");
+  // Losing the majority pauses progress (it doesn't reset).
   match.entities.delete(fifth);
   processControl(match);
-  assert(match.control.holder === null, "dropping below a majority clears the hold");
-  place(blueId, node(need - 1).x, node(need - 1).y);
+  assert(match.control.holder === null && match.control.progress[0] === 2, "no majority pauses progress");
+  // The opponent's majority drains it.
+  const reds = Array.from({ length: need }, (_, k) => place(redId, node(contested.length - 1 - k).x, node(contested.length - 1 - k).y));
+  for (let k = 0; k < need - 1; k++) for (const [id, e] of match.entities) if (e.ownerId === blueId && Math.hypot(e.x - node(k).x, e.y - node(k).y) < 1) match.entities.delete(id);
+  processControl(match);
+  assert(match.control.holder === 1 && match.control.progress[1] === 1 && match.control.progress[0] === 1, "red's majority drains blue's progress");
+  for (const id of reds) match.entities.delete(id);
+  match.control.progress = [0, 0];
+  for (let k = 0; k < need; k++) place(blueId, node(k).x, node(k).y);
 
   // Engine: holding for CONTROL.holdTicks wins with winType "control".
   let ticks = 0;

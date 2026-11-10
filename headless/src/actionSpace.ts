@@ -70,7 +70,30 @@ export function expandMacroAction(
       if (needAutoAttack.length > 0) {
         cmds.push({ type: "toggle_auto_attack", entityIds: needAutoAttack });
       }
-      for (const e of group) {
+      let rest = group;
+      for (const gid of action.garrison ?? []) {
+        const gn = match.resourceNodes.find(n => n.id === gid);
+        if (!gn || rest.length <= GARRISON_SIZE) continue;
+        rest = rest.slice().sort((a, b) => dist2(a, gn) - dist2(b, gn) || (a.id < b.id ? -1 : 1));
+        for (const e of rest.slice(0, GARRISON_SIZE)) {
+          cmds.push({ type: "attack_move", entityId: e.id, targetX: gn.x, targetY: gn.y });
+        }
+        rest = rest.slice(GARRISON_SIZE);
+      }
+      // Stragglers: units more than REGROUP_GAP behind the lead unit gather at
+      // regroupAt; if too few are together, the whole wave regroups.
+      const stage = action.regroupAt ? match.resourceNodes.find(n => n.id === action.regroupAt) : undefined;
+      if (stage && rest.length > 0) {
+        const lead = rest.reduce((a, b) => (dist2(b, target) < dist2(a, target) ? b : a));
+        const wave = rest.filter(e => dist2(e, lead) <= REGROUP_GAP * REGROUP_GAP);
+        const together = wave.length >= REGROUP_MIN;
+        for (const e of rest) {
+          const go = together && wave.includes(e) ? target : stage;
+          cmds.push({ type: "attack_move", entityId: e.id, targetX: go.x, targetY: go.y });
+        }
+        return cmds;
+      }
+      for (const e of rest) {
         cmds.push({ type: "attack_move", entityId: e.id, targetX: target.x, targetY: target.y });
       }
       return cmds;
@@ -173,7 +196,9 @@ function findOwnCrystal(match: MatchState, playerId: string): MatchEntity | unde
   }
 }
 
+/** The finished producer of unitType with the shortest queue that supply allows. */
 function findProductionBuilding(match: MatchState, playerId: string, unitType: string): MatchEntity | undefined {
+  let best: MatchEntity | undefined;
   for (const e of match.entities.values()) {
     if (e.type !== "building" || e.ownerId !== playerId || e.constructionProgress < 100) continue;
     const def = e.buildingType ? BUILDING_DEFS[e.buildingType] : null;
@@ -182,11 +207,13 @@ function findProductionBuilding(match: MatchState, playerId: string, unitType: s
       if (!economy) continue;
       const queuedSupply = (e.productionQueue ?? []).reduce((s, i) => s + i.supplyCost, 0);
       const unitDef = UNIT_DEFS[unitType];
-      if (unitDef && economy.supply + queuedSupply + unitDef.supplyCost <= economy.maxSupply) {
-        return e;
+      if (unitDef && economy.supply + queuedSupply + unitDef.supplyCost <= economy.maxSupply &&
+          (!best || (e.productionQueue?.length ?? 0) < (best.productionQueue?.length ?? 0))) {
+        best = e;
       }
     }
   }
+  return best;
 }
 
 /** Nodes with less than this left are skipped when assigning workers. */
@@ -551,6 +578,12 @@ function resolveWorkerCount(choice: MacroAction["workerCount"], available: numbe
   if (choice === "all_idle") return available;
   return Math.min(choice as number, available);
 }
+
+/** Units each garrisoned node keeps (attack_move garrison, G-8). */
+const GARRISON_SIZE = 2;
+/** attack_move regroupAt: units further than this behind the lead regroup; a wave needs REGROUP_MIN together. */
+const REGROUP_GAP = 500;
+const REGROUP_MIN = 4;
 
 function dist2(a: { x: number; y: number }, b: { x: number; y: number }): number {
   return (a.x - b.x) ** 2 + (a.y - b.y) ** 2;

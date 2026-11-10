@@ -1,5 +1,6 @@
 import type { Agent, PlayerObservation, MacroAction } from "../types.js";
 import type { MatchState } from "../../../server/src/match/types.js";
+import { controlView, nextNode } from "./controlTarget.js";
 
 type Phase = "expand" | "tech" | "army" | "push";
 
@@ -22,10 +23,12 @@ export class MacroBot implements Agent {
   private lastBuildTick  = -60;
   private lastPushTick   = -60;
   private pushing = false;
+  private match!: MatchState;
   private static readonly PUSH_SIZE = 8;
 
-  init(playerId: string, _match: MatchState): void {
+  init(playerId: string, match: MatchState): void {
     this.playerId       = playerId;
+    this.match          = match;
     this.phase          = "expand";
     this.lastAssignTick = -50;
     this.lastBuildTick  = -60;
@@ -43,6 +46,7 @@ export class MacroBot implements Agent {
     const hasFoundry  = entities.some(e => e.owner === 1 && e.typeIndex === 7 && e.constructionFrac >= 1);
     // Count buildings under construction too, so the bot doesn't queue duplicates.
     const ownsBarracks = entities.some(e => e.owner === 1 && e.typeIndex === 6);
+    const barracksCount = entities.filter(e => e.owner === 1 && e.typeIndex === 6).length;
     const ownsFoundry  = entities.some(e => e.owner === 1 && e.typeIndex === 7);
     const armySize    = entities.filter(e => e.owner === 1 && [2,3,4,5].includes(e.typeIndex)).length;
 
@@ -88,6 +92,11 @@ export class MacroBot implements Agent {
         );
         if (b) { actions.push(b); built = true; }
       }
+      // Second barracks when income outpaces production
+      if (!built && hasBarracks && hasFoundry && barracksCount < 2 && global.ownResources * 1000 > 300) {
+        const b = legal.find(a => a.type === "build" && a.buildingType === "barracks" && a.xZone === "mid_base");
+        if (b) { actions.push(b); built = true; }
+      }
       // Second depot when actively training and near supply cap
       if (!built && global.ownMaxSupply - global.ownSupply * global.ownMaxSupply <= 2 && armySize > 0) {
         const b = legal.find(a => a.type === "build" && a.buildingType === "supply_depot");
@@ -121,15 +130,28 @@ export class MacroBot implements Agent {
       }
     }
 
-    // ── Attack: group at home until the army is big enough, then push together.
-    // Fall back and regroup once the push has lost half its strength (G-8).
+    // ── Attack: group at home until the army is big enough, then push together
+    // for node control — take the nearest node it doesn't hold until it has a
+    // majority, then hold the frontier. Regroup once the push has lost half its
+    // strength (G-8).
     if (!this.pushing && armySize >= MacroBot.PUSH_SIZE) this.pushing = true;
     if (this.pushing && armySize < MacroBot.PUSH_SIZE / 2) this.pushing = false;
     if (tick - this.lastPushTick >= 40) {
-      const zone = this.pushing ? "enemy_crystal" : "defend_crystal";
-      const move = legal.find(a =>
-        a.type === "attack_move" && a.group === "all_combat" && a.targetZone === zone
-      );
+      let move: MacroAction | undefined;
+      if (this.pushing) {
+        const view = controlView(this.match, this.playerId);
+        const target = view.held < view.need
+          ? nextNode(view)
+          : [...view.nodes].reverse().find(n => n.controller === view.slot);
+        // Leave a small garrison on each node already held, push on with the rest.
+        const garrison = view.nodes.filter(n => n.controller === view.slot && n !== target).map(n => n.id);
+        const stage = [...view.nodes].reverse().find(n => n.controller === view.slot && n !== target) ?? view.own[0];
+        const am = legal.find(a => a.type === "attack_move" && a.group === "all_combat");
+        if (am && target) move = { ...am, nodeId: target.id, garrison, regroupAt: stage?.id };
+      } else {
+        move = legal.find(a =>
+          a.type === "attack_move" && a.group === "all_combat" && a.targetZone === "defend_crystal");
+      }
       if (move) { actions.push(move); this.lastPushTick = tick; }
     }
 

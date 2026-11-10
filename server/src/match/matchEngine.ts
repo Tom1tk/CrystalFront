@@ -268,7 +268,7 @@ export class MatchEngine {
       endedAt: null,
       economy,
       resourceNodes,
-      control: { holder: null, since: 0 },
+      control: { holder: null, progress: [0, 0] },
       config,
       mapWidth: config.mapWidth,
       mapHeight: config.mapHeight,
@@ -1122,16 +1122,29 @@ if (command.type === "gather") {
       const healthFracs = crystals.map(c => (c && c.maxHealth > 0) ? c.health / c.maxHealth : 0);
       const lifetimes  = match.economy.map(e => e?.lifetimeResources ?? 0);
 
-      // tiebreak (c): symmetric matchups regularly land here with equal
+      // final coin flip: symmetric matchups regularly land here with equal
       // health and lifetime resources — always picking slot 0 (blue)
       // would give blue a ~100% win rate in mirror matches. Use the
       // match seed for a coin flip that's deterministic per-seed but
       // averages 50/50 across the many seeds run in a balance matrix.
+      // (b) and (c) follow the G-8 objective: contested nodes held, then army size.
+      const nodesHeld = [0, 1].map(i => match.resourceNodes.filter(n => n.contested && n.controller === i).length);
+      const armySupply = match.players.map(p => {
+        let s = 0;
+        for (const e of match.entities.values()) {
+          if (p && e.ownerId === p.playerId && e.type !== "worker" && e.type in UNIT_DEFS) s += UNIT_DEFS[e.type].supplyCost;
+        }
+        return s;
+      });
       let winnerIdx = match.seed % 2;
       if (healthFracs[0] !== healthFracs[1]) {
         winnerIdx = healthFracs[0] >= healthFracs[1] ? 0 : 1; // (a) higher crystal HP frac
+      } else if (nodesHeld[0] !== nodesHeld[1]) {
+        winnerIdx = nodesHeld[0] > nodesHeld[1] ? 0 : 1;      // (b) more contested nodes held
+      } else if (armySupply[0] !== armySupply[1]) {
+        winnerIdx = armySupply[0] > armySupply[1] ? 0 : 1;    // (c) larger combat army
       } else if (lifetimes[0] !== lifetimes[1]) {
-        winnerIdx = lifetimes[0] >= lifetimes[1] ? 0 : 1;     // (b) higher lifetime resources
+        winnerIdx = lifetimes[0] >= lifetimes[1] ? 0 : 1;     // (d) higher lifetime resources
       }
 
       const winner = match.players[winnerIdx]?.playerId;
@@ -1431,7 +1444,7 @@ if (command.type === "gather") {
 
     // Reset resource nodes and node control
     match.resourceNodes = [];
-    match.control = { holder: null, since: 0 };
+    match.control = { holder: null, progress: [0, 0] };
     const allNodeLayouts = [
       ...map.blueSafeNodes.map((n) => ({ ...n, ownerId: players[0]?.playerId ?? "", contested: false })),
       ...map.redSafeNodes.map((n) => ({ ...n, ownerId: players[1]?.playerId ?? "", contested: false })),

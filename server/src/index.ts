@@ -291,7 +291,7 @@ function serializeControl(match: MatchState) {
   const contested = match.resourceNodes.filter((n) => n.contested);
   return {
     holder: match.control.holder,
-    since: match.control.since,
+    progress: match.control.progress,
     holdTicks: CONTROL.holdTicks,
     need: controlNeeded(contested.length),
     radius: CONTROL.radius,

@@ -2504,11 +2504,8 @@ export default function GameShell({
     const mySlot = ms.players[0]?.playerId === safePlayer.id ? 0 : 1;
     const mine = c.nodes.filter((n) => n.controller === mySlot).length;
     const theirs = c.nodes.filter((n) => n.controller === 1 - mySlot).length;
-    let text = `${mine} : ${theirs} / ${c.need}`;
-    if (c.holder !== null) {
-      const left = Math.max(0, c.holdTicks - (ms.tick - c.since));
-      text += ` · ${Math.ceil(left * ms.tickIntervalMs / 1000)}s`;
-    }
+    const pct = (p: number) => Math.floor((100 * p) / c.holdTicks);
+    const text = `${mine} : ${theirs} / ${c.need} · ${pct(c.progress[mySlot])}% : ${pct(c.progress[1 - mySlot])}%`;
     return { text, tint: c.holder === null ? FCT.inkDim : c.holder === mySlot ? FCT.green : FCT.red };
   })();
   const canBuildBarracks = myEconomy && myEconomy.resources >= 75;
