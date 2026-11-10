@@ -25,7 +25,7 @@ import { processGathering } from "./engine/gathering.js";
 import { processControl } from "./engine/control.js";
 import { processRepairAndHealing, processCrystalRegen } from "./engine/repair.js";
 import { dist } from "./engine/utils.js";
-import { contestedNodesFor, terrainFor } from "./maps.js";
+import { contestedNodesFor, mapSymmetry, terrainFor } from "./maps.js";
 import { createNavGrid, rebuildNavGrid, addStructure, removeStructure } from "./engine/navGrid.js";
 import {
   validateBuildSite,
@@ -110,7 +110,7 @@ export class MatchEngine {
     const resolvedSeed = seed ?? (this.clock() & 0xffffffff);
     const rng: [Rng, Rng] = [new Rng(resolvedSeed), new Rng((resolvedSeed ^ 0x9e3779b9) >>> 0)];
     const idGen = new IdGen();
-    const map = createMap(config, contestedNodesFor(config.mapId, config.mapWidth, config.mapHeight));
+    const map = createMap(config, contestedNodesFor(config.mapId, config.mapWidth, config.mapHeight), mapSymmetry(config.mapId) === "rotate");
     const entities = new Map<EntityId, MatchEntity>();
 
     // Create crystals
@@ -1349,7 +1349,7 @@ if (command.type === "gather") {
     match.entities.clear();
 
     // Respawn entities
-    const map = createMap(config, contestedNodesFor(config.mapId, config.mapWidth, config.mapHeight));
+    const map = createMap(config, contestedNodesFor(config.mapId, config.mapWidth, config.mapHeight), mapSymmetry(config.mapId) === "rotate");
     const blueCrystal = this.createEntity(
       match.idGen,
       "crystal",

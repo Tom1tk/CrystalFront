@@ -62,8 +62,11 @@ export function mirrorBlueToRed(map: MapLayout): void {
   map.redSafeNodes = mirrored;
 }
 
-/** `contested`: per-map contested node positions (px; pool maps, at NODES.poolContestedCapacity); default layout when absent. */
-export function createMap(config: MatchConfig, contested?: Array<{ x: number; y: number }>): MapLayout {
+/**
+ * `contested`: per-map contested node positions (px; pool maps, at NODES.poolContestedCapacity); default layout when absent.
+ * `rotate`: 180°-rotation-symmetric map — red's safe nodes and worker spawns are rotated images of blue's (y flipped too).
+ */
+export function createMap(config: MatchConfig, contested?: Array<{ x: number; y: number }>, rotate = false): MapLayout {
   const mapWidth = config.mapWidth;
   const mapHeight = config.mapHeight;
   const midY = mapHeight / 2;
@@ -85,7 +88,7 @@ export function createMap(config: MatchConfig, contested?: Array<{ x: number; y:
 
   const redWorkers: SpawnPosition[] = SPAWN.redWorkerXOffsets.map((ox, i) => ({
     x: mapWidth - ox,
-    y: midY + SPAWN.redWorkerYOffsets[i],
+    y: midY + (rotate ? -1 : 1) * SPAWN.redWorkerYOffsets[i],
   }));
 
   // Safe resource nodes near each base (4 per side) — edit SAFE_NODE_OFFSETS in gameBalance.ts
@@ -99,7 +102,7 @@ export function createMap(config: MatchConfig, contested?: Array<{ x: number; y:
 
   const redSafeNodes: ResourceNodeLayout[] = SAFE_NODE_OFFSETS.map((n: { dx: number; dy: number; radius: number }) => ({
     x: mapWidth - n.dx,
-    y: midY + n.dy,
+    y: midY + (rotate ? -n.dy : n.dy),
     radius: n.radius,
     capacity: NODES.safeCapacity,
     type: "safe",

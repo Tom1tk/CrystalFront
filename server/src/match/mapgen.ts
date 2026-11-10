@@ -346,7 +346,7 @@ export function validateMap(def: MapDef): Validation {
   const t = buildTerrain(def, W, H);
   const issues: string[] = [];
   const contested = nodesOf(def);
-  const map = createMap(cfg, contested.length ? contested : undefined);
+  const map = createMap(cfg, contested.length ? contested : undefined, def.symmetry === "rotate");
 
   const keyPoints = [
     map.blueCrystal, map.redCrystal, ...map.blueWorkers, ...map.redWorkers,
