@@ -24,7 +24,7 @@ import { buildTerrain, terrainAt, isObstacleCode, T_ROCK, T_WATER, T_OPEN, T_HIG
 import { getRange, getVisionRange } from "../server/src/match/engine/utils.js";
 import { computeVisibility, encodeVision } from "../server/src/match/engine/visibility.js";
 import { generateMap, validateMap } from "../server/src/match/mapgen.js";
-import { registerMap, poolMaps, isKnownMap } from "../server/src/match/maps.js";
+import { registerMap, poolMaps, isKnownMap, terrainFor } from "../server/src/match/maps.js";
 import { POOL_MAPS } from "../server/src/match/pool/index.js";
 import { readFileSync as _readFileSync, readdirSync as _readdirSync } from "node:fs";
 import { existsSync as _existsSync, unlinkSync as _unlinkSync, writeFileSync as _writeFileSync } from "node:fs";
@@ -1913,6 +1913,12 @@ console.log("\n--- Replay round-trip: playerIds survive save/load ---");
   assert((full as any).engineVersion === ENGINE_VERSION,
     `G-9e: getReplay preserves engineVersion (got ${(full as any).engineVersion})`);
   const REPLAYS_DIR = _resolve(process.cwd(), "replays");
+  // G-11: getReplay must keep the map, or pool-map replays play back on "classic"
+  const poolId = "test-pool-map-replay";
+  const poolPath = _join(REPLAYS_DIR, `${poolId}.json`);
+  _writeFileSync(poolPath, JSON.stringify({ ...full, engineVersion: ENGINE_VERSION, mapId: "ironreed", mapVersion: terrainFor("ironreed", DEFAULT_CONFIG.mapWidth, DEFAULT_CONFIG.mapHeight).mapVersion }));
+  assert(getReplay(poolId)?.mapId === "ironreed", `G-11: getReplay preserves mapId (got ${getReplay(poolId)?.mapId})`);
+  _unlinkSync(poolPath);
   const staleId = "test-stale-engine-version";
   const stalePath = _join(REPLAYS_DIR, `${staleId}.json`);
   _writeFileSync(stalePath, JSON.stringify({ ...full, engineVersion: undefined }));

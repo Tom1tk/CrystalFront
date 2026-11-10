@@ -33,6 +33,8 @@ export interface ReplayMeta {
   durationSecs: number;
   version: string;
   engineVersion: number;
+  mapId?: string;
+  mapVersion?: number;
   timestamp: number;
   // Phase 5 — enriched metadata extracted from commandLog
   winType?: string | null;
@@ -276,6 +278,8 @@ export function getReplay(id: string): ReplayFile | null {
       durationSecs: ((raw.outcome?.ticks ?? 0) * SIMULATION.tickIntervalMs) / 1000,
       version: raw.version ?? "?",
       engineVersion: raw.engineVersion,
+      mapId: raw.mapId ?? "classic",
+      mapVersion: raw.mapVersion,
       timestamp: raw.timestamp ?? 0,
       commandLog: raw.commandLog ?? [],
     };
@@ -314,7 +318,7 @@ export class ReplayRunner {
     ];
 
     // G-9e: only same-engine replays reach here. G-5: replay on the recorded map.
-    const replayConfig = { ...DEFAULT_CONFIG, mapId: (replay as { mapId?: string }).mapId ?? "classic" };
+    const replayConfig = { ...DEFAULT_CONFIG, mapId: replay.mapId ?? "classic" };
 
     const match = this.engine.createMatch("replay", players, replayConfig, replay.seed);
     this.engine.startMatch(match.id);

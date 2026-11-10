@@ -6,6 +6,14 @@ import { TERRAIN_COLORS, decodeTerrain } from "../terrainCodec";
 /** G-4: how long a move order's planned path stays on screen. */
 const PATH_SHOW_MS = 1200;
 import { UNIT_DEFS, BUILDING_DEFS } from "@crystalfront/shared";
+import type { World3D } from "../three/World3D";
+
+/** G-11: 3D view preference (localStorage, or ?view=3d / ?view=2d in the URL). */
+function initialView3d(): boolean {
+  const q = new URLSearchParams(window.location.search).get("view");
+  if (q === "3d" || q === "2d") return q === "3d";
+  try { return window.localStorage.getItem("cf.view3d") === "1"; } catch { return false; }
+}
 
 interface GameShellProps {
   lobby: Lobby | null;
@@ -812,6 +820,29 @@ export default function GameShell({
   const matchStateRef = useRef<MatchState | null>(null);
   matchStateRef.current = matchState;
 
+  // G-11: optional 3D view, drawn on a WebGL canvas under the (then transparent) 2D canvas.
+  const [view3d, setView3d] = useState(initialView3d);
+  const world3dRef = useRef<World3D | null>(null);
+  useEffect(() => {
+    try { window.localStorage.setItem("cf.view3d", view3d ? "1" : "0"); } catch { /* storage blocked */ }
+    if (!view3d) return;
+    let world: World3D | null = null;
+    let cancelled = false;
+    import("../three/World3D").then(async ({ World3D }) => {
+      if (cancelled) return;
+      world = new World3D();
+      Object.assign(world.canvas.style, { position: "absolute", left: "0", top: "0", zIndex: "0", pointerEvents: "none" });
+      containerRef.current?.prepend(world.canvas);
+      await world.load();
+      if (!cancelled) world3dRef.current = world;
+    }).catch((err) => console.error("3D view failed to load", err));
+    return () => {
+      cancelled = true;
+      world3dRef.current = null;
+      world?.dispose();
+    };
+  }, [view3d]);
+
   // Interpolation state
   const prevEntitiesRef = useRef<Map<string, { x: number; y: number }>>(new Map());
   const oldPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
@@ -1247,6 +1278,11 @@ export default function GameShell({
    // Keyboard handler for Escape to cancel build mode
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "F3") {
+        e.preventDefault();
+        setView3d((v) => !v);
+        return;
+      }
       if (e.key === "Escape" && buildModeRef.current) {
         setBuildMode(false);
         setSelectedBuildingType(null);
@@ -1825,9 +1861,6 @@ export default function GameShell({
     ctx.save();
     ctx.scale(dpr, dpr);
 
-    ctx.fillStyle = "#05060a";
-    ctx.fillRect(0, 0, cssW, cssH);
-
     const cameraX = cameraXRef.current;
     const cameraY = cameraYRef.current;
     const mapWidth = matchState.mapWidth ?? matchState.config?.mapWidth ?? 5000;
@@ -1835,6 +1868,18 @@ export default function GameShell({
     const scale = Math.max(0.1, (cssH - HUD_TOP) / mapHeight);
     scaleRef.current = scale;
     const viewWW = cssW / scale;  // visible world width
+
+    // G-11: the 3D view draws ground, terrain, nodes, buildings and units; this canvas
+    // becomes a transparent overlay for everything else.
+    const w3 = world3dRef.current?.ready ? world3dRef.current : null;
+    if (w3) {
+      ctx.clearRect(0, 0, cssW, cssH);
+      w3.frame({ cssW, cssH, cameraX, scale, hudTop: HUD_TOP }, entities, resourceNodes, matchState.staticMap, mapWidth, mapHeight,
+        (ownerId) => (matchState.players.findIndex((p) => p?.playerId === ownerId) === 0 ? 0 : 1));
+    } else {
+      ctx.fillStyle = "#05060a";
+      ctx.fillRect(0, 0, cssW, cssH);
+    }
 
     const getTeamColor = (ownerId: string) => {
       const pIdx = matchState.players.findIndex((p) => p?.playerId === ownerId);
@@ -1851,6 +1896,7 @@ export default function GameShell({
     ctx.scale(scale, scale);
     ctx.translate(-cameraX, -cameraY);
 
+    if (!w3) {
     // Lane background
     ctx.fillStyle = "#0a0c14";
     ctx.fillRect(0, laneTop, mapWidth, laneBottom - laneTop);
@@ -1876,6 +1922,7 @@ export default function GameShell({
         ctx.imageSmoothingEnabled = true;
       }
     }
+    }
 
     // ─── Vision fog overlay (drawn BEFORE entities) ─
     // Cells outside the player's vision are darkened. Drawn before
@@ -1884,7 +1931,9 @@ export default function GameShell({
     const fog = fogCanvas(matchState.vision, matchState.staticMap);
     if (fog) {
       const vcs = matchState.staticMap!.visionCellSize ?? 40;
+      if (w3) ctx.globalAlpha = 0.8;
       ctx.drawImage(fog, 0, 0, fog.width * vcs, fog.height * vcs);
+      ctx.globalAlpha = 1;
     } else {
       const myVisionSources = entities.filter(
         (e) => e.ownerId === safePlayer.id && e.health > 0
@@ -1928,6 +1977,7 @@ export default function GameShell({
       }
     }
 
+    if (!w3) {
     // Lane lines
     ctx.strokeStyle = "#0f1320";
     ctx.lineWidth = 2;
@@ -1973,6 +2023,7 @@ export default function GameShell({
       ctx.textBaseline = "middle";
       ctx.fillText(`${Math.floor(node.remaining)}`, node.x, node.y);
     }
+    }
 
     // Node control rings (G-8): contested nodes, coloured by the side holding them.
     for (const cn of matchState.control?.nodes ?? []) {
@@ -2016,7 +2067,9 @@ export default function GameShell({
         const bBY = entity.y - bH / 2;
 
         // Draw FACET silhouette based on building type
-        if (entity.type === "crystal") {
+        if (w3) {
+          // 3D view draws the model
+        } else if (entity.type === "crystal") {
           const pulseA = 0.08 + 0.07 * Math.sin(Date.now() / 2000);
           drawCrystal(ctx, entity.x, entity.y, localIsMyTeam, pulseA);
         } else if (entity.buildingType === "barracks") {
@@ -2039,7 +2092,7 @@ export default function GameShell({
         }
 
         // Construction progress dark overlay
-        if (entity.constructionProgress < 100) {
+        if (entity.constructionProgress < 100 && !w3) {
           ctx.fillStyle = "rgba(0,0,0,0.5)";
           ctx.fillRect(bBX, bBY, bW, bH);
           const progW = bW * (entity.constructionProgress / 100);
@@ -2116,7 +2169,15 @@ export default function GameShell({
         const isUnitSelected = localIsSelected || selectedEntityIdsRef.current.has(entity.id);
 
         // Draw FACET silhouette based on unit type
-        if (entity.type === "worker") {
+        if (w3) {
+          if (isUnitSelected) {
+            ctx.beginPath();
+            ctx.ellipse(entity.x, entity.y, entity.radius + 4, entity.radius + 4, 0, 0, Math.PI * 2);
+            ctx.strokeStyle = "rgba(255, 255, 68, 0.9)";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+          }
+        } else if (entity.type === "worker") {
           drawWorker(ctx, entity.x, entity.y, localIsMyTeam, isUnitSelected);
         } else if (entity.type === "skirmisher") {
           drawSkirmisher(ctx, entity.x, entity.y, localIsMyTeam, isUnitSelected, facing);
@@ -2143,7 +2204,7 @@ export default function GameShell({
         if (entity.health < entity.maxHealth) {
           const barWidth = entity.radius * 2;
           const barX = entity.x - entity.radius;
-          const barY = entity.y - entity.radius - 8;
+          const barY = entity.y - entity.radius * (w3 ? 3 : 1) - 8;
           const healthPct = entity.health / entity.maxHealth;
           ctx.fillStyle = "#333";
           ctx.fillRect(barX, barY, barWidth, 4);
@@ -2576,6 +2637,14 @@ export default function GameShell({
               <span style={{ fontFamily: FCT.mono, fontSize: 9, color: FCT.inkFaint, letterSpacing: "0.22em", marginLeft: 6 }}>
                 VS
               </span>
+              <button
+                onClick={() => setView3d((v) => !v)}
+                title="Toggle the 3D view (F3)"
+                style={{ marginLeft: 12, padding: "3px 8px", fontFamily: FCT.mono, fontSize: 10, letterSpacing: "0.12em",
+                  color: view3d ? FCT.ice : FCT.inkDim, background: "transparent", border: `1px solid ${view3d ? FCT.ice : FCT.inkFaint}`, cursor: "pointer" }}
+              >
+                {view3d ? "3D" : "2D"}
+              </button>
             </div>
           </div>
 
@@ -2922,6 +2991,8 @@ const styles = {
     minHeight: 0,
   },
   canvas: {
+    position: "relative" as const,
+    zIndex: 1,
     imageRendering: "auto" as const,
     display: "block",
     cursor: "crosshair",
