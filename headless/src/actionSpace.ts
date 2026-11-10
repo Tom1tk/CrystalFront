@@ -1,6 +1,8 @@
 import type { MacroAction } from "./types.js";
 import type { MatchState, MatchEntity } from "../../server/src/match/types.js";
 import { MAP, BUILD_ZONES, UNIT_DEFS, BUILDING_DEFS, PLACEMENT } from "@crystalfront/shared";
+import { validateBuildSite } from "../../server/src/match/buildingValidation.js";
+import { mapSymmetry } from "../../server/src/match/maps.js";
 
 /**
  * Expand a MacroAction into the raw engine commands it represents.
@@ -43,7 +45,10 @@ export function expandMacroAction(
       ).length;
       const Y_CYCLE = ["middle", "top", "bottom"] as const;
       const yZone = action.yZone ?? Y_CYCLE[ownBuildingCount % 3];
-      const pos = chooseBuildPosition(playerColor, action.xZone ?? "mid_base", yZone, match);
+      const node = action.nodeId ? match.resourceNodes.find(n => n.id === action.nodeId) : undefined;
+      const pos = node
+        ? chooseSiteNear(match, playerId, action.buildingType, node)
+        : chooseBuildPosition(playerColor, action.xZone ?? "mid_base", yZone, match, action.buildingType);
       if (!pos) return [];
       return [{
         type: "build",
@@ -58,7 +63,8 @@ export function expandMacroAction(
     case "attack_move": {
       const group = getUnitGroup(match, playerId, action.group ?? "all_combat");
       if (group.length === 0) return [];
-      const target = resolveTargetZone(action.targetZone ?? "midfield", playerColor, match, visibleIds);
+      const node = action.nodeId ? match.resourceNodes.find(n => n.id === action.nodeId) : undefined;
+      const target = node ?? resolveTargetZone(action.targetZone ?? "midfield", playerColor, match, visibleIds);
       const cmds: Record<string, unknown>[] = [];
       const needAutoAttack = group.filter(e => !e.autoAttackEnabled).map(e => e.id);
       if (needAutoAttack.length > 0) {
@@ -183,13 +189,26 @@ function findProductionBuilding(match: MatchState, playerId: string, unitType: s
   }
 }
 
+/** Nodes with less than this left are skipped when assigning workers. */
+const MIN_NODE_REMAINING = 5;
+
+/**
+ * A worker is idle when it has no job, or its node has run dry (G-8). Treating
+ * workers on an empty node as idle lets `assign_workers` move them to a node
+ * that still has resources instead of waiting there on regen.
+ */
+export function isIdleWorker(match: MatchState, e: MatchEntity): boolean {
+  if (e.buildTargetId || e.attackTargetId) return false;
+  if (!e.gatheringNodeId) return true;
+  const node = match.resourceNodes.find(n => n.id === e.gatheringNodeId);
+  return !node || node.remaining < MIN_NODE_REMAINING;
+}
+
 function getIdleWorkers(match: MatchState, playerId: string): MatchEntity[] {
   const workers: MatchEntity[] = [];
   for (const e of match.entities.values()) {
     if (e.type !== "worker" || e.ownerId !== playerId) continue;
-    if (!e.buildTargetId && !e.gatheringNodeId && !e.attackTargetId) {
-      workers.push(e);
-    }
+    if (isIdleWorker(match, e)) workers.push(e);
   }
   return workers;
 }
@@ -286,11 +305,44 @@ function resolveAttackTarget(
   return visibleEnemies[0];
 }
 
+/**
+ * Nearest valid site for a building next to a resource node (G-8 node control):
+ * a ring 60–120 px out, so it covers the node without standing on it.
+ */
+export function chooseSiteNear(
+  match: MatchState,
+  playerId: string,
+  buildingType: NonNullable<MacroAction["buildingType"]>,
+  node: { x: number; y: number },
+): { x: number; y: number } | null {
+  // Offsets in the player's own frame (red mirrored, and also flipped vertically
+  // on rotate maps), so both sides pick matching sites.
+  const isBlue = match.players[0]?.playerId === playerId;
+  const sx = isBlue ? 1 : -1;
+  const sy = !isBlue && mapSymmetry(match.config?.mapId) === "rotate" ? -1 : 1;
+  const sites: Array<{ x: number; y: number; gx: number; gy: number; d: number }> = [];
+  for (let gx = -3; gx <= 3; gx++) for (let gy = -3; gy <= 3; gy++) {
+    const d = Math.hypot(gx, gy) * 40;
+    if (d < 60 || d > 120) continue;
+    sites.push({ x: node.x + gx * 40 * sx, y: node.y + gy * 40 * sy, gx, gy, d });
+  }
+  // Prefer the side facing the own crystal, then nearest.
+  const crystal = [...match.entities.values()].find(e => e.type === "crystal" && e.ownerId === playerId);
+  const key = (p: { x: number; y: number; d: number }) =>
+    p.d + (crystal ? 0.25 * Math.hypot(p.x - crystal.x, p.y - crystal.y) : 0);
+  sites.sort((a, b) => key(a) - key(b) || a.gx - b.gx || a.gy - b.gy);
+  for (const p of sites) {
+    if (validateBuildSite(match, playerId, buildingType, p.x, p.y).valid) return { x: p.x, y: p.y };
+  }
+  return null;
+}
+
 export function chooseBuildPosition(
   color: string,
   xZone: MacroAction["xZone"],
   yZone: MacroAction["yZone"],
-  match: MatchState
+  match: MatchState,
+  buildingType?: NonNullable<MacroAction["buildingType"]>
 ): { x: number; y: number } | null {
   // Use match.config dimensions so training overrides (e.g. mapWidth=1000) are respected.
   // MAP.width/height are the live-game constants (6000×600) and must NOT be used here.
@@ -319,7 +371,11 @@ export function chooseBuildPosition(
   };
 
   const baseX = xBands[xZone ?? "mid_base"] ?? (zoneStart + zoneWidth * 0.5);
-  const baseY = yBands[yZone ?? "middle"] ?? mapH * 0.5;
+  // On rotationally symmetric maps red's "top" is blue's "bottom" (G-8 fairness).
+  const flipY = !isBlue && mapSymmetry(match.config?.mapId) === "rotate";
+  const bandY = yBands[yZone ?? "middle"] ?? mapH * 0.5;
+  const baseY = flipY ? mapH - bandY : bandY;
+  const playerId = match.players.find(p => p?.color === color)?.playerId ?? "";
 
   const STEP = 80;
   // Use the barracks half-dimensions for overlap checks (largest building, safe over-estimate).
@@ -332,11 +388,30 @@ export function chooseBuildPosition(
     e => e.type === "crystal" && e.ownerId === (isBlue ? match.players[0]?.playerId : match.players[1]?.playerId)
   );
 
-  for (let attempt = 0; attempt < 16; attempt++) {
-    const dx = (attempt % 4) * STEP * (attempt % 2 === 0 ? 1 : -1) * (isBlue ? 1 : -1);
-    const dy = Math.floor(attempt / 4) * STEP * (attempt < 8 ? 1 : -1);
+  // Search outward from the band centre. With a building type, each site is
+  // checked with the engine's own rules (terrain, no-seal, spacing), so the
+  // bot never picks a site the engine would reject (G-8).
+  const offsets: Array<[number, number]> = [];
+  for (let gx = -4; gx <= 4; gx++) for (let gy = -4; gy <= 4; gy++) offsets.push([gx, gy]);
+  offsets.sort((a, b) => (a[0] ** 2 + a[1] ** 2) - (b[0] ** 2 + b[1] ** 2) || a[0] - b[0] || a[1] - b[1]);
+  const maxAttempts = buildingType ? offsets.length : 16;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    let dx: number, dy: number;
+    if (buildingType) {
+      dx = offsets[attempt][0] * (STEP / 2) * (isBlue ? 1 : -1);
+      dy = offsets[attempt][1] * (STEP / 2) * (flipY ? -1 : 1);
+    } else {
+      dx = (attempt % 4) * STEP * (attempt % 2 === 0 ? 1 : -1) * (isBlue ? 1 : -1);
+      dy = Math.floor(attempt / 4) * STEP * (attempt < 8 ? 1 : -1) * (flipY ? -1 : 1);
+    }
     const cx = Math.max(zoneStart + 40, Math.min(zoneEnd - 40, baseX + dx));
     const cy = Math.max(40, Math.min(mapH - 40, baseY + dy));
+
+    if (buildingType) {
+      if (validateBuildSite(match, playerId, buildingType, cx, cy).valid) return { x: cx, y: cy };
+      continue;
+    }
 
     const entityBlocked = blockingEntities.some(e => {
       const ex1 = e.x - e.radius, ex2 = e.x + e.radius;
@@ -455,7 +530,7 @@ export function findNode(
   const mid = mapW / 2;
 
   const availableNodes = match.resourceNodes.filter(n =>
-    n.remaining > 0 && n.gathererSlots.size < n.maxGathererSlots
+    n.remaining >= MIN_NODE_REMAINING && n.gathererSlots.size < n.maxGathererSlots
   );
 
   if (choice === "nearest_safe") {

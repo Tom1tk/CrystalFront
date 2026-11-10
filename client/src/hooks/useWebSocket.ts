@@ -15,7 +15,7 @@ interface UseWebSocketReturn {
   playerId: string | null;
   lobbyState: LobbyState | null;
   matchState: MatchState | null;
-  matchEnd: { winner: string } | null;
+  matchEnd: { winner: string; winType?: string } | null;
   replayEnd: { ticks: number; winner: string | null } | null;
   resourceNodes: ResourceNodeDisplay[];
   createLobby: (username: string) => void;
@@ -52,7 +52,7 @@ export function useWebSocket(): UseWebSocketReturn {
   const [lobbyState, setLobbyState] = useState<LobbyState | null>(null);
   const [matchState, setMatchState] = useState<MatchState | null>(null);
   const staticMapRef = useRef<MatchState["staticMap"]>(undefined);
-  const [matchEnd, setMatchEnd] = useState<{ winner: string } | null>(null);
+  const [matchEnd, setMatchEnd] = useState<{ winner: string; winType?: string } | null>(null);
   const [replayEnd, setReplayEnd] = useState<{ ticks: number; winner: string | null } | null>(null);
   const [resourceNodes, setResourceNodes] = useState<ResourceNodeDisplay[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -91,7 +91,7 @@ export function useWebSocket(): UseWebSocketReturn {
           setTimeout(() => setError(null), 4000);
         }
         if (msg.type === "match_end" && msg.payload?.winner) {
-          setMatchEnd({ winner: msg.payload.winner as string });
+          setMatchEnd({ winner: msg.payload.winner as string, winType: msg.payload.winType as string | undefined });
         }
         if (msg.type === "match_start" && msg.payload?.match) {
           const ms = msg.payload.match as MatchState;

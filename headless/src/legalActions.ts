@@ -1,6 +1,7 @@
 import type { MacroAction } from "./types.js";
 import type { MatchState } from "../../server/src/match/types.js";
 import { BUILDING_DEFS, UNIT_DEFS, ECONOMY } from "@crystalfront/shared";
+import { isIdleWorker } from "./actionSpace.js";
 
 /** @deprecated — see docs/REVIVAL_PLAN.md (action-forcing was a symptom treatment; keep default-off) */
 export interface LegalActionsOpts {
@@ -79,7 +80,7 @@ export function getLegalActions(match: MatchState, playerId: string, opts: Legal
   }
   if (!suppressNoop) legal.push({ type: "noop" });
   const workers = ownEntities.filter(e => e.type === "worker");
-  const idleWorkers = workers.filter(e => !e.buildTargetId && !e.gatheringNodeId && !e.attackTargetId);
+  const idleWorkers = workers.filter(e => isIdleWorker(match, e));
   const availableBuilders = workers.filter(e => !e.buildTargetId);
   const completedBuildings = ownEntities.filter(e => e.type === "building" && e.constructionProgress >= 100);
   const combatUnits = ownEntities.filter(e => ["skirmisher", "gunner", "bruiser", "medic"].includes(e.type));

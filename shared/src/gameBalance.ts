@@ -179,7 +179,20 @@ export const ECONOMY = {
   startingMaxSupply: 10,
   workerTrainCost: 35,          // must match UNIT_DEFS.worker.cost
   workerSupplyCost: 1,
-  passiveWinThreshold: 4500,   // current held resources = win (turtling win condition)
+} as const;
+
+// ====================================================================
+//  NODE CONTROL (G-8) — replaces the old "hold 4500 resources" win
+// ====================================================================
+
+/**
+ * A side holds a contested node when it has a combat unit or a finished turret
+ * within `radius` of it and the opponent has neither. Holding a majority of the
+ * contested nodes (more than half) for `holdTicks` in a row wins the match.
+ */
+export const CONTROL = {
+  radius: 150,
+  holdTicks: 600,           // 60 s at 10 Hz
 } as const;
 
 // ====================================================================
@@ -275,7 +288,7 @@ export const ENTITY = {
  * Replays are stamped with it; replays with a different stamp are not listed or
  * played (no compatibility layer).
  */
-export const ENGINE_VERSION = 8;
+export const ENGINE_VERSION = 9;
 
 /** Navigation grid (G-3). */
 export const NAV = {

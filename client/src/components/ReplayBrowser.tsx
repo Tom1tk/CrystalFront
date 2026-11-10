@@ -37,7 +37,7 @@ type SortField     = "timestamp" | "seed" | "ticks" | "winner";
 const KNOWN_FLAGS: { id: string; label: string; color: string }[] = [
   { id: "fast",         label: "⚡ Fast",     color: FCT.green  },
   { id: "lopsided",     label: "⚔ Lopsided", color: FCT.red    },
-  { id: "resource_win", label: "💰 Econ Win", color: FCT.amber  },
+  { id: "control_win",  label: "⚑ Control",  color: FCT.amber  },
   { id: "scrappy",      label: "💀 Scrappy",  color: "#cc44ff"  },
 ];
 
@@ -70,7 +70,7 @@ function outcomeLabel(r: ReplayMeta) {
 function winTypeBadge(wt: string | null | undefined) {
   if (!wt)               return { text: "—",          color: FCT.inkFaint };
   if (wt === "combat")   return { text: "⚔ Combat",   color: FCT.red      };
-  if (wt === "resource") return { text: "💰 Econ",    color: FCT.amber    };
+  if (wt === "control")  return { text: "⚑ Control", color: FCT.amber    };
   if (wt === "timeout")  return { text: "⏳ Time",    color: FCT.inkDim   };
   return { text: wt, color: FCT.inkFaint };
 }
@@ -228,7 +228,7 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
           <select value={filterWinType} onChange={e => setFilterWinType(e.target.value)} style={selectStyle}>
             <option value="all">All</option>
             <option value="combat">Combat</option>
-            <option value="resource">Resource</option>
+            <option value="control">Control</option>
             <option value="timeout">Timeout</option>
           </select>
 

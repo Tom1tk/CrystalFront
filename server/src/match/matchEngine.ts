@@ -17,18 +17,18 @@ import type {
 } from "./types.js";
 import { createMap } from "./map.js";
 import { DEFAULT_CONFIG, ORDER_QUEUE_MAX, type MatchEntity as QEntity, type QueuedOrderType } from "./types.js";
-import { BUILDING_DEFS, UNIT_DEFS, GATHERING, SIMULATION, ECONOMY } from "@crystalfront/shared";
+import { BUILDING_DEFS, UNIT_DEFS, GATHERING, SIMULATION } from "@crystalfront/shared";
 import { computeVisibility } from "./engine/visibility.js";
 import { processMovement } from "./engine/movement.js";
 import { processCombat } from "./engine/combat.js";
 import { processGathering } from "./engine/gathering.js";
+import { processControl } from "./engine/control.js";
 import { processRepairAndHealing, processCrystalRegen } from "./engine/repair.js";
 import { dist } from "./engine/utils.js";
 import { contestedNodesFor, terrainFor } from "./maps.js";
-import { rectTouches, isObstacleCode, T_BRUSH } from "./engine/terrain.js";
-import { createNavGrid, rebuildNavGrid, addStructure, removeStructure, anchorsConnected, footprintOf, type Rect } from "./engine/navGrid.js";
+import { createNavGrid, rebuildNavGrid, addStructure, removeStructure } from "./engine/navGrid.js";
 import {
-  validatePlacement,
+  validateBuildSite,
   findCrystalByColor,
   type PlacementResult,
 } from "./buildingValidation.js";
@@ -212,9 +212,9 @@ export class MatchEngine {
     const resourceNodes: ResourceNode[] = [];
 
     const allNodeLayouts = [
-      ...map.blueSafeNodes.map((n) => ({ ...n, ownerId: players[0]?.playerId ?? "" })),
-      ...map.redSafeNodes.map((n) => ({ ...n, ownerId: players[1]?.playerId ?? "" })),
-      ...map.contestedNodes.map((n) => ({ ...n, ownerId: "" })),
+      ...map.blueSafeNodes.map((n) => ({ ...n, ownerId: players[0]?.playerId ?? "", contested: false })),
+      ...map.redSafeNodes.map((n) => ({ ...n, ownerId: players[1]?.playerId ?? "", contested: false })),
+      ...map.contestedNodes.map((n) => ({ ...n, ownerId: "", contested: true })),
     ];
 
     for (const layout of allNodeLayouts) {
@@ -229,6 +229,7 @@ export class MatchEngine {
          maxGathererSlots: 3,
          gathererSlots: new Set<EntityId>(),
          accumulatedGather: 0,
+         ...(layout.contested ? { contested: true, controller: null } : {}),
        };
        resourceNodes.push(node);
     }
@@ -267,6 +268,7 @@ export class MatchEngine {
       endedAt: null,
       economy,
       resourceNodes,
+      control: { holder: null, since: 0 },
       config,
       mapWidth: config.mapWidth,
       mapHeight: config.mapHeight,
@@ -504,6 +506,16 @@ if (command.type === "gather") {
        const worker = command.entityId ? match.entities.get(command.entityId) : undefined;
        if (!worker || worker.type !== "worker" || worker.ownerId !== playerId) return { success: false, message: "Worker not found" };
 
+       // Validate before changing anything: a rejected command is not logged,
+       // so it must leave the state untouched or replays diverge (G-8).
+       const targetNode = match.resourceNodes.find(
+         (n) => n.id === command.targetEntityId
+       );
+       if (!targetNode) return { success: false, message: "Resource node not found" };
+       if (targetNode.remaining <= 0) return { success: false, message: "Node is depleted" };
+       if (targetNode.gathererSlots.size >= targetNode.maxGathererSlots && !targetNode.gathererSlots.has(worker.id))
+         return { success: false, message: "Node is full" };
+
        // Remove from previous node if gathering elsewhere
        if (worker.gatheringNodeId) {
          const prevNode = match.resourceNodes.find((n) => n.id === worker.gatheringNodeId);
@@ -520,14 +532,6 @@ if (command.type === "gather") {
          }
          worker.buildTargetId = undefined;
        }
-
-       const targetNode = match.resourceNodes.find(
-         (n) => n.id === command.targetEntityId
-       );
-       if (!targetNode) return { success: false, message: "Resource node not found" };
-       if (targetNode.remaining <= 0) return { success: false, message: "Node is depleted" };
-       if (targetNode.gathererSlots.size >= targetNode.maxGathererSlots)
-         return { success: false, message: "Node is full" };
 
        worker.gatheringNodeId = targetNode.id;
        worker.moveOrder = undefined;
@@ -688,44 +692,9 @@ if (command.type === "gather") {
          }
        }
 
-       // Determine player color
-       const playerColor = match.players[playerIdx]?.color ?? "blue";
-
-       // Find crystals for this player
-       const playerCrystals = Array.from(match.entities.values()).filter(
-         (e) => e.type === "crystal" && e.ownerId === playerId
-       );
-
-       // Validate placement
-       const placement = validatePlacement(
-         targetX,
-         targetY,
-         def,
-         match.entities,
-         match.resourceNodes,
-         playerColor,
-         playerCrystals,
-         playerId,
-         config.mapWidth,
-         config.mapHeight
-      );
-        if (!placement.valid) {
-         return { success: false, message: placement.reason };
-       }
-
-       // G-5/G-6b: no building on obstacles or in brush.
-       if (rectTouches(match.terrain, targetX - def.width / 2, targetY - def.height / 2, targetX + def.width / 2, targetY + def.height / 2,
-           (c) => isObstacleCode(c) || c === T_BRUSH)) {
-         return { success: false, message: "Blocked by terrain" };
-       }
-
-       // G-3 no-seal rule: the new footprint must not cut the crystals off from each other.
-       const crystalRects = Array.from(match.entities.values())
-         .filter((e) => e.type === "crystal")
-         .map((e) => footprintOf(e) as Rect);
-       const newRect = footprintOf({ type: "building", x: targetX, y: targetY, radius: 0, buildingType });
-       if (!anchorsConnected(match.nav, crystalRects, newRect ?? undefined)) {
-         return { success: false, message: "Would seal off a crystal" };
+       const site = validateBuildSite(match, playerId, buildingType, targetX, targetY);
+       if (!site.valid) {
+         return { success: false, message: site.reason };
        }
 
        // Deduct resources
@@ -1144,22 +1113,6 @@ if (command.type === "gather") {
     // Phase 3: Gathering
     processGathering(match);
 
-    // Phase 3.5: Passive win — first player to hold enough resources at once wins
-    for (let i = 0; i < 2; i++) {
-      const eco = match.economy[i];
-      const passiveThreshold = match.config.passiveWinThreshold ?? ECONOMY.passiveWinThreshold;
-      if (eco && eco.resources >= passiveThreshold) {
-        const winner = match.players[i]?.playerId;
-        if (winner) {
-          match.phase = "ended";
-          match.result = { winner, winType: "resource" };
-          match.endedAt = this.clock();
-          if (this.matchEndCallback) this.matchEndCallback(match.id, winner);
-          return match;
-        }
-      }
-    }
-
     // Phase 3.6: Tick-cap tiebreaker — deterministic winner when maxTicks is reached
     const maxTicks = match.config.maxTicks ?? 0;
     if (maxTicks > 0 && match.tick >= maxTicks) {
@@ -1203,6 +1156,16 @@ if (command.type === "gather") {
 
     // Phase 7: Fog of war — compute visibility per player
     computeVisibility(match);
+
+    // Phase 8: Node control (G-8) — holding a majority of contested nodes long enough wins
+    const controlWinner = processControl(match);
+    const controlWinnerId = controlWinner !== null ? match.players[controlWinner]?.playerId : undefined;
+    if (controlWinnerId) {
+      match.phase = "ended";
+      match.result = { winner: controlWinnerId, winType: "control" };
+      match.endedAt = this.clock();
+      if (this.matchEndCallback) this.matchEndCallback(match.id, controlWinnerId);
+    }
 
     return match;
   }
@@ -1466,12 +1429,13 @@ if (command.type === "gather") {
     for (const w of blueWorkers) match.entities.set(w.id, w);
     for (const w of redWorkers) match.entities.set(w.id, w);
 
-    // Reset resource nodes
+    // Reset resource nodes and node control
     match.resourceNodes = [];
+    match.control = { holder: null, since: 0 };
     const allNodeLayouts = [
-      ...map.blueSafeNodes.map((n) => ({ ...n, ownerId: players[0]?.playerId ?? "" })),
-      ...map.redSafeNodes.map((n) => ({ ...n, ownerId: players[1]?.playerId ?? "" })),
-      ...map.contestedNodes.map((n) => ({ ...n, ownerId: "" })),
+      ...map.blueSafeNodes.map((n) => ({ ...n, ownerId: players[0]?.playerId ?? "", contested: false })),
+      ...map.redSafeNodes.map((n) => ({ ...n, ownerId: players[1]?.playerId ?? "", contested: false })),
+      ...map.contestedNodes.map((n) => ({ ...n, ownerId: "", contested: true })),
     ];
 
     for (const layout of allNodeLayouts) {
@@ -1486,6 +1450,7 @@ if (command.type === "gather") {
          maxGathererSlots: 3,
          gathererSlots: new Set<EntityId>(),
          accumulatedGather: 0,
+         ...(layout.contested ? { contested: true, controller: null } : {}),
        };
        match.resourceNodes.push(node);
     }

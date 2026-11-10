@@ -72,7 +72,7 @@ export type ServerToClientMsg =
   | { type: typeof SERVER_EVT.CONNECTED; payload: { playerId: PlayerId } }
   | { type: typeof SERVER_EVT.ERROR; payload: { message: string } }
   | { type: typeof SERVER_EVT.LOBBY_STATE; payload: { lobby: LobbyState } }
-  | { type: typeof SERVER_EVT.MATCH_END; payload: { winner: PlayerId } }
+  | { type: typeof SERVER_EVT.MATCH_END; payload: { winner: PlayerId; winType?: "combat" | "control" | "timeout" } }
   | { type: typeof SERVER_EVT.HOST_DISCONNECT; payload: { message: string } }
   | { type: typeof SERVER_EVT.MATCH_START; payload: { match: MatchState } }
   | { type: typeof SERVER_EVT.GAME_STATE; payload: { match: MatchState } }

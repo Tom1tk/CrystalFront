@@ -11,9 +11,10 @@ export interface GlobalFeatures {
   scoreDiff: number;               // own score - opp score
   ownCrystalHealthFrac: number;    // own crystal hp / max hp
   oppCrystalHealthFrac: number;    // opp crystal hp / max hp (0 if not visible)
-  ownResourcesWinFrac: number;     // current held resources / passiveWinThreshold ∈ [0,1]
-  oppResourcesWinFrac: number;     // (0 if not visible)
-  ownLifetimeResourcesFrac: number; // lifetime gathered / (passiveWinThreshold*2) — for reward signal
+  ownControlFrac: number;          // contested nodes held / nodes needed for a control hold ∈ [0,1]
+  oppControlFrac: number;          // same for the opponent (control is public)
+  controlHoldFrac: number;         // hold timer progress, + own hold / − opponent's ∈ [-1,1]
+  ownLifetimeResourcesFrac: number; // lifetime gathered / 9000 — for reward signal
   oppLifetimeResourcesFrac: number; // (0 if unknown)
   // Enemy unit composition (visible only) — enables adaptive counter-play
   enemyWorkerCount: number;        // visible enemy workers / 10
@@ -92,6 +93,9 @@ export interface MacroAction {
   // assign_workers
   nodeChoice?: "nearest_safe" | "nearest_contested" | "richest_visible";
   workerCount?: 1 | 2 | 3 | "all_idle";
+  // build / attack_move: a resource node to build next to or move to (G-8). Not
+  // enumerated in legal actions; scripted bots set it directly.
+  nodeId?: string;
 }
 
 // ---- Agent interface ----
@@ -107,7 +111,7 @@ export interface Agent {
 
 export interface MatchResult {
   winner: string | null;            // null = max-ticks draw
-  winType: "combat" | "resource" | "timeout" | null;
+  winType: "combat" | "control" | "timeout" | null;
   ticks: number;
   durationMs: number;
   commandLog: Array<{ tick: number; playerId: string; command: Record<string, unknown> }>;

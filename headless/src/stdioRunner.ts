@@ -288,7 +288,7 @@ function handleStep(actionIdx: number): void {
     info.opponentType = currentOpponentName;
 
     // Episode outcome
-    const isCombatWin = winner === BLUE_ID && winType !== "resource";
+    const isCombatWin = winner === BLUE_ID && winType !== "control";
     info.episodeOutcome = isCombatWin ? "combat_win"
       : winner === BLUE_ID ? "resource_win"
       : winner !== null    ? "loss"

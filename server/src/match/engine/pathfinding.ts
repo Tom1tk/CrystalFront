@@ -14,9 +14,8 @@
  *   rough cells the search itself chose, so smoothing never cuts through mud
  *   the route went around.
  *
- * Tie-breaking is total and mirror-equivariant (f, h, distance from the
- * start→goal line, row, column distance from goal) so a left-right mirrored
- * state picks the mirrored path.
+ * Tie-breaking is total and equivariant under a left-right mirror and a 180°
+ * rotation (see tieLess), so a mirrored or rotated state picks the matching path.
  */
 import type { NavGrid } from "./navGrid.js";
 import { TERRAIN } from "@crystalfront/shared";
@@ -46,12 +45,14 @@ const stepCost = (g: NavGrid, i: number, base: number) =>
   !rough(g, i) ? base : base === STRAIGHT ? TERRAIN.roughStraightCost : TERRAIN.roughDiagonalCost;
 
 export function cellOf(g: NavGrid, x: number, y: number): number {
-  // A point exactly on a column boundary goes to the column nearer the map's
-  // centre line, so a left-right mirrored point lands in the mirrored column.
+  // A point exactly on a cell boundary goes to the cell nearer the map's centre,
+  // so a mirrored or rotated point lands in the mirrored/rotated cell.
   const fx = x / g.cellSize;
   const colRaw = fx < g.cols / 2 ? Math.floor(fx) : Math.ceil(fx) - 1;
   const col = Math.min(g.cols - 1, Math.max(0, colRaw));
-  const row = Math.min(g.rows - 1, Math.max(0, Math.floor(y / g.cellSize)));
+  const fy = y / g.cellSize;
+  const rowRaw = fy < g.rows / 2 ? Math.floor(fy) : Math.ceil(fy) - 1;
+  const row = Math.min(g.rows - 1, Math.max(0, rowRaw));
   return row * g.cols + col;
 }
 
@@ -140,17 +141,27 @@ function forPredecessors(g: NavGrid, i: number, fn: (n: number, cost: number) =>
 
 interface Frame { g: NavGrid; sCol: number; sRow: number; gCol: number; gRow: number }
 
-/** Secondary keys after cost: |cross| from start→goal line, row, |col - goalCol|, index. */
+/**
+ * Secondary keys after cost, all unchanged by a left-right mirror AND by a 180°
+ * rotation of the whole frame (G-8), so mirror and rotate maps both pick the
+ * symmetric path: |cross| from the start→goal line, progress along that line,
+ * distance from the map's centre row, then centre column, then index.
+ */
 function tieLess(f: Frame, a: number, b: number): boolean {
-  const ac = a % f.g.cols, ar = (a - ac) / f.g.cols;
-  const bc = b % f.g.cols, br = (b - bc) / f.g.cols;
+  const { cols, rows } = f.g;
+  const ac = a % cols, ar = (a - ac) / cols;
+  const bc = b % cols, br = (b - bc) / cols;
   const lx = f.gCol - f.sCol, ly = f.gRow - f.sRow;
   const xa = Math.abs((ac - f.sCol) * ly - (ar - f.sRow) * lx);
   const xb = Math.abs((bc - f.sCol) * ly - (br - f.sRow) * lx);
   if (xa !== xb) return xa < xb;
-  if (ar !== br) return ar < br;
-  const da = Math.abs(ac - f.gCol), db = Math.abs(bc - f.gCol);
-  if (da !== db) return da < db;
+  const pa = (ac - f.sCol) * lx + (ar - f.sRow) * ly;
+  const pb = (bc - f.sCol) * lx + (br - f.sRow) * ly;
+  if (pa !== pb) return pa > pb;
+  const ra = Math.abs(2 * ar - (rows - 1)), rb = Math.abs(2 * br - (rows - 1));
+  if (ra !== rb) return ra < rb;
+  const ca = Math.abs(2 * ac - (cols - 1)), cb = Math.abs(2 * bc - (cols - 1));
+  if (ca !== cb) return ca < cb;
   return a < b;
 }
 

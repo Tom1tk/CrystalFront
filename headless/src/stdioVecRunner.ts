@@ -257,7 +257,7 @@ function stepSlot(slot: SlotState, actionIdx: number): {
     info.seed        = match.seed;
     info.opponentType = slot.opponentName;
 
-    const isCombatWin = winner === BLUE_ID && winType !== "resource";
+    const isCombatWin = winner === BLUE_ID && winType !== "control";
     info.episodeOutcome = isCombatWin ? "combat_win"
       : winner === BLUE_ID ? "resource_win"
       : winner !== null    ? "loss"

@@ -373,6 +373,7 @@ export default function App() {
           lobby={lobby}
           player={player}
           winnerId={matchWinnerId}
+          winType={ws.matchEnd?.winType ?? ws.matchState?.result?.winType}
           onRematch={handleRematch}
           onExit={handleExit}
         />

@@ -5,6 +5,7 @@ interface MatchEndScreenProps {
   lobby: Lobby;
   player: Player;
   winnerId: string;
+  winType?: string;
   onRematch: () => void;
   onExit: () => void;
 }
@@ -13,6 +14,7 @@ export default function MatchEndScreen({
   lobby,
   player,
   winnerId,
+  winType,
   onRematch,
   onExit,
 }: MatchEndScreenProps) {
@@ -100,7 +102,7 @@ export default function MatchEndScreen({
               fontStyle: "italic",
             }}
           >
-            {winnerName} wins this match.
+            {winnerName} wins this match{winType === "control" ? " by holding the nodes" : winType === "timeout" ? " on time" : winType === "combat" ? " by destroying the crystal" : ""}.
           </div>
         </div>
 

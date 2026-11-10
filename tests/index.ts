@@ -9,7 +9,8 @@ import { ALL_ACTIONS, ACTION_SPACE_SIZE, actionToIndex, indexToAction, legalMask
 import { getLegalActions } from "../headless/src/legalActions.js";
 import { expandMacroAction } from "../headless/src/actionSpace.js";
 import { buildObservation } from "../headless/src/observation.js";
-import { ECONOMY, HEALING, ENGINE_VERSION } from "../shared/src/gameBalance.js";
+import { ECONOMY, HEALING, ENGINE_VERSION, CONTROL } from "../shared/src/gameBalance.js";
+import { processControl, controlNeeded } from "../server/src/match/engine/control.js";
 import { saveReplay, getReplay, listReplays } from "../server/src/match/replayRunner.js";
 import { mirrorState, deepCloneMatchState, diffStates } from "../server/src/match/engine/mirror.js";
 import { planPath } from "../server/src/match/engine/pathfinding.js";
@@ -1519,9 +1520,8 @@ console.log("\n--- Legal Actions + Mask ---");
 // ---- Expand Macro Actions — every legal action produces valid commands ----
 console.log("\n--- Expand Macro Actions ---");
 {
-  // Use a rich but sub-threshold starting balance (just below passiveWinThreshold)
-  // so builds don't starve and the passive win doesn't fire during the test.
-  const richConfig = { ...DEFAULT_CONFIG, startingResources: ECONOMY.passiveWinThreshold - 100 };
+  // Use a rich starting balance so builds don't starve.
+  const richConfig = { ...DEFAULT_CONFIG, startingResources: 4400 };
   const engine = new MatchEngine();
   const blueId = "test-blue2";
   const redId  = "test-red2";
@@ -1584,36 +1584,88 @@ console.log("\n--- Observation ---");
   const obs = buildObservation(match, blueId);
   assert(obs.playerId === blueId, "Observation has correct playerId");
   assert(obs.global.ownCrystalHealthFrac === 1, "Crystal starts at full health");
-  assert(obs.global.ownResourcesWinFrac >= 0, "Resources win fraction >= 0");
+  assert(obs.global.ownControlFrac === 0 && obs.global.controlHoldFrac === 0, "No node control at start");
   assert(obs.global.ownLifetimeResourcesFrac >= 0, "Lifetime resources fraction >= 0");
   assert(obs.entities.length > 0, "Observation contains own entities");
   assert(obs.entities.every(e => [1, -1].includes(e.owner)), "Entity owner is 1 or -1");
 }
 
-// ---- Passive Win Condition ----
-console.log("\n--- Passive Win Condition ---");
+// ---- Node Control Win (G-8) ----
+console.log("\n--- Node Control Win (G-8) ---");
 {
   const engine = new MatchEngine();
-  const blueId = "pw-blue";
-  const redId  = "pw-red";
+  const blueId = "nc-blue";
+  const redId  = "nc-red";
   const players: [PlayerSlot | null, PlayerSlot | null] = [
     { playerId: blueId, username: "Blue", color: "blue", score: 0 },
     { playerId: redId,  username: "Red",  color: "red",  score: 0 },
   ];
-  const match = engine.createMatch("pw-test", players, DEFAULT_CONFIG, 1);
+  const match = engine.createMatch("nc-test", players, { ...DEFAULT_CONFIG, mapId: "ironreed" }, 1);
   engine.startMatch(match.id);
+  const contested = match.resourceNodes.filter(n => n.contested);
+  const need = controlNeeded(contested.length);
+  assert(contested.length >= 5 && need === Math.floor(contested.length / 2) + 1, `pool map has contested nodes, majority needed (${contested.length}, ${need})`);
+  assert(match.resourceNodes.some(n => !n.contested), "safe nodes are not contested");
 
-  // Set held resources just below threshold for blue
-  match.economy[0]!.resources = ECONOMY.passiveWinThreshold - 1;
-  engine.tick(match.id);
-  assert(match.phase === "playing", "Match still playing before threshold");
+  let uid = 0;
+  const place = (owner: string, x: number, y: number, type = "gunner") => {
+    const id = `nc-u${uid++}`;
+    match.entities.set(id, { id, ownerId: owner, type, health: 80, maxHealth: 80, x, y, radius: 8,
+      autoAttackEnabled: false, constructionProgress: 100 } as any);
+    return id;
+  };
+  const node = (k: number) => contested[k];
 
-  // Push over threshold (held bank reaches threshold)
-  match.economy[0]!.resources = ECONOMY.passiveWinThreshold;
-  engine.tick(match.id);
-  assert(match.phase === "ended", "Match ends when passive win threshold reached");
-  assert(match.result?.winner === blueId, "Blue wins the passive win");
-  assert(match.result?.winType === "resource", "Win type is 'resource'");
+  // A lone unit holds its node; both sides present = nobody holds it.
+  const b0 = place(blueId, node(0).x + 100, node(0).y);
+  processControl(match);
+  assert(node(0).controller === 0, "blue unit within radius holds the node");
+  const r0 = place(redId, node(0).x - 100, node(0).y);
+  processControl(match);
+  assert(node(0).controller === null, "both sides present: node is contested (no holder)");
+  match.entities.delete(r0);
+  // Workers and unfinished turrets don't hold nodes; finished turrets do.
+  const w = place(redId, node(1).x, node(1).y, "worker");
+  processControl(match);
+  assert(node(1).controller === null, "a worker does not hold a node");
+  match.entities.delete(w);
+  const t = `nc-t${uid++}`;
+  match.entities.set(t, { id: t, ownerId: redId, type: "building", buildingType: "turret", x: node(1).x + 80, y: node(1).y,
+    health: 600, maxHealth: 600, radius: 15, constructionProgress: 50 } as any);
+  processControl(match);
+  assert(node(1).controller === null, "unfinished turret does not hold a node");
+  match.entities.get(t)!.constructionProgress = 100;
+  processControl(match);
+  assert(node(1).controller === 1, "finished turret holds a node");
+  match.entities.delete(t);
+  match.entities.delete(b0);
+
+  // Majority hold: 4 nodes is not enough, 5 starts the timer.
+  for (let k = 0; k < need - 1; k++) place(blueId, node(k).x, node(k).y);
+  processControl(match);
+  assert(match.control.holder === null, "holding one short of a majority is not enough");
+  const fifth = place(blueId, node(need - 1).x, node(need - 1).y);
+  processControl(match);
+  assert(match.control.holder === 0 && match.control.since === match.tick, "holding a majority starts blue's hold timer");
+  // Losing the majority resets the timer.
+  match.entities.delete(fifth);
+  processControl(match);
+  assert(match.control.holder === null, "dropping below a majority clears the hold");
+  place(blueId, node(need - 1).x, node(need - 1).y);
+
+  // Engine: holding for CONTROL.holdTicks wins with winType "control".
+  let ticks = 0;
+  while (match.phase === "playing" && ticks < CONTROL.holdTicks + 5) { engine.tick(match.id); ticks++; }
+  assert(match.phase === "ended", `match ends after holding a majority (${ticks} ticks)`);
+  assert(match.result?.winner === blueId && match.result?.winType === "control", "blue wins by control");
+  assert(ticks >= CONTROL.holdTicks, `control win needs the full hold (${ticks} >= ${CONTROL.holdTicks})`);
+
+  // Holding resources no longer wins.
+  const m2 = engine.createMatch("nc-test2", players, DEFAULT_CONFIG, 2);
+  engine.startMatch(m2.id);
+  m2.economy[0]!.resources = 100000;
+  engine.tick(m2.id);
+  assert(m2.phase === "playing", "a large resource bank no longer ends the match");
 }
 
 // ---- Engine Determinism ----

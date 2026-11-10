@@ -25,6 +25,7 @@ export class HeavyBot implements Agent {
   private lastPushTick   = -60;
 
   private prevTurretCount = 0;
+  private pushing = false;
 
   init(playerId: string, _match: MatchState): void {
     this.playerId       = playerId;
@@ -33,6 +34,7 @@ export class HeavyBot implements Agent {
     this.lastBuildTick  = -60;
     this.lastPushTick   = -60;
     this.prevTurretCount = 0;
+    this.pushing = false;
   }
 
   step(obs: PlayerObservation, legal: MacroAction[]): MacroAction[] {
@@ -42,6 +44,8 @@ export class HeavyBot implements Agent {
     const ownWorkers  = entities.filter(e => e.owner === 1 && e.typeIndex === 1).length;
     const hasFoundry  = entities.some(e => e.owner === 1 && e.typeIndex === 7 && e.constructionFrac >= 1);
     const hasBarracks = entities.some(e => e.owner === 1 && e.typeIndex === 6 && e.constructionFrac >= 1);
+    const ownsFoundry  = entities.some(e => e.owner === 1 && e.typeIndex === 7);
+    const ownsBarracks = entities.some(e => e.owner === 1 && e.typeIndex === 6);
     const depotCount  = entities.filter(e => e.owner === 1 && e.typeIndex === 8).length;
     const armySize    = entities.filter(e => e.owner === 1 && [2,3,4,5].includes(e.typeIndex)).length;
     const bruisers    = entities.filter(e => e.owner === 1 && e.typeIndex === 4).length;
@@ -85,7 +89,7 @@ export class HeavyBot implements Agent {
         if (b) { actions.push(b); built = true; }
       }
       // Foundry: core production
-      if (!built && !hasFoundry) {
+      if (!built && !ownsFoundry) {
         const b = legal.find(a =>
           a.type === "build" && a.buildingType === "foundry" && a.xZone === "mid_base"
         );
@@ -102,7 +106,7 @@ export class HeavyBot implements Agent {
         if (b) { actions.push(b); built = true; }
       }
       // Barracks once bruisers are rolling — adds gunner range support
-      if (!built && !hasBarracks && bruisers >= 3) {
+      if (!built && !ownsBarracks && bruisers >= 3) {
         const b = legal.find(a =>
           a.type === "build" && a.buildingType === "barracks" && a.xZone === "mid_base"
         );
@@ -110,6 +114,12 @@ export class HeavyBot implements Agent {
       }
       // 3rd depot when army is large
       if (!built && depotCount < 3 && armySize >= 6) {
+        const b = legal.find(a => a.type === "build" && a.buildingType === "supply_depot");
+        if (b) { actions.push(b); built = true; }
+      }
+
+      // Beyond that, add depots whenever supply is nearly capped
+      if (!built && depotCount >= 3 && global.ownMaxSupply - global.ownSupply * global.ownMaxSupply <= 3) {
         const b = legal.find(a => a.type === "build" && a.buildingType === "supply_depot");
         if (b) { actions.push(b); built = true; }
       }
@@ -138,12 +148,16 @@ export class HeavyBot implements Agent {
       if (train) actions.push(train);
     }
 
-    // ── Attack: only commit with a full heavy force ────────────────────────
-    if (armySize >= 8 && tick - this.lastPushTick >= 60) {
-      const push = legal.find(a =>
-        a.type === "attack_move" && a.group === "all_combat" && a.targetZone === "enemy_crystal"
+    // ── Attack: only commit with a full heavy force; regroup at home when it
+    // has lost half its strength (G-8).
+    if (!this.pushing && armySize >= 8) this.pushing = true;
+    if (this.pushing && armySize < 4) this.pushing = false;
+    if (tick - this.lastPushTick >= 60) {
+      const zone = this.pushing ? "enemy_crystal" : "defend_crystal";
+      const move = legal.find(a =>
+        a.type === "attack_move" && a.group === "all_combat" && a.targetZone === zone
       );
-      if (push) { actions.push(push); this.lastPushTick = tick; }
+      if (move) { actions.push(move); this.lastPushTick = tick; }
     }
 
     return actions;

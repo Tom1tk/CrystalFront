@@ -1,4 +1,6 @@
-import type { MatchEntity, BuildingType, ResourceNode, PlayerSlot } from "./types.js";
+import type { MatchEntity, MatchState, BuildingType, ResourceNode, PlayerSlot } from "./types.js";
+import { rectTouches, isObstacleCode, T_BRUSH } from "./engine/terrain.js";
+import { anchorsConnected, footprintOf, type Rect } from "./engine/navGrid.js";
 import type { BuildingDef as BuildingDefinition } from "@crystalfront/shared";
 import type { EntityId } from "@crystalfront/shared";
 import type { BuildZone, LaneCorridor } from "./map.js";
@@ -104,6 +106,45 @@ export function validatePlacement(
     }
   }
 
+  return { valid: true };
+}
+
+/**
+ * Every rule a new building must pass: zone, spacing and overlap
+ * (validatePlacement), terrain (G-5/G-6b: no obstacles or brush) and the G-3
+ * no-seal rule. Used by the engine's build command and by scripted bots, so
+ * bots only pick sites the engine will accept.
+ */
+export function validateBuildSite(
+  match: MatchState,
+  playerId: string,
+  buildingType: BuildingType,
+  x: number,
+  y: number
+): PlacementResult {
+  const def = BUILDING_DEFS[buildingType];
+  const playerColor = match.players.find((p) => p?.playerId === playerId)?.color ?? "blue";
+  const playerCrystals = Array.from(match.entities.values()).filter(
+    (e) => e.type === "crystal" && e.ownerId === playerId
+  );
+  const placement = validatePlacement(
+    x, y, def, match.entities, match.resourceNodes, playerColor, playerCrystals, playerId,
+    match.config.mapWidth, match.config.mapHeight
+  );
+  if (!placement.valid) return placement;
+
+  if (rectTouches(match.terrain, x - def.width / 2, y - def.height / 2, x + def.width / 2, y + def.height / 2,
+      (c) => isObstacleCode(c) || c === T_BRUSH)) {
+    return { valid: false, reason: "Blocked by terrain" };
+  }
+
+  const crystalRects = Array.from(match.entities.values())
+    .filter((e) => e.type === "crystal")
+    .map((e) => footprintOf(e) as Rect);
+  const newRect = footprintOf({ type: "building", x, y, radius: 0, buildingType });
+  if (!anchorsConnected(match.nav, crystalRects, newRect ?? undefined)) {
+    return { valid: false, reason: "Would seal off a crystal" };
+  }
   return { valid: true };
 }
 

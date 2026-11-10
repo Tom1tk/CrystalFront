@@ -1,7 +1,8 @@
 import type { MatchState } from "../../server/src/match/types.js";
 import type { PlayerObservation, GlobalFeatures, EntityFeature, NodeFeature } from "./types.js";
 import { ENTITY_TYPES } from "./types.js";
-import { MAP, ECONOMY, UNIT_DEFS } from "@crystalfront/shared";
+import { MAP, UNIT_DEFS, CONTROL } from "@crystalfront/shared";
+import { controlNeeded } from "../../server/src/match/engine/control.js";
 
 export function buildObservation(match: MatchState, playerId: string): PlayerObservation {
   const mapW = match.config?.mapWidth  ?? MAP.width;
@@ -36,9 +37,13 @@ export function buildObservation(match: MatchState, playerId: string): PlayerObs
     ? [...match.entities.values()].find(e => e.type === "crystal" && e.ownerId === oppId)
     : undefined;
 
-  const threshold = ECONOMY.passiveWinThreshold;
-  const ownHeldRaw = economy?.resources ?? 0;
-  const oppHeldRaw = canSeeOpp ? (oppEconomy?.resources ?? 0) : 0;
+  // Node control (G-8) is public: every player sees who holds which node.
+  const contested = match.resourceNodes.filter(n => n.contested);
+  const held = (slot: number) => contested.filter(n => n.controller === slot).length;
+  const need = controlNeeded(contested.length);
+  const holdFrac = match.control.holder === null ? 0
+    : Math.min((match.tick - match.control.since) / CONTROL.holdTicks, 1) * (match.control.holder === playerIdx ? 1 : -1);
+  const LIFETIME_NORM = 9000;
   const ownLifetime = economy?.lifetimeResources ?? 0;
   const oppLifetime = canSeeOpp ? (oppEconomy?.lifetimeResources ?? 0) : 0;
 
@@ -101,10 +106,11 @@ export function buildObservation(match: MatchState, playerId: string): PlayerObs
     scoreDiff: (match.players[playerIdx]?.score ?? 0) - (match.players[oppIdx]?.score ?? 0),
     ownCrystalHealthFrac: ownCrystal && ownCrystal.maxHealth > 0 ? ownCrystal.health / ownCrystal.maxHealth : 0,
     oppCrystalHealthFrac: oppCrystal && oppCrystal.maxHealth > 0 ? oppCrystal.health / oppCrystal.maxHealth : 0,
-    ownResourcesWinFrac: Math.min(ownHeldRaw / threshold, 1),
-    oppResourcesWinFrac: Math.min(oppHeldRaw / threshold, 1),
-    ownLifetimeResourcesFrac: Math.min(ownLifetime / (threshold * 2), 1),
-    oppLifetimeResourcesFrac: Math.min(oppLifetime / (threshold * 2), 1),
+    ownControlFrac: contested.length ? Math.min(held(playerIdx) / need, 1) : 0,
+    oppControlFrac: contested.length ? Math.min(held(oppIdx) / need, 1) : 0,
+    controlHoldFrac: holdFrac,
+    ownLifetimeResourcesFrac: Math.min(ownLifetime / LIFETIME_NORM, 1),
+    oppLifetimeResourcesFrac: Math.min(oppLifetime / LIFETIME_NORM, 1),
     enemyWorkerCount,
     enemySkirmisherCount,
     enemyBruiserCount,

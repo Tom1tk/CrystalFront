@@ -13,7 +13,7 @@ type Phase = "expand" | "tech" | "army" | "push";
  *   - Depot only when supply headroom ≤ 2 and actively training units
  *   - Per-group retreat when average unit health drops below 30%
  *   - Adaptive barracks y-zone (shifts if barracks is destroyed)
- *   - Drip attack once 4+ units exist; full-rate push in "push" phase
+ *   - Groups at home until 8 units, pushes together, regroups below 4
  */
 export class MacroBot implements Agent {
   private playerId = "";
@@ -21,6 +21,8 @@ export class MacroBot implements Agent {
   private lastAssignTick = -50;
   private lastBuildTick  = -60;
   private lastPushTick   = -60;
+  private pushing = false;
+  private static readonly PUSH_SIZE = 8;
 
   init(playerId: string, _match: MatchState): void {
     this.playerId       = playerId;
@@ -28,6 +30,7 @@ export class MacroBot implements Agent {
     this.lastAssignTick = -50;
     this.lastBuildTick  = -60;
     this.lastPushTick   = -60;
+    this.pushing        = false;
   }
 
   step(obs: PlayerObservation, legal: MacroAction[]): MacroAction[] {
@@ -38,6 +41,9 @@ export class MacroBot implements Agent {
     const hasDepot    = entities.some(e => e.owner === 1 && e.typeIndex === 8);
     const hasBarracks = entities.some(e => e.owner === 1 && e.typeIndex === 6 && e.constructionFrac >= 1);
     const hasFoundry  = entities.some(e => e.owner === 1 && e.typeIndex === 7 && e.constructionFrac >= 1);
+    // Count buildings under construction too, so the bot doesn't queue duplicates.
+    const ownsBarracks = entities.some(e => e.owner === 1 && e.typeIndex === 6);
+    const ownsFoundry  = entities.some(e => e.owner === 1 && e.typeIndex === 7);
     const armySize    = entities.filter(e => e.owner === 1 && [2,3,4,5].includes(e.typeIndex)).length;
 
     // Phase transitions
@@ -72,18 +78,18 @@ export class MacroBot implements Agent {
         const b = legal.find(a => a.type === "build" && a.buildingType === "supply_depot");
         if (b) { actions.push(b); built = true; }
       }
-      if (!built && !hasBarracks) {
+      if (!built && !ownsBarracks) {
         const b = legal.find(a => a.type === "build" && a.buildingType === "barracks" && a.xZone === "mid_base");
         if (b) { actions.push(b); built = true; }
       }
-      if (!built && !hasFoundry && hasBarracks) {
+      if (!built && !ownsFoundry && hasBarracks) {
         const b = legal.find(a =>
           a.type === "build" && a.buildingType === "foundry" && a.xZone === "mid_base"
         );
         if (b) { actions.push(b); built = true; }
       }
       // Second depot when actively training and near supply cap
-      if (!built && global.ownMaxSupply - global.ownSupply <= 2 && armySize > 0) {
+      if (!built && global.ownMaxSupply - global.ownSupply * global.ownMaxSupply <= 2 && armySize > 0) {
         const b = legal.find(a => a.type === "build" && a.buildingType === "supply_depot");
         if (b) { actions.push(b); built = true; }
       }
@@ -115,13 +121,16 @@ export class MacroBot implements Agent {
       }
     }
 
-    // ── Attack: drip from ≥4 units, full-rate in push phase ───────────────
-    const pushInterval = this.phase === "push" ? 40 : 80;
-    if (armySize >= 4 && tick - this.lastPushTick >= pushInterval) {
-      const push = legal.find(a =>
-        a.type === "attack_move" && a.group === "all_combat" && a.targetZone === "enemy_crystal"
+    // ── Attack: group at home until the army is big enough, then push together.
+    // Fall back and regroup once the push has lost half its strength (G-8).
+    if (!this.pushing && armySize >= MacroBot.PUSH_SIZE) this.pushing = true;
+    if (this.pushing && armySize < MacroBot.PUSH_SIZE / 2) this.pushing = false;
+    if (tick - this.lastPushTick >= 40) {
+      const zone = this.pushing ? "enemy_crystal" : "defend_crystal";
+      const move = legal.find(a =>
+        a.type === "attack_move" && a.group === "all_combat" && a.targetZone === zone
       );
-      if (push) { actions.push(push); this.lastPushTick = tick; }
+      if (move) { actions.push(move); this.lastPushTick = tick; }
     }
 
     return actions;

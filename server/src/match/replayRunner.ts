@@ -43,7 +43,7 @@ export interface ReplayMeta {
   buildOrderBlue?: string[];              // first 6 buildings built, in order
   buildOrderRed?: string[];
   firstCombatTick?: number;               // first tick any combat unit was trained
-  flags?: string[];                       // auto-flag: "fast", "lopsided", "resource_win"
+  flags?: string[];                       // auto-flag: "fast", "lopsided", "control_win"
 }
 
 export interface ReplayFile extends ReplayMeta {
@@ -191,7 +191,7 @@ function analyzeReplay(raw: Record<string, unknown>): EnrichedMetadata {
   const blueTotal   = Object.values(blueUnits).reduce((a, b) => a + b, 0);
   const redTotal    = Object.values(redUnits).reduce((a, b) => a + b, 0);
   if (Math.abs(blueTotal - redTotal) >= FLAG_LOPSIDED_MIN) flags.push("lopsided");
-  if (winType === "resource") flags.push("resource_win");
+  if (winType === "control") flags.push("control_win");
 
   const blueCombat = COMBAT_TYPES.reduce((s, t) => s + (blueUnits[t] ?? 0), 0);
   const redCombat  = COMBAT_TYPES.reduce((s, t) => s + (redUnits[t] ?? 0), 0);

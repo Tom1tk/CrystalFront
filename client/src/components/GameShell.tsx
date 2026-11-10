@@ -1974,6 +1974,20 @@ export default function GameShell({
       ctx.fillText(`${Math.floor(node.remaining)}`, node.x, node.y);
     }
 
+    // Node control rings (G-8): contested nodes, coloured by the side holding them.
+    for (const cn of matchState.control?.nodes ?? []) {
+      const r = matchState.control!.radius;
+      if (cn.x < cameraX - r || cn.x > cameraX + viewWW + r) continue;
+      ctx.beginPath();
+      ctx.arc(cn.x, cn.y, r, 0, Math.PI * 2);
+      ctx.strokeStyle = cn.controller === 0 ? "rgba(124, 232, 255, 0.55)"
+        : cn.controller === 1 ? "rgba(255, 92, 243, 0.55)" : "rgba(204, 170, 68, 0.25)";
+      ctx.lineWidth = cn.controller === null ? 1 : 2;
+      ctx.setLineDash(cn.controller === null ? [6, 8] : []);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
     // Debug drag node indicator
     if (debugDraggingNodeId && hoverPos) {
       ctx.beginPath();
@@ -2482,6 +2496,21 @@ export default function GameShell({
   const hasSelectedWorkers = selectedWorkers.length > 0;
 
   const canBuildSupplyDepot = myEconomy && myEconomy.resources >= 50;
+  // Node control HUD (G-8): own/opponent node counts vs the majority needed, and the hold countdown.
+  const controlHud = (() => {
+    const ms = matchState;
+    const c = ms?.control;
+    if (!ms || !c || c.nodes.length === 0) return null;
+    const mySlot = ms.players[0]?.playerId === safePlayer.id ? 0 : 1;
+    const mine = c.nodes.filter((n) => n.controller === mySlot).length;
+    const theirs = c.nodes.filter((n) => n.controller === 1 - mySlot).length;
+    let text = `${mine} : ${theirs} / ${c.need}`;
+    if (c.holder !== null) {
+      const left = Math.max(0, c.holdTicks - (ms.tick - c.since));
+      text += ` · ${Math.ceil(left * ms.tickIntervalMs / 1000)}s`;
+    }
+    return { text, tint: c.holder === null ? FCT.inkDim : c.holder === mySlot ? FCT.green : FCT.red };
+  })();
   const canBuildBarracks = myEconomy && myEconomy.resources >= 75;
   const canBuildFoundry = myEconomy && myEconomy.resources >= 100;
   const canBuildTurret = myEconomy && myEconomy.resources >= 60;
@@ -2538,6 +2567,7 @@ export default function GameShell({
             <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
               <FctStat icon="⛏" label="RESOURCES" value={myEconomy?.resources ?? 0} tint={FCT.amber} />
               <FctStat icon="📦" label="SUPPLY" value={`${myEconomy?.supply ?? 0} / ${myEconomy?.maxSupply ?? 0}`} tint={FCT.green} />
+              {controlHud && <FctStat icon="⚑" label="NODES" value={controlHud.text} tint={controlHud.tint} />}
             </div>
             <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
               <span style={{ fontFamily: FCT.display, fontSize: 22, color: opponentColor === "#ff4444" ? FCT.red : FCT.ice, fontWeight: 700 }}>

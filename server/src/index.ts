@@ -55,7 +55,9 @@ import {
   USERNAME_MIN_LENGTH,
   USERNAME_MAX_LENGTH,
   USERNAME_REGEX,
+  CONTROL,
 } from "@crystalfront/shared";
+import { controlNeeded } from "./match/engine/control.js";
 
 const app = express();
 app.use((_req, res, next) => {
@@ -109,7 +111,7 @@ matchEngine.setMatchEndCallback((matchId: string, winner: string) => {
   botPlayers.delete(matchId);
   const code = matchLobbyMap.get(matchId);
   if (code) {
-    broadcastMatchEnd(code, winner);
+    broadcastMatchEnd(code, winner, matchEngine.getMatch(matchId)?.result?.winType);
     const lobby = lobbyManager.getLobby(code);
     if (lobby) {
       const winnerSlot = winner === lobby.players[0]?.id ? "player1" : "player2";
@@ -285,6 +287,18 @@ function serializeResourceNodes(nodes: ResourceNode[]): Array<{
   }));
 }
 
+function serializeControl(match: MatchState) {
+  const contested = match.resourceNodes.filter((n) => n.contested);
+  return {
+    holder: match.control.holder,
+    since: match.control.since,
+    holdTicks: CONTROL.holdTicks,
+    need: controlNeeded(contested.length),
+    radius: CONTROL.radius,
+    nodes: contested.map((n) => ({ id: n.id, x: n.x, y: n.y, controller: n.controller ?? null })),
+  };
+}
+
 function serializeEconomy(economy: [PlayerEconomy | null, PlayerEconomy | null]): [
   { resources: number; supply: number; maxSupply: number } | null,
   { resources: number; supply: number; maxSupply: number } | null,
@@ -352,6 +366,8 @@ function buildMatchStatePayload(match: MatchState, stateTimestamp?: number, play
     endedAt: match.endedAt,
     economy: serializeEconomy(match.economy),
     resourceNodes: allNodes,
+    // Node control (G-8) is public, so it ignores fog.
+    control: serializeControl(match),
     config: {
       mapWidth: match.config.mapWidth,
       mapHeight: match.config.mapHeight,
@@ -382,13 +398,13 @@ function broadcastGameState(code: string) {
   }
 }
 
-function broadcastMatchEnd(code: string, winner: string) {
+function broadcastMatchEnd(code: string, winner: string, winType?: "combat" | "control" | "timeout") {
   const matchId = lobbyMatchMap.get(code);
   if (!matchId) return;
 
   const msg: ServerToClientMsg = {
     type: SERVER_EVT.MATCH_END,
-    payload: { winner: winner as PlayerId },
+    payload: { winner: winner as PlayerId, winType },
   };
   for (const session of playerLobbyMap.values()) {
     if (session.code === code && session.matchId === matchId) {

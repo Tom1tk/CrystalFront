@@ -79,7 +79,7 @@ export interface MatchState {
   players: [PlayerSlot | null, PlayerSlot | null];
   entities: MatchEntity[];
   attackLog: AttackEvent[];
-  result: { winner: string } | null;
+  result: { winner: string; winType?: "combat" | "control" | "timeout" } | null;
   startedAt: number;
   endedAt: number | null;
   economy: [PlayerEconomyDisplay | null, PlayerEconomyDisplay | null];
@@ -94,8 +94,19 @@ export interface MatchState {
   mapHeight: number;
   /** Sent with match_start; the client hook carries it on every later state (G-5). */
   staticMap?: StaticMap;
+  /** Node control (G-8): public, ignores fog. holder/controller are player slots. */
+  control?: ControlState;
   /** Own vision bitmap (G-6b): base64 bitset over the vision grid, row-major. */
   vision?: string;
+}
+
+export interface ControlState {
+  holder: 0 | 1 | null;
+  since: number;
+  holdTicks: number;
+  need: number;
+  radius: number;
+  nodes: { id: string; x: number; y: number; controller: 0 | 1 | null }[];
 }
 
 export interface StaticMap {

@@ -40,6 +40,10 @@ export interface ResourceNode {
   gathererSlots: Set<EntityId>;
   ownerId?: PlayerId;
   accumulatedGather?: number;
+  /** G-8: a contested (mid-map) node, counted for node control. */
+  contested?: boolean;
+  /** G-8: slot holding this node this tick (contested nodes only). */
+  controller?: 0 | 1 | null;
 }
 
 export type BuildingType = "barracks" | "foundry" | "supply_depot" | "turret";
@@ -72,11 +76,13 @@ export interface MatchState {
   players: [PlayerSlot | null, PlayerSlot | null];
   entities: Map<EntityId, MatchEntity>;
   attackLog: AttackEvent[];
-  result: { winner: PlayerId; winType?: "combat" | "resource" | "timeout" } | null;
+  result: { winner: PlayerId; winType?: "combat" | "control" | "timeout" } | null;
   startedAt: number;
   endedAt: number | null;
   economy: [PlayerEconomy | null, PlayerEconomy | null];
   resourceNodes: ResourceNode[];
+  /** G-8 node control: slot currently holding a majority, and the tick it started. */
+  control: { holder: 0 | 1 | null; since: number };
   config: MatchConfig;
   mapWidth: number;
   mapHeight: number;
@@ -203,7 +209,6 @@ export interface MatchConfig {
   /** Map id (G-5); terrain comes from the map registry. Default "classic" (no terrain). */
   mapId?: string;
   // ── Per-version balance overrides (populated from BalanceSnapshot for replays) ──
-  passiveWinThreshold?: number;   // held resources to win; falls back to ECONOMY constant
   maxTicks?: number;              // tick cap; 0 = no cap; tiebreak resolves the winner
   workerSpeed?: number;           // px/substep override
   skirmisherSpeed?: number;

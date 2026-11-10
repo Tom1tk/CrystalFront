@@ -92,6 +92,12 @@ export function terrainFor(mapId: string | undefined, mapW: number, mapH: number
   return t;
 }
 
+/** Symmetry of a map ("none" for unknown ids and asymmetric test maps). */
+export function mapSymmetry(mapId: string | undefined): "mirror" | "rotate" | "none" {
+  const def = mapId && isKnownMap(mapId) ? MAPS[mapId] : null;
+  return def?.symmetry ?? "none";
+}
+
 /** Contested node positions for a map with its own node layout (symmetric images included), else undefined. */
 export function contestedNodesFor(mapId: string | undefined, mapW: number, mapH: number): Array<{ x: number; y: number }> | undefined {
   const def = mapId && isKnownMap(mapId) ? MAPS[mapId] : null;
