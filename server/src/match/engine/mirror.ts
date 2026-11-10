@@ -35,6 +35,7 @@ function cloneEntity(e: MatchEntity): MatchEntity {
     moveOrder: e.moveOrder ? { ...e.moveOrder } : undefined,
     rallyPoint: e.rallyPoint ? { ...e.rallyPoint } : undefined,
     route: e.route ? { ...e.route, waypoints: e.route.waypoints.map((w) => ({ ...w })) } : undefined,
+    orderQueue: e.orderQueue ? e.orderQueue.map((o) => ({ ...o })) : undefined,
     buildWorkerIds: e.buildWorkerIds ? new Set(e.buildWorkerIds) : undefined,
     productionQueue: e.productionQueue.map((q) => ({ ...q })),
   };
@@ -86,6 +87,7 @@ export function mirrorState(match: MatchState): MatchState {
       e.route.goalX = mirrorX(e.route.goalX);
       for (const w of e.route.waypoints) w.x = mirrorX(w.x);
     }
+    for (const o of e.orderQueue ?? []) if (o.targetX !== undefined) o.targetX = mirrorX(o.targetX);
   }
   for (const n of clone.resourceNodes) {
     n.x = mirrorX(n.x);

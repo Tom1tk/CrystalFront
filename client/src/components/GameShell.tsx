@@ -23,6 +23,8 @@ interface GameShellProps {
     targetY?: number;
     targetEntityId?: string;
     buildingType?: BuildingType;
+    /** G-9f: Shift held — append to the unit's order queue. */
+    queued?: boolean;
   }) => void;
   error: string | null;
   onClearError: () => void;
@@ -976,9 +978,10 @@ export default function GameShell({
           for (const id of ids) {
             const ent = myEntities.find((m) => m.id === id);
             if (!ent || ent.type === "crystal" || ent.type === "building") continue;
+            const queued = e.shiftKey || undefined;
             onGameCommand(enemy
-              ? { type: "attack", entityId: id, targetEntityId: enemy.id }
-              : { type: "attack_move", entityId: id, targetX: worldX, targetY: worldY });
+              ? { type: "attack", entityId: id, targetEntityId: enemy.id, queued }
+              : { type: "attack_move", entityId: id, targetX: worldX, targetY: worldY, queued });
           }
           return;
         }
@@ -1063,6 +1066,7 @@ export default function GameShell({
               type: "attack",
               entityId: sid,
               targetEntityId: clickedEntity.id,
+              queued: e.shiftKey || undefined,
             });
             continue;
           }
@@ -1123,6 +1127,7 @@ export default function GameShell({
             entityId: sid,
             targetX: worldX,
             targetY: worldY,
+            queued: e.shiftKey || undefined,
           });
         }
       }
@@ -1454,16 +1459,20 @@ export default function GameShell({
             myEntities.find((ent) => ent.id === id && ent.type === "worker")
           );
           if (workerIds.length > 0) {
+            // G-9f: Shift queues the build on one worker and keeps build mode for the next one.
             onGameCommand({
               type: "build",
-              workerIds,
+              workerIds: e.shiftKey ? workerIds.slice(0, 1) : workerIds,
               buildingType: selectedBuildingType,
               targetX: worldX,
               targetY: worldY,
+              queued: e.shiftKey || undefined,
             });
           }
-          setBuildMode(false);
-          setSelectedBuildingType(null);
+          if (!e.shiftKey) {
+            setBuildMode(false);
+            setSelectedBuildingType(null);
+          }
           setIsDragging(false);
           setDragStart(null);
           return;
@@ -2067,6 +2076,28 @@ export default function GameShell({
       }
       ctx.restore();
     }
+
+    // G-9f: faint waypoint lines for selected units' queued orders.
+    ctx.save();
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2, 6]);
+    for (const entity of entities) {
+      if (!entity.queue || entity.queue.length === 0 || !selectedEntityIds.has(entity.id)) continue;
+      ctx.strokeStyle = "rgba(200, 220, 255, 0.35)";
+      ctx.fillStyle = "rgba(200, 220, 255, 0.5)";
+      ctx.beginPath();
+      ctx.moveTo(entity.x, entity.y);
+      if (entity.moveTarget) ctx.lineTo(entity.moveTarget.x, entity.moveTarget.y);
+      for (const q of entity.queue) ctx.lineTo(q.x, q.y);
+      ctx.stroke();
+      for (const q of entity.queue) {
+        ctx.beginPath();
+        ctx.arc(q.x, q.y, 3, 0, Math.PI * 2);
+        ctx.fillStyle = q.type === "move" ? "rgba(200, 220, 255, 0.5)" : "rgba(255, 140, 120, 0.6)";
+        ctx.fill();
+      }
+    }
+    ctx.restore();
 
     // Rally point markers — always visible for own buildings
     for (const entity of entities) {

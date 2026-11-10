@@ -2352,6 +2352,83 @@ console.log("\n--- G-4: Pathfinding ---");
   }
 }
 
+// ---- G-9f: Shift-queued orders ----
+console.log("\n--- G-9f: Shift-queued orders ---");
+{
+  const setup = () => {
+    const engine = new MatchEngine();
+    const players: [PlayerSlot | null, PlayerSlot | null] = [
+      { playerId: "b", username: "B", color: "blue", score: 0 },
+      { playerId: "r", username: "R", color: "red", score: 0 },
+    ];
+    const match = engine.createMatch("g9f", players, { ...DEFAULT_CONFIG, maxTicks: 0 }, 7);
+    engine.startMatch(match.id);
+    match.economy[0]!.resources = 1000; // below the resource-win threshold
+    engine.debugSpawn(match.id, "b", "skirmisher", 700, 450);
+    const u = [...match.entities.values()].find((e) => e.type === "skirmisher")!;
+    return { engine, match, u };
+  };
+  const cmd = (engine: MatchEngine, m: MatchState, c: Record<string, unknown>) => engine.processCommand(m.id, "b", c as any);
+
+  // Waypoints are visited in order, then the queue empties
+  {
+    const { engine, match, u } = setup();
+    cmd(engine, match, { type: "move", entityId: u.id, targetX: 900, targetY: 450 });
+    cmd(engine, match, { type: "move", entityId: u.id, targetX: 900, targetY: 650, queued: true });
+    cmd(engine, match, { type: "attack_move", entityId: u.id, targetX: 700, targetY: 650, queued: true });
+    assert(u.orderQueue?.length === 2, `G-9f: two orders queued behind the active move (got ${u.orderQueue?.length})`);
+    const pts = [[900, 450], [900, 650], [700, 650]];
+    const reachedAt: number[] = [];
+    for (let t = 0; t < 400 && reachedAt.length < 3; t++) {
+      engine.tick(match.id);
+      const [px, py] = pts[reachedAt.length];
+      if (Math.hypot(u.x - px, u.y - py) <= 2) reachedAt.push(t);
+    }
+    assert(reachedAt.length === 3, `G-9f: unit visits all three waypoints in order (reached ${reachedAt.length})`);
+    assert(u.orderQueue === undefined && !u.moveTarget, "G-9f: queue is empty and unit idle at the end");
+  }
+
+  // A plain order clears the queue
+  {
+    const { engine, match, u } = setup();
+    cmd(engine, match, { type: "move", entityId: u.id, targetX: 900, targetY: 450 });
+    cmd(engine, match, { type: "move", entityId: u.id, targetX: 900, targetY: 650, queued: true });
+    cmd(engine, match, { type: "move", entityId: u.id, targetX: 500, targetY: 450 });
+    assert(u.orderQueue === undefined && u.moveTarget?.x === 500, "G-9f: a plain move replaces the queue");
+  }
+
+  // Queued order on an idle unit runs immediately; the queue is capped
+  {
+    const { engine, match, u } = setup();
+    cmd(engine, match, { type: "move", entityId: u.id, targetX: 900, targetY: 450, queued: true });
+    assert(u.moveTarget?.x === 900 && u.orderQueue === undefined, "G-9f: queued order on an idle unit starts now");
+    let accepted = 0;
+    for (let i = 0; i < 10; i++) if (cmd(engine, match, { type: "move", entityId: u.id, targetX: 100 + i * 10, targetY: 300, queued: true }).success) accepted++;
+    assert(accepted === 8 && u.orderQueue?.length === 8, `G-9f: queue holds at most 8 orders (accepted ${accepted})`);
+  }
+
+  // A queued attack on a dead target is skipped; a queued build starts when its turn comes
+  {
+    const { engine, match, u } = setup();
+    engine.debugSpawn(match.id, "r", "skirmisher", 1500, 200);
+    const enemy = [...match.entities.values()].find((e) => e.type === "skirmisher" && e.ownerId === "r")!;
+    cmd(engine, match, { type: "move", entityId: u.id, targetX: 760, targetY: 450 });
+    cmd(engine, match, { type: "attack", entityId: u.id, targetEntityId: enemy.id, queued: true });
+    cmd(engine, match, { type: "move", entityId: u.id, targetX: 760, targetY: 600, queued: true });
+    match.entities.delete(enemy.id);
+    for (let t = 0; t < 120 && (u.moveTarget || u.orderQueue); t++) engine.tick(match.id);
+    assert(Math.hypot(u.x - 760, u.y - 600) <= 2, `G-9f: order after a dead attack target still runs (at ${u.x.toFixed(0)},${u.y.toFixed(0)})`);
+
+    const worker = [...match.entities.values()].find((e) => e.type === "worker" && e.ownerId === "b")!;
+    cmd(engine, match, { type: "move", entityId: worker.id, targetX: 500, targetY: 300 });
+    cmd(engine, match, { type: "build", workerIds: [worker.id], buildingType: "supply_depot", targetX: 560, targetY: 260, queued: true });
+    assert(![...match.entities.values()].some((e) => e.buildingType === "supply_depot"), "G-9f: queued build waits for the current order");
+    for (let t = 0; t < 300 && !worker.buildTargetId; t++) engine.tick(match.id);
+    assert(!!worker.buildTargetId && [...match.entities.values()].some((e) => e.buildingType === "supply_depot"),
+      "G-9f: queued build is placed once the worker finishes moving");
+  }
+}
+
 // ---- G-11: State-stream presentation hooks ----
 console.log("\n--- G-11: heading / actionState / static map ---");
 {

@@ -16,7 +16,7 @@ import type {
   UnitType,
 } from "./types.js";
 import { createMap } from "./map.js";
-import { DEFAULT_CONFIG } from "./types.js";
+import { DEFAULT_CONFIG, ORDER_QUEUE_MAX, type MatchEntity as QEntity, type QueuedOrderType } from "./types.js";
 import { BUILDING_DEFS, UNIT_DEFS, GATHERING, SIMULATION, ECONOMY } from "@crystalfront/shared";
 import { computeVisibility } from "./engine/visibility.js";
 import { processMovement } from "./engine/movement.js";
@@ -32,6 +32,51 @@ import {
 } from "./buildingValidation.js";
 
 const GATHER_RANGE = GATHERING.range;
+
+export type GameCommand = {
+      type:
+        | "move"
+        | "attack_move"
+        | "deselect"
+        | "gather"
+        | "train_worker"
+        | "train_unit"
+        | "cancel_queue"
+        | "build"
+        | "assign_build"
+        | "repair"
+        | "attack"
+        | "heal"
+        | "set_rally"
+        | "toggle_auto_attack"
+        | "retreat"
+        | "stop"
+        | "debug_move_node"
+        | "debug_save_layout"
+        | "debug_mirror_nodes";
+      entityId?: string;
+      entityIds?: string[];
+      targetX?: number;
+      targetY?: number;
+      targetEntityId?: string;
+      buildingType?: BuildingType;
+      workerIds?: string[];
+      buildingId?: string;
+      unitType?: string;
+      /** Shift-queue: append to the unit's order queue instead of replacing (G-9f). */
+      queued?: boolean;
+    };
+
+/** Orders that can be shift-queued (G-9f). */
+const QUEUEABLE = new Set<string>(["move", "attack_move", "attack", "build"]);
+/** Unit orders that replace whatever the unit was doing, clearing its queue. */
+const CLEARS_QUEUE = new Set<string>(["move", "attack_move", "attack", "build", "gather", "repair", "heal", "retreat", "stop", "assign_build"]);
+
+/** Is the unit carrying out an order (or, unless ignoreQueue, holding queued ones)? */
+function isBusy(e: QEntity, ignoreQueue = false): boolean {
+  return !!(e.moveTarget || e.moveOrder || e.attackTargetId || e.buildTargetId || e.repairTargetId || e.healTargetId) ||
+    (!ignoreQueue && (e.orderQueue?.length ?? 0) > 0);
+}
 
 export class MatchEngine {
   private matches = new Map<string, MatchState>();
@@ -331,40 +376,67 @@ export class MatchEngine {
     return { success: true };
   }
 
-  processCommand(
+  /**
+   * Apply a player command. Shift-queued orders (G-9f) go onto the unit's order
+   * queue when it's busy; any other unit order replaces (clears) the queue.
+   */
+  processCommand(matchId: string, playerId: PlayerId, command: GameCommand): { success: boolean; message?: string } {
+    const match = this.matches.get(matchId);
+    if (!match || match.phase !== "playing") return { success: false };
+    const unitIds = command.type === "build" ? (command.workerIds ?? [])
+      : command.entityId ? [command.entityId] : (command.entityIds ?? []);
+    if (command.queued && QUEUEABLE.has(command.type)) {
+      const unit = unitIds.length > 0 ? match.entities.get(unitIds[0]) : undefined;
+      if (!unit || unit.ownerId !== playerId || unit.type === "building" || unit.type === "crystal") {
+        return { success: false, message: "Entity not found" };
+      }
+      if (isBusy(unit)) {
+        if ((unit.orderQueue?.length ?? 0) >= ORDER_QUEUE_MAX) return { success: false, message: "Order queue full" };
+        (unit.orderQueue ??= []).push({
+          type: command.type as QueuedOrderType,
+          targetX: command.targetX,
+          targetY: command.targetY,
+          targetEntityId: command.targetEntityId,
+          buildingType: command.buildingType,
+        });
+        match.commandLog.push({ tick: match.tick, playerId, command: command as Record<string, unknown> });
+        return { success: true };
+      }
+      // Idle unit: a queued order just runs now.
+    }
+    const res = this.executeCommand(matchId, playerId, command, true);
+    if (res.success && CLEARS_QUEUE.has(command.type)) {
+      for (const id of unitIds) {
+        const u = match.entities.get(id);
+        if (u && u.ownerId === playerId) u.orderQueue = undefined;
+      }
+    }
+    return res;
+  }
+
+  /** Run the next shift-queued order of every idle unit (G-9f). Orders that fail are skipped. */
+  private runOrderQueues(match: MatchState): void {
+    for (const e of match.entities.values()) {
+      const q = e.orderQueue;
+      if (!q || q.length === 0 || isBusy(e, true)) continue;
+      while (q.length > 0) {
+        const o = q.shift()!;
+        const res = this.executeCommand(match.id, e.ownerId, {
+          ...o,
+          entityId: o.type === "build" ? undefined : e.id,
+          workerIds: o.type === "build" ? [e.id] : undefined,
+        }, false);
+        if (res.success) break;
+      }
+      if (q.length === 0) e.orderQueue = undefined;
+    }
+  }
+
+  private executeCommand(
     matchId: string,
     playerId: PlayerId,
-    command: {
-      type:
-        | "move"
-        | "attack_move"
-        | "deselect"
-        | "gather"
-        | "train_worker"
-        | "train_unit"
-        | "cancel_queue"
-        | "build"
-        | "assign_build"
-        | "repair"
-        | "attack"
-        | "heal"
-        | "set_rally"
-        | "toggle_auto_attack"
-        | "retreat"
-        | "stop"
-        | "debug_move_node"
-        | "debug_save_layout"
-        | "debug_mirror_nodes";
-      entityId?: string;
-      entityIds?: string[];
-      targetX?: number;
-      targetY?: number;
-      targetEntityId?: string;
-      buildingType?: BuildingType;
-      workerIds?: string[];
-      buildingId?: string;
-      unitType?: string;
-    }
+    command: GameCommand,
+    log: boolean,
   ): { success: boolean; message?: string } {
     const match = this.matches.get(matchId);
     if (!match) return { success: false };
@@ -372,7 +444,7 @@ export class MatchEngine {
 
     const config = match.config;
     const ok = (): { success: true } => {
-      match.commandLog.push({ tick: match.tick, playerId, command: command as Record<string, unknown> });
+      if (log) match.commandLog.push({ tick: match.tick, playerId, command: command as Record<string, unknown> });
       return { success: true };
     };
 
@@ -1048,6 +1120,9 @@ if (command.type === "gather") {
     const currentTick = match.tick;
     match.attackLog = match.attackLog.filter(evt => currentTick - evt.tick < SIMULATION.attackLogRetention);
 
+    // Phase 0: shift-queued orders of idle units (G-9f)
+    this.runOrderQueues(match);
+
     // Phase 1: Combat — target acquisition, chase/follow targets, attacks in range
     const damageLog = processCombat(match);
 
@@ -1508,6 +1583,7 @@ if (command.type === "gather") {
       autoAttackEnabled,
       moveOrder: undefined,
       route: undefined,
+      orderQueue: undefined,
     };
   }
 

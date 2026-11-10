@@ -124,7 +124,19 @@ export interface MatchEntity {
   /** Planned route toward moveTarget (G-4). Recomputed when the goal changes cell,
    *  the nav grid blocks the remaining route, or the unit is stuck. */
   route?: EntityRoute;
+  /** Shift-queued orders, run in turn once the unit is idle (G-9f). Max ORDER_QUEUE_MAX. */
+  orderQueue?: QueuedOrder[];
 }
+
+export type QueuedOrderType = "move" | "attack_move" | "attack" | "build";
+export interface QueuedOrder {
+  type: QueuedOrderType;
+  targetX?: number;
+  targetY?: number;
+  targetEntityId?: string;
+  buildingType?: BuildingType;
+}
+export const ORDER_QUEUE_MAX = 8;
 
 export interface EntityRoute {
   /** moveTarget the route was planned for. */

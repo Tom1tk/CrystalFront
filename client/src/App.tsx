@@ -204,7 +204,7 @@ function useScreenFlow() {
   );
 
   const handleGameCommand = useCallback(
-    (command: { type: string; entityId?: string; targetX?: number; targetY?: number; targetEntityId?: string; buildingType?: string }) => {
+    (command: { type: string; entityId?: string; targetX?: number; targetY?: number; targetEntityId?: string; buildingType?: string; queued?: boolean }) => {
       ws.sendGameCommand(command as never);
     },
     [ws.sendGameCommand]

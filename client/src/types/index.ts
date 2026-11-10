@@ -49,6 +49,8 @@ export interface MatchEntity {
   actionState?: "idle" | "moving" | "attacking" | "gathering" | "constructing" | "dying";
   /** G-4: remaining route waypoints before moveTarget (own units only). */
   path?: Array<{ x: number; y: number }>;
+  /** G-9f: shift-queued order destinations (own units only). */
+  queue?: Array<{ x: number; y: number; type: string }>;
 }
 
 export interface ResourceNodeDisplay {

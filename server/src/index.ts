@@ -198,6 +198,7 @@ function serializeEntities(match: MatchState): Array<{
   heading?: number;
   actionState: ActionState;
   path?: Array<{ x: number; y: number }>;
+  queue?: Array<{ x: number; y: number; type: string }>;
 }> {
   return Array.from(match.entities.values()).map((e) => ({
     id: e.id,
@@ -234,6 +235,11 @@ function serializeEntities(match: MatchState): Array<{
     path: e.route && e.route.waypoints.length > 0
       ? e.route.waypoints.map((w) => ({ x: Math.round(w.x), y: Math.round(w.y) }))
       : undefined,
+    // G-9f: queued order destinations (attack orders point at the target).
+    queue: e.orderQueue?.map((o) => {
+      const t = o.targetEntityId ? match.entities.get(o.targetEntityId) : undefined;
+      return { x: Math.round(t ? t.x : o.targetX ?? e.x), y: Math.round(t ? t.y : o.targetY ?? e.y), type: o.type };
+    }),
   }));
 }
 
@@ -301,7 +307,7 @@ function buildMatchStatePayload(match: MatchState, stateTimestamp?: number, play
     }
   }
   if (playerId) {
-    for (const e of allEntities) if (e.ownerId !== playerId) e.path = undefined;
+    for (const e of allEntities) if (e.ownerId !== playerId) { e.path = undefined; e.queue = undefined; }
   }
 
   return {
@@ -729,6 +735,7 @@ wss.on("connection", (ws) => {
           workerIds?: string[];
           buildingId?: string;
           unitType?: string;
+          queued?: boolean;
         };
         const result = matchEngine.processCommand(matchId, playerId, {
           type: cmd.type as "move" | "attack_move" | "deselect" | "gather" | "train_worker" | "train_unit" | "cancel_queue" | "build" | "assign_build" | "repair" | "attack" | "heal" | "set_rally" | "toggle_auto_attack" | "retreat" | "stop" | "debug_move_node" | "debug_save_layout" | "debug_mirror_nodes",
@@ -741,6 +748,7 @@ wss.on("connection", (ws) => {
           workerIds: cmd.workerIds,
           buildingId: cmd.buildingId,
           unitType: cmd.unitType,
+          queued: cmd.queued === true ? true : undefined,
         });
 
         if (!result.success) {

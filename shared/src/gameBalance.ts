@@ -273,7 +273,7 @@ export const ENTITY = {
  * Replays are stamped with it; replays with a different stamp are not listed or
  * played (no compatibility layer).
  */
-export const ENGINE_VERSION = 3;
+export const ENGINE_VERSION = 4;
 
 /** Navigation grid (G-3). */
 export const NAV = {
