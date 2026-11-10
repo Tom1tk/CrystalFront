@@ -1,1 +1,262 @@
-[]
+[
+  {
+    "mapId": "shardfall",
+    "name": "Shardfall",
+    "version": 1,
+    "seed": 1,
+    "symmetry": "rotate",
+    "generated": "2026-11-10",
+    "approved": null,
+    "fairness": {
+      "games": 24,
+      "blueScore": 0.583,
+      "timeouts": 12
+    },
+    "metrics": {
+      "detourBase": 1.0724873734152927,
+      "detourNodeMax": 1.1805219796901048,
+      "density": {
+        "base": 0,
+        "approach": 0.0620545073375262,
+        "middle": 0.20687830687830688
+      },
+      "buildOpen": 0.984,
+      "nodeShelterMin": 0.18154761904761904
+    },
+    "notes": ""
+  },
+  {
+    "mapId": "basalt-run",
+    "name": "Basalt Run",
+    "version": 1,
+    "seed": 3,
+    "symmetry": "rotate",
+    "generated": "2026-11-10",
+    "approved": null,
+    "fairness": {
+      "games": 24,
+      "blueScore": 0.417,
+      "timeouts": 14
+    },
+    "metrics": {
+      "detourBase": 1.074928150238738,
+      "detourNodeMax": 1.108700585485274,
+      "density": {
+        "base": 0,
+        "approach": 0.07756813417190776,
+        "middle": 0.2619047619047619
+      },
+      "buildOpen": 0.9884444444444445,
+      "nodeShelterMin": 0.208
+    },
+    "notes": ""
+  },
+  {
+    "mapId": "twin-spires",
+    "name": "Twin Spires",
+    "version": 1,
+    "seed": 9,
+    "symmetry": "rotate",
+    "generated": "2026-11-10",
+    "approved": null,
+    "fairness": {
+      "games": 24,
+      "blueScore": 0.542,
+      "timeouts": 15
+    },
+    "metrics": {
+      "detourBase": 1.075939153101735,
+      "detourNodeMax": 1.167136827979335,
+      "density": {
+        "base": 0,
+        "approach": 0.09224318658280922,
+        "middle": 0.20264550264550266
+      },
+      "buildOpen": 0.9911111111111112,
+      "nodeShelterMin": 0.23015873015873015
+    },
+    "notes": ""
+  },
+  {
+    "mapId": "hollow-crown",
+    "name": "Hollow Crown",
+    "version": 1,
+    "seed": 11,
+    "symmetry": "rotate",
+    "generated": "2026-11-10",
+    "approved": null,
+    "fairness": {
+      "games": 24,
+      "blueScore": 0.542,
+      "timeouts": 12
+    },
+    "metrics": {
+      "detourBase": 1.0414213562373102,
+      "detourNodeMax": 1.1047398896347453,
+      "density": {
+        "base": 0,
+        "approach": 0.07337526205450734,
+        "middle": 0.25555555555555554
+      },
+      "buildOpen": 0.9964444444444445,
+      "nodeShelterMin": 0.19946808510638298
+    },
+    "notes": ""
+  },
+  {
+    "mapId": "prism-ridge",
+    "name": "Prism Ridge",
+    "version": 1,
+    "seed": 19,
+    "symmetry": "rotate",
+    "generated": "2026-11-10",
+    "approved": null,
+    "fairness": {
+      "games": 24,
+      "blueScore": 0.5,
+      "timeouts": 20
+    },
+    "metrics": {
+      "detourBase": 1.032495791138431,
+      "detourNodeMax": 1.158724594995168,
+      "density": {
+        "base": 0,
+        "approach": 0.09853249475890985,
+        "middle": 0.17883597883597885
+      },
+      "buildOpen": 0.9942222222222222,
+      "nodeShelterMin": 0.15608465608465608
+    },
+    "notes": ""
+  },
+  {
+    "mapId": "glimmerfen",
+    "name": "Glimmerfen",
+    "version": 1,
+    "seed": 0,
+    "symmetry": "mirror",
+    "generated": "2026-11-10",
+    "approved": null,
+    "fairness": {
+      "games": 24,
+      "blueScore": 0.542,
+      "timeouts": 19
+    },
+    "metrics": {
+      "detourBase": 1.075939153101735,
+      "detourNodeMax": 1.2424766354728396,
+      "density": {
+        "base": 0,
+        "approach": 0.053249475890985325,
+        "middle": 0.21216931216931217
+      },
+      "buildOpen": 0.996,
+      "nodeShelterMin": 0.19321148825065274
+    },
+    "notes": ""
+  },
+  {
+    "mapId": "saltmarsh",
+    "name": "Saltmarsh",
+    "version": 1,
+    "seed": 2,
+    "symmetry": "mirror",
+    "generated": "2026-11-10",
+    "approved": null,
+    "fairness": {
+      "games": 24,
+      "blueScore": 0.583,
+      "timeouts": 17
+    },
+    "metrics": {
+      "detourBase": 1.0414213562373102,
+      "detourNodeMax": 1.1365398025904192,
+      "density": {
+        "base": 0,
+        "approach": 0.07253668763102725,
+        "middle": 0.20476190476190476
+      },
+      "buildOpen": 0.9964444444444445,
+      "nodeShelterMin": 0.1566579634464752
+    },
+    "notes": ""
+  },
+  {
+    "mapId": "ironreed",
+    "name": "Ironreed",
+    "version": 1,
+    "seed": 4,
+    "symmetry": "mirror",
+    "generated": "2026-11-10",
+    "approved": null,
+    "fairness": {
+      "games": 24,
+      "blueScore": 0.458,
+      "timeouts": 14
+    },
+    "metrics": {
+      "detourBase": 1.0034517796864426,
+      "detourNodeMax": 1.270492598435925,
+      "density": {
+        "base": 0,
+        "approach": 0.07085953878406709,
+        "middle": 0.1984126984126984
+      },
+      "buildOpen": 1,
+      "nodeShelterMin": 0.13846153846153847
+    },
+    "notes": ""
+  },
+  {
+    "mapId": "duskvale",
+    "name": "Duskvale",
+    "version": 1,
+    "seed": 10,
+    "symmetry": "mirror",
+    "generated": "2026-11-10",
+    "approved": null,
+    "fairness": {
+      "games": 24,
+      "blueScore": 0.458,
+      "timeouts": 21
+    },
+    "metrics": {
+      "detourBase": 1.0552284749830803,
+      "detourNodeMax": 1.180428096210534,
+      "density": {
+        "base": 0,
+        "approach": 0.08972746331236897,
+        "middle": 0.25026455026455025
+      },
+      "buildOpen": 0.9737777777777777,
+      "nodeShelterMin": 0.20899470899470898
+    },
+    "notes": ""
+  },
+  {
+    "mapId": "cinder-flats",
+    "name": "Cinder Flats",
+    "version": 1,
+    "seed": 14,
+    "symmetry": "mirror",
+    "generated": "2026-11-10",
+    "approved": null,
+    "fairness": {
+      "games": 24,
+      "blueScore": 0.542,
+      "timeouts": 18
+    },
+    "metrics": {
+      "detourBase": 1.0552284749830803,
+      "detourNodeMax": 1.2107944741789372,
+      "density": {
+        "base": 0,
+        "approach": 0.08972746331236897,
+        "middle": 0.19470899470899472
+      },
+      "buildOpen": 0.992,
+      "nodeShelterMin": 0.2037037037037037
+    },
+    "notes": ""
+  }
+]
