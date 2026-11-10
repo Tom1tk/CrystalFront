@@ -38,6 +38,12 @@ export class MatchEngine {
   private matchEndCallback: ((matchId: string, winner: PlayerId) => void) | null = null;
   private nextMatchId = 0;
 
+  /**
+   * Wall clock, used ONLY for metadata (startedAt/endedAt) and the default seed
+   * when none is given. Simulation never reads it (G-1/G-9d determinism guard).
+   */
+  constructor(private readonly clock: () => number = () => Date.now()) {}
+
   setBroadcastCallback(cb: (matchId: string) => void): void {
     this.broadcastCallback = cb;
   }
@@ -53,7 +59,7 @@ export class MatchEngine {
     seed?: number
   ): MatchState {
     const id = `match-${++this.nextMatchId}`;
-    const resolvedSeed = seed ?? (Date.now() & 0xffffffff);
+    const resolvedSeed = seed ?? (this.clock() & 0xffffffff);
     const rng: [Rng, Rng] = [new Rng(resolvedSeed), new Rng((resolvedSeed ^ 0x9e3779b9) >>> 0)];
     const idGen = new IdGen();
     const map = createMap(config);
@@ -209,7 +215,7 @@ export class MatchEngine {
       entities,
       attackLog: [],
       result: null,
-      startedAt: Date.now(),
+      startedAt: this.clock(),
       endedAt: null,
       economy,
       resourceNodes,
@@ -241,7 +247,7 @@ export class MatchEngine {
 
     match.phase = "ended";
     match.result = { winner };
-    match.endedAt = Date.now();
+    match.endedAt = this.clock();
 
     // Notify server to broadcast MATCH_END event
     if (this.matchEndCallback) {
@@ -1046,7 +1052,7 @@ if (command.type === "gather") {
         if (winner) {
           match.phase = "ended";
           match.result = { winner, winType: "resource" };
-          match.endedAt = Date.now();
+          match.endedAt = this.clock();
           if (this.matchEndCallback) this.matchEndCallback(match.id, winner);
           return match;
         }
@@ -1078,7 +1084,7 @@ if (command.type === "gather") {
       if (winner) {
         match.phase = "ended";
         match.result = { winner, winType: "timeout" };
-        match.endedAt = Date.now();
+        match.endedAt = this.clock();
         if (this.matchEndCallback) this.matchEndCallback(match.id, winner);
         return match;
       }
@@ -1097,7 +1103,6 @@ if (command.type === "gather") {
     // Phase 7: Fog of war — compute visibility per player
     computeVisibility(match);
 
-    match.stateTimestamp = Date.now();
     return match;
   }
 
@@ -1252,7 +1257,7 @@ if (command.type === "gather") {
     const match = this.matches.get(matchId);
     if (!match) return null;
 
-    const newSeed = (Date.now() & 0xffffffff);
+    const newSeed = (this.clock() & 0xffffffff);
     match.seed = newSeed;
     match.rng = [new Rng(newSeed), new Rng((newSeed ^ 0x9e3779b9) >>> 0)];
     match.idGen = new IdGen();
@@ -1261,7 +1266,7 @@ if (command.type === "gather") {
     match.tick = 0;
     match.players = players;
     match.result = null;
-    match.startedAt = Date.now();
+    match.startedAt = this.clock();
     match.endedAt = null;
     match.entities.clear();
 

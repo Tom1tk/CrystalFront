@@ -13,6 +13,10 @@ import { ECONOMY, HEALING } from "../shared/src/gameBalance.js";
 import { saveReplay, getReplay, listReplays } from "../server/src/match/replayRunner.js";
 import { mirrorState, deepCloneMatchState, diffStates } from "../server/src/match/engine/mirror.js";
 import { MediumRushBot } from "../headless/src/bots/mediumRushBot.js";
+import { MacroBot } from "../headless/src/bots/macroBot.js";
+import { LiveMatchRunner } from "../server/src/match/liveMatchRunner.js";
+import { hashMatchState } from "../server/src/match/engine/hash.js";
+import { readFileSync as _readFileSync, readdirSync as _readdirSync } from "node:fs";
 import { existsSync as _existsSync, unlinkSync as _unlinkSync } from "node:fs";
 import { resolve as _resolve, join as _join } from "node:path";
 
@@ -2244,10 +2248,98 @@ console.log("\n--- G-1: Move vs attack-move ---");
   }
 }
 
-console.log(`\n${"=".repeat(40)}`);
-console.log(`Results: ${passed} passed, ${failed} failed`);
-console.log("=".repeat(40) + "\n");
+// ---- G-1 / G-9d: Determinism ----
+async function determinismTests(): Promise<void> {
+  console.log("\n--- G-1 / G-9d: Determinism (fast vs paced) ---");
 
-if (failed > 0) {
-  process.exit(1);
+  // Static guard: simulation code never reads the wall clock or Math.random.
+  const engineDir = _resolve("server/src/match/engine");
+  const simFiles = [
+    ..._readdirSync(engineDir).filter(f => f.endsWith(".ts")).map(f => _join(engineDir, f)),
+    _resolve("server/src/match/map.ts"),
+    _resolve("server/src/match/buildingValidation.ts"),
+  ];
+  const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  const offenders = simFiles.filter(f => /Date\.now|Math\.random|performance\.now|new Date\(/.test(stripComments(_readFileSync(f, "utf8"))));
+  assert(offenders.length === 0, `G-9d: no wall-clock/Math.random in engine modules (${offenders.join(", ") || "none"})`);
+  const engineSrc = stripComments(_readFileSync(_resolve("server/src/match/matchEngine.ts"), "utf8"));
+  assert(!/Math\.random|performance\.now|new Date\(/.test(engineSrc) && (engineSrc.match(/Date\.now/g) ?? []).length === 1,
+    "G-9d: matchEngine.ts reads Date.now only in the injected metadata clock");
+
+  const SEED = 424242;
+  const TICKS = 1200;
+  const players = (): [PlayerSlot | null, PlayerSlot | null] => [
+    { playerId: "headless-blue", username: "Blue", color: "blue", score: 0 },
+    { playerId: "headless-red",  username: "Red",  color: "red",  score: 0 },
+  ];
+  const config = { ...DEFAULT_CONFIG, maxTicks: 6000 };
+
+  // Run A: two scripted bots in a tight loop (the training/balance path).
+  const engA = new MatchEngine();
+  const a = engA.createMatch("det", players(), config, SEED);
+  engA.startMatch(a.id);
+  const blueBot = new MacroBot(); const redBot = new MediumRushBot();
+  blueBot.init("headless-blue", a); redBot.init("headless-red", a);
+  while (a.phase === "playing" && a.tick < TICKS) {
+    for (const [bot, pid] of [[blueBot, "headless-blue"], [redBot, "headless-red"]] as const) {
+      const acts = bot.step(buildObservation(a, pid), getLegalActions(a, pid));
+      for (const act of acts) for (const cmd of expandMacroAction(act, a, pid)) {
+        engA.processCommand(a.id, pid, cmd as Parameters<MatchEngine["processCommand"]>[2]);
+      }
+    }
+    engA.tick(a.id);
+  }
+  const log = a.commandLog.map(e => ({ ...e }));
+  assert(log.length > 20, `G-9d: bot match produced a command log (${log.length} commands)`);
+  const hashA = hashMatchState(a);
+
+  const byTick = new Map<number, typeof log>();
+  for (const e of log) { if (!byTick.has(e.tick)) byTick.set(e.tick, []); byTick.get(e.tick)!.push(e); }
+  const applyAt = (eng: MatchEngine, id: string, tick: number) => {
+    for (const e of byTick.get(tick) ?? []) {
+      eng.processCommand(id, e.playerId, e.command as Parameters<MatchEngine["processCommand"]>[2]);
+    }
+  };
+
+  // Run B: replay the command log fast (tight loop).
+  const engB = new MatchEngine();
+  const b = engB.createMatch("det", players(), config, SEED);
+  engB.startMatch(b.id);
+  while (b.phase === "playing" && b.tick < a.tick) { applyAt(engB, b.id, b.tick); engB.tick(b.id); }
+  assert(hashMatchState(b) === hashA, "G-1: fast replay of command log reproduces the bot match state hash");
+
+  // Run C: replay paced by LiveMatchRunner's wall-clock interval (1 ms ticks here).
+  const engC = new MatchEngine();
+  const c = engC.createMatch("det", players(), config, SEED);
+  engC.startMatch(c.id);
+  const realInterval = c.tickIntervalMs;
+  c.tickIntervalMs = 1; // pacing only; restored before hashing
+  applyAt(engC, c.id, 0);
+  await new Promise<void>((done) => {
+    const runner = new LiveMatchRunner(engC, (id) => {
+      const m = engC.getMatch(id)!;
+      if (m.tick >= a.tick || m.phase !== "playing") { runner.stop(id); done(); return; }
+      applyAt(engC, id, m.tick);
+    });
+    runner.start(c.id);
+  });
+  c.tickIntervalMs = realInterval;
+  assert(c.tick === a.tick, `G-1: paced run reached the same tick (${c.tick} vs ${a.tick})`);
+  assert(hashMatchState(c) === hashA, "G-1: paced (live runner) replay gives the identical state hash");
+
+  // Sanity: the hash is sensitive to state.
+  const firstUnit = [...c.entities.values()].find(e => e.type !== "crystal")!;
+  firstUnit.x += 0.001;
+  assert(hashMatchState(c) !== hashA, "G-9d: state hash changes when any entity moves");
 }
+
+void (async () => {
+  await determinismTests();
+  console.log(`\n${"=".repeat(40)}`);
+  console.log(`Results: ${passed} passed, ${failed} failed`);
+  console.log("=".repeat(40) + "\n");
+
+  if (failed > 0) {
+    process.exit(1);
+  }
+})();
