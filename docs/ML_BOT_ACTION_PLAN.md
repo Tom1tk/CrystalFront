@@ -2745,3 +2745,38 @@ Verified: `npm test` 470/470, `training.test_env` PASS, `test_config_persistence
 - Turtle mirrors were left out of the fairness check. They end in the "hold 4500 resources" win, which tick parity decides (blue 6/8 even on classic). U5 replaces that win.
 - 12–21 of 24 mirror games time out at 6,000 ticks on pool maps (the same grinding pattern as on testbed). This is U5 work: grouping up before attacking, and the win-condition rework.
 - Node regen is still a flat 0.2/tick per node, so doubling the node count doubles passive regen on pool maps. This is a U5 balance lever.
+
+### 2026-11-10 — v0.6.6: U5 complete (G-8 win condition and balance)
+
+**Done (all on `main`, each pushed; `CrystalFront-ML` was merged into `main` and deleted):**
+- `feat(G-8)` `017f201`: node control replaces the "hold 4500 resources" win.
+  - Each contested node has a controller: the side with a unit in range when the other side has none. Holding a majority of the contested nodes fills a control bar, and a full bar wins.
+  - New `headless/src/balance.ts`: the strategy matrix, per-map mirror scores, win types, and the 4 G-8 gates.
+  - Pathing tie-breaks are now equivariant (mirror-safe). Fixes to scripted-bot production and attack logic.
+  - Client: control rings on nodes, a NODES HUD stat, and the win type on the end screen. `match_end` carries `winType`.
+- `docs(G-11)` `83f2975`: the user's Kenney asset packs are recorded for the 3D skin and audio.
+- `feat(G-8)` `74e996a`: control progress is cumulative.
+  - The holder gains +1 per tick and the opponent loses 1. Progress pauses when no side has a majority, and a side wins at `CONTROL.holdTicks` = 600.
+  - Only combat units hold nodes (turrets defend but don't hold).
+  - The timeout tiebreak order is: crystal HP fraction → nodes held → combat army supply → lifetime resources → seed parity.
+  - The bots now contest nodes (`bots/controlTarget.ts`). They take the nearest unheld node until they have a majority, leave 2-unit garrisons on held nodes, and regroup at a stage node before pushing. TurtleBot and MacroBot build a second barracks. HeavyBot's duplicate-turret and retreat bugs are fixed.
+- `fix(G-8)` `9553184`: on 180°-rotated maps, red's safe nodes and worker spawns are now rotated. Before this they were only x-mirrored, so the two sides' "nearest safe node" choices differed and mirror matches were biased.
+- `chore(U5)`: v0.6.6, `ENGINE_VERSION` 10 (safe-node positions changed on rotate maps).
+
+**Gate (balance.ts; 10 pool maps, maxTicks 6000):**
+- Full matrix, 960 games, 6 seeds per side:
+  - No strategy wins >70% against every other ✔ (turtle is 100/57/100, held below by macro).
+  - Rush is beatable ✔ (turtle 100%, macro 63%, heavy 78%).
+  - Timeouts 13% ✔ (<15%).
+  - Win types: control 61%, combat 26%, timeout 13%.
+- Mirror, 960 games, 24 seeds per side: blue scores 0.44–0.55 on every map ✔.
+  - The full-matrix run has only 24 mirror games per map (standard error ≈ ±0.1); shardfall reads 0.33 there. The dedicated mirror run has 96 games per map and is the gate of record.
+- `npm test` 613/613.
+
+**Observations:**
+- Matrix (row's score vs column): rush 38/0/22 vs macro/turtle/heavy; macro 63/43/92; turtle 100/57/100; heavy 78/8/0.
+  - The counter triangle is only partly there: turtle beats rush and heavy outright, and only macro contests it.
+  - Real players will also behave differently from these scripted bots. Treat the matrix as a smoke test for degenerate strategies, not a tuning target.
+- Mirror-only timeouts are still high (rush-rush 45%, turtle-turtle 54%). Equal scripted bots stall each other on node majorities, while games between different strategies resolve.
+- Spawn angles for trained units use each slot's own RNG, so mirror games diverge from the first worker trained. That is fair noise, not bias, and it averages out across seeds.
+- Not changed: supply per depot (+3), crystal self-defence, and node regen (still 0.2/tick per node, so more nodes means more passive regen). None was needed to pass the gates. They remain levers if live play shows rush or turtle problems.
