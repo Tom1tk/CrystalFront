@@ -2694,3 +2694,29 @@ Verified: `npm test` 470/470, `training.test_env` PASS, `test_config_persistence
   - turtle-vs-turtle is still 20/20 resource wins.
 - Rush got markedly stronger now that units path cleanly: it won 20/20 against macro, and rush-vs-macro games average about 2,150 ticks.
 - These are U5 (G-8) problems, not pathing bugs. The fixes are the win-condition rework and the rush counter-levers.
+
+### 2026-11-10 — v0.6.4: U3 complete (terrain, line of sight, minimap)
+
+**Done (all on `CrystalFront-ML`, each pushed):**
+- `feat(G-5)` `c243fda`, terrain grid and obstacles:
+  - New `engine/terrain.ts` (per-nav-cell codes: open, rock, rough, high, cliff, brush) and `match/maps.ts` with the `classic` map (no terrain) and a mirror-symmetric `testbed` map that has every terrain type.
+  - Rock and cliff cells block the nav grid. `CF_MAP=testbed` selects the map on the server; `bench.ts --map ID` does the same headlessly.
+  - `ENGINE_VERSION` 5.
+- `feat(G-6)` `4fc8a8d`, rough and high ground:
+  - Rough: ×0.6 speed and a higher A* step cost (17/24 vs 10/14). Direct-line and string-pulled shortcuts may not cross rough cells the A* route avoided.
+  - High ground: range ×1.15 for units and ×1.25 for buildings (on base range, not radius), and vision ×1.15.
+  - `ENGINE_VERSION` 6.
+- `feat(G-6b)` + G-9b `a5a25a1`, line-of-sight fog and minimap:
+  - Vision is resolved on a 40 px grid with cached per-source LOS sets. Rock blocks every ray. Low-ground sources can't see elevated cells, and elevated cells block their rays. High-ground sources are blocked by rock only (cliffs don't block high-ground sight — a design choice).
+  - Brush hides units from anyone without their own entity in the same brush patch. Attackers are always revealed to their victim's owner.
+  - Combat respects visibility: auto-acquire skips hidden targets, buildings drop hidden targets, units chase but don't fire.
+  - The server sends each player their lit cells as a base64 bitset. The client draws soft cell-based fog (old circle fog kept as fallback), and the minimap shows terrain and the same fog.
+  - `ENGINE_VERSION` 7.
+
+**Gate:** a test map containing every terrain type ✔ (`testbed`). Terrain, LOS and brush golden tests ✔ (36 new across G-5/G-6/G-6b; `npm test` 563/563). LOS within budget ✔: bench 4,901 ticks/sec on testbed vs 5,358 on classic (−8.5%, under the 10% budget).
+
+**Testbed observations (scripted bots, 6 seeds, maxTicks 6000):**
+- Most matches time out on testbed, including rush-vs-macro, which rush wins in ~2,100 ticks on classic.
+- Not caused by the visibility gating: with gating turned off (temporary A/B hack, reverted) rush-vs-macro still mostly timed out.
+- Death positions show a grinding front at x≈2,500–3,800 along the y≈350–400 lane: units reach the choke one at a time and trade evenly with the defender, who reinforces faster.
+- This is a U5 (G-8) problem: the bots need to group up before attacking, and the map pool (U4) must avoid chokes that give the defender this much edge.
