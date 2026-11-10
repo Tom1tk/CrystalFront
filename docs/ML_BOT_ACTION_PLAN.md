@@ -2720,3 +2720,28 @@ Verified: `npm test` 470/470, `training.test_env` PASS, `test_config_persistence
 - Not caused by the visibility gating: with gating turned off (temporary A/B hack, reverted) rush-vs-macro still mostly timed out.
 - Death positions show a grinding front at x≈2,500–3,800 along the y≈350–400 lane: units reach the choke one at a time and trade evenly with the defender, who reinforces faster.
 - This is a U5 (G-8) problem: the bots need to group up before attacking, and the map pool (U4) must avoid chokes that give the defender this much edge.
+
+### 2026-11-10 — v0.6.5: U4 built (map generator and pool), pool awaiting sign-off
+
+**Done (all on `CrystalFront-ML`, each pushed):**
+- `feat(G-7)` `4431e1c`, generator, validator, pool tool, lobby picker:
+  - Terrain gains "rotate" symmetry (180° about the centre), "open" shapes that carve, and per-map contested node positions.
+  - `mapgen.ts`: a seeded generator with an open base, a sparse approach band, and a dense middle band (node pockets, an optional high-ground plateau, water, mud, brush). Failed candidates are retried with sub-seeds.
+  - The validator checks clearance, enclosed pockets, 3-cell-wide routes, a detour of ≤ 1.35 (base and every node), the density gradient, an open build zone and node shelter.
+  - `headless/src/mapPool.ts survey|freeze` writes `pool/*.json`, a manifest with `approved: null`, and a generated `pool/index.ts`.
+  - The lobby host picks a map or "random pool" (`SET_MAP`, which un-readies both players). The bot menu has the same picker, and `GET /api/maps` serves thumbnails.
+  - Replays stamp `mapVersion`, and replays from other map versions are dropped. `ENGINE_VERSION` 8.
+- `feat(G-7)` `773cd3d`, user feedback on the first previews:
+  - Terrain now starts 500 px from each crystal (only x < 600 is kept open; the 20% build zone must still be ≥ 95% open).
+  - Twice as many contested nodes at half the size: 4 per side (a near and a far pair) plus an optional centre node, each holding `NODES.poolContestedCapacity` = 150. Classic and testbed are unchanged.
+- `feat(G-7)` `608c0e3`, the candidate pool: 10 maps, 5 mirror (glimmerfen, saltmarsh, ironreed, duskvale, cinder-flats) and 5 rotate (shardfall, basalt-run, twin-spires, hollow-crown, prism-ridge). All have `approved: null`.
+
+**Gate:** 1000 generated maps validate ✔ (test G-7, ~30 s). Pool of 8–12 frozen ✔ (10). **User sign-off of each map: pending.** `npm test` 602/602.
+
+**Observations:**
+- Fairness was measured with rush and macro mirror matches, 24 games per map. Pool maps score blue 0.42–0.58.
+  - At this sample size the standard error is about ±0.1, so "unfair" seeds in the survey are mostly noise. Re-surveying the same seed moved scores by up to 0.16.
+  - Across all seeds blue averages about 0.53, which looks like a small tick-order bias rather than a map effect.
+- Turtle mirrors were left out of the fairness check. They end in the "hold 4500 resources" win, which tick parity decides (blue 6/8 even on classic). U5 replaces that win.
+- 12–21 of 24 mirror games time out at 6,000 ticks on pool maps (the same grinding pattern as on testbed). This is U5 work: grouping up before attacking, and the win-condition rework.
+- Node regen is still a flat 0.2/tick per node, so doubling the node count doubles passive regen on pool maps. This is a U5 balance lever.
