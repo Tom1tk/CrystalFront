@@ -328,12 +328,12 @@ Mark each ✅ (approved), ✏️ (change, with a note) or ❌ (drop).
 | R-10 | Evaluation metrics and bars (§10) | bars can be tuned | ⬜ |
 | R-11 | Milestones and time boxes (§11) | as written | ⬜ |
 
-**Questions for you:**
-1. Which 2 maps are held out? (I'd pick one open and one terrain-heavy, after your map sign-off.)
-2. Easy/Normal/Hard as training snapshots (recommended) or one model with handicaps?
-3. Should the bot's read of you (from the opponent-model head) be shown in the UI or in replays?
-4. If the balance matrix (P-6) confirms turtle/control is dominant, do you want to fix that in the game before training (recommended), even if it delays M1?
-5. Are you willing to playtest a rough snapshot at M1 and M2, not only the final one?
+**Decisions (user, 2026-11-10):**
+1. **Held-out maps: `prism-ridge` and `duskvale`** (my pick, as delegated). Prism Ridge is the most open map in the pool (middle terrain density 0.18) and uses rotational symmetry; Duskvale is among the most terrain-heavy (0.25) and uses mirror symmetry. That leaves 4 rotate and 4 mirror maps for training. Provisional until the map sign-off (P-10): if either map is rejected, the nearest match replaces it.
+2. **Easy/Normal/Hard are training snapshots**, not one model with handicaps.
+3. **The bot's read of you is shown in both places:** a toggle in the live UI (off by default until the match ends, so it can't be used to see what the bot knows mid-game unless the player chooses to), and always on in replays. Built in M4.
+4. **If P-6 confirms a dominant strategy (turtle/control), it is fixed in the game before training**, even if that delays M1.
+5. **The user will playtest rough snapshots at M1 and M2**, as well as the final one.
 
 ---
 
