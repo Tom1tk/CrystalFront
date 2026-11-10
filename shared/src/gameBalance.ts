@@ -267,6 +267,14 @@ export const ENTITY = {
 //  SIMULATION
 // ====================================================================
 
+/**
+ * Simulation version (G-9e). Bump on ANY change that alters simulation results
+ * for the same seed + command log (movement, combat, map, balance numbers…).
+ * Replays are stamped with it; replays with a different stamp are not listed or
+ * played (no compatibility layer).
+ */
+export const ENGINE_VERSION = 1;
+
 export const SIMULATION = {
   tickIntervalMs: 100,     // ms per game tick (10 Hz)
   arrivalThreshold: 1,      // pixels — unit stops moving when this close

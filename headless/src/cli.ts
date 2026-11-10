@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { runMatch } from "./runMatch.js";
 import { IdleBot, RushBot, WeakRushBot, WeakMediumRushBot, MediumRushBot, PassiveBot, TurtleBot, MacroBot, HeavyBot } from "./bots/index.js";
 import type { Agent } from "./types.js";
+import { ENGINE_VERSION } from "@crystalfront/shared";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "..", "..");
@@ -24,6 +25,7 @@ export function buildReplayPayload(
 ) {
   return {
     version,
+    engineVersion: ENGINE_VERSION,
     seed: result.seed,
     blue,
     red,

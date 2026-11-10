@@ -3,7 +3,7 @@ import { resolve, join } from "node:path";
 import { WebSocket } from "ws";
 import { MatchEngine } from "./matchEngine.js";
 import { DEFAULT_CONFIG } from "./types.js";
-import { SIMULATION, getBalanceForVersion } from "@crystalfront/shared";
+import { SIMULATION, ENGINE_VERSION } from "@crystalfront/shared";
 
 const REPLAYS_DIR = resolve(process.cwd(), "replays");
 
@@ -22,6 +22,7 @@ export interface ReplayMeta {
   };
   durationSecs: number;
   version: string;
+  engineVersion: number;
   timestamp: number;
   // Phase 5 — enriched metadata extracted from commandLog
   winType?: string | null;
@@ -69,6 +70,7 @@ export function saveReplay(args: SaveReplayArgs): string {
     bluePlayerId:  args.bluePlayerId,   // stored so ReplayRunner uses correct IDs
     redPlayerId:   args.redPlayerId,
     version:       args.version,
+    engineVersion: ENGINE_VERSION,
     timestamp:     Date.now(),
     outcome: {
       winner:     args.winner,
@@ -199,6 +201,7 @@ export function listReplays(): ReplayMeta[] {
   for (const file of files) {
     try {
       const raw = JSON.parse(readFileSync(join(REPLAYS_DIR, file), "utf8"));
+      if (raw.engineVersion !== ENGINE_VERSION) continue; // G-9e: other engines' replays are dropped
       const enriched = analyzeReplay(raw);
       const outcome = raw.outcome ?? { winner: null, ticks: 0 };
       metas.push({
@@ -216,6 +219,7 @@ export function listReplays(): ReplayMeta[] {
         },
         durationSecs: ((outcome.ticks ?? 0) * SIMULATION.tickIntervalMs) / 1000,
         version: raw.version ?? "?",
+        engineVersion: raw.engineVersion,
         timestamp: raw.timestamp ?? 0,
         winType: enriched.winType,
         blueUnits: enriched.blueUnits,
@@ -241,6 +245,7 @@ export function getReplay(id: string): ReplayFile | null {
   if (!existsSync(filePath)) return null;
   try {
     const raw = JSON.parse(readFileSync(filePath, "utf8"));
+    if (raw.engineVersion !== ENGINE_VERSION) return null; // G-9e
     return {
       id,
       seed: raw.seed,
@@ -256,6 +261,7 @@ export function getReplay(id: string): ReplayFile | null {
       },
       durationSecs: ((raw.outcome?.ticks ?? 0) * SIMULATION.tickIntervalMs) / 1000,
       version: raw.version ?? "?",
+      engineVersion: raw.engineVersion,
       timestamp: raw.timestamp ?? 0,
       commandLog: raw.commandLog ?? [],
     };
@@ -293,15 +299,7 @@ export class ReplayRunner {
       { playerId: redId,  username: replay.red,  color: "red",  score: 0 },
     ];
 
-    const snap = getBalanceForVersion((replay as { version?: string }).version ?? "");
-    const replayConfig = snap ? {
-      ...DEFAULT_CONFIG,
-      workerTrainCost:      snap.workerCost,
-      workerSpeed:          snap.workerSpeed,
-      skirmisherSpeed:      snap.skirmisherSpeed,
-      skirmisherDamage:     snap.skirmisherDamage,
-      passiveWinThreshold:  snap.passiveWinThreshold,
-    } : DEFAULT_CONFIG;
+    const replayConfig = DEFAULT_CONFIG; // G-9e: only same-engine replays reach here
 
     const match = this.engine.createMatch("replay", players, replayConfig, replay.seed);
     this.engine.startMatch(match.id);

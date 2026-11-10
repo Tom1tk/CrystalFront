@@ -289,7 +289,7 @@ function stepSlot(slot: SlotState, actionIdx: number): {
       if (!existsSync(REPLAYS_DIR)) mkdirSync(REPLAYS_DIR, { recursive: true });
       const path = resolve(REPLAYS_DIR, `${ts}-${match.seed}.json`);
       writeFileSync(path, JSON.stringify({
-        version: GAME_VERSION, seed: match.seed,
+        version: GAME_VERSION, engineVersion: ENGINE_VERSION, seed: match.seed,
         blue: "ppo_agent", red: slot.opponentName,
         bluePlayerId: BLUE_ID, redPlayerId: RED_ID,
         outcome: { winner, winType, ticks: match.tick },

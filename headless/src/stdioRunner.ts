@@ -73,6 +73,7 @@ function makeBot(name?: string): Agent {
 }
 
 import type { MacroAction } from "./types.js";
+import { ENGINE_VERSION } from "@crystalfront/shared";
 
 interface PrePlace { barracks: boolean; units: string[] }
 
@@ -326,6 +327,7 @@ function handleStep(actionIdx: number): void {
       const path = resolve(REPLAYS_DIR, `${ts}-${match.seed}.json`);
       const payload = {
         version:      GAME_VERSION,
+        engineVersion: ENGINE_VERSION,
         seed:         match.seed,
         blue:         "ppo_agent",
         red:          currentOpponentName,

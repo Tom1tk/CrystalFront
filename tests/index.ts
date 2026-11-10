@@ -9,7 +9,7 @@ import { ALL_ACTIONS, ACTION_SPACE_SIZE, actionToIndex, indexToAction, legalMask
 import { getLegalActions } from "../headless/src/legalActions.js";
 import { expandMacroAction } from "../headless/src/actionSpace.js";
 import { buildObservation } from "../headless/src/observation.js";
-import { ECONOMY, HEALING } from "../shared/src/gameBalance.js";
+import { ECONOMY, HEALING, ENGINE_VERSION } from "../shared/src/gameBalance.js";
 import { saveReplay, getReplay, listReplays } from "../server/src/match/replayRunner.js";
 import { mirrorState, deepCloneMatchState, diffStates } from "../server/src/match/engine/mirror.js";
 import { MediumRushBot } from "../headless/src/bots/mediumRushBot.js";
@@ -17,7 +17,7 @@ import { MacroBot } from "../headless/src/bots/macroBot.js";
 import { LiveMatchRunner } from "../server/src/match/liveMatchRunner.js";
 import { hashMatchState } from "../server/src/match/engine/hash.js";
 import { readFileSync as _readFileSync, readdirSync as _readdirSync } from "node:fs";
-import { existsSync as _existsSync, unlinkSync as _unlinkSync } from "node:fs";
+import { existsSync as _existsSync, unlinkSync as _unlinkSync, writeFileSync as _writeFileSync } from "node:fs";
 import { resolve as _resolve, join as _join } from "node:path";
 
 let passed = 0;
@@ -1838,8 +1838,18 @@ console.log("\n--- Replay round-trip: playerIds survive save/load ---");
       `round-trip: commandLog playerId "${pid.slice(0,8)}..." matches stored bluePlayerId/redPlayerId`);
   }
 
-  // Cleanup
+  // 5. G-9e: engineVersion stamped and round-trips; stale-version files are ignored
+  assert((full as any).engineVersion === ENGINE_VERSION,
+    `G-9e: getReplay preserves engineVersion (got ${(full as any).engineVersion})`);
   const REPLAYS_DIR = _resolve(process.cwd(), "replays");
+  const staleId = "test-stale-engine-version";
+  const stalePath = _join(REPLAYS_DIR, `${staleId}.json`);
+  _writeFileSync(stalePath, JSON.stringify({ ...full, engineVersion: undefined }));
+  assert(getReplay(staleId) === null, "G-9e: getReplay rejects replay without matching engineVersion");
+  assert(!listReplays().some(r => r.id === staleId), "G-9e: listReplays skips stale-engine replay");
+  _unlinkSync(stalePath);
+
+  // Cleanup
   const path = _join(REPLAYS_DIR, `${id}.json`);
   if (_existsSync(path)) _unlinkSync(path);
 }
