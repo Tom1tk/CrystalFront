@@ -30,6 +30,15 @@ export default function MainMenu({ onHost, onJoin, onSoloTest, onBotGame: _onBot
   const [error, setError] = useState("");
   const [showJoin, setShowJoin] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  // G-11: same key GameShell reads; F3 in game toggles it too.
+  const [view3d, setView3d] = useState(() => {
+    try { return window.localStorage.getItem("cf.view3d") === "1"; } catch { return false; }
+  });
+  const toggleView3d = () => {
+    const next = !view3d;
+    setView3d(next);
+    try { window.localStorage.setItem("cf.view3d", next ? "1" : "0"); } catch { /* storage blocked */ }
+  };
 
   const handleHost = () => {
     setError("");
@@ -361,6 +370,30 @@ export default function MainMenu({ onHost, onJoin, onSoloTest, onBotGame: _onBot
           {/* ── Settings panel (conditional) ─────────────── */}
           {showSettings && (
             <FctPanel clip={HEX_CLIP} style={{ padding: 18, marginTop: 12 }}>
+              <div
+                style={{
+                  fontFamily: FCT.mono,
+                  fontSize: 9,
+                  color: FCT.inkDim,
+                  letterSpacing: "0.28em",
+                  marginBottom: 6,
+                }}
+              >
+                ▰ DISPLAY
+              </div>
+              <div
+                style={{
+                  fontFamily: FCT.ui,
+                  fontSize: 12,
+                  color: FCT.inkFaint,
+                  marginBottom: 12,
+                }}
+              >
+                3D battlefield view. Toggle in game with F3.
+              </div>
+              <FctBtn primary={view3d} full onClick={toggleView3d} style={{ marginBottom: 18 }}>
+                {view3d ? "◆ 3D View: On" : "◇ 3D View: Off"}
+              </FctBtn>
               <div
                 style={{
                   fontFamily: FCT.mono,
