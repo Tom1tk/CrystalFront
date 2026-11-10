@@ -2601,3 +2601,20 @@ Net effect: **~2150 updates (~10.6M steps) since first reaching `3a_rwm`, with z
 **Early validation signal:** if the scaffold is the right fix, scaffolded `3a_rwm` should climb stably past 0.50 (rather than coin-flipping to 0%) within the first ~1M steps of relaunch #4. **Stop condition for attempt 4:** if it *also* ends in either (a) the literal 3rd-cascade pattern (rollback → still 0% on `3a_rw`/`3a_rwm`) or (b) another multi-hundred-update frontier oscillation with no net progress, STOP, diary, and escalate for a new design decision (the anti-noise promotion gate / `ent_coef` / `max_steps` levers) — do **not** relaunch a 5th time autonomously.
 
 **No version bump in this entry** — documentation/decision only; no code changed yet (R1 applies at implementation time, step 2 above).
+
+### 2026-11-10 — v0.6.0: Game update plan approved; U0.1 finds training ran a stale Jun-9 engine
+
+**Context.** The project pivoted from Task 3.2 training to a base-game refresh (`docs/GAME_UPDATE_PLAN.md`, approved after 2 review rounds). Training is paused, Iteration 27's Option B is shelved, and the bot will be retrained from scratch on the updated game. New project goal: an adaptive "thinking" bot (memory + varied self-play opponents + hidden information).
+
+**Finding (U0.1): every Phase 3 training run used a stale engine.** Compiled `.js` copies of the engine, shared and headless sources had been committed next to the `.ts` files on 2026-06-09 (31 files under `server/src`, `shared/src`, `headless/src`). `build:headless` compiled only `headless/src` without bundling, so `headless/dist/stdioVecRunner.js` imported `../../server/src/match/matchEngine.js` at runtime: the **Jun-9 compiled copy**, not the current TypeScript. The Python staleness guard only checked `headless/src/*.ts`, so it never fired. tsx-based tools (`npm test`, `balance_report.py` via `cli.ts`) resolved to the current `.ts`. Consequences:
+- **Balance matrices and tests (Phase 1) measured the current engine; training (Tasks 3.1/3.2, Iterations 19–26) ran a Jun-9 engine.** That engine was missing the Jun-10/11 engine changes: the Task 1.2 timeout tiebreaker, the Task 1.3 crystal regen (`repair.ts`), the gathering/movement fixes (including the H5 `entityIdNum` collision-order fix), and the Jun-10 `DEFAULT_CONFIG`.
+- Balance *numbers* were current (they come via `@crystalfront/shared` → `shared/dist`, which was rebuilt Jun 11); only engine *logic* was stale.
+- This may explain part of the Phase 3 behaviour gap versus balance-matrix expectations. It is moot now (full retrain on the new game), but it is recorded so that no future agent trusts Phase 3 curves as evidence about the current engine.
+
+**Fix (commit `chore(U0.1)`):**
+- deleted all 31 tracked `src/*.js` files
+- `build:headless` now **bundles** `stdioVecRunner.ts` with esbuild, with `@crystalfront/shared` aliased to `shared/src`, so the runner always contains the current engine
+- the staleness guard now covers `headless/src`, `server/src` and `shared/src`
+- version 0.6.0 in all 5 `package.json`
+
+Verified: `npm test` 470/470, `training.test_env` PASS, `test_config_persistence` PASS, and the bundled runner contains the tiebreaker code.

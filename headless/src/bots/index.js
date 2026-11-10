@@ -1,8 +1,0 @@
-export { IdleBot } from "./idleBot.js";
-export { RushBot } from "./rushBot.js";
-export { WeakRushBot } from "./weakRushBot.js";
-export { MediumRushBot } from "./mediumRushBot.js";
-export { PassiveBot } from "./passiveBot.js";
-export { TurtleBot } from "./turtleBot.js";
-export { MacroBot } from "./macroBot.js";
-export { HeavyBot } from "./heavyBot.js";

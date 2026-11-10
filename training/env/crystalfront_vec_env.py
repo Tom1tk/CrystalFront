@@ -92,11 +92,13 @@ class CrystalFrontVecEnv:
             self._startup_delay = 0.0
         # Use pre-compiled JS if available; fall back to tsx
         if Path(VEC_RUNNER_JS).exists():
-            # Staleness guard: fail loud if any TS source is newer than the compiled runner
-            src_dir = REPO_ROOT / "headless" / "src"
+            # Staleness guard: fail loud if any TS source bundled into the runner
+            # (headless + engine + shared) is newer than the compiled runner.
+            src_dirs = [REPO_ROOT / d / "src" for d in ("headless", "server", "shared")]
             runner_mtime = Path(VEC_RUNNER_JS).stat().st_mtime
             stale = next(
-                (str(p) for p in src_dir.rglob("*.ts") if p.stat().st_mtime > runner_mtime),
+                (str(p) for d in src_dirs for p in d.rglob("*.ts")
+                 if p.stat().st_mtime > runner_mtime),
                 None,
             )
             if stale:

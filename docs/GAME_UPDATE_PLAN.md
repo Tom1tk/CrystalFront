@@ -50,7 +50,8 @@ From reading the engine on 2026-11-10:
 3. **Live games and training simulate different movement speeds.** Live (`liveMatchRunner.ts`) runs 4 sub-steps of `speed/5` plus `tick()`. `tick()` calls `processMovement(match, 100)` **twice** (before and after combat). So live moves units **2.8 × speed** per tick, while headless, training and replays move them **2.0 × speed**. Live units are about 40% faster than in every balance matrix and training run.
 4. **A "move" order cannot disengage.** `commandedTicks = 1` is consumed in the same tick's `processCombat`, which auto-acquires an enemy in range and overrides the move. To be confirmed with a test in G-1.
 5. **The client draws at 1:1 pixel scale.** The camera pans on X only, the 600 px map height fits the view, and a minimap already exists (X-axis drag only).
-6. **The ML policy has no memory.** `training/ppo/policy.py` is a set-transformer over the *current* observation only (no GRU/LSTM/history). It reacts to what it sees this decision, but cannot remember what it scouted earlier or infer what the opponent is planning. That matters for the "thinking bot" goal (G-10).
+6. **(Found in U0.1) Training ran a stale engine.** Compiled Jun-9 `.js` copies committed next to the `.ts` sources were what `headless/dist/stdioVecRunner.js` imported at runtime. Tests and balance tools used the current `.ts` via tsx, so the trained bot and the balance matrix were measuring different engines. Fixed in U0.1 (stale files deleted, runner bundled from source, staleness guard widened). See diary 2026-11-10.
+7. **The ML policy has no memory.** `training/ppo/policy.py` is a set-transformer over the *current* observation only (no GRU/LSTM/history). It reacts to what it sees this decision, but cannot remember what it scouted earlier or infer what the opponent is planning. That matters for the "thinking bot" goal (G-10).
 
 ---
 
@@ -268,7 +269,7 @@ Plus rush timing and the counter triangle, checked on real terrain.
 **This is the project goal** (see the top of this document): a bot that **reacts to the player's decisions and changes its plan mid-match**, not one that replays a memorised best build.
 
 To be honest about how that works: an RL policy is still a learned function. It "thinks" on the fly to the extent that it (a) **remembers** what it has seen this match, (b) was trained against **many different, adapting opponents**, so no single fixed answer works, and (c) **sees enough** to notice that the opponent changed plans. The current setup fails all three:
-- the policy is memoryless (Finding 6)
+- the policy is memoryless (Finding 7)
 - it was trained against a fixed ladder of scripted bots
 - its observation is a single snapshot
 
@@ -308,7 +309,7 @@ The goal is a cosmetic 3D client in the spirit of classic MOBA/MMO art direction
 
 | Phase | Items | Gate before the next phase |
 |---|---|---|
-| **U0: Foundation** | G-1, G-9d harness, G-9e, retire old `MlBot`/ONNX paths | fast-mode = paced-mode hash test passes; move/attack-move tests; `npm test` green; one live smoke game |
+| **U0: Foundation** | U0.1 single source of truth for engine code (done), G-1, G-9d harness, G-9e, retire old `MlBot`/ONNX paths | fast-mode = paced-mode hash test passes; move/attack-move tests; `npm test` green; one live smoke game |
 | **U1: Space** | G-2 (size + fit-to-height client), G-3, G-11 state-stream hooks, G-9f control groups | new map size playable with no vertical scroll at all test resolutions; buildings solid; connectivity check enforced |
 | **U2: Movement** | G-4, G-9f shift-queue | pathing and order-queue golden tests; throughput within budget |
 | **U3: Terrain & sight** | G-5, G-6, G-6b (LOS + brush), G-9b | hand-authored test map with every terrain type, LOS rule and brush rule plays correctly; LOS within budget |
