@@ -188,6 +188,8 @@ export const ECONOMY = {
 
 export const NODES = {
   contestedCapacity: 300,
+  /** Generated (pool) maps have twice as many contested nodes, each holding half. */
+  poolContestedCapacity: 150,
   safeCapacity: 100,
   maxGathererSlots: 3,
   regenPerTick: 0.2,        // passive refill rate (resources per tick)

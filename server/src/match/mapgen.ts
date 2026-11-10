@@ -3,8 +3,9 @@
  * never generate maps; they load frozen pool maps (see maps.ts, pool/).
  *
  * generateMap(seed) builds the left half of a symmetric map:
- *   - an open base area (the build zone),
- *   - a sparse approach band with a few rock clusters, a mud patch and brush,
+ *   - an open base area (crystal + 500 px, for the base buildings),
+ *   - a sparse approach band from there to the middle third, with a few rock
+ *     clusters, a mud patch and brush,
  *   - a dense middle band with contested nodes in jungle pockets (a clearing
  *     ringed by rock with 2–3 entrances), optionally one on a high-ground
  *     plateau with ramps, plus extra rock, water, mud and brush.
@@ -12,7 +13,7 @@
  * every returned map passes validateMap().
  *
  * validateMap() checks the G-2 rules: key points open with clearance, an
- * open build zone, no enclosed pockets, every route at least 3 nav cells
+ * open base area and mostly open build zone, no enclosed pockets, every route at least 3 nav cells
  * wide, base-to-base and base-to-node detour ratio ≤ GEN.maxDetour, a
  * density gradient (middle denser than the approach, approach denser than
  * the base) and contested nodes sheltered by terrain.
@@ -25,7 +26,8 @@ import type { MatchConfig } from "./types.js";
 
 export const GEN = {
   maxDetour: 1.35,          // shortest path ÷ straight line, base→base and base→node
-  baseEnd: 1000,            // base band: x < baseEnd (matches the 20% build zone)
+  clearEnd: 600,            // base area kept fully open: x < clearEnd (crystal at x=100, + 500 px)
+  buildEnd: 1000,           // the 20% build zone (checked by minBuildOpen)
   approachEnd: 1667,        // approach band up to the middle third
   minBuildOpen: 0.95,       // non-obstacle share of the build zone
   minMiddleDensity: 0.15,   // obstacle share of the middle third
@@ -84,16 +86,21 @@ function candidate(rng: Rng, seed: number, symmetry: "mirror" | "rotate"): MapDe
   };
 
   // Approach band: sparse.
-  const approach = ri(2, 4);
-  for (let i = 0; i < approach; i++) rockCluster(r(1150, 1650), r(80, H - 80), r(30, 55));
-  if (rng.random() < 0.7) patch("rough", r(1100, 1600), r(150, H - 150), r(100, 180), r(100, 160));
+  const approach = ri(4, 6);
+  for (let i = 0; i < approach; i++) rockCluster(r(750, 1650), r(80, H - 80), r(30, 55));
+  if (rng.random() < 0.7) patch("rough", r(750, 1600), r(150, H - 150), r(100, 180), r(100, 160));
 
-  // Contested nodes: 2 on the left half, optionally one in the centre.
+  // Contested nodes: 4 on the left half (a near and a far pair, one north and
+  // one south in each), optionally one in the centre.
   const centre = rng.random() < 0.5;
   const ys = [r(110, 330), r(H - 330, H - 110)];
   if (rng.random() < 0.5) ys.reverse();
   nodes.push([Math.round(r(1850, 2050)), Math.round(ys[0])]);
   nodes.push([Math.round(r(2150, 2350)), Math.round(ys[1])]);
+  const nearYs = [r(130, 330), r(H - 330, H - 130)];
+  if (rng.random() < 0.5) nearYs.reverse();
+  nodes.push([Math.round(r(1250, 1450)), Math.round(nearYs[0])]);
+  nodes.push([Math.round(r(1500, 1650)), Math.round(nearYs[1])]);
   if (centre) nodes.push([W / 2, H / 2]);
 
   // Optional plateau holding the first node (high ground overlooking a path).
@@ -130,10 +137,10 @@ function candidate(rng: Rng, seed: number, symmetry: "mirror" | "rotate"): MapDe
   });
 
   // Brush on routes, away from nodes.
-  const brush = ri(2, 4);
+  const brush = ri(3, 5);
   for (let i = 0; i < brush; i++) {
     for (let tries = 0; tries < 10; tries++) {
-      const bx = r(1300, 2450), by = r(60, H - 60);
+      const bx = r(750, 2450), by = r(60, H - 60);
       if (nodes.some(([nx, ny]) => Math.hypot(nx - bx, ny - by) < 200)) continue;
       patch("brush", bx, by, r(60, 120), r(60, 100));
       break;
@@ -141,7 +148,7 @@ function candidate(rng: Rng, seed: number, symmetry: "mirror" | "rotate"): MapDe
   }
 
   // Keep the base band and key points clear.
-  carve.push({ kind: "open", rect: [0, 0, GEN.baseEnd, H] });
+  carve.push({ kind: "open", rect: [0, 0, GEN.clearEnd, H] });
   return {
     id: `gen-${seed}`,
     name: `Generated ${seed}`,
@@ -368,14 +375,14 @@ export function validateMap(def: MapDef): Validation {
   }
 
   const density = {
-    base: obstacleShare(t, 0, GEN.baseEnd),
-    approach: obstacleShare(t, GEN.baseEnd, GEN.approachEnd),
+    base: obstacleShare(t, 0, GEN.clearEnd),
+    approach: obstacleShare(t, GEN.clearEnd, GEN.approachEnd),
     middle: obstacleShare(t, GEN.approachEnd, W - GEN.approachEnd),
   };
   if (density.middle < GEN.minMiddleDensity) issues.push(`middle density ${density.middle.toFixed(3)}`);
   if (density.middle < density.approach + GEN.minGradient) issues.push("no density gradient (middle vs approach)");
   if (density.approach <= density.base) issues.push("no density gradient (approach vs base)");
-  const buildOpen = 1 - density.base;
+  const buildOpen = 1 - obstacleShare(t, 0, GEN.buildEnd);
   if (buildOpen < GEN.minBuildOpen) issues.push(`build zone open ${buildOpen.toFixed(3)}`);
 
   let nodeShelterMin = 1;

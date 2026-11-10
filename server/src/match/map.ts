@@ -62,7 +62,7 @@ export function mirrorBlueToRed(map: MapLayout): void {
   map.redSafeNodes = mirrored;
 }
 
-/** `contested`: per-map contested node positions (px); default layout when absent. */
+/** `contested`: per-map contested node positions (px; pool maps, at NODES.poolContestedCapacity); default layout when absent. */
 export function createMap(config: MatchConfig, contested?: Array<{ x: number; y: number }>): MapLayout {
   const mapWidth = config.mapWidth;
   const mapHeight = config.mapHeight;
@@ -107,7 +107,7 @@ export function createMap(config: MatchConfig, contested?: Array<{ x: number; y:
 
   // Contested resource nodes — edit CONTESTED_NODE_OFFSETS in gameBalance.ts
   const contestedNodes: ResourceNodeLayout[] = contested
-    ? contested.map((n) => ({ x: n.x, y: n.y, radius: CONTESTED_NODE_OFFSETS[0].radius, capacity: NODES.contestedCapacity, type: "contested" as const }))
+    ? contested.map((n) => ({ x: n.x, y: n.y, radius: CONTESTED_NODE_OFFSETS[0].radius, capacity: NODES.poolContestedCapacity, type: "contested" as const }))
     : CONTESTED_NODE_OFFSETS.map((n: { dx: number; dy: number; radius: number }) => ({
     x: midX + n.dx,
     y: midY + n.dy,
