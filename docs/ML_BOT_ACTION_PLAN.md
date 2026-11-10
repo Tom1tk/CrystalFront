@@ -2,7 +2,7 @@
 
 **Branch:** `CrystalFront-ML`
 **Status:** v0.3.2-ML **SHIPPED** (2026-05-22). v0.4.0-ML **HALTED** (2026-05-23) — Option B action-masking and Option γ RND both failed to break `trn=0%` ceiling.
-**Last updated:** 2026-06-14 (Phase 3 Task 3.2 — Iteration 26: relaunch #3 STOPPED at update 2231 — Iteration 25 fixes confirmed working (no absorbing collapse, entropy bounded, 3a_rm reached for the first time, 2x), but a new "frontier oscillation" pattern at 3a_rwm/3a_rm emerged; fix proposed (3a_rm pre-placed-skirmisher scaffold), pending sign-off before relaunch #4)
+**Last updated:** 2026-06-17 (Phase 3 Task 3.2 — Iteration 27: re-analysis of the attempt-3 log shows the real wall is **`3a_rwm`** (8/10 entries decay to 0%, `3a_rm` reached only 2x), not `3a_rm`. User **approved (Option B)** a wider scaffold than Iteration 26 proposed: add 2 pre-placed skirmishers to **both `3a_rwm` and `3a_rm`** (making the scaffold continuous across the whole rush_weak_medium→rush_medium climb). **NOT YET IMPLEMENTED** — plan/diary updated for handoff; implementation + relaunch #4 to be carried out by the next agent.)
 
 ---
 
@@ -2561,3 +2561,43 @@ Net effect: **~2150 updates (~10.6M steps) since first reaching `3a_rwm`, with z
   ```
 
 **No version bump** — this entry documents attempt-3 results and a proposed fix only; no code has changed (R1 n/a for this entry).
+
+---
+
+### 2026-06-17 — v0.5.13-ML Phase 3: Iteration 27 (Task 3.2 — attempt-3 log re-analysis; widened scaffold fix approved [Option B], **not yet implemented**, handed off for implementation)
+
+**Why this entry exists:** before implementing Iteration 26's proposed fix (scaffold `3a_rm` only), the attempt-3 log (`train_task32_v3.log`, 388 lines) was re-read window-by-window. That re-analysis **revises the diagnosis** and the user approved a **wider** fix. This entry records the corrected reading and the approved decision; **no code has been changed yet** — implementation + relaunch #4 are explicitly handed off to the next agent.
+
+**Corrected diagnosis — the bottleneck is `3a_rwm`, not `3a_rm`:**
+
+- **Counting the actual promote/rollback events** (`grep -E "CURRICULUM|ROLLBACK|REGRESS"`): there were **10** entries into `3a_rwm`. **8** of them decayed straight to 0% and regressed to `3a_rw` without ever crossing the 0.50 bar. Only **2** reached threshold (0.63 @ update 1726, 0.66 @ update 2013) and promoted onward to `3a_rm`. So ~80% of `3a_rwm` attempts fail outright, and the run spent the large majority of its ~11M steps oscillating on the `3a_rw`↔`3a_rwm` boundary. `3a_rm` was a rare excursion, not the main event.
+- **`3a_rm`'s failure is not "zero signal from 0 units"** as Iteration 26 framed it. In the 1st `3a_rm` excursion the agent **was** fighting and *climbing*: update 1741→1770 shows `win 0.07→0.09→0.13`, `crys_dmg 6%→9%→15%`, `atk_mv ~50%` — then it collapsed at update 1782 (`win→0`, `crys_dmg→0%`). The agent engages but gets out-traded by the stronger rush, after which the policy degenerates (`atk_mv`→1%, `noop`→60%). It is an opponent-tier wall (lose the build-order race / get out-traded), the **same** root cause as `3a_rwm` — not a categorically different "0-army" failure.
+- **The Iteration-25 rollback converts "permanent death" into "perpetual oscillation," but discards `3a_rwm` progress every cycle.** On rollback it restores the *`3a_rwm`-entry snapshot* — essentially a `3a_rw`-specialist policy. It then regresses to `3a_rw` (re-won in 1 window) and re-promotes into `3a_rwm` from that same rush_weak-optimal state, having to re-climb the rush_weak_medium wall from scratch within `max_steps`. It usually can't. That **is** the oscillation. (Mid-run example, updates 901→1083: `3a_rwm` enters at 0.13, decays to 0.00, sits there ~140 updates while `atk_mv` 46%→8% / `noop` 33%→61%, then `max_steps` rollback → `3a_rw` recovers to 0.98 in one window → re-promote → repeat.)
+- **Single-window promotion at 0.50 is noise-prone.** The `3a_rm`-entry snapshot (the policy that scored **0.63** on `3a_rwm` at promotion) re-evaluated at only **0.34** when restored to the *same* stage/opponent on rollback (update 1805). A genuinely 63%-stable policy doesn't re-test at 34% — the 0.63/0.66 promotions were noisy peaks, not stable skill.
+
+**Approved decision (2026-06-17, Option B):** add `pre_place_units=["skirmisher", "skirmisher"]` to **both `3a_rwm` (idx13) and `3a_rm` (idx14)**, not just `3a_rm`. Rationale:
+
+- It targets the stage actually consuming the compute (`3a_rwm`), where ~80% of attempts die. Fixing `3a_rm` alone leaves the agent oscillating on `3a_rwm` and rarely reaching the fixed stage.
+- The root cause is identical at both stages (0 units + 200 resources on a 6000px map, losing the build-order race vs a multi-unit rush), so the fix should cover both. The pre-placed skirmishers buy the survival window to build — exactly what the curriculum comment for `3a_rwm` already anticipated ("6 units, push@300 — **needs 2 agent units**").
+- It removes a **scaffold discontinuity** rather than inventing something new: scaffold currently appears from nowhere at `3a_rm_3k`/`3a1`. Option B extends the *existing* idiom back two stages so the whole rush_weak_medium→rush_medium climb (`3a_rwm`, `3a_rm`, `3a_rm_3k`, `3a1`) is scaffolded, and the curriculum **already** removes it later (`3a2` → 1 skirmisher, `3a5` → none). Consistent with the curriculum's own design; the de-scaffolding safety valve already exists downstream. `3a_rw` (won ~100% with no scaffold) is left unchanged.
+- Still one conceptual change (scaffold the rush-tier opponent stages), kept surgical — two stage definitions gain one field each.
+
+**Alternatives considered, not chosen:**
+- *Scaffold `3a_rm` only* (Iteration 26's proposal) — addresses the secondary bottleneck; low expected value because `3a_rm` is rarely reached.
+- *Scaffold + anti-noise promotion gate* (require 2 consecutive windows ≥0.50) — the noisy-promotion finding is real, but bundling a curriculum-logic change with the scaffold change violates one-variable-at-a-time. Held in reserve as a candidate **Iteration 28** lever *only if* scaffolded `3a_rwm` still promotes on a noisy peak and `3a_rm` still fails.
+
+**Implementation handoff (NOT done here — for the next agent):**
+1. `training/ppo/train.py` CURRICULUM (~lines 142-144): add `pre_place_units=["skirmisher", "skirmisher"]` to `3a_rwm` (idx13) and `3a_rm` (idx14); leave `3a_rw` and all thresholds/`max_steps` unchanged. Update the adjacent `# 3a_rwm:` / `# 3a_rm:` comments to note the Iteration-27 scaffold.
+2. Version bump all 5 `package.json` 0.5.13-ML → 0.5.14-ML (R1).
+3. Tests: `npm test` + `python -m training.test_env` (R6).
+4. One commit (R7), e.g. `fix(3.2): scaffold 3a_rwm + 3a_rm with 2 pre-placed skirmishers (Iteration 27)`; push (R11). R10 is satisfied by this entry (diagnosis+fix+reasoning documented before relaunch).
+5. **Relaunch #4** from `checkpoints/crystalfront_ppo__0_5_13-ML__idle__1__1781439933/update_002000.pt` (a known-good restored-snapshot `3a_rw` policy that, in attempt 3, went on to reach `3a_rm`; avoids the degenerate `update_002200.pt`), at `--curriculum_stage 12`:
+   ```bash
+   python3 -m training.ppo.train --curriculum --curriculum_stage 12 \
+     --checkpoint checkpoints/crystalfront_ppo__0_5_13-ML__idle__1__1781439933/update_002000.pt \
+     --decision_interval 8 --num_envs 20 --vec_size 4 --total_timesteps 20000000 > train_task32_v4.log 2>&1 &
+   ```
+
+**Early validation signal:** if the scaffold is the right fix, scaffolded `3a_rwm` should climb stably past 0.50 (rather than coin-flipping to 0%) within the first ~1M steps of relaunch #4. **Stop condition for attempt 4:** if it *also* ends in either (a) the literal 3rd-cascade pattern (rollback → still 0% on `3a_rw`/`3a_rwm`) or (b) another multi-hundred-update frontier oscillation with no net progress, STOP, diary, and escalate for a new design decision (the anti-noise promotion gate / `ent_coef` / `max_steps` levers) — do **not** relaunch a 5th time autonomously.
+
+**No version bump in this entry** — documentation/decision only; no code changed yet (R1 applies at implementation time, step 2 above).
