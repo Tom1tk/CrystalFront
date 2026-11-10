@@ -750,6 +750,9 @@ export default function GameShell({
   const resourceNodesRef = useRef<ResourceNodeDisplay[]>(resourceNodes);
   const selectedEntityIdRef = useRef<string | null>(selectedEntityId);
   const selectedEntityIdsRef = useRef<Set<string>>(selectedEntityIds);
+  // Control groups (G-9f, client only): digit → entity ids; last tap for double-tap camera jump.
+  const controlGroupsRef = useRef<Map<number, string[]>>(new Map());
+  const lastGroupTapRef = useRef<{ n: number; t: number } | null>(null);
   const hoverPosRef = useRef<{ x: number; y: number } | null>(hoverPos);
   const buildModeRef = useRef(buildMode);
   const selectedBuildingTypeRef = useRef<BuildingType | null>(selectedBuildingType);
@@ -1185,6 +1188,42 @@ export default function GameShell({
         setDebugDraggingNodeId(null);
         return;
       }
+      // Control groups: Ctrl+N assign, Shift+N add, N select, N twice quickly = centre camera.
+      const digit = /^Digit([1-9])$/.exec(e.code);
+      if (digit && !e.altKey && matchState) {
+        const n = Number(digit[1]);
+        const alive = new Map(matchState.entities.filter((ent) => ent.ownerId === safePlayer.id).map((ent) => [ent.id, ent]));
+        const groups = controlGroupsRef.current;
+        const current = (groups.get(n) ?? []).filter((id) => alive.has(id));
+        const selected = Array.from(selectedEntityIds).filter((id) => alive.has(id));
+        e.preventDefault();
+        if (e.ctrlKey || e.metaKey) {
+          groups.set(n, selected);
+          return;
+        }
+        if (e.shiftKey) {
+          groups.set(n, Array.from(new Set([...current, ...selected])));
+          return;
+        }
+        groups.set(n, current);
+        if (current.length === 0) return;
+        setSelectedEntityIds(new Set(current));
+        setSelectedEntityId(current.length === 1 ? current[0] : null);
+        const now = performance.now();
+        const last = lastGroupTapRef.current;
+        if (last && last.n === n && now - last.t < 350) {
+          const canvas = canvasRef.current;
+          const mapWidth = matchState.mapWidth ?? matchState.config?.mapWidth ?? 5000;
+          const viewW = (canvas?.clientWidth ?? 960) / scaleRef.current;
+          const cx = current.reduce((sum, id) => sum + alive.get(id)!.x, 0) / current.length;
+          cameraXRef.current = Math.max(0, Math.min(cx - viewW / 2, mapWidth - viewW));
+          lastGroupTapRef.current = null;
+        } else {
+          lastGroupTapRef.current = { n, t: now };
+        }
+        return;
+      }
+
       // Enter rally mode with 'F' when a building or crystal is selected
       if (e.key === "f" || e.key === "F") {
         // Find a production building or crystal from the current selection
