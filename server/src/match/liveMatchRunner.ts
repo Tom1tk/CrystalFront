@@ -20,9 +20,7 @@ export class LiveMatchRunner {
     const match = this.engine.getMatch(matchId);
     if (!match) return;
 
-    let subStepCount = 0;
-    const subStepMs = SIMULATION.subStepMs;
-    const fullTickMs = match.tickIntervalMs || 100;
+    const tickMs = match.tickIntervalMs || SIMULATION.tickIntervalMs;
 
     const interval = setInterval(() => {
       const m = this.engine.getMatch(matchId);
@@ -31,14 +29,9 @@ export class LiveMatchRunner {
         return;
       }
 
-      subStepCount++;
-      if (subStepCount % (fullTickMs / subStepMs) === 0) {
-        this.engine.tick(matchId);
-        this.onTick(matchId);
-      } else {
-        this.engine.subStepMovement(matchId);
-      }
-    }, subStepMs);
+      this.engine.tick(matchId);
+      this.onTick(matchId);
+    }, tickMs);
 
     this.intervals.set(matchId, interval);
   }

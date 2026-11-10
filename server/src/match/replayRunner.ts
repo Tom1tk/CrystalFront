@@ -270,9 +270,6 @@ export function getReplay(id: string): ReplayFile | null {
  */
 interface ReplaySession {
   interval: NodeJS.Timeout | null;
-  subStepCount: number;
-  stepsPerTick: number;
-  subStepMs: number;
   cmdsByTick: Map<number, Array<{ playerId: string; command: Record<string, unknown> }>>;
   totalTicks: number;
   ws: WebSocket;
@@ -317,14 +314,8 @@ export class ReplayRunner {
 
     send(ws, { type: "match_start", payload: { match: serializeMatch(match) } });
 
-    const subStepMs = SIMULATION.subStepMs;
-    const stepsPerTick = 100 / subStepMs;
-
     const session: ReplaySession = {
       interval: null,
-      subStepCount: 0,
-      stepsPerTick,
-      subStepMs,
       cmdsByTick,
       totalTicks: replay.outcome.ticks,
       ws,
@@ -355,7 +346,7 @@ export class ReplayRunner {
   private _startInterval(matchId: string, mult: number): void {
     const session = this.sessions.get(matchId);
     if (!session) return;
-    const delayMs = Math.max(1, session.subStepMs / mult);
+    const delayMs = Math.max(1, SIMULATION.tickIntervalMs / mult);
     session.interval = setInterval(() => this._tick(matchId), delayMs);
   }
 
@@ -367,21 +358,16 @@ export class ReplayRunner {
       this._finish(matchId);
       return;
     }
-    session.subStepCount++;
-    if (session.subStepCount % session.stepsPerTick === 0) {
-      const cmds = session.cmdsByTick.get(m.tick) ?? [];
-      for (const { playerId, command } of cmds) {
-        this.engine.processCommand(matchId, playerId, command as Parameters<MatchEngine["processCommand"]>[2]);
-      }
-      this.engine.tick(matchId);
-      send(session.ws, {
-        type: "game_state",
-        payload: { match: serializeMatch(this.engine.getMatch(matchId) ?? m), isReplay: true },
-      });
-      if (m.tick >= session.totalTicks) this._finish(matchId);
-    } else {
-      this.engine.subStepMovement(matchId);
+    const cmds = session.cmdsByTick.get(m.tick) ?? [];
+    for (const { playerId, command } of cmds) {
+      this.engine.processCommand(matchId, playerId, command as Parameters<MatchEngine["processCommand"]>[2]);
     }
+    this.engine.tick(matchId);
+    send(session.ws, {
+      type: "game_state",
+      payload: { match: serializeMatch(this.engine.getMatch(matchId) ?? m), isReplay: true },
+    });
+    if (m.tick >= session.totalTicks) this._finish(matchId);
   }
 
   private _finish(matchId: string): void {

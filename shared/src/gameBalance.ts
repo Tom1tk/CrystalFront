@@ -30,7 +30,7 @@ export interface UnitDef {
   radius: number;
   damage: number;
   range: number;
-  speed: number;           // pixels per sub-step
+  speed: number;           // pixels per tick (G-1: one movement phase per tick)
   color: string;
   attackCooldown: number;  // ticks between attacks
   visionRange?: number;
@@ -45,7 +45,7 @@ export const UNIT_DEFS: Record<string, UnitDef> = {
     radius: 10,
     damage: 5,
     range: 15,
-    speed: 1.7,        // was 2 — 15% slower, workers matter more per unit
+    speed: 3.4,        // G-1: 1.7 → 3.4 px/tick (keeps old 2-moves-per-tick pace)
     color: "#aabbcc",
     attackCooldown: 20,
     visionRange: 225,
@@ -58,7 +58,7 @@ export const UNIT_DEFS: Record<string, UnitDef> = {
     radius: 12,
     damage: 12,        // was 15 — 20% less damage, faster but less punch
     range: 20,
-    speed: 2.0,        // was 3.0 — slower raiders give defenders time to build
+    speed: 4.0,        // G-1: 2.0 → 4.0 px/tick (keeps old 2-moves-per-tick pace)
     color: "#44dd88",
     attackCooldown: 10,
     visionRange: 300,
@@ -71,7 +71,7 @@ export const UNIT_DEFS: Record<string, UnitDef> = {
     radius: 11,
     damage: 20,
     range: 120,
-    speed: 1.5,
+    speed: 3.0,        // G-1: 1.5 → 3.0 px/tick
     color: "#ddaa44",
     attackCooldown: 15,
     visionRange: 270,
@@ -84,7 +84,7 @@ export const UNIT_DEFS: Record<string, UnitDef> = {
     radius: 14,
     damage: 12,
     range: 20,
-    speed: 1.8,
+    speed: 3.6,        // G-1: 1.8 → 3.6 px/tick
     color: "#8866cc",
     attackCooldown: 8,
     visionRange: 195,
@@ -97,7 +97,7 @@ export const UNIT_DEFS: Record<string, UnitDef> = {
     radius: 11,
     damage: 3,
     range: 80,
-    speed: 2,
+    speed: 4.0,        // G-1: 2 → 4 px/tick
     color: "#44ccdd",
     attackCooldown: 25,
     visionRange: 210,
@@ -269,7 +269,6 @@ export const ENTITY = {
 
 export const SIMULATION = {
   tickIntervalMs: 100,     // ms per game tick (10 Hz)
-  subStepMs: 20,            // ms per movement sub-step within a tick
   arrivalThreshold: 1,      // pixels — unit stops moving when this close
   spatialCellSize: 50,      // collision grid cell size in pixels
   spawnGap: 4,              // pixels gap between parent and spawned child

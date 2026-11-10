@@ -2,10 +2,9 @@ import { UNIT_DEFS, SIMULATION } from "@crystalfront/shared";
 import type { MatchState } from "../types.js";
 import { dist, buildSpatialGrid, getRange, entityIdNum } from "./utils.js";
 
-export function processMovement(match: MatchState, subStepMs: number = 100): void {
+export function processMovement(match: MatchState): void {
   const entities = Array.from(match.entities.values());
   const arrivalThreshold = SIMULATION.arrivalThreshold;
-  const stepsPerTick = (100 / subStepMs) || 1;
 
   for (const entity of entities) {
     if (entity.type === "crystal" || entity.type === "building") continue;
@@ -18,7 +17,7 @@ export function processMovement(match: MatchState, subStepMs: number = 100): voi
       entity.type === "skirmisher" && match.config.skirmisherSpeed !== undefined ? match.config.skirmisherSpeed :
       baseSpeed;
     const moveAmount = Math.min(
-      speedPerTick / stepsPerTick,
+      speedPerTick,
       dist(entity.x, entity.y, entity.moveTarget.x, entity.moveTarget.y),
     );
 

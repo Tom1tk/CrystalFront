@@ -1017,14 +1017,11 @@ if (command.type === "gather") {
     const currentTick = match.tick;
     match.attackLog = match.attackLog.filter(evt => currentTick - evt.tick < SIMULATION.attackLogRetention);
 
-    // Phase 1: Movement
-    processMovement(match, 100);
-
-    // Phase 2: Combat
+    // Phase 1: Combat — target acquisition, chase/follow targets, attacks in range
     const damageLog = processCombat(match);
 
-    // Phase 2.5: Post-combat movement (chase/follow initiated this tick)
-    processMovement(match, 100);
+    // Phase 2: Movement — the only movement phase (G-1); includes chase/follow
+    processMovement(match);
 
     // Phase 3: Gathering
     processGathering(match);
@@ -1091,12 +1088,6 @@ if (command.type === "gather") {
 
     match.stateTimestamp = Date.now();
     return match;
-  }
-
-  subStepMovement(matchId: string): void {
-    const match = this.matches.get(matchId);
-    if (!match || match.phase !== "playing") return;
-    processMovement(match, 20);
   }
 
 
