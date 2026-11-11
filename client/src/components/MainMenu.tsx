@@ -24,6 +24,10 @@ const NAME_KEY = "cf.name";
 function savedName() {
   try { return window.localStorage.getItem(NAME_KEY) ?? ""; } catch { return ""; }
 }
+/** Remembered in this browser as it is typed, like the audio settings. */
+function saveName(name: string) {
+  try { window.localStorage.setItem(NAME_KEY, name.trim()); } catch { /* storage blocked */ }
+}
 
 type PlayTab = "bot" | "online" | "solo";
 
@@ -50,11 +54,10 @@ export default function MainMenu({ onHost, onJoin, onSoloTest, onBotGame, onRepl
 
   const name = username.trim();
   const pickMap = (id: string) => { setMapId(id); onPreviewMap(id); };
-  /** Checks the name, remembers it, then runs `go`. */
+  /** Checks the name, then runs `go`. */
   const withName = (go: (n: string) => void) => {
     setError("");
     if (!name) { setError("Enter a player name first."); return; }
-    try { window.localStorage.setItem(NAME_KEY, name); } catch { /* storage blocked */ }
     go(name);
   };
   const shownError = error || serverError;
@@ -74,7 +77,7 @@ export default function MainMenu({ onHost, onJoin, onSoloTest, onBotGame, onRepl
             <label style={{ display: "block" }}>
               <span className="g-label">Player name</span>
               <input className="g-input" style={{ marginTop: 6 }} value={username} maxLength={20} placeholder="Commander"
-                onChange={(e) => setUsername(e.target.value)}
+                onChange={(e) => { setUsername(e.target.value); saveName(e.target.value); }}
                 onKeyDown={(e) => { if (e.key === "Enter") withName(() => setPage("play")); }} />
             </label>
             {shownError && <div className="g-error">{shownError}</div>}
