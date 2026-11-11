@@ -7,7 +7,10 @@ export function processCombat(match: MatchState): Map<string, number> {
   const damageLog = new Map<string, number>();
   const entities = Array.from(match.entities.values());
 
-  // Auto-attack acquisition: idle combat units find nearest enemy in range
+  // Auto-attack acquisition: idle combat units find nearest enemy in range.
+  // Candidates per owner: other owners' entities it could see at the end of last
+  // tick (G-6b), in entity order, built once per owner per tick.
+  const candidatesOf = new Map<string, typeof entities>();
   for (const entity of entities) {
     if (!entity.autoAttackEnabled) continue;
     // Plain move order: ignore enemies until arrival (G-1)
@@ -20,10 +23,12 @@ export function processCombat(match: MatchState): Map<string, number> {
     let nearestDist = Infinity;
     let nearestId: string | undefined;
     const range = getRange(entity, match.terrain);
-    for (const other of entities) {
-      if (other.ownerId === entity.ownerId) continue;
-      // Only what the owner could see at the end of last tick (G-6b)
-      if (!isVisibleTo(match, entity.ownerId, other)) continue;
+    let candidates = candidatesOf.get(entity.ownerId);
+    if (!candidates) {
+      candidates = entities.filter((o) => o.ownerId !== entity.ownerId && isVisibleTo(match, entity.ownerId, o));
+      candidatesOf.set(entity.ownerId, candidates);
+    }
+    for (const other of candidates) {
       // Workers cannot initiate combat on crystals or buildings — only workers and combat units
       if (entity.type === "worker" && (other.type === "crystal" || other.type === "building")) continue;
       const d = dist(entity.x, entity.y, other.x, other.y);

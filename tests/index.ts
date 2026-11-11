@@ -2381,10 +2381,31 @@ console.log("\n--- G-4: Pathfinding ---");
   {
     const { match, engine } = setup();
     wall(engine, match, 1200, 220, 700);
-    const p = planPath(match.nav, 1000, 450, 1200, 460, false);
+    // The barracks at (1200,460): footprint 1180..1220 x 440..480.
+    const p = planPath(match.nav, 1000, 450, 1200, 460, false, { x1: 1180, y1: 440, x2: 1220, y2: 480 });
     const last = p.waypoints[p.waypoints.length - 1];
-    assert(p.truncated && !!last && last.x < 1180 && last.x > 1150 && Math.abs(last.y - 458.6) < 1,
+    assert(p.truncated && !!last && last.x === 1180 && last.y >= 440 && last.y <= 480,
       `G-4: goal inside a structure resolves to the free point in front of it (got ${JSON.stringify(p)})`);
+  }
+
+  // A builder whose straight line to its site crosses another building still reaches
+  // and builds it (T2: the approach point used to land beside the worker, out of build
+  // range, so it re-planned every tick and the depot was never built).
+  {
+    const { engine, match } = setup();
+    const crystal = [...match.entities.values()].find((e) => e.type === "crystal" && e.ownerId === "b")!;
+    const ox = crystal.x - 100, oy = crystal.y - 450; // geometry recorded next to the crystal at (100,450)
+    engine.debugSpawn(match.id, "b", "building", 190 + ox, 410 + oy, "supply_depot");
+    engine.debugSpawn(match.id, "b", "building", 190 + ox, 490 + oy, "supply_depot");
+    engine.debugSpawn(match.id, "b", "building", 150 + ox, 370 + oy, "supply_depot");
+    engine.debugSpawn(match.id, "b", "worker", 194 + ox, 446 + oy);
+    const site = [...match.entities.values()].filter((e) => e.buildingType === "supply_depot").pop()!;
+    site.constructionProgress = 0; site.health = 1;
+    const worker = [...match.entities.values()].filter((e) => e.type === "worker" && e.ownerId === "b").pop()!;
+    const res = engine.processCommand(match.id, "b", { type: "assign_build", entityId: worker.id, targetEntityId: site.id } as any);
+    for (let t = 0; t < 600 && site.constructionProgress < 100; t++) engine.tick(match.id);
+    assert(res.success && site.constructionProgress >= 100,
+      `G-4: builder walks round a neighbouring building and finishes the depot (progress ${site.constructionProgress.toFixed(1)}, worker at ${worker.x.toFixed(0)},${worker.y.toFixed(0)})`);
   }
 
   // Group arrival: six units sharing a flow field all reach the goal and stop

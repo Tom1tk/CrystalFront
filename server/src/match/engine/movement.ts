@@ -20,6 +20,23 @@ function arrive(entity: MatchEntity): void {
   if (!entity.attackTargetId) entity.moveOrder = undefined;
 }
 
+/** Separation-pass bucket heads, reused across ticks; a head is valid only when its stamp is the current gen. */
+let buckets: { head: Int32Array; stamp: Uint32Array; gen: number } | null = null;
+function bucketsFor(size: number) {
+  if (!buckets || buckets.head.length < size) buckets = { head: new Int32Array(size), stamp: new Uint32Array(size), gen: 0 };
+  buckets.gen++;
+  return buckets;
+}
+
+/** Footprint of the structure whose centre area holds (x,y), if that point's cell is blocked. */
+function structureRectAt(match: MatchState, x: number, y: number): Rect | undefined {
+  if (match.nav.structures[cellOf(match.nav, x, y)] === 0) return undefined;
+  for (const e of match.entities.values()) {
+    if ((e.type === "crystal" || e.type === "building") && dist(x, y, e.x, e.y) <= e.radius) return footprintOf(e) ?? undefined;
+  }
+  return undefined;
+}
+
 /** Make sure entity.route is valid for its current moveTarget (G-4). */
 function ensureRoute(match: MatchState, entity: MatchEntity): NonNullable<MatchEntity["route"]> {
   const g = match.nav;
@@ -40,7 +57,7 @@ function ensureRoute(match: MatchState, entity: MatchEntity): NonNullable<MatchE
   if (replan) {
     // Units on a player/bot move order share the flow field for that destination.
     const useField = !!entity.moveOrder && entity.moveOrder.x === mt.x && entity.moveOrder.y === mt.y;
-    const plan = planPath(g, entity.x, entity.y, mt.x, mt.y, useField);
+    const plan = planPath(g, entity.x, entity.y, mt.x, mt.y, useField, structureRectAt(match, mt.x, mt.y));
     r = entity.route = {
       goalX: mt.x, goalY: mt.y, waypoints: plan.waypoints, truncated: plan.truncated,
       version: g.version, bestDist: NO_PROGRESS, stuckTicks: 0,
@@ -51,6 +68,7 @@ function ensureRoute(match: MatchState, entity: MatchEntity): NonNullable<MatchE
 
 export function processMovement(match: MatchState): void {
   const entities = Array.from(match.entities.values());
+  const structures = entities.filter((e) => e.type === "crystal" || e.type === "building");
   const arrivalThreshold = SIMULATION.arrivalThreshold;
 
   // Idle units at the start of the tick, for the avoidance nudge (a read-only
@@ -84,9 +102,7 @@ export function processMovement(match: MatchState): void {
     // at the moveTarget position. Prevents units piling up at a single center point —
     // multiple units can arrive at different positions around the entity's surface.
     let arrivedAtEntity = false;
-    for (const other of entities) {
-      if (other.id === entity.id) continue;
-      if (other.type !== "crystal" && other.type !== "building") continue;
+    for (const other of structures) {
       const dTargetToOther = dist(entity.moveTarget.x, entity.moveTarget.y, other.x, other.y);
       if (dTargetToOther <= other.radius) {
         // The moveTarget is at/inside this large entity; arrive when in attack range
@@ -185,24 +201,41 @@ export function processMovement(match: MatchState): void {
   const pushX = new Float64Array(n);
   const pushY = new Float64Array(n);
   const touched = new Uint8Array(n);
-  const cellKey = (cx: number, cy: number) => cx * 100003 + cy;
+  const cxs = new Int32Array(n);
+  const cys = new Int32Array(n);
+  const next = new Int32Array(n);
   for (let pass = 0; pass < 2; pass++) {
-    const grid = new Map<number, number[]>();
+    // Flat bucket grid over the units' cell bounding box (padded by one cell),
+    // filled by counting sort so each cell lists its units in ascending index order.
+    let minX = 0, maxX = 0, minY = 0, maxY = 0;
     for (let i = 0; i < n; i++) {
-      const key = cellKey(Math.floor(mobile[i].x / cellSize), Math.floor(mobile[i].y / cellSize));
-      const cell = grid.get(key);
-      if (cell) cell.push(i); else grid.set(key, [i]);
+      const cx = cxs[i] = Math.floor(mobile[i].x / cellSize);
+      const cy = cys[i] = Math.floor(mobile[i].y / cellSize);
+      if (i === 0 || cx < minX) minX = cx;
+      if (i === 0 || cx > maxX) maxX = cx;
+      if (i === 0 || cy < minY) minY = cy;
+      if (i === 0 || cy > maxY) maxY = cy;
+    }
+    const gw = maxX - minX + 3, gh = maxY - minY + 3;
+    const slot = (cx: number, cy: number) => (cx - minX + 1) * gh + (cy - minY + 1);
+    const B = bucketsFor(gw * gh);
+    const { head, stamp } = B;
+    const gen = B.gen;
+    // Prepend in descending index order, so each cell's list runs in ascending order.
+    for (let i = n - 1; i >= 0; i--) {
+      const sl = slot(cxs[i], cys[i]);
+      next[i] = stamp[sl] === gen ? head[sl] : -1;
+      head[sl] = i; stamp[sl] = gen;
     }
     pushX.fill(0); pushY.fill(0); touched.fill(0);
     for (let i = 0; i < n; i++) {
       const entity = mobile[i];
-      const cx = Math.floor(entity.x / cellSize);
-      const cy = Math.floor(entity.y / cellSize);
+      const cx = cxs[i];
+      const cy = cys[i];
       for (let ddx = -1; ddx <= 1; ddx++) {
         for (let ddy = -1; ddy <= 1; ddy++) {
-          const cell = grid.get(cellKey(cx + ddx, cy + ddy));
-          if (!cell) continue;
-          for (const j of cell) {
+          const sl = slot(cx + ddx, cy + ddy);
+          for (let j = stamp[sl] === gen ? head[sl] : -1; j !== -1; j = next[j]) {
             // Each unordered pair once (numeric id order; "e10" < "e9" lexicographically).
             if (idn[j] <= idn[i]) continue;
             const other = mobile[j];

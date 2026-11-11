@@ -17,7 +17,7 @@
  * Tie-breaking is total and equivariant under a left-right mirror and a 180°
  * rotation (see tieLess), so a mirrored or rotated state picks the matching path.
  */
-import type { NavGrid } from "./navGrid.js";
+import { cellRange, type NavGrid, type Rect } from "./navGrid.js";
 import { TERRAIN } from "@crystalfront/shared";
 import { T_ROUGH } from "./terrain.js";
 
@@ -103,6 +103,9 @@ const DIRS: Array<[number, number, number]> = [
   [1, 1, DIAGONAL], [1, -1, DIAGONAL], [-1, 1, DIAGONAL], [-1, -1, DIAGONAL],
 ];
 
+/** DIRS as flat arrays (straight moves first, then diagonals). */
+const DC = DIRS.map((d) => d[0]), DR = DIRS.map((d) => d[1]), DB = DIRS.map((d) => d[2]);
+
 /** Calls fn(neighbour, stepCost) for each legal move out of cell i. */
 function forNeighbours(g: NavGrid, i: number, fn: (n: number, cost: number) => void): void {
   const col = i % g.cols;
@@ -117,23 +120,6 @@ function forNeighbours(g: NavGrid, i: number, fn: (n: number, cost: number) => v
     }
     const cost = stepCost(g, n, base);
     fn(n, blocked(g, n) ? cost + BLOCKED_PENALTY : cost);
-  }
-}
-
-/** Calls fn(predecessor, stepCost) for each legal move *into* cell i (reverse of forNeighbours). */
-function forPredecessors(g: NavGrid, i: number, fn: (n: number, cost: number) => void): void {
-  const col = i % g.cols;
-  const row = (i - col) / g.cols;
-  const intoBlocked = blocked(g, i);
-  for (const [dc, dr, base] of DIRS) {
-    const c = col + dc, r = row + dr;
-    if (c < 0 || r < 0 || c >= g.cols || r >= g.rows) continue;
-    const n = r * g.cols + c;
-    if (dc !== 0 && dr !== 0) {
-      if (intoBlocked || blocked(g, row * g.cols + c) || blocked(g, r * g.cols + col)) continue;
-    }
-    const cost = stepCost(g, i, base);
-    fn(n, intoBlocked ? cost + BLOCKED_PENALTY : cost);
   }
 }
 
@@ -237,8 +223,11 @@ function scratchFor(N: number) {
   return scratch;
 }
 
-/** A* over cells (blocked cells allowed at a penalty). Returns the cell sequence start..goal. */
-export function astarCells(g: NavGrid, start: number, goal: number): number[] {
+/**
+ * A* over cells (blocked cells allowed at a penalty). Returns the cell sequence
+ * start..goal, or start..the first expanded cell that satisfies `stopAt`.
+ */
+export function astarCells(g: NavGrid, start: number, goal: number, stopAt?: (i: number) => boolean): number[] {
   const S = scratchFor(g.cols * g.rows);
   const { gCost, fCost, hCost, parent, stamp, closedStamp, gen } = S;
   // A cell's g/f/h/parent are valid only when stamp[i] === gen.
@@ -250,11 +239,12 @@ export function astarCells(g: NavGrid, start: number, goal: number): number[] {
   fCost[start] = hCost[start];
   parent[start] = -1;
   heap.push(start);
+  let end = goal;
   while (heap.size > 0) {
     const cur = heap.pop();
     if (closedStamp[cur] === gen) continue;
     closedStamp[cur] = gen;
-    if (cur === goal) break;
+    if (cur === goal || (stopAt && stopAt(cur))) { end = cur; break; }
     forNeighbours(g, cur, (n, cost) => {
       if (closedStamp[n] === gen) return;
       const ng = gCost[cur] + cost;
@@ -268,58 +258,105 @@ export function astarCells(g: NavGrid, start: number, goal: number): number[] {
     });
   }
   const cells: number[] = [];
-  if (!seen(goal)) return [start];
-  for (let c = goal; c !== -1; c = parent[c]) cells.push(c);
+  if (!seen(end)) return [start];
+  for (let c = end; c !== -1; c = parent[c]) cells.push(c);
   return cells.reverse();
 }
 
 // ---- Flow fields ----------------------------------------------------------
 
-let zeros: Int32Array | null = null;
-function zeroKeys(N: number): Int32Array {
-  if (!zeros || zeros.length < N) zeros = new Int32Array(N);
-  return zeros;
+/**
+ * Min-heap of packed keys (dist * N + cell) for flow-field Dijkstra. Final Dijkstra
+ * distances don't depend on pop order among equal distances, so this cheaper order
+ * gives the same fields as the tie-broken Heap (golden hashes).
+ */
+class KeyHeap {
+  private a: number[] = [];
+  get size() { return this.a.length; }
+  push(v: number) {
+    const a = this.a;
+    let k = a.length;
+    a.push(v);
+    while (k > 0) {
+      const p = (k - 1) >> 1;
+      if (a[p] <= v) break;
+      a[k] = a[p];
+      k = p;
+    }
+    a[k] = v;
+  }
+  pop(): number {
+    const a = this.a;
+    const top = a[0];
+    const last = a.pop()!;
+    const n = a.length;
+    if (n > 0) {
+      let k = 0;
+      for (;;) {
+        const l = 2 * k + 1;
+        if (l >= n) break;
+        const m = l + 1 < n && a[l + 1] < a[l] ? l + 1 : l;
+        if (a[m] >= last) break;
+        a[k] = a[m];
+        k = m;
+      }
+      a[k] = last;
+    }
+    return top;
+  }
 }
 
 const fieldCache = new WeakMap<NavGrid, { version: number; fields: Map<number, Int32Array> }>();
 
 /** Dijkstra distance-to-goal for every cell (blocked cells at a penalty). Cached. */
-export function flowField(g: NavGrid, goal: number): Int32Array {
+export function flowField(g: NavGrid, goal: number, seeds?: number[]): Int32Array {
   let entry = fieldCache.get(g);
   if (!entry || entry.version !== g.version) {
     entry = { version: g.version, fields: new Map() };
     fieldCache.set(g, entry);
   }
-  const hit = entry.fields.get(goal);
+  // A seeded field (the free cells touching a structure) is cached apart from the
+  // plain field of the same goal cell.
+  const key = seeds ? g.cols * g.rows + goal : goal;
+  const hit = entry.fields.get(key);
   if (hit) return hit;
 
   const N = g.cols * g.rows;
   const dist = new Int32Array(N).fill(UNREACHED);
-  const zero = zeroKeys(N);
   const done = new Uint8Array(N);
-  const heap = new Heap(dist, zero, frameOf(g, goal, goal));
-  dist[goal] = 0;
-  heap.push(goal);
+  const { cols, rows } = g;
+  const heap = new KeyHeap();
+  for (const s of seeds ?? [goal]) { dist[s] = 0; heap.push(s); }
   while (heap.size > 0) {
-    const cur = heap.pop();
+    const cur = heap.pop() % N;
     if (done[cur]) continue;
     done[cur] = 1;
-    forPredecessors(g, cur, (n, cost) => {
-      const nd = dist[cur] + cost;
-      if (nd < dist[n]) { dist[n] = nd; heap.push(n); }
-    });
+    // forPredecessors(cur), inlined: this loop is the hottest code in a field build.
+    const col = cur % cols, row = (cur - col) / cols;
+    const intoBlocked = blocked(g, cur);
+    const dc0 = dist[cur];
+    for (let d = 0; d < 8; d++) {
+      const dc = DC[d], dr = DR[d];
+      const c = col + dc, r = row + dr;
+      if (c < 0 || r < 0 || c >= cols || r >= rows) continue;
+      if (d >= 4 && (intoBlocked || blocked(g, row * cols + c) || blocked(g, r * cols + col))) continue;
+      const n = r * cols + c;
+      const cost = stepCost(g, cur, DB[d]);
+      const nd = dc0 + (intoBlocked ? cost + BLOCKED_PENALTY : cost);
+      if (nd < dist[n]) { dist[n] = nd; heap.push(nd * N + n); }
+    }
   }
   if (entry.fields.size >= MAX_FIELDS) entry.fields.delete(entry.fields.keys().next().value!);
-  entry.fields.set(goal, dist);
+  entry.fields.set(key, dist);
   return dist;
 }
 
-/** Follow a flow field downhill from start to its goal. */
+/** Follow a flow field downhill from start to its goal (or to any seed: field value 0). */
 export function descendField(g: NavGrid, field: Int32Array, start: number, goal: number): number[] {
   const frame = frameOf(g, start, goal);
   const cells = [start];
   let cur = start;
-  for (let guard = 0; guard < g.cols * g.rows && cur !== goal; guard++) {
+  for (let guard = 0; guard < g.cols * g.rows && field[cur] !== 0; guard++) {
     let best = -1;
     let bestVal = field[cur];
     forNeighbours(g, cur, (n, cost) => {
@@ -337,33 +374,52 @@ export function descendField(g: NavGrid, field: Int32Array, start: number, goal:
 
 // ---- Path assembly --------------------------------------------------------
 
+/** Predicate: a free cell sharing an edge with the cells under footprint r. */
+function touchesRect(g: NavGrid, r: Rect): (i: number) => boolean {
+  const { c1, r1, c2, r2 } = cellRange(g, r);
+  return (i) => {
+    if (blocked(g, i)) return false;
+    const col = i % g.cols, row = (i - col) / g.cols;
+    const inCols = col >= c1 && col <= c2, inRows = row >= r1 && row <= r2;
+    return (inCols && (row === r1 - 1 || row === r2 + 1)) || (inRows && (col === c1 - 1 || col === c2 + 1));
+  };
+}
+
+/** Every cell satisfying `touches` in the one-cell ring around footprint r. */
+function ringCells(g: NavGrid, r: Rect, touches: (i: number) => boolean): number[] {
+  const { c1, r1, c2, r2 } = cellRange(g, r);
+  const out: number[] = [];
+  for (let row = Math.max(0, r1 - 1); row <= Math.min(g.rows - 1, r2 + 1); row++) {
+    for (let col = Math.max(0, c1 - 1); col <= Math.min(g.cols - 1, c2 + 1); col++) {
+      if (touches(row * g.cols + col)) out.push(row * g.cols + col);
+    }
+  }
+  return out;
+}
+
 /**
  * Plan a route for a unit at (sx,sy) to (tx,ty).
  * useField: follow the shared flow field for this goal (group moves) instead of A*.
  */
-export function planPath(g: NavGrid, sx: number, sy: number, tx: number, ty: number, useField: boolean): PathResult {
-  let goalBlocked = false;
-  if (blocked(g, cellOf(g, tx, ty))) {
-    // Target inside a structure (attacking/building/repairing it): head for the
-    // nearest free point on the straight line from the target back to the unit.
-    const len = Math.hypot(sx - tx, sy - ty);
-    const n = Math.max(1, Math.ceil(len / (g.cellSize / 2)));
-    let found = false;
-    for (let k = 1; k <= n; k++) {
-      const x = tx + ((sx - tx) * k) / n, y = ty + ((sy - ty) * k) / n;
-      if (!blocked(g, cellOf(g, x, y))) { tx = x; ty = y; found = true; break; }
-    }
-    if (!found) return { waypoints: [], truncated: true };
-    goalBlocked = true;
-    useField = false; // per-unit approach point, nothing to share
-  }
-  if (hasLineOfSight(g, sx, sy, tx, ty) &&
+export function planPath(g: NavGrid, sx: number, sy: number, tx: number, ty: number, useField: boolean, goalRect?: Rect): PathResult {
+  // Target inside a structure (attacking/building/repairing it): search to the
+  // target's own cell and cut the route at the structure's edge (see the header).
+  // With the structure's footprint (goalRect), the search stops at the nearest
+  // free cell touching that footprint, so neither a neighbouring building in the
+  // way nor a thick wall of buildings leaves the unit out of reach.
+  const goalBlocked = blocked(g, cellOf(g, tx, ty));
+  if (goalBlocked && !goalRect) useField = false;
+  else if (hasLineOfSight(g, sx, sy, tx, ty) &&
       !crossesRough(g, sx, sy, tx, ty, new Set([cellOf(g, sx, sy), cellOf(g, tx, ty)]))) {
-    return goalBlocked ? { waypoints: [{ x: tx, y: ty }], truncated: true } : { waypoints: [], truncated: false };
+    return { waypoints: [], truncated: false };
   }
   const start = cellOf(g, sx, sy);
   const goal = cellOf(g, tx, ty);
-  let cells = useField ? descendField(g, flowField(g, goal), start, goal) : astarCells(g, start, goal);
+  const touches = goalBlocked && goalRect ? touchesRect(g, goalRect) : undefined;
+  // A group sent to a structure shares one field seeded with the free cells touching it.
+  const seeds = touches && useField ? ringCells(g, goalRect!, touches) : undefined;
+  if (seeds && seeds.length === 0) useField = false;
+  let cells = useField ? descendField(g, flowField(g, goal, seeds), start, goal) : astarCells(g, start, goal, touches);
 
   // Cut at the first blocked cell after the start (the start may overlap a wall edge).
   let truncated = goalBlocked || cells[cells.length - 1] !== goal;
@@ -381,7 +437,14 @@ export function planPath(g: NavGrid, sx: number, sy: number, tx: number, ty: num
   }
   const pts: Point[] = turns.map((c) => centre(g, c));
   const reachedGoal = cells[cells.length - 1] === goal;
-  if (reachedGoal) {
+  const last = cells[cells.length - 1];
+  if (touches && touches(last)) {
+    // Stand flush against the footprint: the target centre clamped into the edge cell.
+    const col = last % g.cols, row = (last - col) / g.cols, cs = g.cellSize;
+    const p = { x: Math.min(Math.max(tx, col * cs), (col + 1) * cs), y: Math.min(Math.max(ty, row * cs), (row + 1) * cs) };
+    if (pts.length > 0) pts[pts.length - 1] = p;
+    else pts.push(p);
+  } else if (reachedGoal) {
     if (pts.length > 0) pts[pts.length - 1] = { x: tx, y: ty };
     else pts.push({ x: tx, y: ty });
   }

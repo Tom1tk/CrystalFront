@@ -55,7 +55,7 @@ export function footprintOf(e: Pick<MatchEntity, "type" | "x" | "y" | "radius" |
 }
 
 /** Inclusive cell range overlapped by a rect (open on the far edges). */
-function cellRange(g: NavGrid, r: Rect) {
+export function cellRange(g: NavGrid, r: Rect) {
   const c1 = Math.max(0, Math.floor(r.x1 / g.cellSize));
   const r1 = Math.max(0, Math.floor(r.y1 / g.cellSize));
   const c2 = Math.min(g.cols - 1, Math.ceil(r.x2 / g.cellSize) - 1);

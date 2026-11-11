@@ -39,7 +39,8 @@ export interface VisionGrid {
   /** At least 2 of its nav cells are high ground or cliff. */
   elevated: Uint8Array;
   /** LOS sets, keyed by `${cell}:${range}:${high}`. */
-  los: Map<string, Int32Array>;
+  /** Cached lit-cell sets: key (cell * 2 + high) → vision range → cells. */
+  los: Map<number, Map<number, Int32Array>>;
 }
 
 const grids = new WeakMap<Terrain, VisionGrid>();
@@ -96,8 +97,10 @@ const xs = [0, 0], ys = [0, 0];
 
 /** The cells lit by a source in cell `src` with vision `range` (px). Cached per grid. */
 function losSet(g: VisionGrid, src: number, range: number, high: boolean): Int32Array {
-  const key = `${src}:${range}:${high ? 1 : 0}`;
-  const hit = g.los.get(key);
+  const key = src * 2 + (high ? 1 : 0);
+  let byRange = g.los.get(key);
+  if (!byRange) g.los.set(key, (byRange = new Map()));
+  const hit = byRange.get(range);
   if (hit) return hit;
   const cs = g.cellSize;
   const sc = src % g.cols, sr = (src - sc) / g.cols;
@@ -115,7 +118,7 @@ function losSet(g: VisionGrid, src: number, range: number, high: boolean): Int32
     }
   }
   const set = Int32Array.from(out);
-  g.los.set(key, set);
+  byRange.set(range, set);
   return set;
 }
 
@@ -154,13 +157,17 @@ export function computeVisibility(match: MatchState): void {
 
     // Light the cells each of the player's sources can see; note which brush patches they stand in.
     const patches = new Set<number>();
+    const lit = new Set<Int32Array>(); // sources sharing a cell, range and height light the same cells
     for (const src of allEntities) {
       if (src.ownerId !== playerId || !isVisionSource(src)) continue;
       // Every player always sees their own living entities (safety guarantee)
       vis.entityIds.add(src.id);
       const range = getVisionRange(src, t);
       const set = losSet(g, visionCellOf(g, src.x, src.y), range, onHighGround(src, t));
-      for (let i = 0; i < set.length; i++) vis.cells[set[i]] = 1;
+      if (!lit.has(set)) {
+        lit.add(set);
+        for (let i = 0; i < set.length; i++) vis.cells[set[i]] = 1;
+      }
       if (t.any) {
         const patch = t.brushPatch[terrainCellOf(t, src.x, src.y)];
         if (patch) patches.add(patch);
