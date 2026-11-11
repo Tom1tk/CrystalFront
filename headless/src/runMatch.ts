@@ -12,6 +12,8 @@ export interface RunMatchOptions {
   seed?: number;
   maxTicks?: number;
   config?: MatchConfig;
+  /** Called after every engine tick (read-only use, e.g. state hashing). */
+  onTick?: (match: NonNullable<ReturnType<MatchEngine["getMatch"]>>) => void;
 }
 
 export function runMatch(
@@ -19,7 +21,7 @@ export function runMatch(
   agentRed: Agent,
   options: RunMatchOptions = {}
 ): MatchResult {
-  const { seed, maxTicks = DEFAULT_MAX_TICKS, config = DEFAULT_CONFIG } = options;
+  const { seed, maxTicks = DEFAULT_MAX_TICKS, config = DEFAULT_CONFIG, onTick } = options;
   const matchConfig = { ...config, maxTicks };
 
   const engine = new MatchEngine();
@@ -66,6 +68,7 @@ export function runMatch(
 
     // Advance simulation one tick
     engine.tick(match.id);
+    onTick?.(match);
   }
 
   const winner = match.result?.winner ?? null;

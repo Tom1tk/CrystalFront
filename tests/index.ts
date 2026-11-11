@@ -28,6 +28,7 @@ import { generateMap, validateMap } from "../server/src/match/mapgen.js";
 import { registerMap, poolMaps, isKnownMap, terrainFor } from "../server/src/match/maps.js";
 import { POOL_MAPS } from "../server/src/match/pool/index.js";
 import { readFileSync as _readFileSync, readdirSync as _readdirSync } from "node:fs";
+import { loadGolden, runCase } from "../headless/src/goldenHashes.js";
 import { existsSync as _existsSync, unlinkSync as _unlinkSync, writeFileSync as _writeFileSync } from "node:fs";
 import { resolve as _resolve, join as _join } from "node:path";
 
@@ -3124,9 +3125,23 @@ async function loadGateTests(): Promise<void> {
   assert(begun.at(-1) === "m4" && !gate.isWaiting("m4"), "load gate: release() starts a waiting match (player left while loading)");
 }
 
+/** G-10 T2: the engine still produces the recorded golden hashes (one case per map). */
+function goldenHashTests(): void {
+  console.log("\n--- Golden engine hashes (G-10 T2) ---");
+  const seen = new Set<string>();
+  for (const g of loadGolden()) {
+    if (seen.has(g.map)) continue;
+    seen.add(g.map);
+    const h = runCase(g);
+    assert(h.length === g.hashes.length && h.every((x, i) => x === g.hashes[i]),
+      `golden hashes: ${g.map} ${g.blue}-${g.red} seed ${g.seed} reproduces all ${g.hashes.length} recorded hashes`);
+  }
+}
+
 void (async () => {
   await determinismTests();
   await loadGateTests();
+  goldenHashTests();
   console.log(`\n${"=".repeat(40)}`);
   console.log(`Results: ${passed} passed, ${failed} failed`);
   console.log("=".repeat(40) + "\n");
