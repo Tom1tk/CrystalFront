@@ -6,7 +6,7 @@
     "seed": 1,
     "symmetry": "rotate",
     "generated": "2026-11-10",
-    "approved": null,
+    "approved": "2026-11-11",
     "fairness": {
       "games": 24,
       "blueScore": 0.583,
@@ -32,7 +32,7 @@
     "seed": 3,
     "symmetry": "rotate",
     "generated": "2026-11-10",
-    "approved": null,
+    "approved": "2026-11-11",
     "fairness": {
       "games": 24,
       "blueScore": 0.417,
@@ -58,7 +58,7 @@
     "seed": 9,
     "symmetry": "rotate",
     "generated": "2026-11-10",
-    "approved": null,
+    "approved": "2026-11-11",
     "fairness": {
       "games": 24,
       "blueScore": 0.542,
@@ -84,7 +84,7 @@
     "seed": 11,
     "symmetry": "rotate",
     "generated": "2026-11-10",
-    "approved": null,
+    "approved": "2026-11-11",
     "fairness": {
       "games": 24,
       "blueScore": 0.542,
@@ -110,7 +110,7 @@
     "seed": 19,
     "symmetry": "rotate",
     "generated": "2026-11-10",
-    "approved": null,
+    "approved": "2026-11-11",
     "fairness": {
       "games": 24,
       "blueScore": 0.5,
@@ -136,7 +136,7 @@
     "seed": 0,
     "symmetry": "mirror",
     "generated": "2026-11-10",
-    "approved": null,
+    "approved": "2026-11-11",
     "fairness": {
       "games": 24,
       "blueScore": 0.542,
@@ -162,7 +162,7 @@
     "seed": 2,
     "symmetry": "mirror",
     "generated": "2026-11-10",
-    "approved": null,
+    "approved": "2026-11-11",
     "fairness": {
       "games": 24,
       "blueScore": 0.583,
@@ -188,7 +188,7 @@
     "seed": 4,
     "symmetry": "mirror",
     "generated": "2026-11-10",
-    "approved": null,
+    "approved": "2026-11-11",
     "fairness": {
       "games": 24,
       "blueScore": 0.458,
@@ -214,7 +214,7 @@
     "seed": 10,
     "symmetry": "mirror",
     "generated": "2026-11-10",
-    "approved": null,
+    "approved": "2026-11-11",
     "fairness": {
       "games": 24,
       "blueScore": 0.458,
@@ -240,7 +240,7 @@
     "seed": 14,
     "symmetry": "mirror",
     "generated": "2026-11-10",
-    "approved": null,
+    "approved": "2026-11-11",
     "fairness": {
       "games": 24,
       "blueScore": 0.542,

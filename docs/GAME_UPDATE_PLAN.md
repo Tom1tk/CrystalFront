@@ -355,3 +355,4 @@ None blocking. The remaining numbers (detour ratio, brush amount and spacing, te
 | 2026-11-10 | G-9f | ✅ | shift-queue waypoints and control groups included |
 | 2026-11-10 | U5/U6 | ✅ shipped v0.6.6 | G-8 lever (b) node-control win; balance gates pass (mirror per `--mirror --games 24`); release notes `docs/RELEASE_NOTES_v0.6.6.md`; deployed. Pool maps still await user sign-off |
 | 2026-11-11 | G-10 plan | ✅ approved, not started | `docs/ML_RETRAIN_PLAN.md` v2 (audited against AlphaStar / OpenAI Five research), every item approved; execution guide `docs/ML_RETRAIN_IMPLEMENTATION.md`; user asked that work not begin yet |
+| 2026-11-11 | Map sign-off + G-11 polish | ✅ shipped v0.7.1 | User approved all 10 pool maps (manifest `approved` dates); 4 cosmetic map themes (verdant, desert, haunted, frost) in 2D and 3D; 3D team colour on skirmisher/gunner/medic; combat effects; Kenney sound with a Settings toggle. See `docs/VISUAL_PLAN.md` |

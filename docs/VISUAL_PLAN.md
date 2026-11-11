@@ -48,6 +48,8 @@ The Kenney colormaps are shared texture atlases. `variantMat()` copies a texture
 - red team: 308° (magenta)
 - neutral nodes: 44° (gold)
 
+The skirmisher, gunner and medic wear green and dark-grey gear that the hue shift above misses, so their variants ("g0"/"g1") also turn green swatches (hue 135–175°, saturation ≥ 0.35) and dark-grey gear (saturation < 0.12, lightness 0.18–0.32) into a dark shade of the team colour.
+
 Results are cached per texture and variant. Every entity also gets a team ring on the ground. Construction progress scales the building's height (minimum 12%).
 
 ## Animation
@@ -55,17 +57,45 @@ Results are cached per texture and variant. Every entity also gets a team ring o
 - **Other states** come from the streamed `actionState`: attacking, gathering, constructing, dying (plays `die` once) and idle. Armed units idle with `holding-right`.
 - **Facing:** units face their movement direction, or the streamed `heading` when standing still.
 
+## Combat effects
+`World3D.spawnCombatFx()` reads new `attackLog` events each frame:
+- **Ranged** (gunner, turret): a muzzle flash at the attacker, a tracer to the target and orange sparks at the impact.
+- **Melee:** sparks at the target. On buildings and crystals the impact is on the face toward the attacker.
+- **Heal:** green motes rising from the target.
+
+The effects are two instanced meshes (up to 600 particles and 96 tracers) with unlit, solid-colour materials. They fade by shrinking rather than by transparency, because additive blending disappeared against the white frost ground.
+
+## Sound
+`client/src/audio.ts` plays Kenney sounds through WebAudio in both the 2D and the 3D view. Settings has a Sound On/Off toggle (stored as `cf.sound`, on by default). Browsers only allow audio after a click or key press, so the sounds load on the first one.
+- **Combat:** weapon sounds per attacker type, plus a hit sound on buildings and crystals. Heals have a soft chime.
+- **Events:** unit death, building collapse, crystal destroyed, and your own building finished.
+- **Interface:** select, order and error.
+
+Each `attackLog` event plays once. After a jump (joining a game, seeking a replay) the current log is marked as heard without playing, so no backlog plays. The 3D effects use the same rule, and their timestep is capped at 1/20 s so they stay visible at low frame rates. Events off screen are silent, and sounds are panned left or right by their position on screen. The same sound plays at most once every 70 ms.
+
+## Map themes
+`client/src/mapThemes.ts` gives each pool map one of four cosmetic colour themes. Gameplay is unchanged. Each theme sets the 2D terrain palette, the 3D ground, water and background colours, the lighting, the foliage and rock tint, and whether open ground gets grass and flowers or only pebbles.
+
+| Theme | Maps | Look |
+|---|---|---|
+| Verdant | ironreed, twin-spires, glimmerfen, and any map without an entry (classic, dev) | green grass, flowers, blue water |
+| Desert | basalt-run, saltmarsh, cinder-flats (the three maps with no water) | orange sand, olive scrub, pebbles |
+| Haunted | duskvale, hollow-crown | purple ground, violet foliage, dim light |
+| Frost | shardfall, prism-ridge | snow, frosted trees, snowy rocks |
+
+The map picker shows each thumbnail in its theme colours and labels it "Name · Theme".
+
 ## Known gaps / next iterations
-1. **Audio:** the Kenney interface-sounds, impact-sounds and rpg-audio packs are not wired in yet. This needs no 3D work and can also land in the 2D client.
-2. **Not yet used:** the 3d-road-tiles pack, ramps between high and low ground (plateaus are currently plain boxes), and projectile or muzzle-flash effects for `attackLog` events.
-3. **Fog** is still the 2D overlay, drawn at 80% opacity. A shader fog on the ground would look softer.
-4. **Not measured on a real GPU.** Only tested with software WebGL (SwiftShader). Shadows use a 2048 map that follows the view.
-5. **Readability:** units are small at the default zoom, as they are in 2D. A unit-scale setting may help.
+1. **Not yet used:** the 3d-road-tiles pack and ramps between high and low ground (plateaus are currently plain boxes).
+2. **Fog** is still the 2D overlay, drawn at 80% opacity. A shader fog on the ground would look softer.
+3. **Not measured on a real GPU.** Only tested with software WebGL (SwiftShader). Shadows use a 2048 map that follows the view.
+4. **Readability:** units are small at the default zoom, as they are in 2D. A unit-scale setting may help.
 
 ## Credits
-All models and textures are by **Kenney** (www.kenney.nl), released under **CC0 1.0**. Each pack's `License.txt` is kept next to its models:
+All models, textures and sounds are by **Kenney** (www.kenney.nl), released under **CC0 1.0**. Each pack's `License.txt` is kept next to its models:
 - Mini Characters
 - Fantasy Town Kit
 - Mini Forest
 - Tower Defense Kit
 - Nature Kit
+- Impact Sounds, Interface Sounds, RPG Audio (combined licence in `client/public/assets/kenney/audio/License.txt`)

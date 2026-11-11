@@ -2806,3 +2806,24 @@ Verified: `npm test` 470/470, `training.test_env` PASS, `test_config_persistence
   - Turtle won most pairings by control in that sample, consistent with the U5 gate matrix (turtle 100/57/100).
 - **Facts that were wrong in earlier notes:** the harness has no self-play (the learner is hard-wired as blue; checkpoint opponents were never playable), and the live server has no neural inference (no `models/`, no ONNX runtime).
 - **Next:** wait for the user's go-ahead, then M0 task T0 in the implementation guide. The 3D polish the user approved earlier is also still pending.
+
+### 2026-11-11 — G-11 polish and map themes (v0.7.1); all maps signed off
+- **The user signed off all 10 pool maps** and asked for colour themes so maps are easier to tell apart. Manifest `approved` dates are set, so P-10 is done. Re-freezing a map resets its approval, which is intended.
+- **Map themes** (`client/src/mapThemes.ts`) are cosmetic only. There are four:
+  - verdant: ironreed, twin-spires, glimmerfen;
+  - desert: basalt-run, saltmarsh, cinder-flats (the maps with no water);
+  - haunted: duskvale, hollow-crown;
+  - frost: shardfall, prism-ridge.
+  Each theme sets the 2D palette, map-picker thumbnails, 3D ground, lighting and foliage/rock tints.
+- **3D polish** (approved earlier as "yes to all"):
+  - team colour on the skirmisher, gunner and medic (green and grey gear recoloured);
+  - muzzle flashes, tracers, hit sparks and heal motes from `attackLog`;
+  - Kenney CC0 sound (`client/src/audio.ts`) in both views, with a Sound toggle in Settings.
+- **Bugs found while verifying the effects** with a debug-spawned fight in Solo Test:
+  1. Effects and sounds only played events at most 2 ticks old. At replay speed or a low frame rate, more ticks pass per frame, so almost everything was skipped. Now every unseen event plays, and a jump (first frame, seek) is skipped.
+  2. Short-lived effects expired within a single slow frame. The effect timestep is now capped at 1/20 s.
+  3. Sparks on crystals and buildings were hidden inside the model and tinted by the crystal glow. They now hit the near face and draw last.
+- `npm test` passes; deployed.
+- **Still open from the user's 3D audit:** performance on a real GPU, click alignment, a live 2-player game in 3D.
+- **Next:** wait for the user's go-ahead on G-10 M0 (T0 in `docs/ML_RETRAIN_IMPLEMENTATION.md`).
+

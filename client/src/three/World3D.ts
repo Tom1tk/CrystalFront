@@ -12,8 +12,10 @@
 import * as THREE from "three";
 import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
-import type { MatchEntity, ResourceNodeDisplay, StaticMap } from "../types";
+import type { AttackEvent, MatchEntity, ResourceNodeDisplay, StaticMap } from "../types";
 import { decodeTerrain } from "../terrainCodec";
+import { themeFor, type MapTheme } from "../mapThemes";
+import { SIMULATION } from "@crystalfront/shared";
 
 const PITCH = (55 * Math.PI) / 180;
 const SIN = Math.sin(PITCH);
@@ -62,19 +64,20 @@ const MODELS = {
 } as const;
 type ModelKey = keyof typeof MODELS;
 
-/** 0/1 = team recolour, "r0"/"r1" = team recolour that also takes reds, "gold" = neutral resource, null = original colours. */
-type Variant = 0 | 1 | "r0" | "r1" | "gold" | null;
+/**
+ * 0/1 = team recolour of the blue/violet swatches; "r0"/"r1" also take reds, "g0"/"g1" also
+ * take green tunics and dark-grey gear (raider, soldier, medic); "gold" = neutral resource;
+ * null = original colours.
+ */
+type Variant = 0 | 1 | "r0" | "r1" | "g0" | "g1" | "gold" | null;
 
-// Ground colours per terrain code (open, rough, high, brush, rock, cliff, water).
-const GROUND = ["#6cae4e", "#a08052", "#86c25e", "#4f9a3c", "#8f8a80", "#8a7458", "#3d86c9"];
-
-interface UnitSpec { model: ModelKey; height: number; right?: ModelKey; left?: ModelKey }
+interface UnitSpec { model: ModelKey; height: number; right?: ModelKey; left?: ModelKey; greens?: boolean }
 const UNITS: Record<string, UnitSpec> = {
   worker: { model: "worker", height: 4.1 },
-  skirmisher: { model: "skirmisher", height: 4.1, right: "spear" },
-  gunner: { model: "gunner", height: 4.1, right: "shooter" },
+  skirmisher: { model: "skirmisher", height: 4.1, right: "spear", greens: true },
+  gunner: { model: "gunner", height: 4.1, right: "shooter", greens: true },
   bruiser: { model: "bruiser", height: 4.1, right: "sword", left: "shield" },
-  medic: { model: "medic", height: 4.1, right: "defib" },
+  medic: { model: "medic", height: 4.1, right: "defib", greens: true },
 };
 
 interface Obj {
@@ -88,6 +91,8 @@ interface Obj {
   px: number;
   py: number;
   speed: number;
+  /** Entity radius (world px), for effect placement. */
+  r: number;
   body?: THREE.Object3D;
   gun?: THREE.Object3D;
   gem?: THREE.Object3D;
@@ -101,6 +106,21 @@ export interface View3D {
   scale: number;
   hudTop: number;
 }
+
+/** One effect particle (muzzle flash, spark, heal mote) or tracer. */
+interface Fx {
+  p: THREE.Vector3;
+  v: THREE.Vector3;
+  life: number;
+  max: number;
+  size: number;
+  color: THREE.Color;
+  grav: number;
+  /** Tracer end point; particles leave it undefined. */
+  to?: THREE.Vector3;
+}
+const FX_MAX = 600;
+const TRACER_MAX = 96;
 
 function rng(seed: number) {
   let a = seed >>> 0;
@@ -126,6 +146,14 @@ export class World3D {
   private scene = new THREE.Scene();
   private camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 6000);
   private sun: THREE.DirectionalLight;
+  private hemi: THREE.HemisphereLight;
+  private theme: MapTheme = themeFor(undefined);
+  private fx: Fx[] = [];
+  private tracers: Fx[] = [];
+  private fxMesh: THREE.InstancedMesh;
+  private tracerMesh: THREE.InstancedMesh;
+  private heard = new Set<string>();
+  private fxTick = -1;
   private gltf = new Map<ModelKey, GLTF>();
   private mats = new Map<string, THREE.Material>();
   private terrain: THREE.Group | null = null;
@@ -147,13 +175,27 @@ export class World3D {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.scene.background = new THREE.Color("#141a14");
-    this.scene.add(new THREE.HemisphereLight("#e4efff", "#4a4030", 1.5));
+    this.hemi = new THREE.HemisphereLight("#e4efff", "#4a4030", 1.5);
+    this.scene.add(this.hemi);
     this.sun = new THREE.DirectionalLight("#fff1d6", 2.4);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
     this.sun.shadow.bias = -0.0008;
     this.sun.shadow.normalBias = 0.6;
     this.scene.add(this.sun, this.sun.target);
+    // Solid colours that shrink as they fade: additive blending vanishes on the frost theme's snow.
+    // Marked transparent (at full opacity) so they draw after translucent models such as the
+    // crystal glow, which would otherwise tint them.
+    const fxMat = () => new THREE.MeshBasicMaterial({ toneMapped: false, transparent: true, depthWrite: false });
+    this.fxMesh = new THREE.InstancedMesh(new THREE.OctahedronGeometry(1, 0), fxMat(), FX_MAX);
+    this.tracerMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), fxMat(), TRACER_MAX);
+    for (const m of [this.fxMesh, this.tracerMesh]) {
+      m.setColorAt(0, new THREE.Color(1, 1, 1)); // allocates instanceColor before the first compile
+      m.count = 0;
+      m.frustumCulled = false;
+      m.renderOrder = 10;
+      this.scene.add(m);
+    }
   }
 
   async load(): Promise<void> {
@@ -163,14 +205,7 @@ export class World3D {
       // The nature kit exports metallicFactor 1, which renders near-black without an env map.
       g.scene.traverse((n) => {
         const m = (n as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
-        if (!m || !("metalness" in m)) return;
-        m.metalness = 0;
-        // Pull the nature kit's teal greens toward the ground's grass green.
-        if (!m.map) {
-          const hsl = { h: 0, s: 0, l: 0 };
-          m.color.getHSL(hsl);
-          if (hsl.h * 360 > 140 && hsl.h * 360 < 190) m.color.setHSL(100 / 360, hsl.s * 0.75, hsl.l * 0.8);
-        }
+        if (m && "metalness" in m) m.metalness = 0;
       });
       this.gltf.set(k, g);
     }));
@@ -200,8 +235,9 @@ export class World3D {
     const ctx = c.getContext("2d")!;
     ctx.drawImage(img, 0, 0);
     const d = ctx.getImageData(0, 0, c.width, c.height);
-    const target = v === "gold" ? 44 : v === 0 || v === "r0" ? 188 : 308;
+    const target = v === "gold" ? 44 : v === 0 || v === "r0" || v === "g0" ? 188 : 308;
     const reds = v === "r0" || v === "r1";
+    const greens = v === "g0" || v === "g1";
     const col = new THREE.Color();
     const hsl = { h: 0, s: 0, l: 0 };
     for (let i = 0; i < d.data.length; i += 4) {
@@ -209,7 +245,16 @@ export class World3D {
       col.getHSL(hsl);
       const deg = hsl.h * 360;
       const red = reds && hsl.s >= 0.4 && (deg < 15 || deg > 340);
-      if (!red && (hsl.s < 0.3 || deg < 195 || deg > 330)) continue;
+      const green = greens && hsl.s >= 0.35 && deg >= 135 && deg <= 175;
+      // The raider's hood and the soldier's gear are dark grey; a dark team shade reads from above.
+      if (greens && hsl.s < 0.12 && hsl.l > 0.18 && hsl.l < 0.32) {
+        col.setHSL(target / 360, 0.45, hsl.l * 1.15);
+        d.data[i] = col.r * 255;
+        d.data[i + 1] = col.g * 255;
+        d.data[i + 2] = col.b * 255;
+        continue;
+      }
+      if (!red && !green && (hsl.s < 0.3 || deg < 195 || deg > 330)) continue;
       col.setHSL(target / 360, Math.min(1, hsl.s * (v === "gold" ? 1.1 : 1.15)), v === "gold" ? Math.min(0.75, hsl.l + 0.05) : hsl.l);
       d.data[i] = col.r * 255;
       d.data[i + 1] = col.g * 255;
@@ -268,6 +313,24 @@ export class World3D {
     return this.cellAt(x, y) === 2 ? HIGH_Y : 0;
   }
 
+  /** Nature-kit material recoloured for the map theme: foliage hue moved, rocks tinted. */
+  private themedMat(m: THREE.Material): THREE.Material {
+    const std = m as THREE.MeshStandardMaterial;
+    if (std.map || !std.color) return m;
+    const key = `${std.uuid}:theme:${this.theme.id}`;
+    let out = this.mats.get(key);
+    if (out) return out;
+    const c = std.clone();
+    const hsl = { h: 0, s: 0, l: 0 };
+    c.color.getHSL(hsl);
+    const deg = hsl.h * 360, f = this.theme.foliage, rk = this.theme.rock;
+    if (deg > 60 && deg < 190 && hsl.s > 0.2) c.color.setHSL(f.h / 360, Math.min(1, hsl.s * f.s), Math.min(0.92, hsl.l * f.l));
+    else if (rk.mix > 0) c.color.lerp(new THREE.Color(rk.color), rk.mix);
+    this.mats.set(key, c);
+    out = c;
+    return out;
+  }
+
   /** Instanced copies of model `k`: one per matrix, each normalised to a 1×1 footprint, base y=0. */
   private instanced(k: ModelKey, mats: THREE.Matrix4[]): THREE.Object3D {
     const g = new THREE.Group();
@@ -284,7 +347,8 @@ export class World3D {
       // Bake the model's own transform into the geometry so each instance matrix is a plain
       // translate·rotateY·scale (instanced normals are only correct for that form).
       const geo = mesh.geometry.clone().applyMatrix4(norm.clone().multiply(mesh.matrixWorld));
-      const im = new THREE.InstancedMesh(geo, mesh.material, mats.length);
+      const mat = Array.isArray(mesh.material) ? mesh.material.map((mm) => this.themedMat(mm)) : this.themedMat(mesh.material);
+      const im = new THREE.InstancedMesh(geo, mat, mats.length);
       mats.forEach((m, i) => im.setMatrixAt(i, m));
       im.castShadow = true;
       im.receiveShadow = true;
@@ -301,6 +365,13 @@ export class World3D {
     this.cells = cells;
     this.sm = sm;
     const rand = rng(hashStr(`${sm.mapId}:${sm.mapVersion}`));
+    const th = this.theme = themeFor(sm.mapId);
+    const GROUND = th.ground;
+    this.scene.background = new THREE.Color(th.background);
+    this.hemi.color.set(th.sky);
+    this.hemi.groundColor.set(th.earth);
+    this.sun.color.set(th.sun);
+    this.sun.intensity = th.sunIntensity;
 
     // Ground: painted canvas, 8 px per cell, softened.
     const PX = 8;
@@ -339,7 +410,7 @@ export class World3D {
     ground.receiveShadow = true;
     g.add(ground);
     // Skirt beyond the map edge (seen under the HUD strip).
-    const skirt = new THREE.Mesh(new THREE.PlaneGeometry(mapW + 4000, depth + 4000), new THREE.MeshStandardMaterial({ color: "#3d6b33", roughness: 1 }));
+    const skirt = new THREE.Mesh(new THREE.PlaneGeometry(mapW + 4000, depth + 4000), new THREE.MeshStandardMaterial({ color: th.skirt, roughness: 1 }));
     skirt.rotation.x = -Math.PI / 2;
     skirt.position.set(mapW / 2, -0.5, depth / 2);
     g.add(skirt);
@@ -372,12 +443,14 @@ export class World3D {
         if (rand() < 0.12) add("pebbles", M(x + j(), 0, z + j(), cs * 0.8, cs * 0.25, cs * 0.8, spin));
       } else if (t === 0) {
         const p = rand();
-        if (p < 0.035) add("grass", M(x + j(), 0, z + j(), cs * 0.6, cs * 0.4, cs * 0.6, spin));
+        if (th.decor === "sparse") {
+          if (p < 0.02) add("pebbles", M(x + j(), 0, z + j(), cs * 0.6, cs * 0.2, cs * 0.6, spin));
+        } else if (p < 0.035) add("grass", M(x + j(), 0, z + j(), cs * 0.6, cs * 0.4, cs * 0.6, spin));
         else if (p < 0.042) add("flower", M(x + j(), 0, z + j(), cs * 0.35, cs * 0.6, cs * 0.35, spin));
       }
     }
     if (high.length) {
-      const im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: "#8cc865", roughness: 0.95 }), high.length);
+      const im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: th.highTop, roughness: 0.95 }), high.length);
       high.forEach((m, i) => im.setMatrixAt(i, m));
       im.castShadow = true;
       im.receiveShadow = true;
@@ -385,7 +458,7 @@ export class World3D {
     }
     if (water.length) {
       const im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1),
-        new THREE.MeshStandardMaterial({ color: "#4a9be0", roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.85 }), water.length);
+        new THREE.MeshStandardMaterial({ color: th.water, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.85 }), water.length);
       water.forEach((m, i) => im.setMatrixAt(i, m));
       im.receiveShadow = true;
       g.add(im);
@@ -410,7 +483,8 @@ export class World3D {
     const spec = UNITS[e.type];
     const src = this.gltf.get(spec.model)!;
     const body = cloneSkinned(src.scene);
-    this.paint(body, team);
+    const v: Variant = spec.greens ? (team === 0 ? "g0" : "g1") : team;
+    this.paint(body, v);
     const s = (e.radius * spec.height) / 0.8;
     body.scale.setScalar(s);
     const attach = (bone: string, k: ModelKey | undefined, left: boolean) => {
@@ -418,7 +492,7 @@ export class World3D {
       const arm = body.getObjectByName(bone);
       if (!arm) return;
       const w = this.gltf.get(k)!.scene.clone(true);
-      this.paint(w, team);
+      this.paint(w, v);
       w.position.set(left ? 0.02 : -0.02, -0.11, 0.04);
       arm.add(w);
     };
@@ -428,14 +502,14 @@ export class World3D {
     root.add(body, this.ring(team, e.radius));
     const mixer = new THREE.AnimationMixer(body);
     const actions = new Map(src.animations.map((a) => [a.name, mixer.clipAction(a)]));
-    return { root, kind: e.type, team, mixer, actions, yaw: team === 0 ? Math.PI / 2 : -Math.PI / 2, px: e.x, py: e.y, speed: 0, body };
+    return { root, kind: e.type, team, mixer, actions, yaw: team === 0 ? Math.PI / 2 : -Math.PI / 2, px: e.x, py: e.y, speed: 0, r: e.radius, body };
   }
 
   private makeBuilding(e: MatchEntity, team: 0 | 1): Obj {
     const root = new THREE.Group();
     const body = new THREE.Group();
     root.add(body);
-    const o: Obj = { root, kind: e.buildingType ?? e.type, team, yaw: 0, px: e.x, py: e.y, speed: 0, body };
+    const o: Obj = { root, kind: e.buildingType ?? e.type, team, yaw: 0, px: e.x, py: e.y, speed: 0, r: e.radius, body };
     const w = e.radius * 2;
     const stack = (k: ModelKey, width: number, y: number, v: Variant = team) => {
       const m = this.place(k, width, v);
@@ -527,6 +601,7 @@ export class World3D {
     mapW: number,
     mapH: number,
     teamOf: (ownerId: string) => 0 | 1,
+    combat?: { tick: number; log: AttackEvent[] },
   ) {
     if (!this.ready) return;
     const now = performance.now();
@@ -605,7 +680,114 @@ export class World3D {
     }
     for (const [id, o] of this.objs) if (!seen.has(id)) { this.scene.remove(o.root); this.objs.delete(id); }
 
+    if (combat) this.spawnCombatFx(combat.tick, combat.log);
+    this.updateFx(dt);
     this.render(view);
+  }
+
+  // ─── combat effects ───────────────────────────────────────────
+
+  private particle(p: THREE.Vector3, v: THREE.Vector3, life: number, size: number, color: THREE.Color, grav: number) {
+    if (this.fx.length < FX_MAX) this.fx.push({ p, v, life, max: life, size, color, grav });
+  }
+
+  private sparks(at: THREE.Vector3, n: number, color: THREE.Color, speed: number, size: number) {
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, up = 0.3 + Math.random() * 0.9;
+      const sp = speed * (0.5 + Math.random() * 0.8);
+      const v = new THREE.Vector3(Math.cos(a) * sp, up * sp, Math.sin(a) * sp);
+      this.particle(at.clone(), v, 0.22 + Math.random() * 0.2, size * (0.6 + Math.random() * 0.6), color, 260);
+    }
+  }
+
+  /**
+   * Muzzle flashes, tracers and hit sparks for attackLog events not seen yet. After a jump
+   * (first frame, replay seek) the log is marked as seen without effects.
+   */
+  private spawnCombatFx(tick: number, log: AttackEvent[]) {
+    const jump = this.fxTick < 0 || tick < this.fxTick || tick - this.fxTick > SIMULATION.attackLogRetention;
+    if (tick < this.fxTick) this.heard.clear(); // replay seek backwards
+    this.fxTick = tick;
+    for (const evt of log) {
+      const key = `${evt.tick}:${evt.attackerId}:${evt.targetId}`;
+      if (this.heard.has(key)) continue;
+      this.heard.add(key);
+      if (jump) continue;
+      const a = this.objs.get(evt.attackerId), t = this.objs.get(evt.targetId);
+      if (!a || !t) continue;
+      const tUnit = !!UNITS[t.kind];
+      const hit = t.root.position.clone();
+      hit.y += tUnit ? t.r * 2 : t.kind === "crystal" ? t.r * 1.4 : t.r * 0.9;
+      if (!tUnit) {
+        // Buildings and crystals: hit their near face, not their centre inside the model.
+        const toward = a.root.position.clone().sub(t.root.position).setY(0);
+        if (toward.lengthSq() > 1e-6) hit.addScaledVector(toward.normalize(), t.r * 0.75);
+      }
+      if (evt.isHeal) {
+        const green = new THREE.Color(0.35, 1, 0.45);
+        for (let i = 0; i < 7; i++) {
+          const p = hit.clone().add(new THREE.Vector3((Math.random() - 0.5) * t.r * 2, (Math.random() - 0.5) * t.r, (Math.random() - 0.5) * t.r * 2));
+          this.particle(p, new THREE.Vector3(0, 18 + Math.random() * 20, 0), 0.6 + Math.random() * 0.3, 2.2, green, -10);
+        }
+        continue;
+      }
+      const ranged = a.kind === "gunner" || a.kind === "turret";
+      if (ranged) {
+        const from = a.root.position.clone();
+        from.y += a.kind === "turret" ? a.r * 1.9 : a.r * 2.2;
+        const dir = hit.clone().sub(from).setY(0).normalize();
+        from.addScaledVector(dir, a.kind === "turret" ? a.r * 0.9 : a.r * 1.3);
+        const flash = new THREE.Color(1, 0.82, 0.4);
+        this.particle(from.clone(), new THREE.Vector3(), 0.08, a.r * (a.kind === "turret" ? 0.9 : 0.6), flash, 0);
+        this.particle(from.clone().addScaledVector(dir, a.r * 0.5), dir.clone().multiplyScalar(40), 0.05, a.r * 0.4, flash, 0);
+        if (this.tracers.length < TRACER_MAX) {
+          this.tracers.push({ p: from, v: new THREE.Vector3(), to: hit.clone(), life: 0.09, max: 0.09, size: a.kind === "turret" ? 2.6 : 1.8, color: new THREE.Color(1, 0.75, 0.35), grav: 0 });
+        }
+        this.sparks(hit, 5, new THREE.Color(1, 0.55, 0.15), 60, 2.4);
+      } else {
+        this.sparks(hit, tUnit ? 5 : 7, new THREE.Color(1, 0.85, 0.35), 50, 2.2);
+      }
+    }
+    if (this.heard.size > 4000) this.heard.clear();
+  }
+
+  private updateFx(frameDt: number) {
+    // Capped so that at a low frame rate every effect still shows for a few frames.
+    const dt = Math.min(frameDt, 1 / 20);
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3();
+    const zAxis = new THREE.Vector3(0, 0, 1), dir = new THREE.Vector3(), mid = new THREE.Vector3();
+    let n = 0;
+    this.fx = this.fx.filter((f) => (f.life -= dt) > 0);
+    for (const f of this.fx) {
+      f.v.y -= f.grav * dt;
+      f.p.addScaledVector(f.v, dt);
+      const k = f.life / f.max;
+      q.identity();
+      m.compose(f.p, q, sc.setScalar(f.size * (0.25 + 0.75 * k)));
+      this.fxMesh.setMatrixAt(n, m);
+      this.fxMesh.setColorAt(n, f.color);
+      n++;
+    }
+    this.fxMesh.count = n;
+    this.fxMesh.instanceMatrix.needsUpdate = true;
+    if (this.fxMesh.instanceColor) this.fxMesh.instanceColor.needsUpdate = true;
+    n = 0;
+    this.tracers = this.tracers.filter((f) => (f.life -= dt) > 0);
+    for (const f of this.tracers) {
+      dir.subVectors(f.to!, f.p);
+      const len = dir.length();
+      if (len < 1e-3) continue;
+      q.setFromUnitVectors(zAxis, dir.divideScalar(len));
+      mid.addVectors(f.p, f.to!).multiplyScalar(0.5);
+      const w = f.size * (0.3 + 0.7 * (f.life / f.max));
+      m.compose(mid, q, sc.set(w, w, len));
+      this.tracerMesh.setMatrixAt(n, m);
+      this.tracerMesh.setColorAt(n, f.color);
+      n++;
+    }
+    this.tracerMesh.count = n;
+    this.tracerMesh.instanceMatrix.needsUpdate = true;
+    if (this.tracerMesh.instanceColor) this.tracerMesh.instanceColor.needsUpdate = true;
   }
 
   private render(v: View3D) {

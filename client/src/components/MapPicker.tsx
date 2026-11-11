@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { FCT } from "../design/facet";
-import { TERRAIN_COLORS, decodeTerrain } from "../terrainCodec";
+import { decodeTerrain } from "../terrainCodec";
+import { themeFor } from "../mapThemes";
 
 /** One entry of GET /api/maps. */
 export interface MapInfo {
@@ -32,12 +33,13 @@ export function MapThumb({ map, width = 250 }: { map: MapInfo; width?: number })
     const c = ref.current?.getContext("2d");
     if (!c) return;
     const sx = width / map.cols, sy = height / map.rows;
-    c.fillStyle = "#16241b";
+    const theme = themeFor(map.mapId);
+    c.fillStyle = theme.thumbBg;
     c.fillRect(0, 0, width, height);
     const cells = decodeTerrain(map);
     if (cells) {
       for (let r = 0; r < map.rows; r++) for (let col = 0; col < map.cols; col++) {
-        const color = TERRAIN_COLORS[cells[r * map.cols + col]];
+        const color = theme.terrain2d[cells[r * map.cols + col]];
         if (!color) continue;
         c.fillStyle = color;
         c.fillRect(Math.floor(col * sx), Math.floor(r * sy), Math.ceil(sx), Math.ceil(sy));
@@ -62,7 +64,7 @@ export default function MapPicker({ value, onChange, disabled }: { value: string
   const [maps, setMaps] = useState<MapInfo[]>([]);
   useEffect(() => { void fetchMaps().then(setMaps); }, []);
   const selected = maps.find((m) => m.mapId === value);
-  const label = (m: MapInfo) => m.pool ? `${m.name}${m.approved ? "" : " · candidate"}` : m.name;
+  const label = (m: MapInfo) => `${m.name} · ${themeFor(m.mapId).name}${m.pool && !m.approved ? " · candidate" : ""}`;
   return (
     <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
       <div>

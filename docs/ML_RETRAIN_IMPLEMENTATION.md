@@ -26,7 +26,7 @@ So the plan front-loads verification. The probes and tests in §6 are not option
 | Decision | When |
 |---|---|
 | Permission to start work at all | before anything |
-| Map sign-off (P-10). Ask early; it blocks training, not harness work | start of M0 |
+| ~~Map sign-off (P-10)~~ **done 2026-11-11**: all 10 maps approved, dates in the manifest | — |
 | Review of the balance matrix (P-6), and any game-balance change it leads to | M0 |
 | Playtests | M1, M2, M3 |
 | Any deviation from an approved R-item or P-item | whenever it comes up |
@@ -171,7 +171,7 @@ T10 P-6b balance matrix with v2 bots           (needs T8)        → user review
 T11 P-9  GPU checks
 T12 M0 exit review with the user
 ```
-Ask the user for the map sign-off (P-10) at T0. It is needed by T12.
+The map sign-off (P-10) is done (2026-11-11, all 10 maps). If any map is re-frozen, its `approved` resets to null and needs a new sign-off before T12.
 
 ### 5.2 T0: pre-flight
 - Read the plan, this guide, and `GAME_UPDATE_PLAN.md` G-5 to G-8 (terrain, sight, control).
@@ -500,7 +500,7 @@ Full table and sources: plan §1 and §14. The points that should guide judgemen
 - [x] This guide written.
 - [x] Stale documents flagged (banners in `ML_AGENT.md`, `REVIVAL_PLAN.md`, `training/README.md`).
 - [ ] **User says "start".**
-- [ ] Map sign-off (P-10).
+- [x] Map sign-off (P-10), 2026-11-11.
 - [ ] M0 … M4.
 
 Unrelated work also pending from the user's earlier approval ("yes to all"), not part of this plan: 3D view polish (team colour on skirmisher and gunner models, Kenney audio, muzzle flashes and hit sparks). See `docs/VISUAL_PLAN.md` known gaps. Ask the user which comes first.

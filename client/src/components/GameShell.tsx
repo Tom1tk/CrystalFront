@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Lobby, Player, MatchState, ResourceNodeDisplay, BuildingType, MatchEntity, StaticMap } from "../types";
 import { FCT, FctMark, FctStat, FctStyles, DbgBtn, HEX_CLIP, NOTCH_R } from "../design/facet";
-import { TERRAIN_COLORS, decodeTerrain } from "../terrainCodec";
+import { decodeTerrain } from "../terrainCodec";
+import { themeFor } from "../mapThemes";
+import { MatchSfx, play as playSound } from "../audio";
 
 /** G-4: how long a move order's planned path stays on screen. */
 const PATH_SHOW_MS = 1200;
@@ -109,6 +111,7 @@ function terrainCanvas(sm: StaticMap | undefined): HTMLCanvasElement | null {
   if (terrainCache?.key === key) return terrainCache.canvas;
   const cells = decodeTerrain(sm);
   let canvas: HTMLCanvasElement | null = null;
+  const palette = themeFor(sm.mapId).terrain2d;
   if (cells && cells.some((c) => c !== 0)) {
     canvas = document.createElement("canvas");
     canvas.width = sm.cols;
@@ -116,7 +119,7 @@ function terrainCanvas(sm: StaticMap | undefined): HTMLCanvasElement | null {
     const c = canvas.getContext("2d")!;
     for (let r = 0; r < sm.rows; r++) {
       for (let col = 0; col < sm.cols; col++) {
-        const color = TERRAIN_COLORS[cells[r * sm.cols + col]];
+        const color = palette[cells[r * sm.cols + col]];
         if (!color) continue;
         c.fillStyle = color;
         c.fillRect(col, r, 1, 1);
@@ -681,7 +684,7 @@ export default function GameShell({
   resourceNodes,
   onDebugWin,
   onDebugSpawn,
-  onGameCommand,
+  onGameCommand: sendGameCommand,
   error,
   onClearError,
   isReplay = false,
@@ -702,6 +705,19 @@ export default function GameShell({
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [selectedEntityIds, setSelectedEntityIds] = useState<Set<string>>(new Set());
+
+  // Sound: a click for each command, a chime when the selection gains units, a buzz on errors.
+  const onGameCommand = useCallback((command: Parameters<typeof sendGameCommand>[0]) => {
+    if (!command.type.startsWith("debug")) playSound("order");
+    sendGameCommand(command);
+  }, [sendGameCommand]);
+  const selCount = useRef(0);
+  useEffect(() => {
+    if (selectedEntityIds.size > 0 && selectedEntityIds.size !== selCount.current) playSound("select");
+    selCount.current = selectedEntityIds.size;
+  }, [selectedEntityIds]);
+  useEffect(() => { if (error) playSound("error"); }, [error]);
+  const sfxRef = useRef(new MatchSfx());
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
   const [buildMode, setBuildMode] = useState(false);
   const [selectedBuildingType, setSelectedBuildingType] = useState<BuildingType | null>(null);
@@ -1875,11 +1891,14 @@ export default function GameShell({
     if (w3) {
       ctx.clearRect(0, 0, cssW, cssH);
       w3.frame({ cssW, cssH, cameraX, scale, hudTop: HUD_TOP }, entities, resourceNodes, matchState.staticMap, mapWidth, mapHeight,
-        (ownerId) => (matchState.players.findIndex((p) => p?.playerId === ownerId) === 0 ? 0 : 1));
+        (ownerId) => (matchState.players.findIndex((p) => p?.playerId === ownerId) === 0 ? 0 : 1),
+        { tick: matchState.tick, log: matchState.attackLog ?? [] });
     } else {
       ctx.fillStyle = "#05060a";
       ctx.fillRect(0, 0, cssW, cssH);
     }
+    sfxRef.current.update(matchState.tick, matchState.attackLog ?? [], entities, safePlayer.id, { left: cameraX, width: viewWW });
+    const theme2d = themeFor(matchState.staticMap?.mapId);
 
     const getTeamColor = (ownerId: string) => {
       const pIdx = matchState.players.findIndex((p) => p?.playerId === ownerId);
@@ -1898,13 +1917,13 @@ export default function GameShell({
 
     if (!w3) {
     // Lane background
-    ctx.fillStyle = "#0a0c14";
+    ctx.fillStyle = theme2d.lane2d;
     ctx.fillRect(0, laneTop, mapWidth, laneBottom - laneTop);
 
     // Combat zone
     const combatLeft = mapWidth * 0.25;
     const combatRight = mapWidth * 0.75;
-    ctx.fillStyle = "#0d1020";
+    ctx.fillStyle = theme2d.combat2d;
     ctx.fillRect(combatLeft, combatZoneTop, combatRight - combatLeft, combatZoneBottom - combatZoneTop);
 
     // Build zones

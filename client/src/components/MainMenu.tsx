@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { FCT, FctFrame, FctPanel, FctBtn, Refract, HEX_CLIP } from "../design/facet";
 import MapPicker from "./MapPicker";
+import { setSoundEnabled, soundEnabled } from "../audio";
 
 declare const __APP_VERSION__: string;
 
@@ -40,6 +41,11 @@ export default function MainMenu({ onHost, onJoin, onSoloTest, onBotGame: _onBot
     const next = !view3d;
     setView3d(next);
     try { window.localStorage.setItem("cf.view3d", next ? "1" : "0"); } catch { /* storage blocked */ }
+  };
+  const [sound, setSound] = useState(soundEnabled);
+  const toggleSound = () => {
+    setSoundEnabled(!sound);
+    setSound(!sound);
   };
 
   const handleHost = () => {
@@ -394,6 +400,9 @@ export default function MainMenu({ onHost, onJoin, onSoloTest, onBotGame: _onBot
               </div>
               <FctBtn primary={view3d} full onClick={toggleView3d} style={{ marginBottom: 18 }}>
                 {view3d ? "◆ 3D View: On" : "◇ 3D View: Off"}
+              </FctBtn>
+              <FctBtn primary={sound} full onClick={toggleSound} style={{ marginBottom: 18, marginTop: -8 }}>
+                {sound ? "◆ Sound: On" : "◇ Sound: Off"}
               </FctBtn>
               <div
                 style={{
