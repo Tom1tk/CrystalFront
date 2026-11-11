@@ -38,6 +38,8 @@ import { IdleBot } from "../headless/src/bots/index.js";
 import { episodeStatus, evalScore, TRAIN_MAX_TICKS } from "../headless/src/episode.js";
 import * as V2 from "../headless/src/v2/actions.js";
 import { frameFor, toOwnFrame, fromOwnFrame } from "../headless/src/v2/frame.js";
+import * as OBS from "../headless/src/v2/observation.js";
+import { imageState } from "../headless/src/v2/imageState.js";
 import { existsSync as _existsSync, unlinkSync as _unlinkSync, writeFileSync as _writeFileSync } from "node:fs";
 import { resolve as _resolve, join as _join } from "node:path";
 
@@ -3169,6 +3171,145 @@ function goldenHashTests(): void {
 }
 
 /** Named map anchors (G-10 T3): valid, symmetric and reachable on every map. */
+function v2ObservationTests(): void {
+  console.log("\n--- Observation v2 (G-10 T6) ---");
+  const newMatch = (mapId: string, seed: number) => {
+    const engine = new MatchEngine();
+    const players: [PlayerSlot | null, PlayerSlot | null] = [
+      { playerId: "o-blue", username: "Blue", color: "blue", score: 0 },
+      { playerId: "o-red", username: "Red", color: "red", score: 0 },
+    ];
+    const match = engine.createMatch(`obs-${mapId}-${seed}`, players, { ...DEFAULT_CONFIG, mapId, maxTicks: 12000 }, seed);
+    engine.startMatch(match.id);
+    const seats = [V2.createSeatState(match, "o-blue"), V2.createSeatState(match, "o-red")] as [V2.SeatState, V2.SeatState];
+    return { engine, match, seats, oss: seats.map((st) => OBS.createObsState(match, st)) };
+  };
+  const lcg = (seed: number) => () => ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) / 2 ** 32);
+  const pickFrom = (rnd: () => number, m: boolean[], lo = 0, hi = m.length) => {
+    const idx: number[] = [];
+    for (let i = lo; i < hi; i++) if (m[i]) idx.push(i);
+    return idx.length ? idx[Math.floor(rnd() * idx.length)] : -1;
+  };
+  const randomAction = (rnd: () => number, m: V2.V2Masks, seats: V2.SeatState[], symmetric: boolean) => {
+    const r = rnd();
+    let econ = r < 0.3 ? pickFrom(rnd, m.econ, V2.ECON_TRAIN0, V2.ECON_BUILD0) : r < 0.6 ? pickFrom(rnd, m.econ) : 0;
+    if (econ < 0) econ = 0;
+    const ea = V2.decodeEcon(econ);
+    if (symmetric && ea.kind === "assign" && seats[0].nodeSlots[ea.slot] === seats[1].nodeSlots[ea.slot]) econ = 0;
+    const group = pickFrom(rnd, m.group), order = pickFrom(rnd, m.order[group]), target = pickFrom(rnd, m.target[order]);
+    return { econ, group, order, target };
+  };
+  const imageSeats = (img: MatchState, seats: V2.SeatState[]) => {
+    // Image: red sits in seat 0, blue in seat 1; carry the per-seat army state over.
+    const out = [V2.createSeatState(img, "o-red"), V2.createSeatState(img, "o-blue")];
+    out.forEach((st, i) => { const src = seats[1 - i]; st.armyA = new Set(src.armyA); st.armyB = new Set(src.armyB); st.scoutId = src.scoutId; });
+    return out;
+  };
+
+  {
+    // Shapes.
+    const { match, seats, oss } = newMatch("glimmerfen", 2);
+    const o = OBS.observe(match, seats[0], oss[0], { z: 3 });
+    const sg = OBS.staticGrid(match);
+    assertEqual(o.schemaVersion, OBS.OBS_SCHEMA_VERSION, "observation carries its schema version");
+    assertEqual(o.z, 3, "strategy token z is passed through");
+    assertEqual(o.globals.length, OBS.GLOBAL_NAMES.length, `globals: ${OBS.GLOBAL_NAMES.length} named values`);
+    assert(o.entities.length > 0 && o.entities.every((r) => r.length === OBS.ENTITY_F), `entity rows have ${OBS.ENTITY_F} features`);
+    assert(o.memory.length === V2.MEMORY_SLOTS && o.memory.every((r) => r.length === OBS.MEMORY_F), "16 memory rows");
+    assert(o.nodes.length === OBS.NODE_ROWS && o.nodes.every((r) => r.length === OBS.NODE_F), `${OBS.NODE_ROWS} node rows`);
+    assertEqual(sg.cols * sg.rows, 50 * 15, "grid is 50 x 15 on a 5000 x 900 map");
+    assertEqual(o.grid.length, OBS.DYN_CHANNELS.length * sg.cols * sg.rows, "dynamic grid size");
+    assertEqual(sg.data.length, OBS.STATIC_CHANNELS.length * sg.cols * sg.rows, "static grid size");
+    const all = [...o.globals, ...o.entities.flat(), ...o.memory.flat(), ...o.nodes.flat(), ...o.grid, ...sg.data];
+    assert(all.every((v) => Number.isFinite(v) && Math.round(v * 1e4) / 1e4 === v), "every value is finite and rounded to 4 decimals");
+    assert(o.nodes.slice(0, 4).some((r) => r[0] === 1) && o.nodes.slice(4, 8).some((r) => r[0] === 1), "own and enemy safe nodes are listed");
+  }
+
+  {
+    // Mirror map: mirrored play gives both seats bit-identical observations and masks.
+    const { engine, match, seats, oss } = newMatch("glimmerfen", 3);
+    const rnd = lcg(99);
+    let same = 0;
+    for (let d = 0; d < 150 && match.phase === "playing"; d++) {
+      for (const st of seats) V2.workerAutopilot(engine, match, st);
+      const o = seats.map((st, i) => JSON.stringify(OBS.observe(match, st, oss[i])));
+      const m = seats.map((st) => V2.computeMasks(match, st));
+      if (o[0] !== o[1] || JSON.stringify(m[0]) !== JSON.stringify(m[1])) break;
+      same++;
+      const a = randomAction(rnd, m[0], seats, true);
+      V2.applyV2Pair(engine, match, seats, [a, a]);
+      for (let t = 0; t < V2.DECISION_TICKS; t++) engine.tick(match.id);
+    }
+    assertEqual(same, 150, "glimmerfen: 150 mirrored decisions give both seats bit-identical observations and masks");
+
+    // Image test: after asymmetric play, the image state with seats swapped gives each player the same observation.
+    for (let d = 0; d < 30; d++) {
+      for (const st of seats) { V2.workerAutopilot(engine, match, st); V2.applyV2(engine, match, st, randomAction(rnd, V2.computeMasks(match, st), seats, false)); }
+      for (let t = 0; t < V2.DECISION_TICKS; t++) engine.tick(match.id);
+    }
+    const img = imageState(match), iseats = imageSeats(img, seats);
+    const fresh = (mm: MatchState, st: V2.SeatState) => JSON.stringify(OBS.observe(mm, st, OBS.createObsState(mm, st)));
+    assertEqual(fresh(img, iseats[1]), fresh(match, seats[0]), "glimmerfen: blue's observation is bit-identical in the image state (seat 1)");
+    assertEqual(fresh(img, iseats[0]), fresh(match, seats[1]), "glimmerfen: red's observation is bit-identical in the image state (seat 0)");
+    assertEqual(JSON.stringify(V2.computeMasks(img, iseats[1])), JSON.stringify(V2.computeMasks(match, seats[0])), "glimmerfen: blue's masks match in the image state");
+    assertEqual(JSON.stringify(V2.computeMasks(img, iseats[0])), JSON.stringify(V2.computeMasks(match, seats[1])), "glimmerfen: red's masks match in the image state");
+  }
+
+  {
+    // Rotate map: the fog-free blocks and the masks are bit-identical in the image state. The fogged
+    // observation is not yet: the engine's 40 px vision grid has 22.5 rows on a 900 px map, so fog is
+    // not rotate-symmetric (reported to the user; see the diary).
+    const { engine, match, seats } = newMatch("shardfall", 4);
+    const rnd = lcg(7);
+    for (let d = 0; d < 60; d++) {
+      for (const st of seats) { V2.workerAutopilot(engine, match, st); V2.applyV2(engine, match, st, randomAction(rnd, V2.computeMasks(match, st), seats, false)); }
+      for (let t = 0; t < V2.DECISION_TICKS; t++) engine.tick(match.id);
+    }
+    const img = imageState(match), iseats = imageSeats(img, seats);
+    const crit = (mm: MatchState, a: V2.SeatState, b: V2.SeatState) => JSON.stringify(OBS.criticState(mm, a, OBS.createObsState(mm, a), b, OBS.createObsState(mm, b)));
+    assertEqual(crit(img, iseats[1], iseats[0]), crit(match, seats[0], seats[1]), "shardfall: blue's fog-free (critic) blocks are bit-identical in the image state");
+    assertEqual(crit(img, iseats[0], iseats[1]), crit(match, seats[1], seats[0]), "shardfall: red's fog-free (critic) blocks are bit-identical in the image state");
+    assertEqual(JSON.stringify(V2.computeMasks(img, iseats[0])), JSON.stringify(V2.computeMasks(match, seats[1])), "shardfall: red's masks match in the image state");
+    assertEqual(JSON.stringify(OBS.oppLabels(img, iseats[1])), JSON.stringify(OBS.oppLabels(match, seats[0])), "shardfall: opponent labels match in the image state");
+  }
+
+  {
+    // Fog honesty and memory.
+    const { engine, match, seats, oss } = newMatch("saltmarsh", 5);
+    const blue = seats[0];
+    const base = blue.targets[0];
+    const enemyX = match.mapWidth - 900;
+    engine.debugSpawn(match.id, "o-red", "building", enemyX, base.y, "turret");
+    engine.tick(match.id);
+    let o = OBS.observe(match, blue, oss[0]);
+    const turretIdx = 2 + OBS.ENTITY_TYPES.indexOf("turret");
+    assert(!o.entities.some((r) => r[1] === 1 && r[turretIdx] === 1), "a red turret out of sight is not in blue's entities");
+    assert(o.memory.every((r) => r[0] === 0) && blue.memory.every((p) => p === null), "nothing in memory before anything is seen");
+    const crit = OBS.criticState(match, blue, oss[0], seats[1], oss[1]);
+    assert(crit.self.entities.some((r) => r[1] === 1 && r[turretIdx] === 1), "the critic (no fog) sees the turret");
+    // A blue gunner walks into sight of the turret's spot, then dies / leaves: the turret stays in memory.
+    engine.debugSpawn(match.id, "o-blue", "gunner", enemyX - 120, base.y);
+    engine.debugSpawn(match.id, "o-red", "gunner", enemyX + 40, base.y);
+    engine.tick(match.id);
+    o = OBS.observe(match, blue, oss[0]);
+    const memTurret = 2 + 4; // valid, army, then MEMORY_TYPES (crystal, barracks, foundry, supply_depot, turret)
+    const slot = o.memory.findIndex((r) => r[0] === 1 && r[memTurret] === 1);
+    assert(slot >= 1, "a seen turret enters a building memory slot");
+    assert(o.memory[0][0] === 1 && o.memory[0][1] === 1, "seen enemy combat units fill the army slot (0)");
+    assert(blue.memory[slot] !== null && Math.abs(blue.memory[slot]!.x - enemyX) < 1, "the memory slot is a valid target at the turret's world position");
+    const gunnerSeen = OBS.GLOBAL_NAMES.indexOf("seen_gunner"), gunnerAge = OBS.GLOBAL_NAMES.indexOf("seen_gunner_age");
+    assert(o.globals[gunnerSeen] > 0 && o.globals[gunnerAge] === 0, "last-seen gunner count is set with age 0");
+    for (const e of [...match.entities.values()]) if (e.ownerId === "o-blue" && e.type === "gunner") match.entities.delete(e.id);
+    for (let t = 0; t < 50; t++) engine.tick(match.id);
+    o = OBS.observe(match, blue, oss[0]);
+    assert(o.memory[slot][0] === 1 && o.memory[slot][OBS.MEMORY_FEATURES.indexOf("age")] > 0, "out of sight again, the turret stays in memory and ages");
+    assert(o.globals[gunnerSeen] > 0 && o.globals[gunnerAge] > 0, "last-seen gunner count is kept and ages");
+    const vis = match.visibilityData!.get("o-blue")!;
+    const visibleEnemy = [...match.entities.values()].filter((e) => e.ownerId === "o-red" && vis.entityIds.has(e.id)).length;
+    assertEqual(o.entities.filter((r) => r[1] === 1).length, visibleEnemy, "enemy entity rows are exactly the enemies in blue's visibility");
+  }
+}
+
 function v2ActionTests(): void {
   console.log("\n--- Action space v2 (G-10 T5) ---");
   assertEqual(V2.ECON_SIZE, 94, "economy head has 94 entries");
@@ -3398,6 +3539,7 @@ void (async () => {
   anchorTests();
   truncationTests();
   v2ActionTests();
+  v2ObservationTests();
   await determinismTests();
   await loadGateTests();
   goldenHashTests();
