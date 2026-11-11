@@ -89,7 +89,8 @@ export interface SeatState {
   scoutId: string | null;
   /** Enemy-memory slot positions (world), filled by observation v2 (T6). */
   memory: (Pt | null)[];
-  stats: { decisions: number; econIneffective: number; armyIneffective: number; autopilot: number };
+  /** `contested`: economy actions cut short because the other seat wanted the same node slots or build spot this decision (applyV2Pair). */
+  stats: { decisions: number; econIneffective: number; armyIneffective: number; autopilot: number; contested: number };
 }
 
 export function createSeatState(match: MatchState, playerId: string): SeatState {
@@ -121,7 +122,7 @@ export function createSeatState(match: MatchState, playerId: string): SeatState 
     playerId, frame, targets, targetValid, sites, siteValid, nodeSlots,
     armyA: new Set(), armyB: new Set(), scoutId: null,
     memory: new Array(MEMORY_SLOTS).fill(null),
-    stats: { decisions: 0, econIneffective: 0, armyIneffective: 0, autopilot: 0 },
+    stats: { decisions: 0, econIneffective: 0, armyIneffective: 0, autopilot: 0, contested: 0 },
   };
 }
 
@@ -395,12 +396,17 @@ function targetPoint(s: SeatState, t: number): Pt | null {
  * on masks); an illegal or no-op part simply does nothing and is counted.
  */
 export function applyV2(engine: MatchEngine, match: MatchState, s: SeatState, a: V2Action): ApplyResult {
+  return applyResolved(engine, match, s, a, econCommands(match, s, decodeEcon(a.econ)), false);
+}
+
+function applyResolved(engine: MatchEngine, match: MatchState, s: SeatState, a: V2Action, econCmds: Cmd[], contested: boolean): ApplyResult {
   pruneArmies(match, s);
   s.stats.decisions++;
   const accepted: Cmd[] = [];
   const ea = decodeEcon(a.econ);
-  const econEffective = ea.kind === "noop" || run(engine, match, s.playerId, econCommands(match, s, ea), accepted);
-  if (!econEffective) s.stats.econIneffective++;
+  const econEffective = ea.kind === "noop" || run(engine, match, s.playerId, econCmds, accepted);
+  if (contested) s.stats.contested++;
+  else if (!econEffective) s.stats.econIneffective++;
 
   const g = GROUPS[a.group] ?? "none", o = ORDERS[a.order] ?? "none";
   let armyEffective = true;
@@ -427,6 +433,68 @@ export function applyV2(engine: MatchEngine, match: MatchState, s: SeatState, a:
     if (!armyEffective) s.stats.armyIneffective++;
   }
   return { accepted, econEffective, armyEffective };
+}
+
+/** Deterministic coin (0 or 1) from the match seed and tick. */
+function coin(match: MatchState): 0 | 1 {
+  let h = (match.seed ^ Math.imul(match.tick + 1, 0x9e3779b1)) >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b) >>> 0;
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35) >>> 0;
+  return ((h ^ (h >>> 16)) & 1) as 0 | 1;
+}
+
+/**
+ * Apply both seats' decisions for one decision step without a first-mover edge.
+ * The engine claims gather slots and build spots at command time, so on rotate
+ * maps (where the centre node and centre site are shared) whichever seat was
+ * applied first would win. Here contention is resolved first:
+ * - both assign workers to the same node: the free slots are split evenly; an
+ *   odd slot goes to the seat with fewer own workers on that node, else a coin;
+ * - both build and the second spot is no longer valid after the first is
+ *   placed: the coin decides who builds.
+ * A seat that loses a contended action counts it in `stats.contested`, not as
+ * ineffective. Everything else is order-independent.
+ */
+export function applyV2Pair(engine: MatchEngine, match: MatchState, seats: [SeatState, SeatState], actions: [V2Action, V2Action]): [ApplyResult, ApplyResult] {
+  const ea = [decodeEcon(actions[0].econ), decodeEcon(actions[1].econ)];
+  const cmds = [econCommands(match, seats[0], ea[0]), econCommands(match, seats[1], ea[1])];
+  const contested = [false, false];
+  const c = coin(match);
+  const [a0, a1] = ea;
+  if (a0.kind === "assign" && a1.kind === "assign" && seats[0].nodeSlots[a0.slot] === seats[1].nodeSlots[a1.slot]) {
+    const node = nodeById(match, seats[0].nodeSlots[a0.slot])!;
+    const free = node.maxGathererSlots - node.gathererSlots.size;
+    if (cmds[0].length + cmds[1].length > free) {
+      const want = [cmds[0].length, cmds[1].length];
+      const half = Math.floor(free / 2);
+      const got = [Math.min(want[0], half), Math.min(want[1], half)];
+      let left = free - got[0] - got[1];
+      while (left > 0 && (got[0] < want[0] || got[1] < want[1])) {
+        let i: 0 | 1;
+        if (got[0] >= want[0]) i = 1;
+        else if (got[1] >= want[1]) i = 0;
+        else {
+          const on = seats.map((s) => [...node.gathererSlots].filter((id) => match.entities.get(id)?.ownerId === s.playerId).length);
+          i = on[0] < on[1] ? 0 : on[1] < on[0] ? 1 : c;
+        }
+        got[i]++; left--;
+      }
+      for (const i of [0, 1]) {
+        if (got[i] < want[i]) { contested[i] = true; cmds[i] = cmds[i].slice(0, got[i]); }
+      }
+    }
+  }
+  const first = c, second = (1 - c) as 0 | 1;
+  const r: ApplyResult[] = [];
+  r[first] = applyResolved(engine, match, seats[first], actions[first], cmds[first], contested[first]);
+  if (a0.kind === "build" && a1.kind === "build" && r[first].econEffective && cmds[second].length) {
+    const b = cmds[second][0] as { buildingType: typeof BUILDINGS[number]; targetX: number; targetY: number };
+    if (!validateBuildSite(match, seats[second].playerId, b.buildingType, b.targetX, b.targetY).valid) {
+      contested[second] = true; cmds[second] = [];
+    }
+  }
+  r[second] = applyResolved(engine, match, seats[second], actions[second], cmds[second], contested[second]);
+  return [r[0], r[1]];
 }
 
 /**

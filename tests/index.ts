@@ -3203,26 +3203,48 @@ function v2ActionTests(): void {
 
     // Both seats see the same masks while they play the same actions.
     const rnd = lcg(777);
-    let same = 0;
+    let same = 0, trains = 0;
     for (let d = 0; d < 100; d++) {
       for (const st of seats) V2.workerAutopilot(engine, match, st);
       const ms = seats.map((st) => V2.computeMasks(match, st));
       if (JSON.stringify(ms[0]) !== JSON.stringify(ms[1])) break;
       same++;
       const m = ms[0];
-      let econ = rnd() < 0.5 ? pickFrom(rnd, m.econ) : 0;
-      // A node that is its own image (rotate maps' centre node) is shared: whoever
-      // is applied first takes its slots, so the state stops being symmetric.
+      // Training included (spawns are mirror-equivariant since ENGINE_VERSION 12).
+      // Assigns to a shared node (rotate maps' centre) are skipped here: applyV2Pair
+      // splits its slots fairly, but an odd slot cannot go to both seats.
+      const r = rnd();
+      let econ = r < 0.3 ? pickFrom(rnd, m.econ, V2.ECON_TRAIN0, V2.ECON_BUILD0) : r < 0.6 ? pickFrom(rnd, m.econ) : 0;
+      if (econ < 0) econ = 0;
       const ea = V2.decodeEcon(econ);
       if (ea.kind === "assign" && seats[0].nodeSlots[ea.slot] === seats[1].nodeSlots[ea.slot]) econ = 0;
-      // New units spawn at a random angle that is not mirrored (engine/mirror.ts), so
-      // training also breaks the symmetry; the random-play test below covers training.
-      if (ea.kind === "train") econ = 0;
+      if (ea.kind === "train") trains++;
       const group = pickFrom(rnd, m.group), order = pickFrom(rnd, m.order[group]), target = pickFrom(rnd, m.target[order]);
-      for (const st of seats) V2.applyV2(engine, match, st, { econ, group, order, target });
+      const a = { econ, group, order, target };
+      V2.applyV2Pair(engine, match, [seats[0], seats[1]], [a, a]);
       for (let t = 0; t < V2.DECISION_TICKS; t++) engine.tick(match.id);
     }
     assertEqual(same, 100, `${mapId}: both seats get identical masks for 100 mirrored decisions`);
+    if (mapId === "glimmerfen") assert(trains > 0, `glimmerfen: the mirrored run trained units (${trains})`);
+  }
+
+  {
+    // Shared centre node on a rotate map: both seats ask for 4 workers there in the
+    // same decision; neither gets a first-mover edge.
+    const { engine, match, seats } = newMatch("shardfall", 11);
+    const slot = seats[0].nodeSlots.findIndex((id, i) => id !== null && id === seats[1].nodeSlots[i]);
+    assert(slot >= 0, "shardfall: a node slot names the same (centre) node for both seats");
+    for (let t = 0; t < 40; t++) engine.tick(match.id);
+    for (const st of seats) V2.workerAutopilot(engine, match, st);
+    const node = match.resourceNodes.find((n) => n.id === seats[0].nodeSlots[slot])!;
+    const free = node.maxGathererSlots - node.gathererSlots.size;
+    const a = { ...V2.NOOP_ACTION, econ: V2.encodeEcon({ kind: "assign", slot, count: 4 }) };
+    const r = V2.applyV2Pair(engine, match, [seats[0], seats[1]], [a, a]);
+    const per = seats.map((st) => [...node.gathererSlots].filter((id) => match.entities.get(id)?.ownerId === st.playerId).length);
+    assertEqual(per[0] + per[1], free, `shardfall: the ${free} free centre slots are all taken`);
+    assert(Math.abs(per[0] - per[1]) <= 1, `shardfall: centre slots split evenly (${per[0]} vs ${per[1]})`);
+    assert(seats.every((st) => st.stats.contested === 1 && st.stats.econIneffective === 0), "both seats count the cut-short assign as contested, not ineffective");
+    assert(r[0].econEffective && r[1].econEffective, "both seats' contested assigns still moved workers");
   }
 
   for (const mapId of ["saltmarsh", "basalt-run"]) {

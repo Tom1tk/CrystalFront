@@ -108,7 +108,8 @@ export class MatchEngine {
   ): MatchState {
     const id = `match-${++this.nextMatchId}`;
     const resolvedSeed = seed ?? (this.clock() & 0xffffffff);
-    const rng: [Rng, Rng] = [new Rng(resolvedSeed), new Rng((resolvedSeed ^ 0x9e3779b9) >>> 0)];
+    // Both seats draw from identically seeded streams so spawns are mirror-equivariant (see spawnOutside).
+    const rng: [Rng, Rng] = [new Rng(resolvedSeed), new Rng(resolvedSeed)];
     const idGen = new IdGen();
     const map = createMap(config, contestedNodesFor(config.mapId, config.mapWidth, config.mapHeight), mapSymmetry(config.mapId) === "rotate");
     const entities = new Map<EntityId, MatchEntity>();
@@ -556,7 +557,7 @@ if (command.type === "gather") {
         return { success: false, message: "Not enough supply" };
       }
 
-      const spawn = this.spawnOutside(match.rng[playerIdx], crystal, config.workerRadius);
+      const spawn = this.spawnOutside(match, playerIdx, crystal, config.workerRadius);
       const newWorker = this.createEntity(
         match.idGen,
         "worker",
@@ -1244,7 +1245,7 @@ if (command.type === "gather") {
             const unitDef = UNIT_DEFS[item.unitType];
             if (unitDef) {
               const spawnPIdx = match.players.findIndex((p) => p?.playerId === entity.ownerId);
-              const spawn = this.spawnOutside(match.rng[spawnPIdx >= 0 ? spawnPIdx : 0], entity, unitDef.radius);
+              const spawn = this.spawnOutside(match, spawnPIdx >= 0 ? spawnPIdx : 0, entity, unitDef.radius);
               const unit = this.createEntity(
                 match.idGen, item.unitType, entity.ownerId,
                 spawn.x, spawn.y, unitDef.health, unitDef.radius, unitDef.color,
@@ -1342,7 +1343,7 @@ if (command.type === "gather") {
 
     const newSeed = (this.clock() & 0xffffffff);
     match.seed = newSeed;
-    match.rng = [new Rng(newSeed), new Rng((newSeed ^ 0x9e3779b9) >>> 0)];
+    match.rng = [new Rng(newSeed), new Rng(newSeed)];
     match.idGen = new IdGen();
     match.commandLog = [];
     match.phase = "spawn";
@@ -1586,10 +1587,15 @@ if (command.type === "gather") {
    * Compute a spawn position just outside the parent entity so the new unit
    * doesn't overlap the building/crystal and can be selected immediately.
    */
-  private spawnOutside(rng: Rng, parent: MatchEntity, childRadius: number): { x: number; y: number } {
+  private spawnOutside(match: MatchState, playerIdx: number, parent: MatchEntity, childRadius: number): { x: number; y: number } {
     const gap = SIMULATION.spawnGap;
     const spawnDist = parent.radius + childRadius + gap;
-    const angle = rng.random() * Math.PI * 2;
+    const drawn = match.rng[playerIdx].random() * Math.PI * 2;
+    // Seat 1 uses the map-symmetry image of the angle seat 0 would draw, so a
+    // mirrored position spawns the mirrored unit (mirror: π − a; rotate: a + π).
+    const angle = playerIdx === 1
+      ? (mapSymmetry(match.config.mapId) === "rotate" ? drawn + Math.PI : Math.PI - drawn)
+      : drawn;
     return {
       x: parent.x + Math.cos(angle) * spawnDist,
       y: parent.y + Math.sin(angle) * spawnDist,

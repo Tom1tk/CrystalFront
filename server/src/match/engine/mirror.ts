@@ -122,9 +122,9 @@ const DEFAULT_EPS = 1e-6;
  * (typically `expected = mirrorState(tick(s))` and `actual = tick(mirrorState(s))`).
  *
  * `preExistingIds` is the set of entity ids present in `s` *before* the
- * tick — entities created during the tick (unit spawns) are excluded from
- * position comparisons, since `spawnOutside`'s RNG angle is isotropic but
- * not mirror-equivariant (a known, non-biasing source of divergence).
+ * tick. Since ENGINE_VERSION 12 spawns are mirror-equivariant (both seats
+ * share an RNG seed and seat 1 uses the image angle), so newly spawned
+ * entities are compared too.
  */
 export function diffStates(
   expected: MatchState,
@@ -180,7 +180,6 @@ export function diffStates(
 
     if (ee.ownerId !== ae.ownerId) diffs.push({ system: "internal", detail: `entity ${id}.ownerId: ${ee.ownerId} vs ${ae.ownerId}` });
 
-    if (!preExistingIds.has(id)) continue; // newly spawned this tick — see spawnOutside note above
 
     if (!close(ee.x, ae.x)) diffs.push({ system: "movement", detail: `entity ${id} (${ee.type}).x: ${ee.x} vs ${ae.x}` });
     if (!close(ee.y, ae.y)) diffs.push({ system: "movement", detail: `entity ${id} (${ee.type}).y: ${ee.y} vs ${ae.y}` });
