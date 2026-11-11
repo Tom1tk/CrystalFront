@@ -15,7 +15,7 @@ interface UseWebSocketReturn {
   playerId: string | null;
   lobbyState: LobbyState | null;
   matchState: MatchState | null;
-  matchEnd: { winner: string; winType?: string } | null;
+  matchEnd: { winner: string; winType?: string; replayId?: string } | null;
   /** Players who have finished loading the new match (while it waits to start). */
   loadedPlayers: string[];
   replayEnd: { ticks: number; winner: string | null } | null;
@@ -56,7 +56,7 @@ export function useWebSocket(): UseWebSocketReturn {
   const [lobbyState, setLobbyState] = useState<LobbyState | null>(null);
   const [matchState, setMatchState] = useState<MatchState | null>(null);
   const staticMapRef = useRef<MatchState["staticMap"]>(undefined);
-  const [matchEnd, setMatchEnd] = useState<{ winner: string; winType?: string } | null>(null);
+  const [matchEnd, setMatchEnd] = useState<{ winner: string; winType?: string; replayId?: string } | null>(null);
   const [replayEnd, setReplayEnd] = useState<{ ticks: number; winner: string | null } | null>(null);
   const [resourceNodes, setResourceNodes] = useState<ResourceNodeDisplay[]>([]);
   const [loadedPlayers, setLoadedPlayers] = useState<string[]>([]);
@@ -96,7 +96,7 @@ export function useWebSocket(): UseWebSocketReturn {
           setTimeout(() => setError(null), 4000);
         }
         if (msg.type === "match_end" && msg.payload?.winner) {
-          setMatchEnd({ winner: msg.payload.winner as string, winType: msg.payload.winType as string | undefined });
+          setMatchEnd({ winner: msg.payload.winner as string, winType: msg.payload.winType as string | undefined, replayId: msg.payload.replayId as string | undefined });
         }
         if (msg.type === "match_start" && msg.payload?.match) {
           const ms = msg.payload.match as MatchState;

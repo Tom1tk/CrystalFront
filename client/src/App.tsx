@@ -102,8 +102,16 @@ function useScreenFlow() {
   }, [ws.replayEnd, screen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [vsBot, setVsBot] = useState(false);
+  /** Starts the same solo / bot game again (Rematch); null for online lobbies. */
+  const restartRef = useRef<(() => void) | null>(null);
+  /** Each new lobby moves to the lobby screen on its first lobby state. */
+  const newLobby = (restart: (() => void) | null) => {
+    hasLobbyStateRef.current = false;
+    restartRef.current = restart;
+  };
   const handleHost = useCallback(
     (name: string) => {
+      newLobby(null);
       ws.createLobby(name);
       setIsHost(true);
       setVsBot(false);
@@ -113,6 +121,7 @@ function useScreenFlow() {
 
   const handleJoin = useCallback(
     (code: string, name: string) => {
+      newLobby(null);
       ws.joinLobby(code, name);
       setIsHost(false);
       setVsBot(false);
@@ -122,6 +131,7 @@ function useScreenFlow() {
 
   const handleSoloTest = useCallback(
     (name: string, mapId?: string) => {
+      newLobby(() => ws.startSoloTest(name, mapId));
       ws.startSoloTest(name, mapId);
       setIsHost(true);
       setVsBot(true);
@@ -131,6 +141,7 @@ function useScreenFlow() {
 
   const handleBotGame = useCallback(
     (name: string, bot: string, mapId?: string) => {
+      newLobby(() => ws.startBotGame(name, bot, mapId));
       ws.startBotGame(name, bot, mapId);
       setIsHost(true);
       setVsBot(true);
@@ -176,8 +187,16 @@ function useScreenFlow() {
   const handleRematch = useCallback(() => {
     ws.clearMatchEnd();
     ws.clearMatchState();
+    const restart = restartRef.current;
+    if (restart) {
+      // Solo / bot: a fresh game with the same settings (the bot never readies up in a lobby).
+      ws.leaveLobby();
+      newLobby(restart);
+      restart();
+      return;
+    }
     setScreen("lobby");
-  }, [ws.clearMatchEnd, ws.clearMatchState]);
+  }, [ws.clearMatchEnd, ws.clearMatchState, ws.leaveLobby]);
 
   const handleExit = useCallback(() => {
     ws.clearMatchEnd();
@@ -185,6 +204,18 @@ function useScreenFlow() {
     ws.leaveLobby();
     setScreen("menu");
   }, [ws.clearMatchEnd, ws.clearMatchState, ws.leaveLobby]);
+
+  /** From the result screen: leave the lobby and play back the replay just saved. */
+  const handleWatchMatchReplay = useCallback(() => {
+    const id = ws.matchEnd?.replayId;
+    const ticks = ws.matchState?.tick ?? 0;
+    if (!id) return;
+    ws.clearMatchEnd();
+    ws.clearMatchState();
+    ws.leaveLobby();
+    setScreen("replays");
+    handleWatchReplay(id, ticks);
+  }, [ws.matchEnd, ws.matchState, ws.clearMatchEnd, ws.clearMatchState, ws.leaveLobby, handleWatchReplay]);
 
   const handleDebugWin = useCallback(
     (_player: "player1" | "player2") => {
@@ -257,6 +288,7 @@ function useScreenFlow() {
     handleLeave,
     handleRematch,
     handleExit,
+    handleWatchMatchReplay,
     handleDebugWin,
     handleDebugSpawn,
     handleGameCommand,
@@ -291,6 +323,7 @@ export default function App() {
     handleLeave,
     handleRematch,
     handleExit,
+    handleWatchMatchReplay,
     handleDebugWin,
     handleDebugSpawn,
     handleGameCommand,
@@ -324,7 +357,7 @@ export default function App() {
     return () => clearTimeout(t);
   }, [backdropReady]);
   const menuScreen = screen === "menu" || screen === "replays" || screen === "lobby";
-  const inMatch = screen === "game" || screen === "watching_replay";
+  const inMatch = screen === "game" || screen === "matchEnd" || screen === "watching_replay";
   const backdropId = screen === "lobby" && lobby?.mapId && lobby.mapId !== "random" ? lobby.mapId : previewId;
   const backdropMap = maps.find((m) => m.mapId === backdropId) ?? null;
   // In a match, GameShell sets the accent for the match map and may change the 3D view.
@@ -335,7 +368,7 @@ export default function App() {
   return (
     <div style={styles.container}>
       <BootScreen done={bootDone} status={backdropReady ? "Ready" : "Loading battlefield"} />
-      {!inMatch && screen !== "matchEnd" && (
+      {!inMatch && (
         <MenuBackdrop map={backdropMap} use3d={view3d} onReady={() => setBackdropReady(true)} />
       )}
       {!inMatch && (
@@ -387,7 +420,8 @@ export default function App() {
           error={ws.error}
         />
       )}
-      {screen === "game" && lobby && player && (
+      {/* The match stays mounted (frozen on its last frame) under the result card. */}
+      {(screen === "game" || screen === "matchEnd") && lobby && player && (
         <GameShell
           lobby={lobby}
           player={player}
@@ -401,6 +435,7 @@ export default function App() {
           onLoaded={ws.clientLoaded}
           loadedPlayers={ws.loadedPlayers}
           vsBot={vsBot}
+          frozen={screen === "matchEnd"}
         />
       )}
       {screen === "matchEnd" && lobby && player && matchWinnerId && (
@@ -409,7 +444,10 @@ export default function App() {
           player={player}
           winnerId={matchWinnerId}
           winType={ws.matchEnd?.winType ?? ws.matchState?.result?.winType}
+          ticks={matchState?.tick ?? 0}
+          mapName={maps.find((m) => m.mapId === matchState?.staticMap?.mapId)?.name ?? matchState?.staticMap?.mapId ?? "Unknown"}
           onRematch={handleRematch}
+          onWatchReplay={ws.matchEnd?.replayId ? handleWatchMatchReplay : undefined}
           onExit={handleExit}
         />
       )}

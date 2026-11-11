@@ -125,21 +125,21 @@ matchEngine.setMatchEndCallback((matchId: string, winner: string) => {
   botPlayers.delete(matchId);
   const code = matchLobbyMap.get(matchId);
   if (code) {
-    broadcastMatchEnd(code, winner, matchEngine.getMatch(matchId)?.result?.winType);
     const lobby = lobbyManager.getLobby(code);
     if (lobby) {
       const winnerSlot = winner === lobby.players[0]?.id ? "player1" : "player2";
       lobbyManager.recordWin(code, winnerSlot);
     }
 
-    // Save replay for every completed match (pvp and vs-bot).
+    // Save replay for every completed match (pvp and vs-bot); its id goes out with MATCH_END.
+    let replayId: string | undefined;
     try {
       const match = matchEngine.getMatch(matchId);
       if (match) {
         const bluePlayer = lobby?.players.find(p => p?.color === "blue");
         const redPlayer  = lobby?.players.find(p => p?.color === "red");
         const winnerPlayer = lobby?.players.find(p => p?.id === winner);
-        saveReplay({
+        replayId = saveReplay({
           matchId,
           seed:         match.seed ?? 0,
           blue:         bluePlayer?.username  ?? "Blue",
@@ -159,6 +159,7 @@ matchEngine.setMatchEndCallback((matchId: string, winner: string) => {
     } catch (e) {
       console.error("[server] Failed to save replay:", e);
     }
+    broadcastMatchEnd(code, winner, matchEngine.getMatch(matchId)?.result?.winType, replayId);
 
     // Reset ready states and broadcast so both players see updated scores + un-ready status
     lobbyManager.resetReadyStates(code);
@@ -412,13 +413,13 @@ function broadcastGameState(code: string) {
   }
 }
 
-function broadcastMatchEnd(code: string, winner: string, winType?: "combat" | "control" | "timeout") {
+function broadcastMatchEnd(code: string, winner: string, winType?: "combat" | "control" | "timeout", replayId?: string) {
   const matchId = lobbyMatchMap.get(code);
   if (!matchId) return;
 
   const msg: ServerToClientMsg = {
     type: SERVER_EVT.MATCH_END,
-    payload: { winner: winner as PlayerId, winType },
+    payload: { winner: winner as PlayerId, winType, replayId },
   };
   for (const session of playerLobbyMap.values()) {
     if (session.code === code && session.matchId === matchId) {
@@ -928,6 +929,15 @@ wss.on("connection", (ws) => {
           slotKey = winnerParam;
         }
 
+        // In a running match, end it normally: the match-end callback records the win,
+        // saves the replay and sends MATCH_END (with the replay id) to both players.
+        const activeMatch = session.matchId ? matchEngine.getMatch(session.matchId) : undefined;
+        const debugWinner = lobbyManager.getLobby(session.code)?.players[slotKey === "player1" ? 0 : 1]?.id;
+        if (session.matchId && activeMatch?.phase === "playing" && debugWinner) {
+          matchEngine.endMatch(session.matchId, debugWinner);
+          break;
+        }
+
         const winResult = lobbyManager.recordWin(session.code, slotKey as "player1" | "player2");
         if (!winResult.success) {
           sendWS(ws, { type: SERVER_EVT.ERROR, payload: { message: winResult.message } });
@@ -938,17 +948,6 @@ wss.on("connection", (ws) => {
           slotKey === "player1"
             ? winResult.lobby.players[0]!.id
             : winResult.lobby.players[1]!.id;
-
-        // If there's an active match, end it
-        if (session.matchId) {
-          const match = matchEngine.getMatch(session.matchId);
-          if (match && match.phase === "playing") {
-            liveRunner.stop(session.matchId);
-            matchEngine.endMatch(session.matchId, winnerId);
-            lobbyManager.resetReadyStates(session.code);
-            lobbyMatchMap.delete(session.code);
-          }
-        }
 
         const matchEndMsg: ServerToClientMsg = { type: SERVER_EVT.MATCH_END, payload: { winner: winnerId } };
         for (const s of playerLobbyMap.values()) {

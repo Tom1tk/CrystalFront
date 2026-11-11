@@ -64,6 +64,8 @@ interface GameShellProps {
   loadedPlayers?: string[];
   /** The opponent is a server bot (always ready). */
   vsBot?: boolean;
+  /** Match over, result card on top: ignore keyboard input. */
+  frozen?: boolean;
 }
 
 const CANVAS_WIDTH = 960;
@@ -714,6 +716,7 @@ export default function GameShell({
   onLoaded,
   loadedPlayers,
   vsBot = false,
+  frozen = false,
 }: GameShellProps) {
   // Callers always provide player (even replay passes a synthetic observer object).
   // The null type on the prop exists so replay can pass `null`-ish defaults,
@@ -842,6 +845,7 @@ export default function GameShell({
   }, [selectedEntityIds, matchState, safePlayer.id]);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
+  useEffect(() => { if (frozen) setSettingsOpen(false); }, [frozen]);
   const matchMapId = matchState?.staticMap?.mapId;
   useEffect(() => { if (matchMapId) setAccent(themeFor(matchMapId).id); }, [matchMapId]);
   const [hotkeyFlash, setHotkeyFlash] = useState<string | null>(null);
@@ -1339,7 +1343,7 @@ export default function GameShell({
         setView3d((v) => !v);
         return;
       }
-      if (settingsOpen) return;
+      if (settingsOpen || frozen) return;
       // Esc cancels the current mode; with nothing to cancel it opens Settings.
       if (e.key === "Escape") {
         let cancelled = false;
@@ -1579,7 +1583,7 @@ export default function GameShell({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [rallyMode, attackMoveMode, selectedEntityId, selectedEntityIds, matchState, safePlayer.id, hotkeys, settingsOpen]);
+  }, [rallyMode, attackMoveMode, selectedEntityId, selectedEntityIds, matchState, safePlayer.id, hotkeys, settingsOpen, frozen]);
 
   const handleMouseUp = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {

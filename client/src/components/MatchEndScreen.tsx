@@ -1,226 +1,75 @@
+/**
+ * Match result (G-12, UI-7): a glass card over the frozen final frame of the match.
+ * Victory / Defeat, how it was won, length, map and running score; then Rematch,
+ * Watch replay (when the server saved one) or Main menu.
+ */
 import type { Lobby, Player } from "../types";
-import { FCT, HEX_CLIP, Refract, FctFrame, FctPanel, FctBtn } from "../design/facet";
+import { Icon } from "../design/glass";
+import { clock } from "./Hud";
 
 interface MatchEndScreenProps {
   lobby: Lobby;
   player: Player;
   winnerId: string;
   winType?: string;
+  ticks: number;
+  mapName: string;
   onRematch: () => void;
+  onWatchReplay?: () => void;
   onExit: () => void;
 }
 
-export default function MatchEndScreen({
-  lobby,
-  player,
-  winnerId,
-  winType,
-  onRematch,
-  onExit,
-}: MatchEndScreenProps) {
-  const isWinner = player.id === winnerId;
-  const opponent =
-    lobby.players.find((p): p is Player => p !== null && p.id !== player.id) ??
-    lobby.players[1] ?? player;
-  const winnerName =
-    lobby.players[0]?.id === winnerId
-      ? lobby.players[0]?.username
-      : lobby.players[1]?.username;
+const TEAM = { blue: "var(--blue)", red: "var(--red)" } as const;
+const HOW: Record<string, string> = {
+  combat: "by destroying the Crystal",
+  control: "by holding the contested nodes",
+  timeout: "on time",
+};
 
-  const playerAccent = player.color === "blue" ? FCT.ice : FCT.red;
-  const opponentAccent = opponent.color === "blue" ? FCT.ice : FCT.red;
-
-  const rows = [
-    {
-      name: player.username,
-      score: player.score,
-      color: playerAccent,
-      isYou: true,
-      isWinner: isWinner,
-    },
-    {
-      name: opponent.username,
-      score: opponent.score,
-      color: opponentAccent,
-      isYou: false,
-      isWinner: opponent.id === winnerId,
-    },
-  ];
+export default function MatchEndScreen({ lobby, player, winnerId, winType, ticks, mapName, onRematch, onWatchReplay, onExit }: MatchEndScreenProps) {
+  const won = player.id === winnerId;
+  const players = lobby.players.filter((p): p is Player => p !== null);
+  const winner = players.find((p) => p.id === winnerId);
 
   return (
-    <FctFrame top="POST-MATCH">
-      <div
-        style={{
-          position: "absolute",
-          top: 36,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          padding: 56,
-          display: "grid",
-          gridTemplateRows: "auto 1fr auto",
-          gap: 32,
-        }}
-      >
-        {/* TOP — huge result */}
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 1200, display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+      background: "radial-gradient(ellipse at 50% 50%, rgba(4,6,12,0.35) 0%, rgba(4,6,12,0.75) 100%)",
+    }}>
+      <div className="g-glass strong g-enter" style={{ width: 460, maxWidth: "100%", padding: "26px 28px", display: "flex", flexDirection: "column", gap: 20 }}>
         <div>
-          <div
-            style={{
-              fontFamily: FCT.mono,
-              fontSize: 10,
-              color: FCT.inkDim,
-              letterSpacing: "0.32em",
-            }}
-          >
-            ▰ MATCH RESULT
+          <div className="g-label">Match over</div>
+          <div className="g-title" style={{ fontSize: 56, lineHeight: 1.05, marginTop: 6, color: won ? "var(--good)" : "var(--bad)" }}>
+            {won ? "Victory" : "Defeat"}
           </div>
-          <div
-            style={{
-              marginTop: 8,
-              fontFamily: FCT.display,
-              fontSize: 140,
-              lineHeight: 0.85,
-              letterSpacing: "-0.05em",
-              textTransform: "uppercase",
-              fontWeight: 700,
-            }}
-          >
-            {isWinner ? (
-              <Refract accent offset={2.5} style={{ fontStyle: "italic", fontWeight: 700 }}>
-                Victory.
-              </Refract>
-            ) : (
-              <span style={{ fontStyle: "italic", fontWeight: 700 }}>Defeat.</span>
-            )}
-          </div>
-          <div
-            style={{
-              marginTop: 10,
-              fontFamily: FCT.display,
-              fontSize: 22,
-              color: FCT.inkDim,
-              fontStyle: "italic",
-            }}
-          >
-            {winnerName} wins this match{winType === "control" ? " by holding the nodes" : winType === "timeout" ? " on time" : winType === "combat" ? " by destroying the crystal" : ""}.
-          </div>
+          <p className="g-sub" style={{ margin: "8px 0 0", fontSize: 14 }}>
+            {winner ? `${winner.username} wins` : "Match ended"}{winType && HOW[winType] ? ` ${HOW[winType]}` : ""}.
+          </p>
         </div>
 
-        {/* MIDDLE — scoreboard */}
-        <div style={{ alignSelf: "start" }}>
-          <FctPanel clip={HEX_CLIP} style={{ padding: 24 }}>
-            <div
-              style={{
-                fontFamily: FCT.mono,
-                fontSize: 10,
-                color: FCT.inkDim,
-                letterSpacing: "0.32em",
-                marginBottom: 14,
-              }}
-            >
-              ▰ SCOREBOARD
+        <div style={{ display: "flex", gap: 24 }}>
+          <div><div className="g-label">Length</div><div className="g-title" style={{ fontSize: 20, marginTop: 4 }}>{clock(ticks)}</div></div>
+          <div style={{ minWidth: 0 }}><div className="g-label">Map</div><div className="g-title" style={{ fontSize: 20, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{mapName}</div></div>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div className="g-label">Series</div>
+          {players.map((p) => (
+            <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: "rgba(255,255,255,0.04)", borderLeft: `3px solid ${TEAM[p.color]}` }}>
+              <span className="g-title" style={{ fontSize: 16, flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.username}</span>
+              {p.id === player.id && <span className="g-label" style={{ color: "var(--ink-faint)" }}>You</span>}
+              {p.id === winnerId && <Icon name="crystal" size={16} style={{ color: "var(--accent)" }} />}
+              <span className="g-title" style={{ fontSize: 18, color: TEAM[p.color], width: 24, textAlign: "right" }}>{p.score}</span>
             </div>
-            {rows.map((r, i) => (
-              <div
-                key={r.name}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "20px 1fr auto auto",
-                  gap: 16,
-                  alignItems: "center",
-                  padding: "14px 0",
-                  borderBottom:
-                    i < rows.length - 1 ? `1px solid ${FCT.line}` : "none",
-                }}
-              >
-                <span
-                  style={{
-                    width: 12,
-                    height: 12,
-                    background: r.color,
-                    transform: "rotate(45deg)",
-                    display: "inline-block",
-                  }}
-                />
-                <span
-                  style={{
-                    fontFamily: FCT.display,
-                    fontSize: 28,
-                    letterSpacing: "-0.02em",
-                    textTransform: "uppercase",
-                    fontWeight: 700,
-                  }}
-                >
-                  {r.name}
-                  {r.isYou && (
-                    <span
-                      style={{
-                        fontFamily: FCT.mono,
-                        fontSize: 10,
-                        color: FCT.inkDim,
-                        marginLeft: 10,
-                        letterSpacing: "0.22em",
-                      }}
-                    >
-                      · YOU
-                    </span>
-                  )}
-                </span>
-                <span
-                  style={{
-                    fontFamily: FCT.mono,
-                    fontSize: 10,
-                    color: r.isWinner ? FCT.green : FCT.inkFaint,
-                    letterSpacing: "0.22em",
-                  }}
-                >
-                  {r.isWinner ? "◆ WINNER" : "◇ DEFEAT"}
-                </span>
-                <span
-                  style={{
-                    fontFamily: FCT.display,
-                    fontSize: 36,
-                    color: r.color,
-                    fontWeight: 700,
-                    minWidth: 40,
-                    textAlign: "right",
-                  }}
-                >
-                  {r.score}
-                </span>
-              </div>
-            ))}
-          </FctPanel>
+          ))}
         </div>
 
-        {/* BOTTOM — actions */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <div
-            style={{
-              fontFamily: FCT.mono,
-              fontSize: 11,
-              color: FCT.inkDim,
-              letterSpacing: "0.22em",
-            }}
-          >
-            ▰ REMATCH RETURNS TO LOBBY · EXIT CLOSES IT
-          </div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <FctBtn danger onClick={onExit}>
-              ◀ Exit to Menu
-            </FctBtn>
-            <FctBtn primary sub="↵" onClick={onRematch}>
-              ◆ Rematch
-            </FctBtn>
-          </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+          <button type="button" className="g-btn primary" style={{ flex: 1 }} onClick={onRematch}><Icon name="play" size={16} />Rematch</button>
+          {onWatchReplay && <button type="button" className="g-btn" onClick={onWatchReplay}><Icon name="film" size={16} />Replay</button>}
+          <button type="button" className="g-btn" onClick={onExit}>Menu</button>
         </div>
       </div>
-    </FctFrame>
+    </div>
   );
 }
