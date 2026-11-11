@@ -36,6 +36,8 @@ import { loadGolden, runCase } from "../headless/src/goldenHashes.js";
 import { runMatch } from "../headless/src/runMatch.js";
 import { IdleBot } from "../headless/src/bots/index.js";
 import { episodeStatus, evalScore, TRAIN_MAX_TICKS } from "../headless/src/episode.js";
+import * as V2 from "../headless/src/v2/actions.js";
+import { frameFor, toOwnFrame, fromOwnFrame } from "../headless/src/v2/frame.js";
 import { existsSync as _existsSync, unlinkSync as _unlinkSync, writeFileSync as _writeFileSync } from "node:fs";
 import { resolve as _resolve, join as _join } from "node:path";
 
@@ -3167,6 +3169,132 @@ function goldenHashTests(): void {
 }
 
 /** Named map anchors (G-10 T3): valid, symmetric and reachable on every map. */
+function v2ActionTests(): void {
+  console.log("\n--- Action space v2 (G-10 T5) ---");
+  assertEqual(V2.ECON_SIZE, 94, "economy head has 94 entries");
+  assertEqual(V2.GROUPS.length * V2.ORDERS.length * V2.TARGET_SIZE, 9 * 7 * 54, "army head is 9 groups x 7 orders x 54 targets");
+  let roundTrip = true;
+  for (let i = 0; i < V2.ECON_SIZE; i++) if (V2.encodeEcon(V2.decodeEcon(i)) !== i) roundTrip = false;
+  assert(roundTrip, "every economy index decodes and re-encodes to itself");
+
+  const newMatch = (mapId: string, seed: number) => {
+    const engine = new MatchEngine();
+    const players: [PlayerSlot | null, PlayerSlot | null] = [
+      { playerId: "v2-blue", username: "Blue", color: "blue", score: 0 },
+      { playerId: "v2-red", username: "Red", color: "red", score: 0 },
+    ];
+    const match = engine.createMatch(`v2-${mapId}-${seed}`, players, { ...DEFAULT_CONFIG, mapId, maxTicks: 12000 }, seed);
+    engine.startMatch(match.id);
+    return { engine, match, seats: [V2.createSeatState(match, "v2-blue"), V2.createSeatState(match, "v2-red")] };
+  };
+  const lcg = (seed: number) => () => ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) / 2 ** 32);
+  const pickFrom = (rnd: () => number, m: boolean[], lo = 0, hi = m.length) => {
+    const idx: number[] = [];
+    for (let i = lo; i < hi; i++) if (m[i]) idx.push(i);
+    return idx.length ? idx[Math.floor(rnd() * idx.length)] : -1;
+  };
+
+  for (const mapId of ["glimmerfen", "shardfall"]) {
+    // Own frame: the transform is its own inverse.
+    const { engine, match, seats } = newMatch(mapId, 3);
+    const f = frameFor(match, "v2-red");
+    const p = { x: 1234, y: 456 };
+    assertEqual(JSON.stringify(fromOwnFrame(f, toOwnFrame(f, p))), JSON.stringify(p), `${mapId}: own-frame transform round-trips`);
+
+    // Both seats see the same masks while they play the same actions.
+    const rnd = lcg(777);
+    let same = 0;
+    for (let d = 0; d < 100; d++) {
+      for (const st of seats) V2.workerAutopilot(engine, match, st);
+      const ms = seats.map((st) => V2.computeMasks(match, st));
+      if (JSON.stringify(ms[0]) !== JSON.stringify(ms[1])) break;
+      same++;
+      const m = ms[0];
+      let econ = rnd() < 0.5 ? pickFrom(rnd, m.econ) : 0;
+      // A node that is its own image (rotate maps' centre node) is shared: whoever
+      // is applied first takes its slots, so the state stops being symmetric.
+      const ea = V2.decodeEcon(econ);
+      if (ea.kind === "assign" && seats[0].nodeSlots[ea.slot] === seats[1].nodeSlots[ea.slot]) econ = 0;
+      // New units spawn at a random angle that is not mirrored (engine/mirror.ts), so
+      // training also breaks the symmetry; the random-play test below covers training.
+      if (ea.kind === "train") econ = 0;
+      const group = pickFrom(rnd, m.group), order = pickFrom(rnd, m.order[group]), target = pickFrom(rnd, m.target[order]);
+      for (const st of seats) V2.applyV2(engine, match, st, { econ, group, order, target });
+      for (let t = 0; t < V2.DECISION_TICKS; t++) engine.tick(match.id);
+    }
+    assertEqual(same, 100, `${mapId}: both seats get identical masks for 100 mirrored decisions`);
+  }
+
+  for (const mapId of ["saltmarsh", "basalt-run"]) {
+    // P-8: every legal action does something, under random masked play.
+    const { engine, match, seats } = newMatch(mapId, 5);
+    const rnd = lcg(4242);
+    let decisions = 0, ineffective = 0, builds = 0, trains = 0, moves = 0, badTargets = 0;
+    while (match.phase === "playing" && match.tick < 3000) {
+      for (const st of seats) {
+        V2.workerAutopilot(engine, match, st);
+        const m = V2.computeMasks(match, st);
+        for (let o = 0; o < V2.ORDERS.length; o++) {
+          const want = V2.ORDERS[o] === "attack_move" || V2.ORDERS[o] === "move";
+          if (!want && (m.target[o].filter(Boolean).length !== 1 || !m.target[o][V2.TARGET_NONE])) badTargets++;
+        }
+        let econ = 0;
+        const r = rnd();
+        if (r < 0.45) econ = pickFrom(rnd, m.econ, V2.ECON_TRAIN0, V2.ECON_BUILD0);
+        else if (r < 0.9) econ = pickFrom(rnd, m.econ, V2.ECON_BUILD0, V2.ECON_ASSIGN0);
+        else if (r < 0.95) econ = pickFrom(rnd, m.econ, V2.ECON_ASSIGN0, V2.ECON_SIZE);
+        if (econ < 0) econ = 0;
+        const group = pickFrom(rnd, m.group), order = pickFrom(rnd, m.order[group]), target = pickFrom(rnd, m.target[order]);
+        const a = { econ, group, order, target };
+        if (!V2.isLegal(m, a)) ineffective++;
+        const res = V2.applyV2(engine, match, st, a);
+        decisions++;
+        if (!res.econEffective || !res.armyEffective) ineffective++;
+        const k = V2.decodeEcon(econ).kind;
+        if (k === "build") builds++;
+        if (k === "train") trains++;
+        if (V2.ORDERS[order] === "attack_move" || V2.ORDERS[order] === "move") moves++;
+      }
+      for (let t = 0; t < V2.DECISION_TICKS; t++) engine.tick(match.id);
+    }
+    assertEqual(ineffective, 0, `${mapId}: no ineffective legal actions in ${decisions} random masked decisions`);
+    assert(builds > 50 && trains > 50 && moves > 50, `${mapId}: random play exercised builds (${builds}), training (${trains}) and moves (${moves})`);
+    assertEqual(badTargets, 0, `${mapId}: hold/retreat/join orders only allow the none target`);
+    assert(seats.every((st) => st.stats.autopilot > 0), `${mapId}: worker autopilot sent idle workers to gather`);
+  }
+
+  {
+    // Armies, memory targets, autopilot.
+    const { engine, match, seats } = newMatch("glimmerfen", 9);
+    const st = seats[0];
+    V2.workerAutopilot(engine, match, st);
+    const idle = [...match.entities.values()].filter((e) => e.type === "worker" && e.ownerId === "v2-blue" && !e.gatheringNodeId);
+    assertEqual(idle.length, 0, "autopilot leaves no idle worker at the start");
+    let m = V2.computeMasks(match, st);
+    assert(!m.group[V2.GROUPS.indexOf("army_a")], "army A is masked while empty");
+    const base = st.targets[0];
+    engine.debugSpawn(match.id, "v2-blue", "gunner", base.x, base.y);
+    engine.debugSpawn(match.id, "v2-blue", "skirmisher", base.x, base.y + 30);
+    m = V2.computeMasks(match, st);
+    const gAll = V2.GROUPS.indexOf("all_combat"), gA = V2.GROUPS.indexOf("army_a"), gGun = V2.GROUPS.indexOf("gunners");
+    const oJoinA = V2.ORDERS.indexOf("join_a"), oMove = V2.ORDERS.indexOf("move"), oHold = V2.ORDERS.indexOf("hold");
+    assert(m.order[gGun][oJoinA] && !m.order[gGun][oHold], "idle gunners can join army A but not hold");
+    const joined = V2.applyV2(engine, match, st, { econ: 0, group: gGun, order: oJoinA, target: V2.TARGET_NONE });
+    assert(joined.armyEffective && st.armyA.size === 1, "join A puts the gunner in army A");
+    m = V2.computeMasks(match, st);
+    assert(m.group[gA] && !m.order[gA][oJoinA], "army A is now a group, and can't join itself");
+    const enemyBase = V2.ANCHOR_TARGETS.slice(0, 6).reduce((n, [, c]) => n + c, 0);
+    const moved = V2.applyV2(engine, match, st, { econ: 0, group: gA, order: oMove, target: enemyBase });
+    assert(moved.armyEffective && moved.accepted.length === 1, "army A moves as one group of 1");
+    const ab = V2.applyV2(engine, match, st, { econ: 0, group: gAll, order: V2.ORDERS.indexOf("join_b"), target: V2.TARGET_NONE });
+    assert(ab.armyEffective && st.armyB.size === 2 && st.armyA.size === 0, "join B moves both units out of army A");
+    assert(!m.target[V2.ORDERS.indexOf("move")][V2.TARGET_MEMORY0], "empty memory slot is not a target");
+    st.memory[0] = { x: 3000, y: 1000 };
+    m = V2.computeMasks(match, st);
+    assert(m.target[V2.ORDERS.indexOf("move")][V2.TARGET_MEMORY0], "filled memory slot is a move target");
+  }
+}
+
 function truncationTests(): void {
   console.log("\n--- Truncation at the cap (G-10 T4, P-4) ---");
   assertEqual(TRAIN_MAX_TICKS, 12000, "training cap is 12,000 ticks");
@@ -3247,6 +3375,7 @@ function anchorTests(): void {
 void (async () => {
   anchorTests();
   truncationTests();
+  v2ActionTests();
   await determinismTests();
   await loadGateTests();
   goldenHashTests();
