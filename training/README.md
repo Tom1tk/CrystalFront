@@ -1,5 +1,7 @@
 # Crystal Front — ML Training Pipeline
 
+> 🛑 **STALE (2026-11-11).** These commands drive the old curriculum trainer, which is being replaced. See `docs/ML_RETRAIN_PLAN.md` and `docs/ML_RETRAIN_IMPLEMENTATION.md`. To be rewritten at milestone M1.
+
 PPO-based reinforcement learning for Crystal Front RTS.
 
 ## Setup

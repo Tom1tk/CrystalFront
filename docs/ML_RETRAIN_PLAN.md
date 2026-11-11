@@ -1,6 +1,6 @@
 # ML_RETRAIN_PLAN — G-10: an adaptive decision-making bot (v2)
 
-**Status:** DRAFT v2 for review (2026-11-10). **No training starts until the sign-off table (§13) is ✅.**
+**Status:** **APPROVED by the user, 2026-11-11** (every item in §13). **Not started:** the user asked that work not begin yet. Implementation guide for the implementing agent: `docs/ML_RETRAIN_IMPLEMENTATION.md`.
 **v2 = v1 audited against the published record of AlphaStar, OpenAI Five and their successors, and against our own harness code.** The audit found 14 problems in v1, 5 of them serious (§2). v1 is in git history (`37e86f3`).
 **Supersedes:** `REVIVAL_PLAN.md` Task 3.2 onward and the 21-stage scripted curriculum.
 
@@ -80,6 +80,7 @@ All of these get re-verified on pool maps in M0.
 - **No timeouts.** Games ended between 2,591 and 13,829 ticks. Most ended by 4,500; rush vs turtle on glimmerfen ran to 13,000+.
 - **Both win types occur:** crystal kills (rush mirrors, heavy vs rush) and control wins (anything involving turtle or macro).
 - **Turtle wins most pairings by control:** 12/12 vs rush_medium, 12/12 vs heavy, 10/12 vs rush, 6/12 vs macro. Rush no longer dominates, but a passive control strategy may. 4 games per pairing is a small sample; P-6 runs it properly.
+- This agrees with the game update's own balance gate (U5, 960 games, cap 6,000, `headless/src/balance.ts`): turtle scored 100% vs rush, 57% vs macro, 100% vs heavy. It passed that gate only because macro contests turtle, and the diary notes the counter triangle "is only partly there".
 
 ### 3.3 Throughput (new)
 - `npm run bench`: 3,232 ticks/s on classic, about 2,100 on pool maps. It was 5,315 on classic after the movement update.
@@ -283,8 +284,8 @@ All on fixed seeds, both seats, with 95% intervals. A gate is passed when the **
 
 | Milestone | Contents | Gate | Time box |
 |---|---|---|---|
-| **M0: Harness** | P-1…P-10 | all done; balance matrix reviewed with you | ~2 weeks of build work |
-| **M1: First learner** | new observation and actions, LSTM, BC, then PPO vs the scripted pool only. No self-play yet | all probes pass; BC ≥40%; after PPO, E-1 ≥70% on training maps; your first playtest | 1 week |
+| **M0: Harness** | P-1…P-10. This includes the environment side of the new observation and action space (§5), because the two-seat runner, the scripted bots and the harness checks can't be built or tested without them | all done; balance matrix reviewed with you | ~2 weeks of build work |
+| **M1: First learner** | the network on the new observation and actions, LSTM, BC, then PPO vs the scripted pool only. No self-play yet | all probes pass; BC ≥40%; after PPO, E-1 ≥70% on training maps; your first playtest | 1 week |
 | **M2: Self-play** | 80/20 + scripted pool, `z` conditioning, opponent-model head feeding the policy, all 8 maps | E-1, E-9; beats the M1 agent ≥70%; no rush-collapse alarms | 1–2 weeks |
 | **M3: Robust and adaptive** | 2–3 exploiter cycles; switcher pressure; reward mix toward win/loss | E-2 to E-8; your playtest | 2 weeks |
 | **M4: Ship** | neural inference in the server (new: ONNX runtime, LSTM state per match, parity tests on sequences); Easy/Normal/Hard as snapshots | **your explicit go-ahead** | 3–4 days |
@@ -311,22 +312,22 @@ Within M1 and M2, components are added in this order, each tested against the la
 
 ## 13. Sign-off
 
-Mark each ✅ (approved), ✏️ (change, with a note) or ❌ (drop).
+All items were approved by the user on 2026-11-11 ("All approved by me").
 
 | ID | Item | Recommendation | Your call |
 |---|---|---|---|
-| P-1…P-10 | Prerequisites (§4), ~2 weeks before any training | do all | ⬜ |
-| R-1 | Observation: own-frame, grid, enemy memory, full-state critic (§5.1) | as written | ⬜ |
-| R-2 | Actions: two parallel heads, anchors and memory targets, 2 armies (§5.2) | as written | ⬜ |
-| R-3 | Policy: LSTM core, three value heads, opponent-model head (§6) | as written | ⬜ |
-| R-4 | Imitation start with KL protection (§7.1) | required, not optional | ⬜ |
-| R-5 | Strategy token `z` (§7.2) | as written | ⬜ |
-| R-6 | One learner, 50/25/25 self-play pool, exploiter cycles instead of a permanent league (§7.3) | as written | ⬜ |
-| R-7 | Reward: per-head discounts, zero-sum shaping floored at 0.1, 12,000-tick truncation (§7.4) | as written | ⬜ |
-| R-8 | LLM strategist deferred (§8) | defer | ⬜ |
-| R-9 | Probes, rules and stop rule (§9) | as written | ⬜ |
-| R-10 | Evaluation metrics and bars (§10) | bars can be tuned | ⬜ |
-| R-11 | Milestones and time boxes (§11) | as written | ⬜ |
+| P-1…P-10 | Prerequisites (§4), ~2 weeks before any training | do all | ✅ 2026-11-11 |
+| R-1 | Observation: own-frame, grid, enemy memory, full-state critic (§5.1) | as written | ✅ 2026-11-11 |
+| R-2 | Actions: two parallel heads, anchors and memory targets, 2 armies (§5.2) | as written | ✅ 2026-11-11 |
+| R-3 | Policy: LSTM core, three value heads, opponent-model head (§6) | as written | ✅ 2026-11-11 |
+| R-4 | Imitation start with KL protection (§7.1) | required, not optional | ✅ 2026-11-11 |
+| R-5 | Strategy token `z` (§7.2) | as written | ✅ 2026-11-11 |
+| R-6 | One learner, 50/25/25 self-play pool, exploiter cycles instead of a permanent league (§7.3) | as written | ✅ 2026-11-11 |
+| R-7 | Reward: per-head discounts, zero-sum shaping floored at 0.1, 12,000-tick truncation (§7.4) | as written | ✅ 2026-11-11 |
+| R-8 | LLM strategist deferred (§8) | defer | ✅ 2026-11-11 |
+| R-9 | Probes, rules and stop rule (§9) | as written | ✅ 2026-11-11 |
+| R-10 | Evaluation metrics and bars (§10) | bars can be tuned | ✅ 2026-11-11 |
+| R-11 | Milestones and time boxes (§11) | as written | ✅ 2026-11-11 |
 
 **Decisions (user, 2026-11-10):**
 1. **Held-out maps: `prism-ridge` and `duskvale`** (my pick, as delegated). Prism Ridge is the most open map in the pool (middle terrain density 0.18) and uses rotational symmetry; Duskvale is among the most terrain-heavy (0.25) and uses mirror symmetry. That leaves 4 rotate and 4 mirror maps for training. Provisional until the map sign-off (P-10): if either map is rejected, the nearest match replaces it.
@@ -351,4 +352,4 @@ Mark each ✅ (approved), ✏️ (change, with a note) or ❌ (drop).
 - "JEV-Star: Fast, Low-Cost StarCraft II Control with Language-Model Planning", 2026: https://arxiv.org/abs/2609.27331
 - "LLM-Guided Reinforcement Learning for Adaptive NPC Behavior in Multi-Agent Combat Games", 2026: https://arxiv.org/abs/2609.02931
 
-RAISocketAI's figures here come from a machine summary of the paper's HTML and should be re-checked against the paper before we copy any hyperparameter. The survey and Minimax Exploiter were located but not read in depth.
+RAISocketAI's hyperparameters (per-head γ of 0.99 / 0.999 / 0.999, λ of 0.95 / 0.99 / 0.99, 24 envs with 12 latest-self and 12 older-self, 512-step rollouts, 2 epochs, clip 0.1) were re-checked against the paper's own table on 2026-11-11. The survey and Minimax Exploiter were located but not read in depth.

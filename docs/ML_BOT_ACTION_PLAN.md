@@ -2792,3 +2792,17 @@ Verified: `npm test` 470/470, `training.test_env` PASS, `test_config_persistence
   - audio packs;
   - ramps and effects;
   - team colour is weak on the skirmisher and gunner models (hair and helmet colours aren't in the recoloured hue range), so the rings carry team identity.
+
+### 2026-11-11 — G-10: retrain plan v2 approved; hand-off prepared (no implementation yet)
+- **What happened:**
+  - `docs/ML_RETRAIN_PLAN.md` v1 was drafted, then audited at the user's request against the AlphaStar, OpenAI Five, ROA-Star and microRTS (RAISocketAI, UECD) literature and against the harness code. The audit found 14 problems (F-1…F-14 in the plan); v2 replaces v1.
+  - The user approved every item (P-1…P-10, R-1…R-11) and answered the five open questions (plan §13).
+  - The user asked that **work not begin yet**. This session was planning and research only.
+  - `docs/ML_RETRAIN_IMPLEMENTATION.md` is the execution guide for the implementing agent.
+  - `ML_AGENT.md`, `REVIVAL_PLAN.md` and `training/README.md` now carry stale/superseded banners.
+- **Measured for the plan (no code changed):**
+  - Bench: 3,232 ticks/s on classic, about 2,100 on pool maps (5,315 on classic at U2). Profile: `tick` self 25%, movement 19%, visibility 11%, pathfinding ~10%, observation 6%.
+  - Game length with an 18,000 cap (5 bots, 3 maps, 4 games per pairing): 2,591–13,829 ticks, no timeouts. The 6,000 cap used so far cuts real games short.
+  - Turtle won most pairings by control in that sample, consistent with the U5 gate matrix (turtle 100/57/100).
+- **Facts that were wrong in earlier notes:** the harness has no self-play (the learner is hard-wired as blue; checkpoint opponents were never playable), and the live server has no neural inference (no `models/`, no ONNX runtime).
+- **Next:** wait for the user's go-ahead, then M0 task T0 in the implementation guide. The 3D polish the user approved earlier is also still pending.

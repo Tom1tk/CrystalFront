@@ -1,5 +1,7 @@
 # Crystal Front — ML Agent (technical reference)
 
+> 🛑 **STALE (2026-11-11).** This describes the old 81-action, memoryless agent and a shipped model that no longer exists (there is no `models/` directory, no `CrystalFront-ML` branch, and the live server runs no neural bot). The current design is `docs/ML_RETRAIN_PLAN.md`; the execution guide is `docs/ML_RETRAIN_IMPLEMENTATION.md`. This file is to be rewritten at milestone M1.
+
 > ⚠️ **2026-06 diagnosis:** curriculum results recorded before v0.5.0-ML were affected by a
 > config-override bug (see `docs/REVIVAL_PLAN.md` §0). Treat stage-clearance history as
 > unreliable. The §3 action table below was regenerated from `actionIndex.ts` on 2026-06-09
