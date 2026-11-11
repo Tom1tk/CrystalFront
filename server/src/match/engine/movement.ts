@@ -1,6 +1,6 @@
 import { UNIT_DEFS, SIMULATION, TERRAIN } from "@crystalfront/shared";
 import type { MatchState } from "../types.js";
-import { dist, buildSpatialGrid, getRange, entityIdNum } from "./utils.js";
+import { dist, getRange, entityIdNum } from "./utils.js";
 import { footprintOf, pushOutOfRect, type Rect } from "./navGrid.js";
 import { isObstacleCode, terrainAt, T_ROUGH, type Terrain } from "./terrain.js";
 import { cellOf, hasLineOfSight, planPath } from "./pathfinding.js";
@@ -177,20 +177,35 @@ export function processMovement(match: MatchState): void {
   // does not depend on iteration order: mirror-symmetric states stay mirror-symmetric.
   const mobile = entities.filter((e) => e.type !== "crystal" && e.type !== "building");
   const cellSize = SIMULATION.spatialCellSize;
+  // Numeric cell keys, index arrays and per-index accumulators (T2 speed-up). The
+  // traversal and summation order is exactly the old string-keyed version's, so the
+  // floating-point results are bit-identical (golden hashes).
+  const n = mobile.length;
+  const idn = mobile.map((e) => entityIdNum(e.id));
+  const pushX = new Float64Array(n);
+  const pushY = new Float64Array(n);
+  const touched = new Uint8Array(n);
+  const cellKey = (cx: number, cy: number) => cx * 100003 + cy;
   for (let pass = 0; pass < 2; pass++) {
-    const grid = buildSpatialGrid(mobile, cellSize);
-    const pushX = new Map<string, number>();
-    const pushY = new Map<string, number>();
-    for (const entity of mobile) {
+    const grid = new Map<number, number[]>();
+    for (let i = 0; i < n; i++) {
+      const key = cellKey(Math.floor(mobile[i].x / cellSize), Math.floor(mobile[i].y / cellSize));
+      const cell = grid.get(key);
+      if (cell) cell.push(i); else grid.set(key, [i]);
+    }
+    pushX.fill(0); pushY.fill(0); touched.fill(0);
+    for (let i = 0; i < n; i++) {
+      const entity = mobile[i];
       const cx = Math.floor(entity.x / cellSize);
       const cy = Math.floor(entity.y / cellSize);
       for (let ddx = -1; ddx <= 1; ddx++) {
         for (let ddy = -1; ddy <= 1; ddy++) {
-          const cell = grid.get(`${cx + ddx},${cy + ddy}`);
+          const cell = grid.get(cellKey(cx + ddx, cy + ddy));
           if (!cell) continue;
-          for (const other of cell) {
+          for (const j of cell) {
             // Each unordered pair once (numeric id order; "e10" < "e9" lexicographically).
-            if (entityIdNum(other.id) <= entityIdNum(entity.id)) continue;
+            if (idn[j] <= idn[i]) continue;
+            const other = mobile[j];
             const dx = other.x - entity.x;
             const dy = other.y - entity.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
@@ -199,20 +214,17 @@ export function processMovement(match: MatchState): void {
               const push = (minDist - distance) * 0.5;
               const px = (dx / distance) * push;
               const py = (dy / distance) * push;
-              pushX.set(entity.id, (pushX.get(entity.id) ?? 0) - px);
-              pushY.set(entity.id, (pushY.get(entity.id) ?? 0) - py);
-              pushX.set(other.id, (pushX.get(other.id) ?? 0) + px);
-              pushY.set(other.id, (pushY.get(other.id) ?? 0) + py);
+              pushX[i] -= px; pushY[i] -= py; touched[i] = 1;
+              pushX[j] += px; pushY[j] += py; touched[j] = 1;
             }
           }
         }
       }
     }
-    for (const entity of mobile) {
-      const px = pushX.get(entity.id);
-      if (px === undefined) continue;
-      entity.x += px;
-      entity.y += pushY.get(entity.id)!;
+    for (let i = 0; i < n; i++) {
+      if (!touched[i]) continue;
+      mobile[i].x += pushX[i];
+      mobile[i].y += pushY[i];
     }
   }
 

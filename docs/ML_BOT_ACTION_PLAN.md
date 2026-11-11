@@ -2879,3 +2879,9 @@ Verified: `npm test` 470/470, `training.test_env` PASS, `test_config_persistence
 - Play and Lobby map cards list only the pool maps; Testbed and Classic stay in Solo test.
 - An opponent who quits a PvP match keeps their name and score on the HUD and the result screen (the client remembers the match's players by id until you leave).
 - Legacy vitest `server/src/match/matchEngine.test.ts` updated to current rules (counters 1.5×/0.75×, attacks land a tick after acquiring, retreat keeps auto-attack, 3 starting workers' supply); 85/85 pass and `npm test` now runs it.
+
+### 2026-11-11 — G-10 M0 T2 (P-5), part 1: engine throughput without behaviour change
+- **Change:** the movement separation pass uses numeric cell keys, index arrays and typed push buffers (same summation order); the attack-log prune trims from the front instead of filtering every tick; the unused `buildSpatialGrid` helper is removed.
+- **Check:** all 156 golden engine hashes still match, so the simulation is unchanged.
+- **Bench (12 matches, idle CPU), before → after:** classic 3,316 → 4,071 ticks/s; shardfall 2,312 → 2,736; prism-ridge 2,365 → 2,819.
+- **Found while profiling:** about 10,000 of the ~10,700 A* searches in the bench came from workers sent to build a supply depot whose straight line to it crosses another building. The approach point lands next to the worker, out of build range, so the worker "arrives", gets re-sent, and re-plans every tick, and the depot is never built. Fixed separately in part 2 because it changes behaviour.

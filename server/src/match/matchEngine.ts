@@ -1099,7 +1099,12 @@ if (command.type === "gather") {
 
     match.tick++;
     const currentTick = match.tick;
-    match.attackLog = match.attackLog.filter(evt => currentTick - evt.tick < SIMULATION.attackLogRetention);
+    // Events are appended in tick order, so expired ones are a prefix. Always a fresh
+    // array: replay snapshots keep a reference to the previous tick's log.
+    const log = match.attackLog;
+    let expired = 0;
+    while (expired < log.length && currentTick - log[expired].tick >= SIMULATION.attackLogRetention) expired++;
+    match.attackLog = log.slice(expired);
 
     // Phase 0: shift-queued orders of idle units (G-9f)
     this.runOrderQueues(match);

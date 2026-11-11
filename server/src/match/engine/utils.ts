@@ -23,16 +23,6 @@ export function dist(x1: number, y1: number, x2: number, y2: number): number {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
-export function buildSpatialGrid(entities: MatchEntity[], cellSize: number): Map<string, MatchEntity[]> {
-  const grid = new Map<string, MatchEntity[]>();
-  for (const entity of entities) {
-    const key = `${Math.floor(entity.x / cellSize)},${Math.floor(entity.y / cellSize)}`;
-    if (!grid.has(key)) grid.set(key, []);
-    grid.get(key)!.push(entity);
-  }
-  return grid;
-}
-
 // Numeric value of an entity id like "e10" -> 10. Lexicographic comparison of
 // these ids is wrong once the counter reaches double digits (e.g. "e10" < "e9").
 export function entityIdNum(id: string): number {
