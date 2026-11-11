@@ -1633,6 +1633,7 @@ describe("Death & Cleanup", () => {
     expect(match.phase).toBe("ended");
     expect(match.result).not.toBeNull();
     expect(match.result!.winner).toBe("p2");
+    expect(match.result!.winType).toBe("combat");
   });
 });
 

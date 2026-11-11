@@ -40,6 +40,7 @@ const P: Record<string, ReactNode> = {
   check: <path d="M5 12.5l4.5 4.5L19 7.5" fill="none" />,
   clock: <><circle cx="12" cy="12" r="8.5" fill="none" /><path d="M12 7v5l3.5 2" fill="none" /></>,
   crystal: <path d="M12 2.5l6 7-6 12-6-12z" fill="none" />,
+  star: <path d="M12 3.5l2.6 5.5 6 .7-4.4 4.1 1.2 5.9L12 16.8l-5.4 2.9 1.2-5.9-4.4-4.1 6-.7z" fill="none" />,
 };
 export type IconName = keyof typeof P;
 

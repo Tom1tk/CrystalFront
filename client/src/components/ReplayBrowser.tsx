@@ -1,5 +1,6 @@
-import { useEffect, useState, useCallback, useRef } from "react";
-import { FCT, FctFrame, FctPanel, HEX_CLIP, FctBtn } from "../design/facet";
+import { useEffect, useState, useCallback } from "react";
+import { Icon, IconBtn, PageTitle } from "../design/glass";
+import { fetchMaps, MapThumb, type MapInfo } from "./MapPicker";
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
@@ -11,6 +12,7 @@ interface ReplayMeta {
   outcome: { winner: string | null; winnerName?: string | null; winType?: string | null; ticks: number };
   durationSecs: number;
   version: string;
+  mapId?: string;
   timestamp: number;
   winType?: string | null;
   blueUnits?: Record<string, number>;
@@ -34,11 +36,18 @@ const STARRED_KEY  = "crystalfront_starred_replays";
 const PAGE_SIZES   = [10, 30, 50, 100] as const;
 type SortField     = "timestamp" | "seed" | "ticks" | "winner";
 
-const KNOWN_FLAGS: { id: string; label: string; color: string }[] = [
-  { id: "fast",         label: "⚡ Fast",     color: FCT.green  },
-  { id: "lopsided",     label: "⚔ Lopsided", color: FCT.red    },
-  { id: "control_win",  label: "⚑ Control",  color: FCT.amber  },
-  { id: "scrappy",      label: "💀 Scrappy",  color: "#cc44ff"  },
+const KNOWN_FLAGS: { id: string; label: string }[] = [
+  { id: "fast",        label: "Fast" },
+  { id: "lopsided",    label: "Lopsided" },
+  { id: "control_win", label: "Control win" },
+  { id: "scrappy",     label: "Scrappy" },
+];
+const SORTS: Array<{ id: string; label: string; field: SortField; asc: boolean }> = [
+  { id: "new",   label: "Newest",   field: "timestamp", asc: false },
+  { id: "old",   label: "Oldest",   field: "timestamp", asc: true },
+  { id: "long",  label: "Longest",  field: "ticks",     asc: false },
+  { id: "short", label: "Shortest", field: "ticks",     asc: true },
+  { id: "seed",  label: "Seed",     field: "seed",      asc: true },
 ];
 
 // ── localStorage ──────────────────────────────────────────────────────────────
@@ -53,29 +62,24 @@ function saveStarred(s: Set<string>) {
 
 // ── display helpers ───────────────────────────────────────────────────────────
 
+const TEAM = { blue: "var(--blue)", red: "var(--red)" } as const;
+const WIN_TYPE: Record<string, string> = { combat: "Crystal destroyed", control: "Node control", timeout: "Time" };
+
 function formatDuration(secs: number): string {
   const m = Math.floor(secs / 60), s = Math.floor(secs % 60);
-  return m > 0 ? `${m}m ${s.toString().padStart(2, "0")}s` : `${s}s`;
+  return `${m}:${s.toString().padStart(2, "0")}`;
 }
-function outcomeLabel(r: ReplayMeta) {
+function formatDate(ts: number): string {
+  if (!ts) return "";
+  return new Date(ts).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+function winnerSide(r: ReplayMeta): "blue" | "red" | null {
   const w = r.outcome.winner;
-  if (!w) return { text: "Draw", color: FCT.inkDim };
-  const isBlueWin = w === "blue" || w.includes("blue");
-  // Prefer explicit winnerName; fall back to username lookup by color
-  const name = r.outcome.winnerName ?? (isBlueWin ? r.blue : r.red);
-  return isBlueWin
-    ? { text: `${name} wins`, color: FCT.ice }
-    : { text: `${name} wins`, color: FCT.red };
+  if (!w) return null;
+  return w === "blue" || w.includes("blue") ? "blue" : "red";
 }
-function winTypeBadge(wt: string | null | undefined) {
-  if (!wt)               return { text: "—",          color: FCT.inkFaint };
-  if (wt === "combat")   return { text: "⚔ Combat",   color: FCT.red      };
-  if (wt === "control")  return { text: "⚑ Control", color: FCT.amber    };
-  if (wt === "timeout")  return { text: "⏳ Time",    color: FCT.inkDim   };
-  return { text: wt, color: FCT.inkFaint };
-}
-function flagStyle(id: string) {
-  return KNOWN_FLAGS.find(f => f.id === id) ?? { label: id, color: FCT.inkFaint };
+function flagLabel(id: string) {
+  return KNOWN_FLAGS.find(f => f.id === id)?.label ?? id;
 }
 function unitsSummary(units?: Record<string, number>) {
   if (!units || !Object.keys(units).length) return "—";
@@ -103,8 +107,6 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
   const [filterBot,     setFilterBot]     = useState("");
   const [filterStarred, setFilterStarred] = useState(false);
   const [filterFlags,   setFilterFlags]   = useState<Set<string>>(new Set());
-  const [flagMenuOpen,  setFlagMenuOpen]  = useState(false);
-  const flagMenuRef = useRef<HTMLDivElement>(null);
 
   // Sort + page
   const [sortField, setSortField] = useState<SortField>("timestamp");
@@ -143,22 +145,14 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
       setReplays([]); setTotal(0); setLoading(false); return;
     }
 
+    // Ignore a response that arrives after a newer request (filters changed meanwhile).
+    let stale = false;
     fetch(`/api/replays?${params}`)
       .then(r => r.json())
-      .then(d => { setReplays(d.replays ?? []); setTotal(d.total ?? 0); setLoading(false); })
-      .catch(() => { setError("Could not load replays."); setLoading(false); });
+      .then(d => { if (stale) return; setReplays(d.replays ?? []); setTotal(d.total ?? 0); setLoading(false); })
+      .catch(() => { if (stale) return; setError("Could not load replays."); setLoading(false); });
+    return () => { stale = true; };
   }, [page, pageSize, sortField, sortAsc, filterWinner, filterWinType, debouncedBot, filterFlags, filterStarred, starred]);
-
-  // Close flag dropdown when clicking outside
-  useEffect(() => {
-    if (!flagMenuOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (flagMenuRef.current && !flagMenuRef.current.contains(e.target as Node))
-        setFlagMenuOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [flagMenuOpen]);
 
   const toggleStar = useCallback((id: string) => {
     setStarred(prev => {
@@ -181,279 +175,125 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
   const hasFilters  = filterWinner !== "all" || filterWinType !== "all"
     || filterBot.trim() || filterStarred || filterFlags.size > 0;
 
-  function toggleSort(field: SortField) {
-    if (sortField === field) setSortAsc(a => !a);
-    else { setSortField(field); setSortAsc(false); }
-  }
-
-  const COLS = "30px 80px 60px 100px 100px 130px 80px 90px 1fr 60px 60px";
+  const [maps, setMaps] = useState<MapInfo[]>([]);
+  useEffect(() => { void fetchMaps().then(setMaps); }, []);
+  const sortId = SORTS.find(o => o.field === sortField && o.asc === sortAsc)?.id ?? "new";
 
   return (
-    <FctFrame top="BOT REPLAYS">
-      <div style={{
-        position: "absolute", top: 36, left: 0, right: 0, bottom: 0,
-        padding: 20, display: "flex", flexDirection: "column", gap: 10,
-      }}>
+    <div style={{ position: "relative", zIndex: 1, width: "100%", height: "100%", display: "flex", padding: "clamp(20px, 4vh, 48px) clamp(20px, 4vw, 64px)" }}>
+      <div className="g-glass g-enter" style={{ width: 1000, maxWidth: "100%", display: "flex", flexDirection: "column", minHeight: 0, alignSelf: "stretch" }}>
+        <div style={{ padding: "18px 22px 0", display: "flex", flexDirection: "column", gap: 14 }}>
+          <PageTitle label={`${total} match${total === 1 ? "" : "es"}`} title="Replays" right={<IconBtn icon="back" title="Back" small onClick={onBack} />} />
 
-        {/* ── Header ── */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ fontFamily: FCT.mono, fontSize: 11, color: FCT.inkDim, letterSpacing: "0.28em" }}>
-            ▰ BOT REPLAYS · {total} total
-          </div>
-          <FctBtn sub="ESC" onClick={onBack} style={{ padding: "6px 18px" }}>← Back</FctBtn>
-        </div>
-
-        {/* ── Filter bar ── */}
-        <div style={{
-          display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap",
-          fontFamily: FCT.mono, fontSize: 11, color: FCT.inkFaint,
-        }}>
-
-          {/* Starred */}
-          <button onClick={() => setFilterStarred(v => !v)} style={filterToggleStyle(filterStarred, FCT.amber)}>
-            {filterStarred ? "★ Starred" : "☆ Starred"}
-          </button>
-
-          {/* Winner */}
-          <span>Winner:</span>
-          <select value={filterWinner} onChange={e => setFilterWinner(e.target.value)} style={selectStyle}>
-            <option value="all">All</option>
-            <option value="blue">Blue</option>
-            <option value="red">Red</option>
-            <option value="draw">Draw</option>
-          </select>
-
-          {/* Win type */}
-          <span>Type:</span>
-          <select value={filterWinType} onChange={e => setFilterWinType(e.target.value)} style={selectStyle}>
-            <option value="all">All</option>
-            <option value="combat">Combat</option>
-            <option value="control">Control</option>
-            <option value="timeout">Timeout</option>
-          </select>
-
-          {/* Bot name search */}
-          <span>Bot:</span>
-          <input
-            type="text" placeholder="idle, rush, ppo…"
-            value={filterBot} onChange={e => setFilterBot(e.target.value)}
-            style={{ ...selectStyle, width: 110 }}
-          />
-
-          {/* Flag multi-select dropdown */}
-          <div ref={flagMenuRef} style={{ position: "relative" }}>
-            <button
-              onClick={() => setFlagMenuOpen(v => !v)}
-              style={filterToggleStyle(filterFlags.size > 0, "#cc44ff")}
-            >
-              {filterFlags.size > 0
-                ? `Flags: ${[...filterFlags].map(f => flagStyle(f).label).join(", ")}`
-                : `Flags ▾`}
+          {/* Filters */}
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <input className="g-input" type="text" placeholder="Search player or bot" aria-label="Search player or bot"
+              value={filterBot} onChange={e => setFilterBot(e.target.value)} style={{ width: 190, padding: "7px 10px" }} />
+            <Seg value={filterWinner} onChange={setFilterWinner} options={[["all", "Any winner"], ["blue", "Blue"], ["red", "Red"], ["draw", "Draw"]]} />
+            <Seg value={filterWinType} onChange={setFilterWinType} options={[["all", "Any result"], ["combat", "Crystal"], ["control", "Nodes"], ["timeout", "Time"]]} />
+            <button type="button" className={`g-btn small${filterStarred ? " primary" : ""}`} onClick={() => setFilterStarred(v => !v)}>
+              <Icon name="star" size={14} />Starred
             </button>
-            {flagMenuOpen && (
-              <div style={{
-                position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 200,
-                background: FCT.bgPanel, border: `1px solid ${FCT.lineHi}`,
-                borderRadius: 6, padding: "6px 0", minWidth: 160,
-                boxShadow: "0 4px 16px #0006",
-              }}>
-                {KNOWN_FLAGS.map(f => (
-                  <label key={f.id} style={{
-                    display: "flex", alignItems: "center", gap: 8,
-                    padding: "6px 14px", cursor: "pointer",
-                    fontFamily: FCT.mono, fontSize: 11, color: f.color,
-                    background: filterFlags.has(f.id) ? f.color + "18" : "transparent",
-                  }}>
-                    <input type="checkbox" checked={filterFlags.has(f.id)}
-                      onChange={() => toggleFlag(f.id)}
-                      style={{ accentColor: f.color, cursor: "pointer" }} />
-                    {f.label}
-                  </label>
-                ))}
-                {filterFlags.size > 0 && (
-                  <div onClick={() => setFilterFlags(new Set())} style={{
-                    padding: "5px 14px", borderTop: `1px solid ${FCT.line}`,
-                    fontFamily: FCT.mono, fontSize: 10, color: FCT.inkFaint,
-                    cursor: "pointer", marginTop: 4,
-                  }}>
-                    Clear flags
-                  </div>
-                )}
-              </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <span className="g-label">Flags</span>
+            {KNOWN_FLAGS.map(f => (
+              <button key={f.id} type="button" className={`g-btn small ghost${filterFlags.has(f.id) ? " primary" : ""}`} onClick={() => toggleFlag(f.id)}>{f.label}</button>
+            ))}
+            <span style={{ flex: 1 }} />
+            <label className="g-label" style={{ display: "flex", alignItems: "center", gap: 6 }}>Sort
+              <select className="g-input" value={sortId} style={{ width: "auto", padding: "5px 8px" }}
+                onChange={e => { const o = SORTS.find(x => x.id === e.target.value)!; setSortField(o.field); setSortAsc(o.asc); }}>
+                {SORTS.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+              </select>
+            </label>
+            <label className="g-label" style={{ display: "flex", alignItems: "center", gap: 6 }}>Show
+              <select className="g-input" value={pageSize} style={{ width: "auto", padding: "5px 8px" }} onChange={e => setPageSize(Number(e.target.value))}>
+                {PAGE_SIZES.map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </label>
+            {hasFilters && (
+              <button type="button" className="g-btn small ghost" onClick={() => {
+                setFilterWinner("all"); setFilterWinType("all");
+                setFilterBot(""); setFilterStarred(false);
+                setFilterFlags(new Set());
+              }}>Clear</button>
             )}
           </div>
-
-          {/* Page size */}
-          <span>Show:</span>
-          <select value={pageSize} onChange={e => setPageSize(Number(e.target.value))} style={selectStyle}>
-            {PAGE_SIZES.map(n => <option key={n} value={n}>{n}</option>)}
-          </select>
-
-          {hasFilters && (
-            <FctBtn style={{ padding: "3px 10px", fontSize: 10 }} onClick={() => {
-              setFilterWinner("all"); setFilterWinType("all");
-              setFilterBot(""); setFilterStarred(false);
-              setFilterFlags(new Set());
-            }}>Clear all</FctBtn>
-          )}
         </div>
 
-        {/* ── Table ── */}
-        <FctPanel clip={HEX_CLIP} style={{ flex: 1, overflow: "hidden", padding: 0 }}>
-          {/* Column headers */}
-          <div style={{
-            display: "grid", gridTemplateColumns: COLS,
-            padding: "8px 14px", borderBottom: `1px solid ${FCT.lineHi}`,
-            fontFamily: FCT.mono, fontSize: 10, color: FCT.inkFaint, letterSpacing: "0.26em",
-          }}>
-            <span title="Star to bookmark this replay">☆</span>
-            <SortHdr label="SEED"    field="seed"   sf={sortField} sa={sortAsc} ts={toggleSort} />
-            <SortHdr label="DUR"     field="ticks"  sf={sortField} sa={sortAsc} ts={toggleSort} />
-            <span>BLUE</span>
-            <span>RED</span>
-            <SortHdr label="OUTCOME" field="winner" sf={sortField} sa={sortAsc} ts={toggleSort} />
-            <span>TYPE</span>
-            <span>UNITS</span>
-            <span>FLAGS</span>
-            <span>VER</span>
-            <span style={{ textAlign: "right" }}>WATCH</span>
-          </div>
-
-          {/* Rows */}
-          <div style={{ overflowY: "auto", height: "calc(100% - 88px)" }}>
-            {loading && <Msg text="Loading…" color={FCT.inkFaint} />}
-            {error   && <Msg text={error}    color={FCT.red} />}
-            {!loading && !error && total === 0 && replays.length === 0 && (
-              <Msg text="No replays yet — run: tsx headless/src/cli.ts --blue rush --red idle" color={FCT.inkFaint} />
-            )}
-            {!loading && !error && total > 0 && replays.length === 0 && (
-              <Msg text="No replays match the current filters." color={FCT.inkFaint} />
-            )}
-            {replays.map((r, i) => {
-              const { text: outcomeText, color: outcomeColor } = outcomeLabel(r);
-              const { text: wtText,     color: wtColor }      = winTypeBadge(r.winType ?? r.outcome.winType);
-              const isStarred = starred.has(r.id);
-              return (
-                <div key={r.id} style={{
-                  display: "grid", gridTemplateColumns: COLS,
-                  padding: "9px 14px",
-                  borderBottom: i < replays.length - 1 ? `1px solid ${FCT.line}` : undefined,
-                  alignItems: "center",
-                  background: i % 2 === 0 ? "transparent" : FCT.bgPanelHi,
-                  minHeight: 40,
-                }}>
-                  <button onClick={() => toggleStar(r.id)}
-                    style={{ background: "none", border: "none", cursor: "pointer",
-                      padding: 0, fontSize: 14, color: isStarred ? FCT.amber : FCT.inkFaint }}>
-                    {isStarred ? "★" : "☆"}
-                  </button>
-                  <span style={{ fontFamily: FCT.mono, fontSize: 11, color: FCT.inkDim }}>
-                    {r.seed.toString().slice(-6).padStart(6, "0")}
-                  </span>
-                  <span style={{ fontFamily: FCT.mono, fontSize: 11, color: FCT.ink }}>
-                    {formatDuration(r.durationSecs)}
-                  </span>
-                  <span style={{ fontFamily: FCT.ui, fontSize: 12, color: FCT.ice, textTransform: "capitalize" }}>
-                    {r.blue}
-                  </span>
-                  <span style={{ fontFamily: FCT.ui, fontSize: 12, color: FCT.red, textTransform: "capitalize" }}>
-                    {r.red}
-                  </span>
-                  <span style={{ fontFamily: FCT.ui, fontSize: 12, color: outcomeColor, fontWeight: 600 }}>
-                    {outcomeText}
-                  </span>
-                  <span style={{ fontFamily: FCT.mono, fontSize: 11, color: wtColor }}>{wtText}</span>
-                  <span style={{ fontFamily: FCT.mono, fontSize: 10, color: FCT.inkDim }}>
-                    <span style={{ color: FCT.ice }}>{unitsSummary(r.blueUnits)}</span>
-                    <span style={{ color: FCT.inkFaint, margin: "0 2px" }}>vs</span>
-                    <span style={{ color: FCT.red }}>{unitsSummary(r.redUnits)}</span>
-                  </span>
-                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                    {(r.flags ?? []).map(f => {
-                      const { label, color } = flagStyle(f);
-                      return (
-                        <span key={f} style={{
-                          fontFamily: FCT.mono, fontSize: 10, color,
-                          background: color + "18", borderRadius: 3, padding: "2px 5px", whiteSpace: "nowrap",
-                        }}>{label}</span>
-                      );
-                    })}
+        {/* List */}
+        <div className="g-scroll" style={{ flex: 1, minHeight: 0, padding: "14px 22px", display: "flex", flexDirection: "column", gap: 8, borderTop: "1px solid var(--edge)", marginTop: 14 }}>
+          {loading && <div className="g-sub g-pulse">Loading…</div>}
+          {error && <div className="g-error">{error}</div>}
+          {!loading && !error && total === 0 && replays.length === 0 && <div className="g-sub">No replays yet. Every finished match is saved here.</div>}
+          {!loading && !error && total > 0 && replays.length === 0 && <div className="g-sub">No replays match these filters.</div>}
+          {!loading && replays.map(r => {
+            const win = winnerSide(r);
+            const wt = r.winType ?? r.outcome.winType;
+            const map = maps.find(m => m.mapId === r.mapId);
+            const isStarred = starred.has(r.id);
+            const side = (team: "blue" | "red", name: string) => (
+              <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                <span style={{ width: 3, height: 16, background: TEAM[team], flexShrink: 0 }} />
+                <span className="g-title" style={{ fontSize: 15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", opacity: win && win !== team ? 0.6 : 1 }}>{name}</span>
+                {win === team && <Icon name="crystal" size={14} style={{ color: "var(--accent)" }} />}
+              </span>
+            );
+            return (
+              <div key={r.id} className="g-glass flat" style={{ display: "flex", alignItems: "center", gap: 14, padding: "10px 12px", background: "rgba(255,255,255,0.04)" }}>
+                <div style={{ width: 132, flexShrink: 0, overflow: "hidden" }}>
+                  {map ? <MapThumb map={map} width={132} /> : <div className="g-label" style={{ height: 24, display: "flex", alignItems: "center" }}>{r.mapId ?? "?"}</div>}
+                </div>
+                <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                    {side("blue", r.blue)}
+                    <span className="g-label" style={{ color: "var(--ink-faint)" }}>vs</span>
+                    {side("red", r.red)}
                   </div>
-                  <span style={{ fontFamily: FCT.mono, fontSize: 9, color: FCT.inkFaint }}>
-                    {r.version ?? "?"}
-                  </span>
-                  <div style={{ textAlign: "right" }}>
-                    <FctBtn primary style={{ padding: "3px 10px", fontSize: 11 }}
-                      onClick={() => onWatch(r.id, r.outcome.ticks, r.version)}>▶</FctBtn>
+                  <div className="g-label" style={{ display: "flex", gap: 12, flexWrap: "wrap", letterSpacing: "0.12em" }}>
+                    <span>{map?.name ?? r.mapId ?? "Unknown map"}</span>
+                    <span>{formatDuration(r.durationSecs)}</span>
+                    <span>{win ? (wt ? WIN_TYPE[wt] ?? wt : "Win") : "Draw"}</span>
+                    <span title="Units at the end, blue vs red">{unitsSummary(r.blueUnits)} · {unitsSummary(r.redUnits)}</span>
+                    {(r.flags ?? []).map(f => <span key={f} style={{ color: "var(--accent)" }}>{flagLabel(f)}</span>)}
                   </div>
                 </div>
-              );
-            })}
+                <div className="g-label" style={{ textAlign: "right", color: "var(--ink-faint)", flexShrink: 0, lineHeight: 1.6 }}>
+                  <div>{formatDate(r.timestamp)}</div>
+                  <div>v{r.version ?? "?"}</div>
+                </div>
+                <IconBtn icon="star" title={isStarred ? "Unstar" : "Star"} small on={isStarred} onClick={() => toggleStar(r.id)} />
+                <button type="button" className="g-btn primary small" onClick={() => onWatch(r.id, r.outcome.ticks, r.version)}>
+                  <Icon name="play" size={14} />Watch
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Pages */}
+        {!loading && total > pageSize && (
+          <div style={{ padding: "12px 22px 16px", borderTop: "1px solid var(--edge)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <button type="button" className="g-btn small" disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))}>Prev</button>
+            <span className="g-label">Page {page} of {totalPages} · {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} of {total}</span>
+            <button type="button" className="g-btn small" disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))}>Next</button>
           </div>
-
-          {/* ── Pagination footer ── */}
-          {!loading && total > 0 && (
-            <div style={{
-              display: "flex", alignItems: "center", justifyContent: "space-between",
-              padding: "8px 14px", borderTop: `1px solid ${FCT.lineHi}`,
-              fontFamily: FCT.mono, fontSize: 10, color: FCT.inkFaint,
-            }}>
-              <FctBtn style={{ padding: "3px 12px", fontSize: 10 }}
-                onClick={() => setPage(p => Math.max(1, p - 1))}>← Prev</FctBtn>
-              <span>
-                Page {page} of {totalPages}
-                &nbsp;·&nbsp;
-                {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} of {total}
-              </span>
-              <FctBtn style={{ padding: "3px 12px", fontSize: 10 }}
-                onClick={() => setPage(p => Math.min(totalPages, p + 1))}>Next →</FctBtn>
-            </div>
-          )}
-        </FctPanel>
+        )}
       </div>
-    </FctFrame>
-  );
-}
-
-// ── small helpers ─────────────────────────────────────────────────────────────
-
-function Msg({ text, color }: { text: string; color: string }) {
-  return (
-    <div style={{ padding: 24, textAlign: "center", fontFamily: FCT.mono, fontSize: 12, color }}>
-      {text}
     </div>
   );
 }
 
-function SortHdr({ label, field, sf, sa, ts }: {
-  label: string; field: SortField;
-  sf: SortField; sa: boolean;
-  ts: (f: SortField) => void;
-}) {
+/** Segmented choice (one of a few values). */
+function Seg({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: Array<[string, string]> }) {
   return (
-    <span onClick={() => ts(field)} style={{
-      cursor: "pointer", userSelect: "none",
-      color: sf === field ? FCT.ice : FCT.inkFaint,
-    }}>
-      {label}{sf === field ? (sa ? " ▴" : " ▾") : ""}
-    </span>
+    <div style={{ display: "flex" }}>
+      {options.map(([id, label]) => (
+        <button key={id} type="button" className={`g-btn small${value === id ? " primary" : " ghost"}`} style={{ marginLeft: -1 }} onClick={() => onChange(id)}>{label}</button>
+      ))}
+    </div>
   );
 }
-
-function filterToggleStyle(active: boolean, accentColor: string): React.CSSProperties {
-  return {
-    background: active ? accentColor + "22" : "transparent",
-    color: active ? accentColor : FCT.inkFaint,
-    border: `1px solid ${active ? accentColor : FCT.lineHi}`,
-    borderRadius: 4, padding: "4px 10px",
-    fontFamily: FCT.mono, fontSize: 11, cursor: "pointer",
-  };
-}
-
-const selectStyle: React.CSSProperties = {
-  background: FCT.bgPanelHi, color: FCT.ink,
-  border: `1px solid ${FCT.lineHi}`, borderRadius: 4,
-  padding: "4px 8px", fontFamily: FCT.mono, fontSize: 11, outline: "none",
-};
 
 export type { ReplayMeta };

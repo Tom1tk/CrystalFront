@@ -295,12 +295,12 @@ export class MatchEngine {
     return match;
   }
 
-  endMatch(matchId: string, winner: PlayerId): MatchState | null {
+  endMatch(matchId: string, winner: PlayerId, winType?: "combat"): MatchState | null {
     const match = this.matches.get(matchId);
     if (!match) return null;
 
     match.phase = "ended";
-    match.result = { winner };
+    match.result = winType ? { winner, winType } : { winner };
     match.endedAt = this.clock();
 
     // Notify server to broadcast MATCH_END event
@@ -1321,7 +1321,7 @@ if (command.type === "gather") {
       if (entity.type === "crystal") {
         const winner = match.players.find((p) => p?.playerId !== entity.ownerId);
         if (winner) {
-          this.endMatch(match.id, winner.playerId);
+          this.endMatch(match.id, winner.playerId, "combat");
         }
       }
     }

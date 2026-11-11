@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, statSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { WebSocket } from "ws";
 import { MatchEngine } from "./matchEngine.js";
@@ -209,18 +209,29 @@ function analyzeReplay(raw: Record<string, unknown>): EnrichedMetadata {
   };
 }
 
+// Parsed metadata per replay file, keyed by name and invalidated by mtime, so listing
+// doesn't re-read every replay (hundreds of MB) on each request. null = unplayable/corrupt.
+const metaCache = new Map<string, { mtimeMs: number; meta: ReplayMeta | null }>();
+
 export function listReplays(): ReplayMeta[] {
   ensureReplaysDir();
   const files = readdirSync(REPLAYS_DIR).filter(f => f.endsWith(".json"));
   const metas: ReplayMeta[] = [];
+  const present = new Set(files);
+  for (const k of metaCache.keys()) if (!present.has(k)) metaCache.delete(k);
 
   for (const file of files) {
+    let mtimeMs: number;
+    try { mtimeMs = statSync(join(REPLAYS_DIR, file)).mtimeMs; } catch { continue; }
+    const hit = metaCache.get(file);
+    if (hit && hit.mtimeMs === mtimeMs) { if (hit.meta) metas.push(hit.meta); continue; }
+    metaCache.set(file, { mtimeMs, meta: null });
     try {
       const raw = JSON.parse(readFileSync(join(REPLAYS_DIR, file), "utf8"));
       if (!playable(raw)) continue; // G-9e: other engines' / map versions' replays are dropped
       const enriched = analyzeReplay(raw);
       const outcome = raw.outcome ?? { winner: null, ticks: 0 };
-      metas.push({
+      const meta: ReplayMeta = {
         id: file.replace(/\.json$/, ""),
         seed: raw.seed,
         blue: raw.blue ?? "?",
@@ -236,6 +247,7 @@ export function listReplays(): ReplayMeta[] {
         durationSecs: ((outcome.ticks ?? 0) * SIMULATION.tickIntervalMs) / 1000,
         version: raw.version ?? "?",
         engineVersion: raw.engineVersion,
+        mapId: raw.mapId ?? "classic",
         timestamp: raw.timestamp ?? 0,
         winType: enriched.winType,
         blueUnits: enriched.blueUnits,
@@ -246,7 +258,9 @@ export function listReplays(): ReplayMeta[] {
         buildOrderRed: enriched.buildOrderRed,
         firstCombatTick: enriched.firstCombatTick ?? undefined,
         flags: enriched.flags,
-      });
+      };
+      metaCache.set(file, { mtimeMs, meta });
+      metas.push(meta);
     } catch {
       // skip corrupt files
     }
