@@ -1,16 +1,11 @@
+/**
+ * Online lobby (G-12, UI-5): glass panel over the live 3D backdrop (which shows the chosen
+ * map). Lobby code with copy, one card per team, host-only map choice, Ready / Leave.
+ */
+import { useState } from "react";
 import type { Lobby, Player } from "../types";
-import {
-  FCT,
-  Refract,
-  FctFrame,
-  FctBtn,
-  FctPanel,
-  FctMark,
-  HEX_CLIP,
-  NOTCH_L,
-  NOTCH_R,
-} from "../design/facet";
-import MapPicker from "./MapPicker";
+import { Icon, IconBtn, PageTitle } from "../design/glass";
+import { MapCards } from "./MapPicker";
 
 interface LobbyScreenProps {
   lobby: Lobby;
@@ -22,414 +17,97 @@ interface LobbyScreenProps {
   error: string | null;
 }
 
-// ─── Player Panel ────────────────────────────────────────────────
-function FctPlayer({
-  name,
-  slot,
-  ready,
-  score,
-  accent,
-  you,
-  host,
-  side,
-  empty,
-}: {
-  name?: string;
-  slot: string;
-  ready?: boolean;
-  score?: number;
-  accent: string;
-  you?: boolean;
-  host?: boolean;
-  side: "L" | "R";
-  empty?: boolean;
-}) {
+const TEAM = { blue: "var(--blue)", red: "var(--red)" } as const;
+
+function PlayerCard({ p, slot, you, host }: { p: Player | null; slot: 0 | 1; you?: boolean; host?: boolean }) {
+  const colour = p ? TEAM[p.color] : "var(--edge)";
   return (
-    <FctPanel
-      clip={side === "L" ? NOTCH_R : NOTCH_L}
-      accent={empty ? FCT.line : accent}
-      style={{ padding: 28, height: "100%" }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          fontFamily: FCT.mono,
-          fontSize: 10,
-          color: FCT.inkDim,
-          letterSpacing: "0.28em",
-        }}
-      >
-        <span>
-          ▰ SLOT {slot}
-          {you ? " · YOU" : ""}
-        </span>
-        <span>{empty ? "OPEN" : host ? "HOST" : "GUEST"}</span>
+    <div className="g-glass flat" style={{ flex: 1, minWidth: 0, padding: "14px 16px", background: "rgba(255,255,255,0.04)", borderLeft: `3px solid ${colour}` }}>
+      <div className="g-label" style={{ display: "flex", justifyContent: "space-between", color: "var(--ink-faint)" }}>
+        <span>Player {slot + 1}</span>
+        <span>{[you && "You", host && "Host"].filter(Boolean).join(" · ")}</span>
       </div>
-      {empty ? (
-        <div
-          style={{
-            marginTop: 40,
-            textAlign: "center",
-            fontFamily: FCT.display,
-            fontSize: 22,
-            fontStyle: "italic",
-            color: FCT.inkFaint,
-          }}
-        >
-          Waiting for opponent…
-        </div>
-      ) : (
+      {p ? (
         <>
-          <div
-            style={{
-              marginTop: 18,
-              display: "flex",
-              gap: 18,
-              alignItems: "center",
-            }}
-          >
-            <div style={{ width: 64, height: 72, flexShrink: 0 }}>
-              <svg viewBox="0 0 64 74" width="64" height="72">
-                <path
-                  d="M32 2 L60 18 L60 52 L32 72 L4 52 L4 18 Z"
-                  fill={accent}
-                />
-                <path
-                  d="M32 2 L60 18 L32 36 L4 18 Z"
-                  fill="rgba(255,255,255,0.18)"
-                />
-              </svg>
-            </div>
-            <div>
-              <div
-                style={{
-                  fontFamily: FCT.display,
-                  fontSize: 38,
-                  lineHeight: 0.95,
-                  letterSpacing: "-0.03em",
-                  textTransform: "uppercase",
-                  fontWeight: 600,
-                }}
-              >
-                {name}
-              </div>
-              <div
-                style={{
-                  fontFamily: FCT.mono,
-                  fontSize: 10,
-                  color: FCT.inkDim,
-                  letterSpacing: "0.22em",
-                  marginTop: 4,
-                }}
-              >
-                {accent === FCT.ice
-                  ? "BLUE TEAM · WEST SIDE"
-                  : "RED TEAM · EAST SIDE"}
-              </div>
-            </div>
-          </div>
-          <div
-            style={{
-              marginTop: 22,
-              padding: "10px 14px",
-              background: FCT.bgPanelHi,
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              clipPath: HEX_CLIP,
-            }}
-          >
-            <span
-              style={{
-                fontFamily: FCT.mono,
-                fontSize: 10,
-                letterSpacing: "0.28em",
-                color: ready ? FCT.green : FCT.inkDim,
-                ...(ready ? { animation: "fct-ready 1.6s ease-in-out infinite" } : {}),
-              }}
-            >
-              {ready ? "◆ READY" : "◇ NOT READY"}
+          <div className="g-title" style={{ fontSize: 20, marginTop: 6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.username}</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
+            <span className="g-label" style={{ display: "flex", alignItems: "center", gap: 6, color: p.ready ? "var(--good)" : "var(--ink-dim)" }}>
+              {p.ready ? <><Icon name="check" size={14} />Ready</> : "Not ready"}
             </span>
-            <span
-              style={{
-                fontFamily: FCT.display,
-                fontSize: 22,
-                fontWeight: 600,
-              }}
-            >
-              SCORE {score}
-            </span>
+            <span className="g-label">Wins {p.score}</span>
           </div>
         </>
+      ) : (
+        <>
+          <div className="g-title g-pulse" style={{ fontSize: 20, marginTop: 6, color: "var(--ink-faint)" }}>Waiting…</div>
+          <div className="g-label" style={{ marginTop: 10, color: "var(--ink-faint)" }}>Share the code to invite</div>
+        </>
       )}
-    </FctPanel>
+    </div>
   );
 }
 
-// ─── Lobby Screen ────────────────────────────────────────────────
-export default function LobbyScreen({
-  lobby,
-  player,
-  isHost,
-  onReady,
-  onLeave,
-  onSetMap,
-  error,
-}: LobbyScreenProps) {
-  const bothReady = lobby.players[0]?.ready && lobby.players[1]?.ready;
-  const opponent =
-    lobby.players[0]?.id === player.id
-      ? lobby.players[1]
-      : lobby.players[0];
+export default function LobbyScreen({ lobby, player, isHost, onReady, onLeave, onSetMap, error }: LobbyScreenProps) {
+  const [copied, setCopied] = useState(false);
+  const [p0, p1] = lobby.players;
+  const bothReady = !!(p0?.ready && p1?.ready);
+  const opponent = p0?.id === player.id ? p1 : p0;
+  const status = bothReady
+    ? "Both ready, starting…"
+    : !opponent
+      ? "Waiting for an opponent to join"
+      : !player.ready
+        ? "Ready up when you are set"
+        : `Waiting on ${opponent.username}`;
 
-  const isPlayerSlot0 = lobby.players[0]?.id === player.id;
-  const playerSlot = isPlayerSlot0 ? "01" : "02";
-  const opponentSlot = isPlayerSlot0 ? "02" : "01";
-
-  const playerAccent = FCT.ice;
-  const opponentAccent = FCT.red;
-
-  // Determine status text
-  const statusText =
-    bothReady
-      ? "Both players ready!"
-      : "Waiting for ready";
-
-  const bottomStatusText =
-    !player.ready
-      ? "▰ YOU ARE NOT READY"
-      : opponent && !opponent.ready
-        ? `▰ YOU ARE READY · WAITING ON ${opponent.username.toUpperCase()}`
-        : opponent && opponent.ready
-          ? "▰ BOTH PLAYERS READY"
-          : "▰ YOU ARE READY · WAITING FOR OPPONENT";
+  const copy = () => {
+    void navigator.clipboard?.writeText(lobby.code).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }).catch(() => { /* clipboard blocked */ });
+  };
 
   return (
-    <FctFrame top="LOBBY">
-      {error && (
-        <div
-          style={{
-            position: "absolute",
-            top: 48,
-            left: "50%",
-            transform: "translateX(-50%)",
-            zIndex: 20,
-            fontFamily: FCT.mono,
-            fontSize: 11,
-            color: FCT.red,
-            background: FCT.bgEnemy,
-            padding: "8px 18px",
-            clipPath: HEX_CLIP,
-            border: `1px solid ${FCT.red}`,
-          }}
-        >
-          {error}
-        </div>
-      )}
-
-      <div
-        style={{
-          position: "absolute",
-          top: 36,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          padding: 48,
-          display: "grid",
-          gridTemplateRows: "auto 1fr auto",
-          gap: 32,
-        }}
-      >
-        {/* TOP ROW — code + status */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-end",
-          }}
-        >
-          <div>
-            <div
-              style={{
-                fontFamily: FCT.mono,
-                fontSize: 10,
-                color: FCT.inkDim,
-                letterSpacing: "0.32em",
-              }}
-            >
-              ▰ LOBBY CODE  ·  SHARE TO INVITE
-            </div>
-            <div
-              style={{
-                fontFamily: FCT.display,
-                fontSize: 76,
-                letterSpacing: "0.18em",
-                lineHeight: 0.95,
-                fontWeight: 700,
-                marginTop: 6,
-              }}
-            >
-              {lobby.code.split("").map((char, i) => (
-                <Refract key={i} accent={i % 2 === 1}>
-                  {char}
-                </Refract>
-              ))}
-            </div>
-          </div>
-          <div style={{ textAlign: "right" }}>
-            <div
-              style={{
-                fontFamily: FCT.mono,
-                fontSize: 10,
-                color: FCT.inkDim,
-                letterSpacing: "0.32em",
-              }}
-            >
-              ▰ STATUS
-            </div>
-            <div
-              style={{
-                marginTop: 4,
-                fontFamily: FCT.display,
-                fontSize: 22,
-                fontStyle: "italic",
-                color: FCT.amber,
-              }}
-            >
-              {statusText}
-            </div>
-            <div
-              style={{
-                fontFamily: FCT.mono,
-                fontSize: 10,
-                color: FCT.inkDim,
-                letterSpacing: "0.22em",
-                marginTop: 4,
-              }}
-            >
-              BOTH PLAYERS MUST READY UP
-            </div>
-          </div>
+    <div style={{ position: "relative", zIndex: 1, width: "100%", height: "100%", display: "flex", padding: "clamp(20px, 4vh, 48px) clamp(20px, 4vw, 64px)" }}>
+      <div className="g-glass g-enter" style={{ width: 640, maxWidth: "100%", display: "flex", flexDirection: "column", minHeight: 0, alignSelf: "stretch" }}>
+        <div style={{ padding: "18px 22px 0" }}>
+          <PageTitle label="Online match" title="Lobby" right={<IconBtn icon="back" title="Leave lobby" small onClick={onLeave} />} />
         </div>
 
-        {/* MIDDLE — player panels + VS */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr auto 1fr",
-            gap: 24,
-            alignItems: "stretch",
-          }}
-        >
-          {/* Player (you) panel */}
-          <FctPlayer
-            name={player.username}
-            slot={playerSlot}
-            ready={player.ready}
-            score={player.score}
-            accent={playerAccent}
-            you
-            host={isHost}
-            side="L"
-          />
-
-          {/* VS divider */}
-          <div style={{ alignSelf: "center", textAlign: "center" }}>
-            <div
-              style={{
-                fontFamily: FCT.display,
-                fontSize: 92,
-                fontStyle: "italic",
-                lineHeight: 1,
-                color: FCT.inkFaint,
-                fontWeight: 700,
-              }}
-            >
-              vs
+        <div className="g-scroll" style={{ flex: 1, minHeight: 0, padding: "16px 22px", display: "flex", flexDirection: "column", gap: 18 }}>
+          <section>
+            <div className="g-label" style={{ marginBottom: 8 }}>Lobby code</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <span className="g-title" style={{ fontFamily: "var(--mono)", fontSize: 40, letterSpacing: "0.2em", color: "var(--accent)" }}>{lobby.code}</span>
+              <button type="button" className="g-btn ghost" onClick={copy}>
+                {copied ? <><Icon name="check" size={16} />Copied</> : "Copy"}
+              </button>
             </div>
-          </div>
+          </section>
 
-          {/* Opponent panel */}
-          {opponent ? (
-            <FctPlayer
-              name={opponent.username}
-              slot={opponentSlot}
-              ready={opponent.ready}
-              score={opponent.score}
-              accent={opponentAccent}
-              host={opponent.id === lobby.hostId}
-              side="R"
-            />
-          ) : (
-            <FctPlayer
-              slot={opponentSlot}
-              accent={FCT.line}
-              side="R"
-              empty
-            />
-          )}
+          <section style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <PlayerCard p={p0} slot={0} you={p0?.id === player.id} host={!!p0 && p0.id === lobby.hostId} />
+            <PlayerCard p={p1} slot={1} you={p1?.id === player.id} host={!!p1 && p1.id === lobby.hostId} />
+          </section>
+
+          <section>
+            <div className="g-label" style={{ marginBottom: 8 }}>Map{isHost ? "" : " · chosen by the host"}</div>
+            <MapCards value={lobby.mapId ?? "random"} onChange={onSetMap} disabled={!isHost || bothReady} columns={3} />
+          </section>
         </div>
 
-        {/* BOTTOM ROW — status + buttons */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <div
-            style={{
-              fontFamily: FCT.mono,
-              fontSize: 11,
-              color: FCT.inkDim,
-              letterSpacing: "0.22em",
-            }}
-          >
-            {bottomStatusText}
-            <div style={{ marginTop: 12 }}>
-              <MapPicker value={lobby.mapId ?? "random"} onChange={onSetMap} disabled={!isHost || !!bothReady} />
-            </div>
+        <div style={{ padding: "14px 22px 18px", borderTop: "1px solid var(--edge)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div style={{ minWidth: 0 }}>
+            {error ? <span className="g-error">{error}</span> : <span className={`g-sub${bothReady ? " g-pulse" : ""}`} style={{ color: bothReady ? "var(--good)" : undefined }}>{status}</span>}
           </div>
           <div style={{ display: "flex", gap: 10 }}>
-            <FctBtn danger onClick={onLeave}>
-              ◀ Leave Lobby
-            </FctBtn>
-            <FctBtn
-              primary
-              sub="TOGGLE"
-              disabled={bothReady}
-              onClick={bothReady ? undefined : onReady}
-            >
-              {player.ready ? "◆ Unready" : "◆ Ready Up"}
-            </FctBtn>
+            <button type="button" className="g-btn danger" onClick={onLeave}>Leave</button>
+            <button type="button" className={`g-btn big${player.ready ? "" : " primary"}`} disabled={bothReady} onClick={onReady}>
+              {player.ready ? "Unready" : <><Icon name="check" size={18} />Ready</>}
+            </button>
           </div>
         </div>
-
-        {/* BOTH READY BANNER */}
-        {bothReady && (
-          <div
-            style={{
-              position: "absolute",
-              bottom: 120,
-              left: "50%",
-              transform: "translateX(-50%)",
-              fontFamily: FCT.display,
-              fontSize: 18,
-              color: FCT.green,
-              background: FCT.bgPanel,
-              padding: "12px 32px",
-              clipPath: HEX_CLIP,
-              border: `1px solid ${FCT.green}`,
-              letterSpacing: "0.04em",
-              fontWeight: 600,
-            }}
-          >
-            Both players ready! Starting match…
-          </div>
-        )}
       </div>
-    </FctFrame>
+    </div>
   );
 }

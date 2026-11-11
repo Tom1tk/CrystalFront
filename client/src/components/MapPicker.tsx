@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { FCT } from "../design/facet";
 import { decodeTerrain } from "../terrainCodec";
 import { themeFor } from "../mapThemes";
 
@@ -54,38 +53,6 @@ export function MapThumb({ map, width = 250 }: { map: MapInfo; width?: number })
     }
   }, [map, width, height]);
   return <canvas ref={ref} width={width} height={height} style={{ display: "block", width, height }} />;
-}
-
-/**
- * Map choice (G-7): "random" (a random pool map) or a specific map, with a
- * thumbnail of the selection. Pool maps not yet signed off are marked.
- */
-export default function MapPicker({ value, onChange, disabled }: { value: string; onChange: (mapId: string) => void; disabled?: boolean }) {
-  const [maps, setMaps] = useState<MapInfo[]>([]);
-  useEffect(() => { void fetchMaps().then(setMaps); }, []);
-  const selected = maps.find((m) => m.mapId === value);
-  const label = (m: MapInfo) => `${m.name} · ${themeFor(m.mapId).name}${m.pool && !m.approved ? " · candidate" : ""}`;
-  return (
-    <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-      <div>
-        <div style={{ fontFamily: FCT.mono, fontSize: 9, color: FCT.inkDim, letterSpacing: "0.28em", marginBottom: 4 }}>▰ MAP</div>
-        <select
-          value={value}
-          disabled={disabled}
-          onChange={(e) => onChange(e.target.value)}
-          style={{ fontFamily: FCT.mono, fontSize: 11, background: FCT.bgPanel, color: FCT.ink, border: `1px solid ${FCT.line}`, padding: "4px 6px", minWidth: 190 }}
-        >
-          <option value="random">Random (pool)</option>
-          {maps.map((m) => <option key={m.mapId} value={m.mapId}>{label(m)}</option>)}
-        </select>
-      </div>
-      {selected ? <MapThumb map={selected} /> : (
-        <div style={{ width: 250, height: 45, display: "flex", alignItems: "center", justifyContent: "center", border: `1px dashed ${FCT.line}`, fontFamily: FCT.mono, fontSize: 9, color: FCT.inkFaint, letterSpacing: "0.2em" }}>
-          {value === "random" ? "RANDOM POOL MAP" : "…"}
-        </div>
-      )}
-    </div>
-  );
 }
 
 /** Map choice as cards (G-12): "Random" plus every listed map, with its theme and size. */

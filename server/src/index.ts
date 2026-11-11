@@ -113,6 +113,11 @@ const loadGate = new LoadGate((matchId: string) => {
   liveRunner.start(matchId);
   const code = matchLobbyMap.get(matchId);
   if (code) broadcastGameState(code);
+}, undefined, (matchId: string, loaded: string[]) => {
+  const msg: ServerToClientMsg = { type: SERVER_EVT.LOAD_STATUS, payload: { loaded: loaded as PlayerId[] } };
+  for (const session of playerLobbyMap.values()) {
+    if (session.matchId === matchId && !session.isBot) sendWS(session.ws, msg);
+  }
 });
 
 matchEngine.setMatchEndCallback((matchId: string, winner: string) => {

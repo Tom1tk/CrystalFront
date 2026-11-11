@@ -22,6 +22,8 @@ export const WS_EVENT = {
   REPLAY_SPEED: "replay_speed",
   /** The client finished loading the match (3D assets); the server starts it when all have. */
   CLIENT_LOADED: "client_loaded",
+  /** Which players have finished loading a new match (sent while it waits to start). */
+  LOAD_STATUS: "load_status",
 } as const;
 
 export const CLIENT_MSG = {
@@ -53,6 +55,8 @@ export const SERVER_EVT = {
   MATCH_START: "match_start",
   GAME_STATE: "game_state",
   REPLAY_END: "replay_end",
+  /** Which players have finished loading a new match (sent while it waits to start). */
+  LOAD_STATUS: "load_status",
 } as const;
 
 export type ClientToServerMsg =
@@ -81,4 +85,5 @@ export type ServerToClientMsg =
   | { type: typeof SERVER_EVT.HOST_DISCONNECT; payload: { message: string } }
   | { type: typeof SERVER_EVT.MATCH_START; payload: { match: MatchState } }
   | { type: typeof SERVER_EVT.GAME_STATE; payload: { match: MatchState } }
-  | { type: typeof SERVER_EVT.REPLAY_END; payload: { ticks: number; winner: string | null } };
+  | { type: typeof SERVER_EVT.REPLAY_END; payload: { ticks: number; winner: string | null } }
+  | { type: typeof SERVER_EVT.LOAD_STATUS; payload: { loaded: PlayerId[] } };

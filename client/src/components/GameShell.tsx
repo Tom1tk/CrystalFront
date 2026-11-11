@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Lobby, Player, MatchState, ResourceNodeDisplay, BuildingType, MatchEntity, StaticMap } from "../types";
-import { FCT, FctMark, FctStyles, DbgBtn, HEX_CLIP, NOTCH_R } from "../design/facet";
+import { FCT, FctStyles, DbgBtn, HEX_CLIP, NOTCH_R } from "../design/facet";
 import { decodeTerrain } from "../terrainCodec";
 import { themeFor } from "../mapThemes";
 import { MatchSfx, play as playSound } from "../audio";
-import { HudTopBar, CommandCard, FirstMatchTip, ReplayBar, HUD_BAR_HEIGHT, type CommandSlot, type SelectionInfo, type NodesInfo } from "./Hud";
+import { HudTopBar, CommandCard, FirstMatchTip, ReplayBar, MatchLoading, HUD_BAR_HEIGHT, type CommandSlot, type SelectionInfo, type NodesInfo } from "./Hud";
 import SettingsModal from "./SettingsModal";
 import { setAccent } from "../design/glass";
 
@@ -60,6 +60,10 @@ interface GameShellProps {
   onSeekReplay?: (frame: number) => void;
   /** Live matches: called once when this client is ready, so the server can start the match. */
   onLoaded?: () => void;
+  /** Players the server reports as loaded (for the loading screen). */
+  loadedPlayers?: string[];
+  /** The opponent is a server bot (always ready). */
+  vsBot?: boolean;
 }
 
 const CANVAS_WIDTH = 960;
@@ -708,6 +712,8 @@ export default function GameShell({
   replayBufferSize = 0,
   onSeekReplay,
   onLoaded,
+  loadedPlayers,
+  vsBot = false,
 }: GameShellProps) {
   // Callers always provide player (even replay passes a synthetic observer object).
   // The null type on the prop exists so replay can pass `null`-ish defaults,
@@ -2690,11 +2696,17 @@ export default function GameShell({
     <div style={styles.container}>
       <FctStyles />
       {overlayMounted && (
-        <div style={{ ...styles.loadingOverlay, opacity: loading ? 1 : 0, pointerEvents: loading ? "auto" : "none" }}>
-          <div style={{ animation: "fct-svg-pulse 1.6s ease-in-out infinite" }}><FctMark size={72} /></div>
-          <div style={styles.loadingTitle}>{!assetsReady ? "Loading battlefield" : isReplay ? "Starting replay" : "Waiting for opponent"}</div>
-          <div style={styles.loadingSub}>{matchState?.staticMap?.mapId?.replace(/-/g, " ") ?? "\u00a0"}</div>
-        </div>
+        <MatchLoading
+          visible={loading}
+          title={!assetsReady ? "Loading battlefield" : isReplay ? "Starting replay" : "Waiting for opponent"}
+          mapName={matchState?.staticMap?.mapId?.replace(/-/g, " ") ?? "\u00a0"}
+          players={isReplay ? [] : (safeLobby.players as Array<Player | null>).filter((p): p is Player => p != null).map((p) => ({
+            name: p.username,
+            team: p.color === "red" ? "red" as const : "blue" as const,
+            you: p.id === safePlayer.id,
+            ready: p.id === safePlayer.id ? assetsReady : vsBot || (loadedPlayers ?? []).includes(p.id),
+          }))}
+        />
       )}
       <div ref={containerRef} style={styles.gameContainer}>
         <canvas
@@ -2814,32 +2826,6 @@ const styles = {
     right: 0,
     bottom: 0,
     pointerEvents: "none" as const,
-  },
-  loadingOverlay: {
-    position: "fixed" as const,
-    inset: 0,
-    zIndex: 1000,
-    background: FCT.bg,
-    display: "flex",
-    flexDirection: "column" as const,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 18,
-    transition: "opacity 0.6s ease",
-  },
-  loadingTitle: {
-    fontFamily: FCT.display,
-    fontSize: 20,
-    letterSpacing: "0.28em",
-    textTransform: "uppercase" as const,
-    color: FCT.ink,
-  },
-  loadingSub: {
-    fontFamily: FCT.mono,
-    fontSize: 11,
-    letterSpacing: "0.2em",
-    textTransform: "uppercase" as const,
-    color: FCT.inkDim,
   },
   // G-2: overlay, not a reserved strip — toggling build mode must not resize the canvas
   // (that would change the fit-to-height scale).

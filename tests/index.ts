@@ -3098,11 +3098,14 @@ console.log("\n--- G-7: Map generator ---");
 async function loadGateTests(): Promise<void> {
   console.log("\n--- Load gate ---");
   const begun: string[] = [];
-  const gate = new LoadGate((id) => begun.push(id), 40);
+  const progress: string[] = [];
+  const gate = new LoadGate((id) => begun.push(id), 40, (id, loaded) => progress.push(`${id}:${loaded.join("+")}`));
 
   gate.wait("m1", ["a", "b"]);
   gate.loaded("m1", "a");
   assert(begun.length === 0 && gate.isWaiting("m1"), "load gate: waits while one player is still loading");
+  gate.loaded("m1", "a");
+  assertEqual(progress.join(), "m1:a", "load gate: reports each newly loaded player once (for the loading screen)");
   gate.loaded("m1", "b");
   assertEqual(begun.join(), "m1", "load gate: starts once both players have loaded");
   gate.loaded("m1", "b");

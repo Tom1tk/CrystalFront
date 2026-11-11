@@ -101,10 +101,12 @@ function useScreenFlow() {
     }
   }, [ws.replayEnd, screen]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const [vsBot, setVsBot] = useState(false);
   const handleHost = useCallback(
     (name: string) => {
       ws.createLobby(name);
       setIsHost(true);
+      setVsBot(false);
     },
     [ws.createLobby]
   );
@@ -113,6 +115,7 @@ function useScreenFlow() {
     (code: string, name: string) => {
       ws.joinLobby(code, name);
       setIsHost(false);
+      setVsBot(false);
     },
     [ws.joinLobby]
   );
@@ -121,6 +124,7 @@ function useScreenFlow() {
     (name: string, mapId?: string) => {
       ws.startSoloTest(name, mapId);
       setIsHost(true);
+      setVsBot(true);
     },
     [ws.startSoloTest]
   );
@@ -129,6 +133,7 @@ function useScreenFlow() {
     (name: string, bot: string, mapId?: string) => {
       ws.startBotGame(name, bot, mapId);
       setIsHost(true);
+      setVsBot(true);
     },
     [ws.startBotGame]
   );
@@ -256,6 +261,7 @@ function useScreenFlow() {
     handleDebugSpawn,
     handleGameCommand,
     handleBotGame,
+    vsBot,
   };
 }
 
@@ -289,6 +295,7 @@ export default function App() {
     handleDebugSpawn,
     handleGameCommand,
     handleBotGame,
+    vsBot,
   } = useScreenFlow();
 
   const player = getCurrentPlayer();
@@ -392,6 +399,8 @@ export default function App() {
           error={ws.error}
           onClearError={ws.clearError}
           onLoaded={ws.clientLoaded}
+          loadedPlayers={ws.loadedPlayers}
+          vsBot={vsBot}
         />
       )}
       {screen === "matchEnd" && lobby && player && matchWinnerId && (

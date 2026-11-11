@@ -16,6 +16,8 @@ interface UseWebSocketReturn {
   lobbyState: LobbyState | null;
   matchState: MatchState | null;
   matchEnd: { winner: string; winType?: string } | null;
+  /** Players who have finished loading the new match (while it waits to start). */
+  loadedPlayers: string[];
   replayEnd: { ticks: number; winner: string | null } | null;
   resourceNodes: ResourceNodeDisplay[];
   createLobby: (username: string) => void;
@@ -57,6 +59,7 @@ export function useWebSocket(): UseWebSocketReturn {
   const [matchEnd, setMatchEnd] = useState<{ winner: string; winType?: string } | null>(null);
   const [replayEnd, setReplayEnd] = useState<{ ticks: number; winner: string | null } | null>(null);
   const [resourceNodes, setResourceNodes] = useState<ResourceNodeDisplay[]>([]);
+  const [loadedPlayers, setLoadedPlayers] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
 
@@ -99,6 +102,7 @@ export function useWebSocket(): UseWebSocketReturn {
           const ms = msg.payload.match as MatchState;
           ms.attackLog = ms.attackLog ?? [];
           staticMapRef.current = ms.staticMap;
+          setLoadedPlayers([]);
           setMatchState(ms);
           setResourceNodes(ms.resourceNodes ?? []);
         }
@@ -110,6 +114,9 @@ export function useWebSocket(): UseWebSocketReturn {
           else ms.staticMap = staticMapRef.current;
           setMatchState(ms);
           setResourceNodes(ms.resourceNodes ?? []);
+        }
+        if (msg.type === "load_status" && Array.isArray(msg.payload?.loaded)) {
+          setLoadedPlayers(msg.payload.loaded as string[]);
         }
         if (msg.type === "replay_end") {
           setReplayEnd(msg.payload as { ticks: number; winner: string | null });
@@ -246,6 +253,7 @@ export function useWebSocket(): UseWebSocketReturn {
     lobbyState,
     matchState,
     matchEnd,
+    loadedPlayers,
     replayEnd,
     resourceNodes,
     createLobby,

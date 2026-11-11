@@ -4,7 +4,7 @@
  * GameShell owns all game state; these components only draw it and report clicks.
  */
 import { useState, type ReactNode } from "react";
-import { Icon, IconBtn, SoundToggle } from "../design/glass";
+import { Icon, IconBtn, SoundToggle, Wordmark } from "../design/glass";
 import { tipsEnabled } from "./SettingsModal";
 
 /** Height of the top bar; the map is drawn below it. */
@@ -208,6 +208,43 @@ export function ReplayBar({ speed, onSpeed, frame, total, buffered, onSeek, onSt
       </span>
       <span className="g-label" style={{ color: "var(--accent)", width: 40, opacity: live ? 1 : 0 }}>Live</span>
       <button type="button" className="g-btn small" onClick={onStop}><Icon name="close" size={14} />Exit</button>
+    </div>
+  );
+}
+
+/** Synchronised loading screen (G-12, UI-5): both players, each Loading or Ready. */
+export function MatchLoading({ visible, title, mapName, players }: {
+  visible: boolean;
+  title: string;
+  mapName: string;
+  players: Array<{ name: string; team: Team; ready: boolean; you?: boolean }>;
+}) {
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 1000, background: "radial-gradient(ellipse at 50% 40%, #0d1220 0%, #05060a 70%)",
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 28,
+      opacity: visible ? 1 : 0, pointerEvents: visible ? "auto" : "none", transition: "opacity 0.6s ease",
+    }}>
+      <Wordmark size={44} />
+      <div style={{ textAlign: "center" }}>
+        <div className="g-label">{mapName}</div>
+        <div className="g-title g-pulse" style={{ fontSize: 22, marginTop: 8 }}>{title}</div>
+      </div>
+      {players.length > 0 && (
+        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", justifyContent: "center" }}>
+          {players.map((p, i) => (
+            <div key={i} className="g-glass" style={{ width: 230, padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, borderLeft: `3px solid ${TEAM[p.team]}` }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="g-title" style={{ fontSize: 16, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>
+                <div className="g-label" style={{ marginTop: 3, color: "var(--ink-faint)" }}>{p.you ? "You" : "Opponent"}</div>
+              </div>
+              <span className="g-label" style={{ display: "flex", alignItems: "center", gap: 6, color: p.ready ? "var(--good)" : "var(--ink-dim)" }}>
+                {p.ready ? <><Icon name="check" size={14} />Ready</> : <span className="g-pulse">Loading</span>}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
