@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Lobby, Player, MatchState, ResourceNodeDisplay, BuildingType, MatchEntity, StaticMap } from "../types";
-import { FCT, FctMark, FctStat, FctStyles, DbgBtn, HEX_CLIP, NOTCH_R } from "../design/facet";
+import { FCT, FctMark, FctStyles, DbgBtn, HEX_CLIP, NOTCH_R } from "../design/facet";
 import { decodeTerrain } from "../terrainCodec";
 import { themeFor } from "../mapThemes";
 import { MatchSfx, play as playSound } from "../audio";
+import { HudTopBar, CommandCard, FirstMatchTip, ReplayBar, HUD_BAR_HEIGHT, type CommandSlot, type SelectionInfo, type NodesInfo } from "./Hud";
+import SettingsModal from "./SettingsModal";
+import { setAccent } from "../design/glass";
 
 /** G-4: how long a move order's planned path stays on screen. */
 const PATH_SHOW_MS = 1200;
@@ -63,9 +66,9 @@ const CANVAS_WIDTH = 960;
 const CANVAS_HEIGHT = 540;
 const MINIMAP_WIDTH = 450;
 const MINIMAP_HEIGHT = 81; // 450 × (900/5000): map aspect
-/** G-2: screen pixels reserved at the top for the phase bar + scoreboard; the map is
- *  drawn fit-to-height in the canvas area below, so there is never vertical scrolling. */
-const HUD_TOP = 88;
+/** G-2: screen pixels reserved at the top for the HUD bar; the map is drawn
+ *  fit-to-height in the canvas area below, so there is never vertical scrolling. */
+const HUD_TOP = HUD_BAR_HEIGHT;
 const EDGE_SCROLL_THRESHOLD = 50;
 const EDGE_SCROLL_SPEED = 3;
 
@@ -76,12 +79,11 @@ const BUILDING_COLORS: Record<BuildingType, string> = {
   turret: "#ffb86b",
 };
 
-const BUILDING_LABELS: Record<BuildingType, string> = {
-  barracks: "BRK",
-  foundry: "FRY",
-  supply_depot: "SUP",
-  turret: "TRT",
+const ENTITY_NAMES: Record<string, string> = {
+  worker: "Worker", skirmisher: "Skirmisher", gunner: "Gunner", bruiser: "Bruiser", medic: "Medic",
+  barracks: "Barracks", foundry: "Foundry", supply_depot: "Supply Depot", turret: "Turret",
 };
+
 
 const BUILDING_UNIT_MAP: Record<BuildingType, string[]> = {
   barracks: ["skirmisher", "gunner"],
@@ -196,9 +198,9 @@ function drawMinimap(
     ctx.imageSmoothingEnabled = true;
   }
 
-  ctx.strokeStyle = "rgba(100, 100, 200, 0.4)";
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.22)";
   ctx.lineWidth = 1;
-  ctx.strokeRect(minimapX, minimapY, mmW, mmH);
+  ctx.strokeRect(minimapX - 0.5, minimapY - 0.5, mmW + 1, mmH + 1);
 
   for (const node of resourceNodes) {
     const nx = minimapX + node.x * xScale;
@@ -740,7 +742,6 @@ export default function GameShell({
   // G-1: A arms attack-move; the next left-click issues it, right-click/Escape cancels.
   const [attackMoveMode, setAttackMoveMode] = useState(false);
   const [debugDragMode, setDebugDragMode] = useState(false);
-  const [debugCollapsed, setDebugCollapsed] = useState(true);
   const [debugDraggingNodeId, setDebugDraggingNodeId] = useState<string | null>(null);
   const debugDragLastSendRef = useRef(0);
 
@@ -834,7 +835,9 @@ export default function GameShell({
     ];
   }, [selectedEntityIds, matchState, safePlayer.id]);
 
-  const [showHotkeyMenu, setShowHotkeyMenu] = useState(true);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const matchMapId = matchState?.staticMap?.mapId;
+  useEffect(() => { if (matchMapId) setAccent(themeFor(matchMapId).id); }, [matchMapId]);
   const [hotkeyFlash, setHotkeyFlash] = useState<string | null>(null);
 
   const dprRef = useRef(window.devicePixelRatio || 1);
@@ -1330,25 +1333,21 @@ export default function GameShell({
         setView3d((v) => !v);
         return;
       }
-      if (e.key === "Escape" && buildModeRef.current) {
-        setBuildMode(false);
-        setSelectedBuildingType(null);
-        setShowUnitQueue(false);
-      }
-      if (e.key === "Escape" && debugSpawnModeRef.current) {
-        setDebugSpawnMode(null);
-      }
-      if (e.key === "Escape" && rallyMode) {
-        setRallyMode(null);
-        return;
-      }
-      if (e.key === "Escape" && attackMoveMode) {
-        setAttackMoveMode(false);
-        return;
-      }
-      if (e.key === "Escape" && (debugDragMode || debugDraggingNodeId)) {
-        setDebugDragMode(false);
-        setDebugDraggingNodeId(null);
+      if (settingsOpen) return;
+      // Esc cancels the current mode; with nothing to cancel it opens Settings.
+      if (e.key === "Escape") {
+        let cancelled = false;
+        if (buildModeRef.current) {
+          setBuildMode(false);
+          setSelectedBuildingType(null);
+          setShowUnitQueue(false);
+          cancelled = true;
+        }
+        if (debugSpawnModeRef.current) { setDebugSpawnMode(null); cancelled = true; }
+        if (rallyMode) { setRallyMode(null); cancelled = true; }
+        if (attackMoveMode) { setAttackMoveMode(false); cancelled = true; }
+        if (debugDragMode || debugDraggingNodeId) { setDebugDragMode(false); setDebugDraggingNodeId(null); cancelled = true; }
+        if (!cancelled) setSettingsOpen(true);
         return;
       }
       // Control groups: Ctrl+N assign, Shift+N add, N select, N twice quickly = centre camera.
@@ -1574,7 +1573,7 @@ export default function GameShell({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [rallyMode, attackMoveMode, selectedEntityId, selectedEntityIds, matchState, safePlayer.id, hotkeys]);
+  }, [rallyMode, attackMoveMode, selectedEntityId, selectedEntityIds, matchState, safePlayer.id, hotkeys, settingsOpen]);
 
   const handleMouseUp = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -2577,8 +2576,6 @@ export default function GameShell({
 
   const safeLobby = lobby ?? { code: "REPLAY", players: [null, null] as [null, null], status: "match" as const, hostId: "" };
   const opponent = safeLobby.players.find((p) => p?.id !== safePlayer.id);
-  const opponentColor = opponent?.color === "blue" ? "#4488ff" : "#ff4444";
-  const myColor = safePlayer.color === "blue" ? "#4488ff" : "#ff4444";
 
   const myEconomy = (() => {
     if (!matchState) return null;
@@ -2616,9 +2613,75 @@ export default function GameShell({
     const mine = c.nodes.filter((n) => n.controller === mySlot).length;
     const theirs = c.nodes.filter((n) => n.controller === 1 - mySlot).length;
     const pct = (p: number) => Math.floor((100 * p) / c.holdTicks);
-    const text = `${mine} : ${theirs} / ${c.need} · ${pct(c.progress[mySlot])}% : ${pct(c.progress[1 - mySlot])}%`;
-    return { text, tint: c.holder === null ? FCT.inkDim : c.holder === mySlot ? FCT.green : FCT.red };
+    const info: NodesInfo = {
+      mine, theirs, need: c.need, myPct: pct(c.progress[mySlot]), theirPct: pct(c.progress[1 - mySlot]),
+      holder: c.holder === null ? null : c.holder === mySlot ? "me" : "them",
+    };
+    return info;
   })();
+
+  // Command card (G-12): the context hotkeys as clickable slots, plus what is selected.
+  const commandSlots: CommandSlot[] = hotkeys.map((h) => {
+    const m = /^(.*) \((\d+)\)$/.exec(h.label);
+    return { key: h.key, label: m ? m[1] : h.label, cost: m ? Number(m[2]) : undefined, enabled: h.action !== "none" };
+  });
+  const selectionInfo: SelectionInfo | null = (() => {
+    if (isMultiSelect && selectedEntityIds.size > 1) return { name: "", count: selectedEntityIds.size };
+    const e = selectedEntity ?? (selectedEntityIds.size === 1 ? matchState?.entities.find((x) => selectedEntityIds.has(x.id)) : undefined);
+    if (!e) return null;
+    const name = e.type === "crystal" ? "Crystal" : e.type === "building" ? ENTITY_NAMES[e.buildingType ?? ""] ?? "Building" : ENTITY_NAMES[e.type] ?? e.type;
+    let status: string | undefined;
+    if (e.type === "building" && e.constructionProgress !== undefined && e.constructionProgress < 100) status = `Building ${Math.floor(e.constructionProgress)}%`;
+    else if (e.productionQueue.length > 0) {
+      const q = e.productionQueue[0];
+      status = `${ENTITY_NAMES[q.unitType] ?? q.unitType} ${Math.ceil(q.remainingTicks / 10)}s${e.productionQueue.length > 1 ? ` +${e.productionQueue.length - 1}` : ""}`;
+    }
+    return { name, count: 1, hp: e.health, maxHp: e.maxHealth, status, enemy: e.ownerId !== safePlayer.id };
+  })();
+  const modeHint = buildMode && selectedBuildingType
+    ? `Placing ${ENTITY_NAMES[selectedBuildingType]} (${BUILDING_COSTS[selectedBuildingType]}) · click the map`
+    : rallyMode ? "Rally point · click the map"
+    : attackMoveMode ? "Attack-move · left-click the map"
+    : debugSpawnMode ? `Debug spawn: ${debugSpawnMode.replace("building:", "")} · click the map`
+    : debugDragMode ? "Debug: drag nodes"
+    : null;
+
+  // Debug tools, shown under Settings → Debug in a match. Picking a map tool closes the modal.
+  const myWin = safePlayer.id === safeLobby.players[0]?.id ? "player1" : "player2";
+  const theirWin = myWin === "player1" ? "player2" : "player1";
+  const debugControls = (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16, paddingTop: 10 }}>
+      <section>
+        <div className="g-label" style={{ marginBottom: 8 }}>Result</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <button type="button" className="g-btn small" onClick={() => onDebugWin(myWin)}>Simulate my win</button>
+          <button type="button" className="g-btn small" onClick={() => onDebugWin(theirWin)}>Simulate opponent win</button>
+        </div>
+      </section>
+      <section>
+        <div className="g-label" style={{ marginBottom: 8 }}>Map editing</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <button type="button" className={`g-btn small${debugDragMode ? " primary" : ""}`}
+            onClick={() => { setDebugDragMode(!debugDragMode); setDebugDraggingNodeId(null); setSettingsOpen(false); }}>
+            {debugDragMode ? "Node drag on" : "Drag nodes"}
+          </button>
+          <button type="button" className="g-btn small" onClick={() => { onGameCommand({ type: "debug_save_layout" }); alert("Map layout saved to server!"); }}>Save layout</button>
+          <button type="button" className="g-btn small" onClick={() => { onGameCommand({ type: "debug_mirror_nodes" }); alert("Blue nodes mirrored to red side!"); }}>Mirror blue → red</button>
+        </div>
+      </section>
+      <section>
+        <div className="g-label" style={{ marginBottom: 8 }}>Spawn (then click the map)</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {(["worker", "skirmisher", "gunner", "bruiser", "medic"] as const).map((t) => (
+            <button key={t} type="button" className="g-btn small" onClick={() => { setDebugSpawnMode(t); setSettingsOpen(false); }}>+ {ENTITY_NAMES[t]}</button>
+          ))}
+          {(["barracks", "foundry", "supply_depot", "turret"] as const).map((b) => (
+            <button key={b} type="button" className="g-btn small" onClick={() => { setDebugSpawnMode(`building:${b}`); setSettingsOpen(false); }}>+ {ENTITY_NAMES[b]}</button>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
   const canBuildBarracks = myEconomy && myEconomy.resources >= 75;
   const canBuildFoundry = myEconomy && myEconomy.resources >= 100;
   const canBuildTurret = myEconomy && myEconomy.resources >= 60;
@@ -2657,370 +2720,60 @@ export default function GameShell({
           </div>
         )}
         <div style={styles.overlay}>
-          {/* Phase overlay band */}
-          <div style={styles.phaseOverlay}>
-            <span style={{ flex: 1 }} />
-            <span>[{matchState?.phase === "playing" ? "IN GAME" : matchState?.phase?.toUpperCase() ?? "WAITING"}] · Tick: {matchState?.tick ?? 0}</span>
-            <span style={{ flex: 1, textAlign: "right", color: FCT.inkFaint, fontWeight: 400 }}>
-              Match: {(matchState?.id ?? "").slice(0, 8)}
-            </span>
-          </div>
+          {isReplay ? (
+            <HudTopBar
+              me={{ name: matchState?.players[0]?.username ?? "Blue", score: matchState?.players[0]?.score, team: "blue" }}
+              them={{ name: matchState?.players[1]?.username ?? "Red", score: matchState?.players[1]?.score, team: "red" }}
+              tick={matchState?.tick ?? 0} nodes={null}
+              view3d={view3d} onToggle3d={() => setView3d((v) => !v)} onSettings={() => setSettingsOpen(true)}
+            />
+          ) : (
+            <HudTopBar
+              me={{ name: safePlayer.username, score: safePlayer.score, team: safePlayer.color === "red" ? "red" : "blue" }}
+              them={{ name: opponent?.username ?? "…", score: opponent?.score ?? 0, team: opponent?.color === "red" ? "red" : "blue" }}
+              tick={matchState?.tick ?? 0}
+              resources={myEconomy?.resources ?? 0} supply={myEconomy?.supply ?? 0} maxSupply={myEconomy?.maxSupply ?? 0}
+              nodes={controlHud}
+              view3d={view3d} onToggle3d={() => setView3d((v) => !v)} onSettings={() => setSettingsOpen(true)}
+            />
+          )}
 
-          {/* Scoreboard with economy stats */}
-          <div style={styles.scoreboard}>
-            <div style={{ display: "flex", gap: 18, alignItems: "center" }}>
-              <FctMark size={28} />
-              <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-                <span style={{ fontFamily: FCT.display, fontSize: 18, color: myColor === "#4488ff" ? FCT.ice : FCT.red, letterSpacing: "0.04em", fontWeight: 700 }}>
-                  {safePlayer.username}
-                </span>
-                <span style={{ fontFamily: FCT.display, fontSize: 22, color: myColor === "#4488ff" ? FCT.ice : FCT.red, fontWeight: 700 }}>
-                  {safePlayer.score}
-                </span>
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-              <FctStat icon="⛏" label="RESOURCES" value={myEconomy?.resources ?? 0} tint={FCT.amber} />
-              <FctStat icon="📦" label="SUPPLY" value={`${myEconomy?.supply ?? 0} / ${myEconomy?.maxSupply ?? 0}`} tint={FCT.green} />
-              {controlHud && <FctStat icon="⚑" label="NODES" value={controlHud.text} tint={controlHud.tint} />}
-            </div>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-              <span style={{ fontFamily: FCT.display, fontSize: 22, color: opponentColor === "#ff4444" ? FCT.red : FCT.ice, fontWeight: 700 }}>
-                {opponent?.score ?? 0}
-              </span>
-              <span style={{ fontFamily: FCT.display, fontSize: 18, color: opponentColor === "#ff4444" ? FCT.red : FCT.ice, letterSpacing: "0.04em", fontWeight: 700 }}>
-                {opponent?.username ?? "..."}
-              </span>
-              <span style={{ fontFamily: FCT.mono, fontSize: 9, color: FCT.inkFaint, letterSpacing: "0.22em", marginLeft: 6 }}>
-                VS
-              </span>
-              <button
-                onClick={() => setView3d((v) => !v)}
-                title="Toggle the 3D view (F3)"
-                style={{ marginLeft: 12, padding: "3px 8px", fontFamily: FCT.mono, fontSize: 10, letterSpacing: "0.12em",
-                  color: view3d ? FCT.ice : FCT.inkDim, background: "transparent", border: `1px solid ${view3d ? FCT.ice : FCT.inkFaint}`, cursor: "pointer" }}
-              >
-                {view3d ? "3D" : "2D"}
-              </button>
-            </div>
-          </div>
-
-          {/* Info bar — selection / status text only (tick lives in phase overlay) */}
-          <div style={styles.infoBar}>
-            <span style={{ color: FCT.ice }}>
-              {buildMode && selectedBuildingType
-                ? `Placing ${BUILDING_LABELS[selectedBuildingType]}`
-                : isMultiSelect
-                  ? `Selected ${selectedEntityIds.size} units`
-                  : selectedEntityId
-                    ? selectedEntity?.type === "crystal"
-                      ? selectedEntity?.ownerId === safePlayer.id
-                        ? `HQ · HP: ${Math.floor(selectedEntity.health)}/${selectedEntity.maxHealth} · Q: Worker`
-                        : "Enemy HQ"
-                      : selectedEntity?.type === "building"
-                        ? `${selectedEntity.buildingType || "Building"} · HP: ${Math.floor(selectedEntity.health)}/${selectedEntity.maxHealth}${selectedEntity?.constructionProgress !== undefined && selectedEntity.constructionProgress < 100
-                          ? ` · Building: ${Math.floor(selectedEntity.constructionProgress)}%`
-                          : selectedEntity?.productionQueue.length > 0
-                            ? ` · ${selectedEntity.productionQueue[0]?.unitType}: ${Math.ceil((selectedEntity.productionQueue[0]?.remainingTicks ?? 0) / 10)}s`
-                            : ""}`
-                        : selectedEntity?.ownerId === safePlayer.id
-                          ? `${selectedEntity.type} · HP: ${Math.floor(selectedEntity.health)}/${selectedEntity.maxHealth}${selectedEntity.autoAttackEnabled ? " · AA:ON" : ""}`
-                          : `Enemy ${selectedEntity?.type}`
-                    : "Click ground to move · click node to gather · click enemy to attack"}
-            </span>
-          </div>
-
-          {/* Hotkey Menu - QWER/ASDF Grid */}
-          {showHotkeyMenu && (
-            <div style={styles.hotkeyMenu}>
-              {/* Selection info strip */}
-              {selectedEntityId && selectedEntity && selectedEntity.ownerId === safePlayer.id && (
-                <div style={styles.selectionInfo}>
-                  <span style={styles.selectionInfoName}>
-                    {selectedEntity.type === "crystal" ? "HQ" : selectedEntity.type === "building" ? (selectedEntity.buildingType ?? "Building") : selectedEntity.type}
-                  </span>
-                  <span style={styles.selectionInfoHp}>
-                    HP: {Math.floor(selectedEntity.health)}/{selectedEntity.maxHealth}
-                  </span>
-                  {selectedEntity?.type === "building" && selectedEntity?.constructionProgress !== undefined && selectedEntity.constructionProgress < 100 && (
-                    <span style={{ ...styles.selectionInfoHp, color: "#44cc44" }}>
-                      Build: {Math.floor(selectedEntity.constructionProgress)}%
-                    </span>
-                  )}
-                  {selectedEntity?.type === "building" && selectedEntity?.productionQueue.length > 0 && (
-                    <span style={{ ...styles.selectionInfoHp, color: "#88aaff" }}>
-                      {selectedEntity.productionQueue[0]?.unitType}: {Math.ceil((selectedEntity.productionQueue[0]?.remainingTicks ?? 0) / 10)}s
-                      {selectedEntity.productionQueue.length > 1 ? ` (+${selectedEntity.productionQueue.length - 1})` : ""}
-                    </span>
-                  )}
-                  {selectedEntity.autoAttackEnabled && (
-                    <span style={{ ...styles.selectionInfoHp, color: "#88aaff" }}>AA:ON</span>
-                  )}
-                </div>
-              )}
-              <div style={styles.hotkeyRow}>
-                {hotkeys.filter((h: HotkeySlot) => "qwer".includes(h.key)).map((hk: HotkeySlot) => (
-                  <div
-                    key={hk.key}
-                    style={{
-                      ...styles.hotkeySlot,
-                      ...(hotkeyFlash === hk.key ? styles.hotkeyFlash : {}),
-                    }}
-                  >
-                    <span style={styles.hotkeyLabel}>{hk.key.toUpperCase()}</span>
-                    <span style={styles.hotkeyIcon}>{hk.icon}</span>
-                    <span style={styles.hotkeyName}>{hk.label}</span>
-                  </div>
-                ))}
-              </div>
-              <div style={styles.hotkeyRow}>
-                {hotkeys.filter((h: HotkeySlot) => "asdf".includes(h.key)).map((hk: HotkeySlot) => (
-                  <div
-                    key={hk.key}
-                    style={{
-                      ...styles.hotkeySlot,
-                      ...(hotkeyFlash === hk.key ? styles.hotkeyFlash : {}),
-                    }}
-                  >
-                    <span style={styles.hotkeyLabel}>{hk.key.toUpperCase()}</span>
-                    <span style={styles.hotkeyIcon}>{hk.icon}</span>
-                    <span style={styles.hotkeyName}>{hk.label}</span>
-                  </div>
-                ))}
-              </div>
+          {modeHint && (
+            <div className="g-glass strong" style={{ position: "absolute", top: HUD_TOP + 10, left: "50%", transform: "translateX(-50%)", padding: "8px 16px", zIndex: 9, whiteSpace: "nowrap" }}>
+              <span className="g-sub" style={{ color: "var(--ink)" }}>{modeHint}</span>
+              <span className="g-label" style={{ marginLeft: 12 }}>Esc to cancel</span>
             </div>
           )}
 
-          {/* Debug Panel - collapsible, default hidden */}
-          <div style={styles.debugPanel}>
-            <div
-              style={styles.debugToggleBar}
-              onClick={() => setDebugCollapsed(!debugCollapsed)}
-            >
-              <span style={styles.debugToggleArrow}>{debugCollapsed ? "▶" : "▼"}</span>
-              <span style={styles.debugPanelHeader}>Debug Controls</span>
-            </div>
-            {!debugCollapsed && (
-            <div style={styles.debugPanelBody}>
-              <div style={styles.debugPanelRow}>
-                <button
-                  style={styles.debugButton}
-                  onClick={() =>
-                    onDebugWin(
-                      safePlayer.id === safeLobby.players[0]?.id ? "player1" : "player2"
-                    )
-                  }
-                >
-                  Simulate My Win
-                </button>
-                <button
-                  style={styles.debugButton}
-                  onClick={() =>
-                    onDebugWin(
-                      safePlayer.id === safeLobby.players[0]?.id ? "player2" : "player1"
-                    )
-                  }
-                >
-                  Simulate Opponent Win
-                </button>
-              </div>
+          {!isReplay && <FirstMatchTip />}
 
-              <div style={styles.debugPanelRow}>
-                <span style={styles.debugLabel}>Map Editing (click toggle, then click+drag nodes)</span>
-                <button
-                  style={{
-                    ...styles.debugButton,
-                    ...(debugDragMode ? styles.debugButtonActive : {}),
-                  }}
-                  onClick={() => { setDebugDragMode(!debugDragMode); setDebugDraggingNodeId(null); }}
-                >
-                  {debugDragMode ? "Node Drag ON (Esc to stop)" : "Toggle Node Drag"}
-                </button>
-                <button
-                  style={styles.debugButton}
-                  onClick={() => {
-                    onGameCommand({ type: "debug_save_layout" });
-                    alert("Map layout saved to server!");
-                  }}
-                >
-                  Save Layout
-                </button>
-                <button
-                  style={styles.debugButton}
-                  onClick={() => {
-                    onGameCommand({ type: "debug_mirror_nodes" });
-                    alert("Blue nodes mirrored to red side!");
-                  }}
-                >
-                  Mirror Blue→Red
-                </button>
-              </div>
-
-              <div style={styles.debugPanelRow}>
-                <span style={styles.debugLabel}>Spawn (click type, then click map)</span>
-                {(["worker", "skirmisher", "gunner", "bruiser", "medic"] as const).map((unitType) => (
-                  <button
-                    key={unitType}
-                    style={{
-                      ...styles.debugButton,
-                      ...(debugSpawnMode === unitType ? styles.debugButtonActive : {}),
-                    }}
-                    onClick={() => setDebugSpawnMode(debugSpawnMode === unitType ? null : unitType)}
-                  >
-                    + {unitType.charAt(0).toUpperCase() + unitType.slice(1)}
-                  </button>
-                ))}
-              </div>
-
-              <div style={styles.debugPanelRow}>
-                <span style={styles.debugLabel}>Buildings</span>
-                {(["barracks", "foundry", "supply_depot", "turret"] as const).map((buildingType) => (
-                  <button
-                    key={buildingType}
-                    style={{
-                      ...styles.debugButton,
-                      ...(debugSpawnMode === `building:${buildingType}` ? styles.debugButtonActive : {}),
-                    }}
-                    onClick={() => setDebugSpawnMode(debugSpawnMode === `building:${buildingType}` ? null : `building:${buildingType}`)}
-                  >
-                    + {BUILDING_LABELS[buildingType]}
-                  </button>
-                ))}
-              </div>
-
-              {debugSpawnMode && (
-                <button
-                  style={{ ...styles.debugButton, ...styles.debugCancelButton }}
-                  onClick={() => setDebugSpawnMode(null)}
-                >
-                  Cancel Spawn (Esc)
-                </button>
-              )}
-            </div>
-            )}
-          </div>
+          {!isReplay && (
+            <CommandCard
+              slots={commandSlots}
+              selection={selectionInfo}
+              flash={hotkeyFlash}
+              resources={myEconomy?.resources ?? 0}
+              onPress={(key) => window.dispatchEvent(new KeyboardEvent("keydown", { key }))}
+            />
+          )}
         </div>
       </div>
 
-      <div style={styles.bottomBars}>
-        {buildMode && selectedBuildingType && (
-          <div style={styles.buildBar}>
-            <span style={styles.buildLabel}>
-              Placing: {BUILDING_LABELS[selectedBuildingType]} ({BUILDING_COSTS[selectedBuildingType]} resource) — Click map to place (Esc to cancel)
-            </span>
-          </div>
-        )}
-      </div>
-
-      {/* ── Replay playback bar ──────────────────────────────── */}
       {isReplay && (
-        <div style={{
-          position: "absolute",
-          top: 88,
-          left: 0,
-          right: 0,
-          display: "flex",
-          justifyContent: "center",
-          zIndex: 8,
-          pointerEvents: "none",
-        }}>
-          <div style={{
-            background: "rgba(5,6,10,0.92)",
-            border: `1px solid ${FCT.lineHi}`,
-            borderTop: "none",
-            display: "flex",
-            alignItems: "center",
-            gap: 2,
-            padding: "5px 10px",
-            pointerEvents: "auto",
-            clipPath: "polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px))",
-          }}>
-            {([[-8, "◀◀◀"], [-4, "◀◀"], [-1, "◀"], [0, "⏸"], [1, "▶"], [4, "▶▶"], [8, "▶▶▶"]] as [number, string][]).map(([spd, icon]) => (
-              <button
-                key={spd}
-                onClick={() => onSetPlaybackSpeed?.(spd)}
-                title={spd === 0 ? "Pause" : `${Math.abs(spd)}× ${spd < 0 ? "reverse" : "forward"}`}
-                style={{
-                  background: playbackSpeed === spd ? FCT.amber : "transparent",
-                  color: playbackSpeed === spd ? FCT.bg : FCT.inkDim,
-                  border: `1px solid ${playbackSpeed === spd ? FCT.amber : FCT.lineHi}`,
-                  padding: "3px 8px",
-                  fontFamily: FCT.mono,
-                  fontSize: 10,
-                  letterSpacing: "0.06em",
-                  cursor: "pointer",
-                  minWidth: 36,
-                  transition: "background 0.1s, color 0.1s",
-                }}
-              >
-                {icon}{spd !== 0 ? ` ${Math.abs(spd)}×` : ""}
-              </button>
-            ))}
-            <span style={{
-              marginLeft: 10,
-              fontFamily: FCT.mono,
-              fontSize: 9,
-              letterSpacing: "0.18em",
-              color: FCT.inkDim,
-              minWidth: 90,
-              flexShrink: 0,
-            }}>
-              {replayFrame} / {replayTotalTicks ?? "?"}
-            </span>
-            {replayTotalTicks != null && replayTotalTicks > 1 && onSeekReplay && (
-              <input
-                type="range"
-                min={0}
-                max={replayTotalTicks - 1}
-                value={replayFrame}
-                onChange={e => {
-                  // Clamp seek to what has been buffered; can only scrub into unloaded
-                  // territory once the server streams those frames forward.
-                  const target = Math.min(Number(e.target.value), replayBufferSize - 1);
-                  onSetPlaybackSpeed?.(0);
-                  onSeekReplay(Math.max(0, target));
-                }}
-                style={{
-                  margin: "0 8px",
-                  width: 180,
-                  accentColor: FCT.amber,
-                  cursor: "pointer",
-                  flexShrink: 1,
-                }}
-                title="Scrub to frame"
-              />
-            )}
-            <span style={{
-              marginLeft: 4,
-              fontFamily: FCT.mono,
-              fontSize: 9,
-              letterSpacing: "0.14em",
-              width: 52,
-              flexShrink: 0,
-              textAlign: "center" as const,
-              color: FCT.amber,
-              opacity: replayBufferSize > 0 && replayFrame >= replayBufferSize - Math.abs(playbackSpeed) - 1 ? 1 : 0,
-            }}>
-              ● LIVE
-            </span>
-            <button
-              onClick={onStopReplay}
-              style={{
-                marginLeft: 10,
-                background: "transparent",
-                border: `1px solid ${FCT.lineHi}`,
-                padding: "3px 10px",
-                fontFamily: FCT.mono,
-                fontSize: 9,
-                letterSpacing: "0.22em",
-                color: FCT.inkDim,
-                cursor: "pointer",
-              }}
-            >
-              ✕ STOP
-            </button>
-          </div>
-        </div>
+        <ReplayBar
+          speed={playbackSpeed}
+          onSpeed={onSetPlaybackSpeed}
+          frame={replayFrame}
+          total={replayTotalTicks}
+          buffered={replayBufferSize}
+          onSeek={onSeekReplay}
+          onStop={onStopReplay}
+        />
+      )}
+
+      {settingsOpen && (
+        <SettingsModal onClose={() => setSettingsOpen(false)} view3d={view3d} onView3d={setView3d}
+          debug={isReplay ? undefined : debugControls} />
       )}
     </div>
   );
@@ -3088,67 +2841,8 @@ const styles = {
     textTransform: "uppercase" as const,
     color: FCT.inkDim,
   },
-  phaseOverlay: {
-    position: "absolute" as const,
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 32,
-    background: "rgba(0,0,0,0.6)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: "0 16px",
-    fontFamily: FCT.mono,
-    fontSize: 12,
-    letterSpacing: "0.14em",
-    color: FCT.ice,
-    fontWeight: 700,
-    zIndex: 6,
-  },
-  scoreboard: {
-    position: "absolute" as const,
-    top: 32,
-    left: 0,
-    right: 0,
-    height: 56,
-    background: "linear-gradient(180deg, rgba(12,16,20,0.92), rgba(12,16,20,0.65))",
-    borderBottom: `1px solid ${FCT.lineHi}`,
-    display: "grid",
-    gridTemplateColumns: "auto 1fr auto",
-    alignItems: "center",
-    padding: "0 24px",
-    gap: 24,
-    zIndex: 5,
-  },
-  infoBar: {
-    position: "absolute" as const,
-    top: 88,
-    left: 0,
-    right: 0,
-    height: 26,
-    background: "rgba(0,0,0,0.5)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: "0 16px",
-    fontFamily: FCT.mono,
-    fontSize: 11,
-    color: FCT.inkDim,
-    zIndex: 5,
-  },
   // G-2: overlay, not a reserved strip — toggling build mode must not resize the canvas
   // (that would change the fit-to-height scale).
-  bottomBars: {
-    position: "absolute" as const,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    display: "flex",
-    flexDirection: "column" as const,
-    pointerEvents: "none" as const,
-    zIndex: 15,
-  },
   trainBar: {
     padding: "8px 16px",
     background: "rgba(0,0,0,0.8)",
@@ -3185,93 +2879,9 @@ const styles = {
     color: FCT.red,
     fontFamily: FCT.mono,
   },
-  debugPanel: {
-    position: "absolute" as const,
-    bottom: "8px",
-    left: "50%",
-    transform: "translateX(-50%)",
-    background: "rgba(10,10,30,0.92)",
-    border: `1px solid ${FCT.line}`,
-    borderRadius: "8px",
-    padding: "6px 14px",
-    maxWidth: "90vw",
-    minWidth: "320px",
-    pointerEvents: "auto" as const,
-    zIndex: 20,
-    boxShadow: "0 4px 16px rgba(0, 0, 0, 0.5)",
-  },
-  debugToggleBar: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "6px",
-    cursor: "pointer",
-    userSelect: "none" as const,
-    padding: "2px 0",
-  },
-  debugToggleArrow: {
-    fontSize: "10px",
-    color: FCT.inkFaint,
-    width: "12px",
-    textAlign: "center" as const,
-  },
-  debugPanelHeader: {
-    fontSize: "10px",
-    color: FCT.inkFaint,
-    textTransform: "uppercase" as const,
-    letterSpacing: "1.5px",
-    marginBottom: "8px",
-    textAlign: "center" as const,
-    borderBottom: `1px solid ${FCT.line}`,
-    paddingBottom: "6px",
-    fontFamily: FCT.mono,
-  },
-  debugPanelBody: {
-    display: "flex",
-    flexDirection: "column" as const,
-    gap: "6px",
-  },
-  debugPanelRow: {
-    display: "flex",
-    gap: "6px",
-    alignItems: "center",
-    justifyContent: "center",
-    flexWrap: "wrap" as const,
-  },
-  debugLabel: {
-    fontSize: "10px",
-    color: FCT.inkFaint,
-    textTransform: "uppercase" as const,
-    letterSpacing: "0.5px",
-    marginRight: "4px",
-    whiteSpace: "nowrap" as const,
-    fontFamily: FCT.mono,
-  },
-  debugButton: {
-    padding: "4px 10px",
-    fontSize: "11px",
-    fontFamily: FCT.mono,
-    background: "rgba(120,120,140,0.12)",
-    color: FCT.inkDim,
-    border: `1px solid rgba(120,120,140,0.25)`,
-    borderRadius: "4px",
-    cursor: "pointer",
-    transition: "all 0.15s ease",
-  },
-  debugButtonActive: {
-    background: "rgba(124,232,255,0.22)",
-    color: FCT.ice,
-    border: `1px solid ${FCT.ice}`,
-    boxShadow: `0 0 6px rgba(124,232,255,0.2)`,
-  },
-  debugCancelButton: {
-    background: "rgba(255,92,243,0.2)",
-    color: FCT.red,
-    border: `1px solid rgba(255,92,243,0.4)`,
-  },
   errorBanner: {
     position: "absolute" as const,
-    top: "116px",
+    top: `${HUD_TOP + 64}px`,
     left: "50%",
     transform: "translateX(-50%)",
     padding: "6px 14px",
@@ -3315,20 +2925,6 @@ const styles = {
   buildModeButtonActive: {
     background: "rgba(124,232,255,0.15)",
     borderColor: FCT.ice,
-  },
-  buildBar: {
-    padding: "6px 16px",
-    background: "rgba(0,0,0,0.85)",
-    display: "flex",
-    alignItems: "center",
-    gap: "12px",
-    pointerEvents: "auto" as const,
-    borderTop: `1px solid ${FCT.lineHi}`,
-  },
-  buildLabel: {
-    fontSize: "11px",
-    color: FCT.inkDim,
-    fontFamily: FCT.mono,
   },
   buildConfirmButton: {
     padding: "4px 12px",
@@ -3381,78 +2977,6 @@ const styles = {
     borderColor: FCT.line,
     cursor: "not-allowed",
     background: FCT.bgPanel,
-  },
-  hotkeyMenu: {
-    position: "absolute" as const,
-    bottom: "8px",
-    left: "8px",
-    display: "flex",
-    flexDirection: "column" as const,
-    gap: "3px",
-    pointerEvents: "none" as const,
-    zIndex: 10,
-  },
-  selectionInfo: {
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    padding: "3px 8px",
-    background: "rgba(0,0,0,0.6)",
-    clipPath: HEX_CLIP,
-    marginBottom: "2px",
-  },
-  selectionInfoName: {
-    fontSize: "11px",
-    fontWeight: 700,
-    color: FCT.ice,
-    fontFamily: FCT.mono,
-    textTransform: "uppercase" as const,
-  },
-  selectionInfoHp: {
-    fontSize: "10px",
-    color: FCT.green,
-    fontFamily: FCT.mono,
-  },
-  hotkeyRow: {
-    display: "flex",
-    gap: "3px",
-  },
-  hotkeySlot: {
-    width: "78px",
-    height: "78px",
-    background: "rgba(0,0,0,0.78)",
-    border: `1px solid ${FCT.line}`,
-    clipPath: HEX_CLIP,
-    display: "flex",
-    flexDirection: "column" as const,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "2px",
-    transition: "all 0.1s ease",
-  },
-  hotkeyFlash: {
-    background: "rgba(124,232,255,0.25)",
-    border: `1px solid ${FCT.ice}`,
-    transform: "scale(1.1)",
-  },
-  hotkeyLabel: {
-    fontSize: "14px",
-    fontFamily: FCT.mono,
-    color: FCT.ice,
-    fontWeight: 700,
-    lineHeight: 1,
-  },
-  hotkeyIcon: {
-    fontSize: "20px",
-    lineHeight: 1,
-  },
-  hotkeyName: {
-    fontSize: "10px",
-    fontFamily: FCT.display,
-    color: FCT.ink,
-    lineHeight: 1,
-    textTransform: "uppercase" as const,
-    letterSpacing: "0.06em",
   },
   unitQueuePanel: {
     display: "flex",

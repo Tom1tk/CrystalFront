@@ -320,8 +320,9 @@ export default function App() {
   const inMatch = screen === "game" || screen === "watching_replay";
   const backdropId = screen === "lobby" && lobby?.mapId && lobby.mapId !== "random" ? lobby.mapId : previewId;
   const backdropMap = maps.find((m) => m.mapId === backdropId) ?? null;
-  useEffect(() => { setAccent(themeFor(backdropMap?.mapId).id); }, [backdropMap?.mapId]);
-  useEffect(() => { setMusic(inMatch ? "match" : "menu"); }, [inMatch]);
+  // In a match, GameShell sets the accent for the match map and may change the 3D view.
+  useEffect(() => { if (!inMatch) setAccent(themeFor(backdropMap?.mapId).id); }, [backdropMap?.mapId, inMatch]);
+  useEffect(() => { setMusic(inMatch ? "match" : "menu"); if (!inMatch) setView3d(initialView3d()); }, [inMatch]);
   const changeView3d = (v: boolean) => { setView3d(v); saveView3d(v); };
 
   return (
