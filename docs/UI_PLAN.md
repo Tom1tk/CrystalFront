@@ -1,6 +1,6 @@
 # UI Rehaul Plan (G-12)
 
-**Status:** signed off 2026-11-11 (direction A), in progress. The user's answers are in section 7; they override anything above them.
+**Status:** signed off 2026-11-11 (direction A); **all items UI-1…UI-9 shipped 2026-11-11 (v0.7.4–v0.7.9)**, awaiting the user's review. README shows the new UI. The user's answers are in section 7; they override anything above them.
 **Asked for by the user:** "the entire site ui also needs a rehaul now to fit the new aesthetic of the 3d mode, lets plan that".
 **Scope:** menus, lobby, loading, in-game HUD, match end, replays and settings. Gameplay, balance and the bot are out of scope.
 

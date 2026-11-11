@@ -13,6 +13,17 @@ Bot-vs-bot battles, captured from replays in the 3D view (blue vs magenta):
 | ![Verdant: a fight at the Glimmerfen river crossing](docs/screenshots/battle-glimmerfen.jpg) | ![Haunted: a push through Duskvale](docs/screenshots/battle-duskvale.jpg) |
 | **Glimmerfen** (verdant) | **Duskvale** (haunted) |
 
+The interface is frosted glass over a live 3D battlefield:
+
+| | |
+|---|---|
+| ![Main menu over the live 3D backdrop](docs/screenshots/ui-menu.jpg) | ![Play screen: choose an opponent and a map](docs/screenshots/ui-play.jpg) |
+| **Main menu** | **Play**: opponent and map |
+| ![Online lobby with lobby code, players and map choice](docs/screenshots/ui-lobby.jpg) | ![In-match HUD with workers selected and the command card](docs/screenshots/ui-hud.jpg) |
+| **Online lobby** | **In match**: top bar, command card, minimap |
+| ![Match result card over the final frame](docs/screenshots/ui-result.jpg) | ![Replay browser with filters and map thumbnails](docs/screenshots/ui-replays.jpg) |
+| **Result**: rematch, replay or menu | **Replays**: filter, star and watch |
+
 The map pool has ten maps in four themes:
 
 | | |
