@@ -15,13 +15,18 @@
 import { fork } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { runMatch } from "./runMatch.js";
-import { HeavyBot, MacroBot, MediumRushBot, TurtleBot } from "./bots/index.js";
+import { HeavyBot, IdleBot, MacroBot, MediumRushBot, PassiveBot, RushBot, TurtleBot, WeakMediumRushBot, WeakRushBot } from "./bots/index.js";
 import { DEFAULT_CONFIG } from "../../server/src/match/types.js";
 import { poolMaps } from "../../server/src/match/maps.js";
 import type { Agent } from "./types.js";
 
 const BOTS: Record<string, () => Agent> = {
-  rush: () => new MediumRushBot(),
+  idle: () => new IdleBot(),
+  passive: () => new PassiveBot(),
+  rush1: () => new WeakRushBot(),
+  rush2: () => new WeakMediumRushBot(),
+  rush: () => new MediumRushBot(), // "rush" kept as the medium tier for older reports
+  rush4: () => new RushBot(),
   macro: () => new MacroBot(),
   turtle: () => new TurtleBot(),
   heavy: () => new HeavyBot(),
