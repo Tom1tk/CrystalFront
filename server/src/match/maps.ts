@@ -8,6 +8,9 @@
  * a map def may set its own contested node positions.
  */
 import { buildTerrain, type MapDef, type Terrain } from "./engine/terrain.js";
+import { computeAnchors, type MapAnchors } from "./engine/anchors.js";
+import { createMap } from "./map.js";
+import type { MatchConfig } from "./types.js";
 import { POOL_MAPS } from "./pool/index.js";
 import manifest from "./pool/manifest.json" with { type: "json" };
 
@@ -68,6 +71,7 @@ export function poolMaps(): PoolEntry[] {
 export function registerMap(def: MapDef): void {
   MAPS[def.id] = def;
   for (const k of [...cache.keys()]) if (k.startsWith(`${def.id}:`)) cache.delete(k);
+  for (const k of [...anchorCache.keys()]) if (k.startsWith(`${def.id}:`)) anchorCache.delete(k);
 }
 
 export function mapIds(): string[] {
@@ -90,6 +94,22 @@ export function terrainFor(mapId: string | undefined, mapW: number, mapH: number
     cache.set(key, t);
   }
   return t;
+}
+
+const anchorCache = new Map<string, MapAnchors>();
+
+/** Named anchors for a map (T3), computed once per map and size. Maps without symmetry use the default mirror layout. */
+export function anchorsFor(mapId: string | undefined, mapW: number, mapH: number): MapAnchors {
+  const id = mapId && isKnownMap(mapId) ? mapId : DEFAULT_MAP_ID;
+  const key = `${id}:${mapW}x${mapH}`;
+  let a = anchorCache.get(key);
+  if (!a) {
+    const sym = mapSymmetry(id) === "rotate" ? "rotate" : "mirror";
+    const layout = createMap({ mapWidth: mapW, mapHeight: mapH } as MatchConfig, contestedNodesFor(id, mapW, mapH), sym === "rotate");
+    a = computeAnchors(terrainFor(id, mapW, mapH), layout, sym);
+    anchorCache.set(key, a);
+  }
+  return a;
 }
 
 /** Symmetry of a map ("none" for unknown ids and asymmetric test maps). */

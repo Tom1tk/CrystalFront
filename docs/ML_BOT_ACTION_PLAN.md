@@ -2901,3 +2901,8 @@ Verified: `npm test` 470/470, `training.test_env` PASS, `test_config_persistence
 - **Levers tried offline (not committed, constants restored):** control hold 600 → 900 / 1200 ticks, turret HP 600 → 400, turret cooldown 6 → 8. None changes the picture (turtle 0.70–0.79 vs macro, ≥0.98 vs the rest).
 - **Diagnosis (traces):** the rush bots lose on economy and attack shape, not to turret stats: skirmisher-only armies trickle into gunners and turrets and never contest nodes, while turtle masses gunners and wins on control.
 - **Status:** stopped for the user's review (a plan checkpoint). Recommendation: no game change now; rerun at T10 with the v2 bots and decide there. No balance change without the user.
+
+### 2026-11-11 — G-10 M0 T3 (P-1): named map anchors
+- **Change:** new `server/src/match/engine/anchors.ts` computes, per map, the named places the v2 action protocol points at: each seat's base, up to 3 build pockets (by path distance from the crystal), up to 3 centre anchors, up to 3 chokes, the contested nodes and each seat's safe nodes. Seat 0 is computed from terrain and layout; seat 1 is the exact mirror/rotation image, so both seats see identical geometry. `maps.ts` exposes `anchorsFor(mapId, W, H)` with a cache (cleared when a map is registered).
+- **Checks (new tests, all 12 maps, both seats):** slot counts, exact seat symmetry, centre and node lists closed under the image, nodes = contested nodes, safe nodes = the match's safe nodes, every anchor walkable and reachable from the base, every pocket accepts a foundry (the widest building) via `validateBuildSite`. 773/773 custom tests and 85/85 vitest pass.
+- **Cost:** 12–130 ms per map, once.

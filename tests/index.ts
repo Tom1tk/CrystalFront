@@ -25,7 +25,11 @@ import { buildTerrain, terrainAt, isObstacleCode, T_ROCK, T_WATER, T_OPEN, T_HIG
 import { getRange, getVisionRange } from "../server/src/match/engine/utils.js";
 import { computeVisibility, encodeVision } from "../server/src/match/engine/visibility.js";
 import { generateMap, validateMap } from "../server/src/match/mapgen.js";
-import { registerMap, poolMaps, isKnownMap, terrainFor } from "../server/src/match/maps.js";
+import { registerMap, poolMaps, isKnownMap, terrainFor, mapIds, anchorsFor } from "../server/src/match/maps.js";
+import { ANCHOR_MAX, imagePt, seatAnchors, type Pt } from "../server/src/match/engine/anchors.js";
+import { validateBuildSite } from "../server/src/match/buildingValidation.js";
+import { cellOf, flowField } from "../server/src/match/engine/pathfinding.js";
+import { BUILDING_DEFS } from "../shared/src/gameBalance.js";
 import { POOL_MAPS } from "../server/src/match/pool/index.js";
 import { readFileSync as _readFileSync, readdirSync as _readdirSync } from "node:fs";
 import { loadGolden, runCase } from "../headless/src/goldenHashes.js";
@@ -3159,7 +3163,53 @@ function goldenHashTests(): void {
   }
 }
 
+/** Named map anchors (G-10 T3): valid, symmetric and reachable on every map. */
+function anchorTests(): void {
+  console.log("\n--- Map anchors (G-10 T3) ---");
+  const W = DEFAULT_CONFIG.mapWidth, H = DEFAULT_CONFIG.mapHeight;
+  const widest = Object.keys(BUILDING_DEFS).reduce((a, b) => (BUILDING_DEFS[b].width > BUILDING_DEFS[a].width ? b : a));
+  const key = (p: Pt) => `${p.x},${p.y}`;
+  const sameSet = (a: Pt[], b: Pt[]) => a.length === b.length && a.map(key).sort().join(" ") === b.map(key).sort().join(" ");
+  for (const id of mapIds()) {
+    const engine = new MatchEngine();
+    const players: [PlayerSlot | null, PlayerSlot | null] = [
+      { playerId: "an-blue", username: "Blue", color: "blue", score: 0 },
+      { playerId: "an-red", username: "Red", color: "red", score: 0 },
+    ];
+    const match = engine.createMatch(`anchors-${id}`, players, { ...DEFAULT_CONFIG, mapId: id }, 1);
+    const a = anchorsFor(id, W, H);
+    const img = (p: Pt) => imagePt(p, a.symmetry, W, H);
+    const seats = [seatAnchors(a, 0, W, H), seatAnchors(a, 1, W, H)] as const;
+
+    assert(a.pockets[0].length >= 1 && a.pockets[0].length <= ANCHOR_MAX.pockets && a.centre.length >= 1 && a.centre.length <= ANCHOR_MAX.centre
+      && a.chokes[0].length <= ANCHOR_MAX.chokes && a.nodes.length <= ANCHOR_MAX.nodes && a.safeNodes[0].length <= ANCHOR_MAX.safeNodes,
+      `T3 ${id}: anchor counts within their maxima (pockets ${a.pockets[0].length}, centre ${a.centre.length}, chokes ${a.chokes[0].length}, nodes ${a.nodes.length})`);
+
+    // Seat symmetry: every seat-1 anchor is the exact image of seat 0's, slot by slot.
+    const s0 = seats[0], s1 = seats[1];
+    const lists: Array<[Pt[], Pt[]]> = [[[s0.base], [s1.base]], [s0.pockets, s1.pockets], [s0.centre, s1.centre], [s0.nodes, s1.nodes], [s0.safeNodes, s1.safeNodes], [s0.chokes, s1.chokes]];
+    assert(lists.every(([p, q]) => p.length === q.length && p.every((pt, i) => key(img(pt)) === key(q[i]))), `T3 ${id}: seat 1's anchors are the exact images of seat 0's`);
+    assert(sameSet(a.centre, a.centre.map(img)) && sameSet(a.nodes, a.nodes.map(img)), `T3 ${id}: shared anchors (centre, nodes) map onto themselves`);
+    const contested = match.resourceNodes.filter((n) => n.contested);
+    assert(sameSet(a.nodes, contested), `T3 ${id}: nodes are exactly the contested nodes`);
+    assert(sameSet([...s0.safeNodes, ...s1.safeNodes], match.resourceNodes.filter((n) => !n.contested)), `T3 ${id}: safe nodes are exactly the match's safe nodes`);
+    for (const seat of [0, 1] as const) {
+      const v = seats[seat];
+      const all = [v.base, ...v.pockets, ...v.centre, ...v.nodes, ...v.safeNodes, ...v.chokes];
+      const blocked = all.filter((p) => match.nav.structures[cellOf(match.nav, p.x, p.y)] > 0);
+      assert(blocked.length === 0, `T3 ${id}: seat ${seat} anchors are on walkable cells` + (blocked.length ? ` — ${blocked.map(key).join(" ")}` : ""));
+      const field = flowField(match.nav, cellOf(match.nav, v.base.x, v.base.y));
+      const unreached = all.filter((p) => field[cellOf(match.nav, p.x, p.y)] >= 0x3fffffff);
+      assert(unreached.length === 0, `T3 ${id}: seat ${seat} anchors are reachable from the base` + (unreached.length ? ` — ${unreached.map(key).join(" ")}` : ""));
+      const pid = seat === 0 ? "an-blue" : "an-red";
+      const bad = v.pockets.map((p) => ({ p, r: validateBuildSite(match, pid, widest as never, p.x, p.y) })).filter((x) => !x.r.valid);
+      assert(bad.length === 0, `T3 ${id}: seat ${seat} pockets accept the widest building (${widest})` + (bad.length ? ` — ${key(bad[0].p)}: ${bad[0].r.reason}` : ""));
+    }
+  }
+}
+
 void (async () => {
+  anchorTests();
   await determinismTests();
   await loadGateTests();
   goldenHashTests();
