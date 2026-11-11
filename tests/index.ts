@@ -33,6 +33,9 @@ import { BUILDING_DEFS } from "../shared/src/gameBalance.js";
 import { POOL_MAPS } from "../server/src/match/pool/index.js";
 import { readFileSync as _readFileSync, readdirSync as _readdirSync } from "node:fs";
 import { loadGolden, runCase } from "../headless/src/goldenHashes.js";
+import { runMatch } from "../headless/src/runMatch.js";
+import { IdleBot } from "../headless/src/bots/index.js";
+import { episodeStatus, evalScore, TRAIN_MAX_TICKS } from "../headless/src/episode.js";
 import { existsSync as _existsSync, unlinkSync as _unlinkSync, writeFileSync as _writeFileSync } from "node:fs";
 import { resolve as _resolve, join as _join } from "node:path";
 
@@ -3164,6 +3167,39 @@ function goldenHashTests(): void {
 }
 
 /** Named map anchors (G-10 T3): valid, symmetric and reachable on every map. */
+function truncationTests(): void {
+  console.log("\n--- Truncation at the cap (G-10 T4, P-4) ---");
+  assertEqual(TRAIN_MAX_TICKS, 12000, "training cap is 12,000 ticks");
+
+  // Two idle bots never finish: the engine's tiebreak names a winner at the cap,
+  // but the episode is truncated, not a win or loss, and scores as a draw.
+  const capped = runMatch(new IdleBot(), new IdleBot(), { seed: 7, maxTicks: 300 });
+  assertEqual(capped.ticks, 300, "idle game runs to the cap");
+  assertEqual(capped.winType, "timeout", "cap ends with the tiebreak winType");
+  assert(capped.winner !== null, "tiebreak still names a winner (kept for live play)");
+  assertEqual(capped.truncated, true, "capped game is flagged truncated");
+  assertEqual(evalScore(capped.winner, capped.truncated, capped.winner!), 0.5, "truncated game scores 0.5 for the tiebreak winner");
+
+  // A real ending (forfeit) is terminated, not truncated.
+  const engine = new MatchEngine();
+  const players: [PlayerSlot | null, PlayerSlot | null] = [
+    { playerId: "tr-blue", username: "Blue", color: "blue", score: 0 },
+    { playerId: "tr-red", username: "Red", color: "red", score: 0 },
+  ];
+  const m = engine.createMatch("trunc-1", players, { ...DEFAULT_CONFIG, maxTicks: 0 }, 1);
+  engine.startMatch(m.id);
+  for (let i = 0; i < 50; i++) engine.tick(m.id);
+  assertEqual(JSON.stringify(episodeStatus(m, 50)), JSON.stringify({ terminated: false, truncated: true }),
+    "runner cap without engine tiebreak (maxTicks 0) is truncated");
+  assertEqual(JSON.stringify(episodeStatus(m, 100)), JSON.stringify({ terminated: false, truncated: false }),
+    "mid-game is neither terminated nor truncated");
+  engine.endMatch(m.id, "tr-red", "forfeit");
+  assertEqual(JSON.stringify(episodeStatus(m, 50)), JSON.stringify({ terminated: true, truncated: false }),
+    "forfeit is terminated, not truncated");
+  assertEqual(evalScore("tr-red", false, "tr-red"), 1, "real win scores 1");
+  assertEqual(evalScore("tr-red", false, "tr-blue"), 0, "real loss scores 0");
+}
+
 function anchorTests(): void {
   console.log("\n--- Map anchors (G-10 T3) ---");
   const W = DEFAULT_CONFIG.mapWidth, H = DEFAULT_CONFIG.mapHeight;
@@ -3210,6 +3246,7 @@ function anchorTests(): void {
 
 void (async () => {
   anchorTests();
+  truncationTests();
   await determinismTests();
   await loadGateTests();
   goldenHashTests();

@@ -5,6 +5,7 @@ import type { Agent, MatchResult, MacroAction } from "./types.js";
 import { buildObservation } from "./observation.js";
 import { getLegalActions } from "./legalActions.js";
 import { expandMacroAction } from "./actionSpace.js";
+import { episodeStatus } from "./episode.js";
 
 const DEFAULT_MAX_TICKS = 6000; // 10 min at 10 Hz
 
@@ -79,6 +80,7 @@ export function runMatch(
   return {
     winner,
     winType,
+    truncated: episodeStatus(match, maxTicks).truncated,
     ticks: match.tick,
     durationMs: Date.now() - startMs,
     commandLog: match.commandLog,

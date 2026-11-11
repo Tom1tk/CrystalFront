@@ -2906,3 +2906,11 @@ Verified: `npm test` 470/470, `training.test_env` PASS, `test_config_persistence
 - **Change:** new `server/src/match/engine/anchors.ts` computes, per map, the named places the v2 action protocol points at: each seat's base, up to 3 build pockets (by path distance from the crystal), up to 3 centre anchors, up to 3 chokes, the contested nodes and each seat's safe nodes. Seat 0 is computed from terrain and layout; seat 1 is the exact mirror/rotation image, so both seats see identical geometry. `maps.ts` exposes `anchorsFor(mapId, W, H)` with a cache (cleared when a map is registered).
 - **Checks (new tests, all 12 maps, both seats):** slot counts, exact seat symmetry, centre and node lists closed under the image, nodes = contested nodes, safe nodes = the match's safe nodes, every anchor walkable and reachable from the base, every pocket accepts a foundry (the widest building) via `validateBuildSite`. 773/773 custom tests and 85/85 vitest pass.
 - **Cost:** 12–130 ms per map, once.
+
+### 2026-11-11 — T1 decision: no game change now (user)
+- **The user agreed** with the recommendation: leave the game as it is, rerun the balance matrix at T10 with the v2 scripted bots, and decide there. Logged in `GAME_UPDATE_PLAN.md`.
+
+### 2026-11-11 — G-10 M0 T4 (P-4): truncation at the cap
+- **Change:** new `headless/src/episode.ts`: `TRAIN_MAX_TICKS = 12000`; `episodeStatus(match, cap)` returns `{terminated, truncated}`: a combat/control/forfeit end is terminated, the engine's cap tiebreak (winType "timeout") or a runner stopping at its own cap is truncated; `evalScore` gives 1/0, and 0.5 for a truncated game. `runMatch` results carry `truncated`. The engine's tiebreak winner is kept for the live game and `runMatch`.
+- **Not changed:** the v1 stdio runners; the T7 two-seat runner uses `episodeStatus` and returns the terminal observation for bootstrapping. The balance tool still scores the tiebreak winner so T10 stays comparable with T1.
+- **Checks:** 11 new tests (784/784 custom, 85/85 vitest); golden hashes unchanged.

@@ -118,6 +118,8 @@ export interface Agent {
 export interface MatchResult {
   winner: string | null;            // null = max-ticks draw
   winType: "combat" | "control" | "timeout" | "forfeit" | null;
+  /** Hit the tick cap (P-4): `winner` is only the tiebreak; not a real win or loss. */
+  truncated: boolean;
   ticks: number;
   durationMs: number;
   commandLog: Array<{ tick: number; playerId: string; command: Record<string, unknown> }>;
