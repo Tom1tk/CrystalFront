@@ -10,11 +10,19 @@ const PATH_SHOW_MS = 1200;
 import { UNIT_DEFS, BUILDING_DEFS } from "@crystalfront/shared";
 import type { World3D } from "../three/World3D";
 
-/** G-11: 3D view preference (localStorage, or ?view=3d / ?view=2d in the URL). */
+/** G-11: 3D/2D preference key ("3d" | "2d"). Replaces the old "cf.view3d", which saved
+ *  "0" for everyone who never chose, so 3D can be the default for all players. */
+export const VIEW_KEY = "cf.view";
+
+/** G-11: 3D view preference (?view=3d / ?view=2d in the URL, else localStorage). 3D by default. */
 export function initialView3d(): boolean {
   const q = new URLSearchParams(window.location.search).get("view");
   if (q === "3d" || q === "2d") return q === "3d";
-  try { return window.localStorage.getItem("cf.view3d") === "1"; } catch { return false; }
+  try { return window.localStorage.getItem(VIEW_KEY) !== "2d"; } catch { return true; }
+}
+
+export function saveView3d(on: boolean) {
+  try { window.localStorage.setItem(VIEW_KEY, on ? "3d" : "2d"); } catch { /* storage blocked */ }
 }
 
 interface GameShellProps {
@@ -846,7 +854,7 @@ export default function GameShell({
   // load, or failed to). Only the first load matters, so F3 mid-match never resets it.
   const [assetsReady, setAssetsReady] = useState(() => !initialView3d());
   useEffect(() => {
-    try { window.localStorage.setItem("cf.view3d", view3d ? "1" : "0"); } catch { /* storage blocked */ }
+    saveView3d(view3d);
     if (!view3d) { setAssetsReady(true); return; }
     let world: World3D | null = null;
     let cancelled = false;

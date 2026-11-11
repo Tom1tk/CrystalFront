@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { initialView3d, saveView3d } from "./GameShell";
 import { FCT, FctFrame, FctPanel, FctBtn, Refract, HEX_CLIP } from "../design/facet";
 import MapPicker from "./MapPicker";
 import { setSoundEnabled, soundEnabled } from "../audio";
@@ -34,13 +35,11 @@ export default function MainMenu({ onHost, onJoin, onSoloTest, onBotGame: _onBot
   const [showSettings, setShowSettings] = useState(false);
   const [soloMap, setSoloMap] = useState("random");
   // G-11: same key GameShell reads; F3 in game toggles it too.
-  const [view3d, setView3d] = useState(() => {
-    try { return window.localStorage.getItem("cf.view3d") === "1"; } catch { return false; }
-  });
+  const [view3d, setView3d] = useState(initialView3d);
   const toggleView3d = () => {
     const next = !view3d;
     setView3d(next);
-    try { window.localStorage.setItem("cf.view3d", next ? "1" : "0"); } catch { /* storage blocked */ }
+    saveView3d(next);
   };
   const [sound, setSound] = useState(soundEnabled);
   const toggleSound = () => {

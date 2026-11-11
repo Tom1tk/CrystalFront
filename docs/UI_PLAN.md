@@ -15,7 +15,7 @@ Problems seen in screenshots of the current build:
 | Screen | Problem |
 |---|---|
 | Main menu | The left half is empty dark space. Nothing shows the game itself. Solo Test is hidden in Settings. |
-| Settings | It opens inline under the menu and pushes the page down. "3D View" reads OFF when the page was opened with `?view=3d`, because the URL flag is only stored once a match starts. Sound is on/off only, with no volume. |
+| Settings | It opens inline under the menu and pushes the page down. "3D View" reads OFF when the page was opened with `?view=3d`, because the URL flag is only stored once a match starts. (Fixed in 0.7.3.) Sound is on/off only, with no volume. |
 | Play vs Bot | The page has no side padding: the map picker touches the left edge. The bot list is plain text rows with no picture of how each bot plays. The map picker is a native `<select>`. |
 | Lobby | Usable. The map preview is a small dashed box, and there is no picture of the map. |
 | Loading (new in 0.7.2) | Works, but is plain: logo, status and map name only. |

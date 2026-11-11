@@ -1,6 +1,26 @@
 # CrystalFront RTS
 
-A multiplayer browser-based real-time strategy game. 1v1 RTS with lobby system, worker-based building, resource gathering, unit combat, and server-authoritative gameplay.
+A multiplayer browser-based real-time strategy game. 1v1 RTS with lobby system, worker-based building, resource gathering, unit combat, and server-authoritative gameplay. Web players get the low-poly 3D view by default; the original 2D view is one key (F3) or one setting away.
+
+## Screenshots
+
+Bot-vs-bot battles, captured from replays in the 3D view (blue vs magenta):
+
+| | |
+|---|---|
+| ![Frost: skirmishes on Shardfall](docs/screenshots/battle-shardfall.jpg) | ![Desert: a clash in the Cinder Flats rocks](docs/screenshots/battle-cinder-flats.jpg) |
+| **Shardfall** (frost) | **Cinder Flats** (desert) |
+| ![Verdant: a fight at the Glimmerfen river crossing](docs/screenshots/battle-glimmerfen.jpg) | ![Haunted: a push through Duskvale](docs/screenshots/battle-duskvale.jpg) |
+| **Glimmerfen** (verdant) | **Duskvale** (haunted) |
+
+The map pool has ten maps in four themes:
+
+| | |
+|---|---|
+| ![Twin Spires](docs/screenshots/map-twin-spires.jpg) | ![Basalt Run](docs/screenshots/map-basalt-run.jpg) |
+| **Verdant**: Ironreed, Twin Spires, Glimmerfen | **Desert**: Basalt Run, Saltmarsh, Cinder Flats |
+| ![Hollow Crown](docs/screenshots/map-hollow-crown.jpg) | ![Prism Ridge](docs/screenshots/map-prism-ridge.jpg) |
+| **Haunted**: Duskvale, Hollow Crown | **Frost**: Shardfall, Prism Ridge |
 
 ## Project Structure
 
@@ -9,6 +29,9 @@ CrystalFront-RTS/
 ├── client/          # React + Vite frontend
 ├── server/          # Node.js + Express + ws backend
 ├── shared/          # Shared TypeScript types and constants
+├── headless/        # Headless match runner and scripted bots
+├── training/        # ML bot training (Python)
+├── docs/            # Plans, release notes and screenshots
 ├── tests/           # Automated tests
 ├── package.json     # Root workspace config
 └── tsconfig.json    # Root TypeScript config
@@ -522,28 +545,34 @@ sudo systemctl restart crystalfront-rts
 
 ### Current Features
 
-- **Main Menu**: Username input, host game, join by lobby code
-- **Lobby System**: Create/join lobbies with 6-character codes, ready-up flow
+- **3D view (default)**: low-poly models (Kenney, CC0) with themed terrain. Press **F3** in a match, or use Settings → 3D View, to switch to the 2D view; the choice is remembered. `?view=2d` / `?view=3d` in the URL overrides it.
+- **Maps**: a pool of 10 maps in four themes (verdant, desert, haunted, frost), with high ground, rock, brush and rivers. The host picks the map in the lobby, or leaves it random.
+- **Fog of war** with terrain line of sight: high ground sees over low ground, rock blocks sight, and brush hides units.
+- **Main Menu**: Username input, host game, join by lobby code, Play vs Bot, replays, settings (3D view, sound).
+- **Lobby System**: Create/join lobbies with 6-character codes, ready-up flow, map picker.
+- **Synchronised start**: a loading screen holds the match until both players have loaded, so both see the first tick together.
 - **RTS Gameplay**:
-  - Worker-based building system
-  - Multi-worker construction (workers can help build together)
+  - Five unit types (worker, skirmisher, gunner, bruiser, medic) and four buildings (barracks, foundry, supply depot, turret)
+  - Worker-based building, with several workers able to build together
   - Resource gathering with range limits
-  - Unit movement and selection
+  - Unit movement, selection, attack-move and rally points
   - Combat system with range-based attacks
-  - Building placement validation
-- **Match Flow**: Both players ready → game shell → gameplay → match end screen
+  - Win by destroying the enemy or by holding the map's control nodes
+- **Bots**: Play vs Bot against scripted opponents (passive, rush variants, turtle, macro, heavy).
+- **Replays**: every completed match is recorded; browse and play back at variable speed, forward or reverse.
+- **Sound**: sound effects with an on/off setting.
+- **Match Flow**: Both players ready → loading → gameplay → match end screen
 - **Rematch**: Same lobby persists, score tracks across rematches
 - **WebSocket Sync**: Real-time state synchronization between clients and server
 - **Server-Authoritative**: Server is source of truth for all game state
 
 ### Planned Features
 
-- Fog of war
+- Site-wide UI refresh to match the 3D look (see `docs/UI_PLAN.md`)
+- Retrained ML bot that adapts to the opponent (see `docs/ML_RETRAIN_PLAN.md`)
 - Unit upgrades and technology tree
-- More unit types and buildings
 - Reconnect on refresh
 - Chat system
-- Replay system
 - External matchmaking
 
 ## Game Mechanics

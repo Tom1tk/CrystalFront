@@ -2843,3 +2843,12 @@ Verified: `npm test` 470/470, `training.test_env` PASS, `test_config_persistence
 - **Already existed (told the user):** the Sound on/off toggle in Settings, and the host's map picker in the lobby.
 - **UI rehaul:** plan drafted in `docs/UI_PLAN.md`, waiting for the user's direction choice. Not started.
 - **Next:** the user's answers on `docs/UI_PLAN.md`; G-10 M0 still waits for "start".
+
+### 2026-11-11 — 3D by default and README screenshots (v0.7.3)
+- **The user asked** for the README to be updated with "action" screenshots of two opponents and of the map variations, and for 3D to be the default for web users.
+- **3D default.** The view preference now lives under a new key, `cf.view` ("3d" or "2d"); without it, players get 3D. The old key `cf.view3d` is ignored, because older builds wrote "0" there for every player who never chose. `?view=` still overrides. The Settings toggle now reads the same helper, so it shows ON when the page was opened with `?view=3d`.
+- **Verified on the live build** in a fresh browser: Settings shows ON; it stays ON with a legacy `cf.view3d=0`; turning it off stores "2d" and survives a reload; `?view=3d` beats a stored "2d".
+- **Screenshots.** Bot-vs-bot replays (heavy/macro bots) were generated on 8 maps; frames at the biggest fights were captured in 3D at 2560×1440 and cropped. They are in `docs/screenshots/`: four battles (shardfall, cinder-flats, glimmerfen, duskvale) and one map per theme (twin-spires, basalt-run, hollow-crown, prism-ridge). The 13 test replays were deleted afterwards.
+- **README:** screenshots section, an up-to-date Features list (3D/F3, map pool and themes, fog of war, bots, replays, sound, synchronised start), and a refreshed project tree and Planned list.
+- **Next:** the user's answers on `docs/UI_PLAN.md`; G-10 M0 still waits for "start".
+
