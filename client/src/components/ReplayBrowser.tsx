@@ -175,6 +175,10 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
   const hasFilters  = filterWinner !== "all" || filterWinType !== "all"
     || filterBot.trim() || filterStarred || filterFlags.size > 0;
 
+  // Dev view: a dense table instead of cards (remembered per browser).
+  const [table, setTable] = useState(() => { try { return localStorage.getItem("cf.replayTable") === "1"; } catch { return false; } });
+  const toggleTable = () => setTable(v => { try { localStorage.setItem("cf.replayTable", v ? "0" : "1"); } catch { /* storage blocked */ } return !v; });
+
   const [maps, setMaps] = useState<MapInfo[]>([]);
   useEffect(() => { void fetchMaps().then(setMaps); }, []);
   const sortId = SORTS.find(o => o.field === sortField && o.asc === sortAsc)?.id ?? "new";
@@ -194,6 +198,8 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
             <button type="button" className={`g-btn small${filterStarred ? " primary" : ""}`} onClick={() => setFilterStarred(v => !v)}>
               <Icon name="star" size={14} />Starred
             </button>
+            <span style={{ flex: 1 }} />
+            <button type="button" className={`g-btn small ghost${table ? " primary" : ""}`} title="Dense table (dev view)" onClick={toggleTable}>Table</button>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <span className="g-label">Flags</span>
@@ -228,7 +234,38 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
           {error && <div className="g-error">{error}</div>}
           {!loading && !error && total === 0 && replays.length === 0 && <div className="g-sub">No replays yet. Every finished match is saved here.</div>}
           {!loading && !error && total > 0 && replays.length === 0 && <div className="g-sub">No replays match these filters.</div>}
-          {!loading && replays.map(r => {
+          {!loading && table && replays.length > 0 && (
+            <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "var(--mono)", fontSize: 12 }}>
+              <thead>
+                <tr className="g-label" style={{ textAlign: "left" }}>
+                  {["", "Date", "Blue", "Red", "Winner", "Result", "Length", "Map", "Seed", "Flags", "Ver", ""].map((h, i) => <th key={i} style={{ padding: "4px 6px", fontWeight: 400 }}>{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {replays.map(r => {
+                  const win = winnerSide(r);
+                  const wt = r.winType ?? r.outcome.winType;
+                  return (
+                    <tr key={r.id} style={{ borderTop: "1px solid var(--edge)" }}>
+                      <td style={{ padding: "3px 6px" }}><IconBtn icon="star" title={starred.has(r.id) ? "Unstar" : "Star"} small on={starred.has(r.id)} onClick={() => toggleStar(r.id)} /></td>
+                      <td style={{ padding: "3px 6px", whiteSpace: "nowrap" }}>{formatDate(r.timestamp)}</td>
+                      <td style={{ padding: "3px 6px", color: TEAM.blue }}>{r.blue}</td>
+                      <td style={{ padding: "3px 6px", color: TEAM.red }}>{r.red}</td>
+                      <td style={{ padding: "3px 6px", color: win ? TEAM[win] : undefined }}>{win ?? "draw"}</td>
+                      <td style={{ padding: "3px 6px" }}>{wt ?? "?"}</td>
+                      <td style={{ padding: "3px 6px" }}>{formatDuration(r.durationSecs)}</td>
+                      <td style={{ padding: "3px 6px" }}>{r.mapId ?? "?"}</td>
+                      <td style={{ padding: "3px 6px" }}>{r.seed}</td>
+                      <td style={{ padding: "3px 6px", color: "var(--accent)" }}>{(r.flags ?? []).map(flagLabel).join(", ")}</td>
+                      <td style={{ padding: "3px 6px" }}>{r.version ?? "?"}</td>
+                      <td style={{ padding: "3px 6px" }}><button type="button" className="g-btn small" onClick={() => onWatch(r.id, r.outcome.ticks, r.version)}>Watch</button></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+          {!loading && !table && replays.map(r => {
             const win = winnerSide(r);
             const wt = r.winType ?? r.outcome.winType;
             const map = maps.find(m => m.mapId === r.mapId);

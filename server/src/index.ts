@@ -1250,6 +1250,8 @@ app.get("{*path}", (_req: Request, res: Response) => {
 
 httpServer.listen(PORT, "0.0.0.0", () => {
   console.log(`CrystalFront RTS server running on http://0.0.0.0:${PORT}`);
+  // Parse replay metadata once at boot so the first Replays visit isn't slow.
+  setTimeout(() => { try { listReplays(); } catch { /* listed lazily instead */ } }, 1000);
 });
 
 export { app, httpServer, lobbyManager, matchEngine, liveRunner };

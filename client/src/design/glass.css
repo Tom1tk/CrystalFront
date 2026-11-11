@@ -3,14 +3,14 @@
 :root {
   --accent: #7ce8ff;
   --accent-ink: #04121a;
-  --glass: rgba(14, 18, 28, 0.58);
+  --glass: rgba(14, 18, 28, 0.66);
   --glass-strong: rgba(12, 15, 24, 0.78);
   --glass-hi: rgba(255, 255, 255, 0.07);
   --edge: rgba(255, 255, 255, 0.14);
   --edge-hi: rgba(255, 255, 255, 0.3);
   --ink: #eef2fa;
   --ink-dim: #b4bdd6;
-  --ink-faint: #7f89a3;
+  --ink-faint: #959fb8;
   --blue: #7ce8ff;
   --red: #ff5cf3;
   --good: #7cffb0;
@@ -241,3 +241,8 @@
 
 /* Fixed top-right corner (sound and settings) on menu screens. */
 .g-corner { position: fixed; top: 16px; right: 16px; z-index: 1600; display: flex; gap: 8px; }
+
+/* Respect the OS "reduce motion" setting: no rise-in, pulsing or sliding bars. */
+@media (prefers-reduced-motion: reduce) {
+  .g-enter, .g-pulse, .g-boot-bar { animation: none; }
+}
