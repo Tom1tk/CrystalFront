@@ -20,6 +20,8 @@ export const WS_EVENT = {
   STOP_REPLAY: "stop_replay",
   REPLAY_END: "replay_end",
   REPLAY_SPEED: "replay_speed",
+  /** The client finished loading the match (3D assets); the server starts it when all have. */
+  CLIENT_LOADED: "client_loaded",
 } as const;
 
 export const CLIENT_MSG = {
@@ -38,6 +40,8 @@ export const CLIENT_MSG = {
   START_REPLAY: "start_replay",
   STOP_REPLAY: "stop_replay",
   REPLAY_SPEED: "replay_speed",
+  /** The client finished loading the match (3D assets); the server starts it when all have. */
+  CLIENT_LOADED: "client_loaded",
 } as const;
 
 export const SERVER_EVT = {
@@ -66,7 +70,8 @@ export type ClientToServerMsg =
   | { type: typeof CLIENT_MSG.SET_MAP; payload: { mapId: string } }
   | { type: typeof CLIENT_MSG.START_REPLAY; payload: { replayId: string } }
   | { type: typeof CLIENT_MSG.STOP_REPLAY }
-  | { type: typeof CLIENT_MSG.REPLAY_SPEED; payload: { speed: number } };
+  | { type: typeof CLIENT_MSG.REPLAY_SPEED; payload: { speed: number } }
+  | { type: typeof CLIENT_MSG.CLIENT_LOADED };
 
 export type ServerToClientMsg =
   | { type: typeof SERVER_EVT.CONNECTED; payload: { playerId: PlayerId } }

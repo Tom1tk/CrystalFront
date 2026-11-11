@@ -3,7 +3,7 @@ import { useWebSocket } from "./hooks/useWebSocket";
 import MainMenu from "./components/MainMenu";
 import BotSelectMenu from "./components/BotSelectMenu";
 import LobbyScreen from "./components/LobbyScreen";
-import GameShell from "./components/GameShell";
+import GameShell, { initialView3d } from "./components/GameShell";
 import MatchEndScreen from "./components/MatchEndScreen";
 import ReplayBrowser from "./components/ReplayBrowser";
 import type { Screen, Player, MatchState } from "./types";
@@ -39,7 +39,7 @@ function useScreenFlow() {
     if (screen === "replays") return;
     if (screen === "watching_replay") return;
     // Transition to game when match starts
-    if (ws.matchState && ws.matchState.phase === "playing") {
+    if (ws.matchState && (ws.matchState.phase === "spawn" || ws.matchState.phase === "playing")) {
       setScreen("game");
       return;
     }
@@ -305,6 +305,11 @@ export default function App() {
     botSelectUsername,
   } = useScreenFlow();
 
+  // Start fetching the 3D models while the player is still in the menus.
+  useEffect(() => {
+    if (initialView3d()) import("./three/World3D").then((m) => m.preloadModels()).catch(() => { /* retried in-match */ });
+  }, []);
+
   const player = getCurrentPlayer();
   const lobby = getCurrentLobby();
 
@@ -366,6 +371,7 @@ export default function App() {
           onGameCommand={handleGameCommand}
           error={ws.error}
           onClearError={ws.clearError}
+          onLoaded={ws.clientLoaded}
         />
       )}
       {screen === "matchEnd" && lobby && player && matchWinnerId && (

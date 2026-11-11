@@ -139,6 +139,29 @@ function hashStr(s: string) {
   return h >>> 0;
 }
 
+let modelsPromise: Promise<Map<ModelKey, GLTF>> | null = null;
+
+/** Load every model once per page; later matches (and an early call from the menu) reuse it.
+ *  The source scenes are only ever cloned, never mutated, so sharing them is safe. */
+export function preloadModels(): Promise<Map<ModelKey, GLTF>> {
+  modelsPromise ??= (async () => {
+    const loader = new GLTFLoader();
+    const out = new Map<ModelKey, GLTF>();
+    await Promise.all((Object.keys(MODELS) as ModelKey[]).map(async (k) => {
+      const g = await loader.loadAsync(`${BASE}${MODELS[k]}.glb`);
+      // The nature kit exports metallicFactor 1, which renders near-black without an env map.
+      g.scene.traverse((n) => {
+        const m = (n as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+        if (m && "metalness" in m) m.metalness = 0;
+      });
+      out.set(k, g);
+    }));
+    return out;
+  })();
+  modelsPromise.catch(() => { modelsPromise = null; }); // allow a retry after a failed load
+  return modelsPromise;
+}
+
 export class World3D {
   readonly canvas: HTMLCanvasElement;
   ready = false;
@@ -199,16 +222,7 @@ export class World3D {
   }
 
   async load(): Promise<void> {
-    const loader = new GLTFLoader();
-    await Promise.all((Object.keys(MODELS) as ModelKey[]).map(async (k) => {
-      const g = await loader.loadAsync(`${BASE}${MODELS[k]}.glb`);
-      // The nature kit exports metallicFactor 1, which renders near-black without an env map.
-      g.scene.traverse((n) => {
-        const m = (n as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
-        if (m && "metalness" in m) m.metalness = 0;
-      });
-      this.gltf.set(k, g);
-    }));
+    for (const [k, g] of await preloadModels()) this.gltf.set(k, g);
     if (!this.disposed) this.ready = true;
   }
 

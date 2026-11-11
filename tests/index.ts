@@ -18,6 +18,7 @@ import { MediumRushBot } from "../headless/src/bots/mediumRushBot.js";
 import { MacroBot } from "../headless/src/bots/macroBot.js";
 import { LiveMatchRunner } from "../server/src/match/liveMatchRunner.js";
 import { hashMatchState } from "../server/src/match/engine/hash.js";
+import { LoadGate } from "../server/src/match/loadGate.js";
 import { actionStateOf, headingOf, staticMapOf } from "../server/src/match/engine/presentation.js";
 import { isCellBlocked, rebuildNavGrid } from "../server/src/match/engine/navGrid.js";
 import { buildTerrain, terrainAt, isObstacleCode, T_ROCK, T_WATER, T_OPEN, T_HIGH, T_CLIFF, T_ROUGH } from "../server/src/match/engine/terrain.js";
@@ -3093,8 +3094,36 @@ console.log("\n--- G-7: Map generator ---");
   }
 }
 
+/** Matches wait for every human client to load before the first tick. */
+async function loadGateTests(): Promise<void> {
+  console.log("\n--- Load gate ---");
+  const begun: string[] = [];
+  const gate = new LoadGate((id) => begun.push(id), 40);
+
+  gate.wait("m1", ["a", "b"]);
+  gate.loaded("m1", "a");
+  assert(begun.length === 0 && gate.isWaiting("m1"), "load gate: waits while one player is still loading");
+  gate.loaded("m1", "b");
+  assertEqual(begun.join(), "m1", "load gate: starts once both players have loaded");
+  gate.loaded("m1", "b");
+  assertEqual(begun.length, 1, "load gate: a repeated report doesn't start the match twice");
+
+  gate.wait("m2", []);
+  assertEqual(begun.at(-1), "m2", "load gate: a match with no human clients starts at once");
+
+  gate.wait("m3", ["a", "b"]);
+  gate.loaded("m3", "a");
+  await new Promise((r) => setTimeout(r, 80));
+  assertEqual(begun.at(-1), "m3", "load gate: a client that never reports in can't block the match past the timeout");
+
+  gate.wait("m4", ["a", "b"]);
+  gate.release("m4");
+  assert(begun.at(-1) === "m4" && !gate.isWaiting("m4"), "load gate: release() starts a waiting match (player left while loading)");
+}
+
 void (async () => {
   await determinismTests();
+  await loadGateTests();
   console.log(`\n${"=".repeat(40)}`);
   console.log(`Results: ${passed} passed, ${failed} failed`);
   console.log("=".repeat(40) + "\n");

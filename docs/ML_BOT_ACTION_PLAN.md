@@ -2827,3 +2827,19 @@ Verified: `npm test` 470/470, `training.test_env` PASS, `test_config_persistence
 - **Still open from the user's 3D audit:** performance on a real GPU, click alignment, a live 2-player game in 3D.
 - **Next:** wait for the user's go-ahead on G-10 M0 (T0 in `docs/ML_RETRAIN_IMPLEMENTATION.md`).
 
+
+### 2026-11-11 — Synchronised match start and UI plan (v0.7.2)
+- **The user reported** that a match showed the old 2D graphics for a few seconds before the 3D view appeared. They asked for a loading screen that waits for both players before the match starts.
+- **Load gate (server).** New matches now stay in the "spawn" phase, with no ticks, until every human client sends `client_loaded`. This lives in `server/src/match/loadGate.ts`. It covers Solo Test, bot games and PvP. Two cases release the match early: a 30 s timeout, and a player disconnecting while loading (the normal forfeit then applies). Unit tests are in `tests/index.ts` (`loadGateTests`).
+- **Client.**
+  - The game screen opens on the "spawn" phase.
+  - `GameShell` shows a full-screen overlay: "Loading battlefield", then "Waiting for opponent". It reports `client_loaded` once the chosen view can draw: 2D at once; 3D after its models load, or after the load fails. The overlay then fades out when the first tick arrives.
+  - 3D models load once per page (`preloadModels()` in `World3D.ts`). The menu starts the load early when 3D is the saved preference.
+  - Replays show the overlay only until assets are ready. Replay frames keep streaming meanwhile.
+- **Verified on the live build:**
+  - Solo Test in 3D: overlay at SPAWN tick 0, then the match runs.
+  - Two-browser PvP: both clients start on the same tick.
+  - Raw-socket test: the match stays at spawn@0 while one client has not loaded, and starts (playing@14 on both) once both have.
+- **Already existed (told the user):** the Sound on/off toggle in Settings, and the host's map picker in the lobby.
+- **UI rehaul:** plan drafted in `docs/UI_PLAN.md`, waiting for the user's direction choice. Not started.
+- **Next:** the user's answers on `docs/UI_PLAN.md`; G-10 M0 still waits for "start".

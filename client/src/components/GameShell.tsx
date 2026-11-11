@@ -11,7 +11,7 @@ import { UNIT_DEFS, BUILDING_DEFS } from "@crystalfront/shared";
 import type { World3D } from "../three/World3D";
 
 /** G-11: 3D view preference (localStorage, or ?view=3d / ?view=2d in the URL). */
-function initialView3d(): boolean {
+export function initialView3d(): boolean {
   const q = new URLSearchParams(window.location.search).get("view");
   if (q === "3d" || q === "2d") return q === "3d";
   try { return window.localStorage.getItem("cf.view3d") === "1"; } catch { return false; }
@@ -47,6 +47,8 @@ interface GameShellProps {
   replayFrame?: number;
   replayBufferSize?: number;
   onSeekReplay?: (frame: number) => void;
+  /** Live matches: called once when this client is ready, so the server can start the match. */
+  onLoaded?: () => void;
 }
 
 const CANVAS_WIDTH = 960;
@@ -695,6 +697,7 @@ export default function GameShell({
   replayFrame = 0,
   replayBufferSize = 0,
   onSeekReplay,
+  onLoaded,
 }: GameShellProps) {
   // Callers always provide player (even replay passes a synthetic observer object).
   // The null type on the prop exists so replay can pass `null`-ish defaults,
@@ -839,9 +842,12 @@ export default function GameShell({
   // G-11: optional 3D view, drawn on a WebGL canvas under the (then transparent) 2D canvas.
   const [view3d, setView3d] = useState(initialView3d);
   const world3dRef = useRef<World3D | null>(null);
+  // Loading screen: true once the chosen view can draw (2D at once; 3D after its models
+  // load, or failed to). Only the first load matters, so F3 mid-match never resets it.
+  const [assetsReady, setAssetsReady] = useState(() => !initialView3d());
   useEffect(() => {
     try { window.localStorage.setItem("cf.view3d", view3d ? "1" : "0"); } catch { /* storage blocked */ }
-    if (!view3d) return;
+    if (!view3d) { setAssetsReady(true); return; }
     let world: World3D | null = null;
     let cancelled = false;
     import("../three/World3D").then(async ({ World3D }) => {
@@ -851,13 +857,30 @@ export default function GameShell({
       containerRef.current?.prepend(world.canvas);
       await world.load();
       if (!cancelled) world3dRef.current = world;
-    }).catch((err) => console.error("3D view failed to load", err));
+    }).catch((err) => console.error("3D view failed to load", err))
+      .finally(() => { if (!cancelled) setAssetsReady(true); });
     return () => {
       cancelled = true;
       world3dRef.current = null;
       world?.dispose();
     };
   }, [view3d]);
+
+  // Tell the server once we can draw; it starts the match when every player has.
+  const loadedSent = useRef(false);
+  useEffect(() => {
+    if (isReplay || !assetsReady || loadedSent.current || matchState?.phase !== "spawn") return;
+    loadedSent.current = true;
+    onLoaded?.();
+  }, [isReplay, assetsReady, matchState?.phase, onLoaded]);
+  const loading = !assetsReady || (!isReplay && matchState?.phase === "spawn");
+  // Keep the overlay mounted briefly after loading ends so it can fade out.
+  const [overlayMounted, setOverlayMounted] = useState(true);
+  useEffect(() => {
+    if (loading) { setOverlayMounted(true); return; }
+    const t = setTimeout(() => setOverlayMounted(false), 600);
+    return () => clearTimeout(t);
+  }, [loading]);
 
   // Interpolation state
   const prevEntitiesRef = useRef<Map<string, { x: number; y: number }>>(new Map());
@@ -2595,6 +2618,13 @@ export default function GameShell({
   return (
     <div style={styles.container}>
       <FctStyles />
+      {overlayMounted && (
+        <div style={{ ...styles.loadingOverlay, opacity: loading ? 1 : 0, pointerEvents: loading ? "auto" : "none" }}>
+          <div style={{ animation: "fct-svg-pulse 1.6s ease-in-out infinite" }}><FctMark size={72} /></div>
+          <div style={styles.loadingTitle}>{!assetsReady ? "Loading battlefield" : isReplay ? "Starting replay" : "Waiting for opponent"}</div>
+          <div style={styles.loadingSub}>{matchState?.staticMap?.mapId?.replace(/-/g, " ") ?? "\u00a0"}</div>
+        </div>
+      )}
       <div ref={containerRef} style={styles.gameContainer}>
         <canvas
           ref={canvasRef}
@@ -3023,6 +3053,32 @@ const styles = {
     right: 0,
     bottom: 0,
     pointerEvents: "none" as const,
+  },
+  loadingOverlay: {
+    position: "fixed" as const,
+    inset: 0,
+    zIndex: 1000,
+    background: FCT.bg,
+    display: "flex",
+    flexDirection: "column" as const,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 18,
+    transition: "opacity 0.6s ease",
+  },
+  loadingTitle: {
+    fontFamily: FCT.display,
+    fontSize: 20,
+    letterSpacing: "0.28em",
+    textTransform: "uppercase" as const,
+    color: FCT.ink,
+  },
+  loadingSub: {
+    fontFamily: FCT.mono,
+    fontSize: 11,
+    letterSpacing: "0.2em",
+    textTransform: "uppercase" as const,
+    color: FCT.inkDim,
   },
   phaseOverlay: {
     position: "absolute" as const,

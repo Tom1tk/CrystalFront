@@ -23,6 +23,8 @@ interface UseWebSocketReturn {
   startSoloTest: (username: string, mapId?: string) => void;
   startBotGame: (username: string, bot: string, mapId?: string) => void;
   setMap: (mapId: string) => void;
+  /** Tell the server this client finished loading the match. */
+  clientLoaded: () => void;
   startReplay: (replayId: string) => void;
   stopReplay: () => void;
   setReplaySpeed: (speed: number) => void;
@@ -167,6 +169,10 @@ export function useWebSocket(): UseWebSocketReturn {
     [sendMessage]
   );
 
+  const clientLoaded = useCallback(() => {
+    sendMessage({ type: "client_loaded" });
+  }, [sendMessage]);
+
   const startReplay = useCallback(
     (replayId: string) => {
       sendMessage({ type: "start_replay", payload: { replayId } });
@@ -247,6 +253,7 @@ export function useWebSocket(): UseWebSocketReturn {
     startSoloTest,
     startBotGame,
     setMap,
+    clientLoaded,
     startReplay,
     stopReplay,
     setReplaySpeed,

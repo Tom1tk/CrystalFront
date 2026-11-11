@@ -12,6 +12,7 @@ const GAME_VERSION: string = _pkg.version ?? "unknown";
 import { LobbyManager } from "./lobby/lobbyManager.js";
 import { MatchEngine } from "./match/matchEngine.js";
 import { LiveMatchRunner } from "./match/liveMatchRunner.js";
+import { LoadGate } from "./match/loadGate.js";
 import { BotPlayer } from "./match/botPlayer.js";
 import {
   IdleBot, PassiveBot, WeakRushBot, WeakMediumRushBot,
@@ -104,6 +105,14 @@ const liveRunner = new LiveMatchRunner(matchEngine, (matchId: string) => {
   if (code) {
     broadcastGameState(code);
   }
+});
+
+/** New matches wait in the "spawn" phase until every human client has loaded. */
+const loadGate = new LoadGate((matchId: string) => {
+  if (!matchEngine.startMatch(matchId)) return;
+  liveRunner.start(matchId);
+  const code = matchLobbyMap.get(matchId);
+  if (code) broadcastGameState(code);
 });
 
 matchEngine.setMatchEndCallback((matchId: string, winner: string) => {
@@ -552,9 +561,8 @@ wss.on("connection", (ws) => {
           
           const match = matchEngine.createMatch(code, players, liveConfig(soloMapId));
           lobbyMatchMap.set(code, match.id);
-          matchEngine.startMatch(match.id);
-          liveRunner.start(match.id);
           matchLobbyMap.set(match.id, code);
+          loadGate.wait(match.id, [playerId]);
 
           // Create the in-process scripted bot
           const botAgent = difficulty === "easy" ? new IdleBot()
@@ -615,9 +623,8 @@ wss.on("connection", (ws) => {
           ];
           const match = matchEngine.createMatch(code, players, liveConfig(bgMapId));
           lobbyMatchMap.set(code, match.id);
-          matchEngine.startMatch(match.id);
-          liveRunner.start(match.id);
           matchLobbyMap.set(match.id, code);
+          loadGate.wait(match.id, [playerId]);
 
           const botAgent = createBotAgent(botName);
           const bot = new BotPlayer(botAgent, botPlayer.id, match.id, matchEngine);
@@ -687,9 +694,8 @@ wss.on("connection", (ws) => {
           const match = matchEngine.createMatch(session.code, players, liveConfig(result.lobby.mapId));
           lobbyMatchMap.set(session.code, match.id);
 
-          // Start the match immediately
-          matchEngine.startMatch(match.id);
-          liveRunner.start(match.id);
+          // Start once both clients have loaded
+          loadGate.wait(match.id, [p0.id, p1.id]);
 
           // Update player sessions with matchId
           for (const p of result.lobby.players) {
@@ -1032,6 +1038,12 @@ wss.on("connection", (ws) => {
         break;
       }
 
+      case CLIENT_MSG.CLIENT_LOADED: {
+        const matchId = playerId ? playerLobbyMap.get(playerId)?.matchId : undefined;
+        if (matchId) loadGate.loaded(matchId, playerId!);
+        break;
+      }
+
       case CLIENT_MSG.REPLAY_SPEED: {
         const speedMatchId = replayWatchers.get(ws);
         if (speedMatchId) {
@@ -1061,6 +1073,8 @@ wss.on("connection", (ws) => {
       if (session) {
         // Handle disconnect during active match
         if (session.matchId) {
+          // Left while loading: start the match so the forfeit below applies.
+          loadGate.release(session.matchId);
           const match = matchEngine.getMatch(session.matchId);
           if (match && match.phase === "playing") {
             const otherPlayer = match.players.find((p) => p?.playerId !== playerId);
