@@ -79,7 +79,7 @@ export interface MatchState {
   players: [PlayerSlot | null, PlayerSlot | null];
   entities: MatchEntity[];
   attackLog: AttackEvent[];
-  result: { winner: string; winType?: "combat" | "control" | "timeout" } | null;
+  result: { winner: string; winType?: "combat" | "control" | "timeout" | "forfeit" } | null;
   startedAt: number;
   endedAt: number | null;
   economy: [PlayerEconomyDisplay | null, PlayerEconomyDisplay | null];

@@ -24,6 +24,7 @@ const HOW: Record<string, string> = {
   combat: "by destroying the Crystal",
   control: "by holding the contested nodes",
   timeout: "on time",
+  forfeit: "by forfeit",
 };
 
 export default function MatchEndScreen({ lobby, player, winnerId, winType, ticks, mapName, onRematch, onWatchReplay, onExit }: MatchEndScreenProps) {

@@ -28,17 +28,22 @@ const SHORTCUTS: Array<[string, string]> = [
   ["Esc", "Cancel the current mode, or open Settings"],
 ];
 
-export default function SettingsModal({ onClose, view3d, onView3d, debug, initialTab }: {
+export default function SettingsModal({ onClose, view3d, onView3d, debug, initialTab, onQuit, quitWarning }: {
   onClose: () => void;
   view3d: boolean;
   onView3d: (v: boolean) => void;
   /** In a match: the debug controls, shown under the Debug sub-menu. */
   debug?: ReactNode;
   initialTab?: Tab;
+  /** In a live match: leave it and return to the menu. */
+  onQuit?: () => void;
+  /** When set, Quit asks for confirmation with this text first (PvP: the quit counts as a loss). */
+  quitWarning?: string;
 }) {
   const [tab, setTab] = useState<Tab>(initialTab ?? "general");
   const audio = useAudioPrefs();
   const [tips, setTips] = useState(tipsEnabled);
+  const [confirmQuit, setConfirmQuit] = useState(false);
   const tabs: Array<{ id: Tab; label: string; icon: IconName }> = [
     { id: "general", label: "General", icon: "gear" },
     { id: "audio", label: "Audio", icon: "sound" },
@@ -49,7 +54,15 @@ export default function SettingsModal({ onClose, view3d, onView3d, debug, initia
   return (
     <Modal title="Settings" onClose={onClose}>
       <div style={{ display: "grid", gridTemplateColumns: "170px 1fr", minHeight: 0, flex: 1, borderTop: "1px solid var(--edge)" }}>
-        <Tabs vertical tabs={tabs} value={tab} onChange={setTab} style={{ padding: "12px 0" }} />
+        <div style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
+          <Tabs vertical tabs={tabs} value={tab} onChange={setTab} style={{ padding: "12px 0" }} />
+          {onQuit && (
+            <div style={{ marginTop: "auto", padding: "12px 14px 16px" }}>
+              <button type="button" className="g-btn danger" style={{ width: "100%" }}
+                onClick={() => (quitWarning ? setConfirmQuit(true) : onQuit())}>Quit match</button>
+            </div>
+          )}
+        </div>
         <div className="g-scroll" style={{ padding: "8px 22px 18px", minHeight: 320 }}>
           {tab === "general" && (
             <>
@@ -93,6 +106,13 @@ export default function SettingsModal({ onClose, view3d, onView3d, debug, initia
           {tab === "debug" && debug}
         </div>
       </div>
+      {confirmQuit && onQuit && (
+        <div role="alertdialog" aria-label="Quit match?" style={{ padding: "14px 22px 18px", borderTop: "1px solid var(--edge)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <span className="g-sub" style={{ flex: 1, minWidth: 220, color: "var(--bad)" }}>{quitWarning}</span>
+          <button type="button" className="g-btn" onClick={() => setConfirmQuit(false)}>Keep playing</button>
+          <button type="button" className="g-btn danger" onClick={onQuit}>Quit and take the loss</button>
+        </div>
+      )}
     </Modal>
   );
 }

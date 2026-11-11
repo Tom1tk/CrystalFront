@@ -413,7 +413,7 @@ function broadcastGameState(code: string) {
   }
 }
 
-function broadcastMatchEnd(code: string, winner: string, winType?: "combat" | "control" | "timeout", replayId?: string) {
+function broadcastMatchEnd(code: string, winner: string, winType?: "combat" | "control" | "timeout" | "forfeit", replayId?: string) {
   const matchId = lobbyMatchMap.get(code);
   if (!matchId) return;
 
@@ -851,33 +851,19 @@ wss.on("connection", (ws) => {
 
         const leavePlayerId = playerId;
 
-        // If there's an active match, end it (leaver loses)
+        // If there's an active match, end it (leaver loses). Left while loading: start the
+        // match first so the forfeit applies. The match-end callback records the win, saves
+        // the replay and tells the remaining player; the leaver is dropped first so they
+        // don't get a result screen for the match they just quit.
         if (session.matchId) {
+          loadGate.release(session.matchId);
           const match = matchEngine.getMatch(session.matchId);
           if (match && match.phase === "playing") {
             const otherPlayer = match.players.find((p) => p?.playerId !== leavePlayerId);
             if (otherPlayer) {
+              playerLobbyMap.delete(leavePlayerId);
               liveRunner.stop(session.matchId);
-              matchEngine.endMatch(session.matchId, otherPlayer.playerId);
-
-              // Record the win in lobby manager
-              const lobby = lobbyManager.getLobby(session.code);
-              if (lobby) {
-                const winnerSlot = otherPlayer.playerId === lobby.players[0]?.id ? "player1" : "player2";
-                lobbyManager.recordWin(session.code, winnerSlot);
-              }
-
-              // Notify both players
-              const matchEndMsg: ServerToClientMsg = { type: SERVER_EVT.MATCH_END, payload: { winner: otherPlayer.playerId } };
-              for (const s of playerLobbyMap.values()) {
-                if (s.code === session.code && s.matchId === session.matchId) {
-                  sendWS(s.ws, matchEndMsg);
-                }
-              }
-
-              // Reset ready states for rematch
-              lobbyManager.resetReadyStates(session.code);
-              lobbyMatchMap.delete(session.code);
+              matchEngine.endMatch(session.matchId, otherPlayer.playerId, "forfeit");
             }
           }
         }
@@ -1083,26 +1069,15 @@ wss.on("connection", (ws) => {
           if (match && match.phase === "playing") {
             const otherPlayer = match.players.find((p) => p?.playerId !== playerId);
             if (otherPlayer) {
-              // Record the win
-              const lobby = lobbyManager.getLobby(session.code);
-              if (lobby) {
-                const winnerSlot = otherPlayer.playerId === lobby.players[0]?.id ? "player1" : "player2";
-                lobbyManager.recordWin(session.code, winnerSlot);
-              }
-
-              // End the match
-              liveRunner.stop(session.matchId);
-              matchEngine.endMatch(session.matchId, otherPlayer.playerId);
-
-              // Notify the other player
+              // The match-end callback records the win, saves the replay and sends MATCH_END.
               const otherSession = [...playerLobbyMap.values()].find(
                 (s) => s.code === session.code && s.playerId !== playerId
               );
+              playerLobbyMap.delete(playerId);
+              liveRunner.stop(session.matchId);
+              matchEngine.endMatch(session.matchId, otherPlayer.playerId, "forfeit");
+
               if (otherSession) {
-                sendWS(otherSession.ws, {
-                  type: SERVER_EVT.MATCH_END,
-                  payload: { winner: otherPlayer.playerId },
-                });
                 sendWS(otherSession.ws, {
                   type: SERVER_EVT.HOST_DISCONNECT,
                   payload: { message: "Opponent disconnected. You win by default." },

@@ -117,7 +117,7 @@ export interface Agent {
 
 export interface MatchResult {
   winner: string | null;            // null = max-ticks draw
-  winType: "combat" | "control" | "timeout" | null;
+  winType: "combat" | "control" | "timeout" | "forfeit" | null;
   ticks: number;
   durationMs: number;
   commandLog: Array<{ tick: number; playerId: string; command: Record<string, unknown> }>;

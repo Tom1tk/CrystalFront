@@ -66,6 +66,8 @@ interface GameShellProps {
   vsBot?: boolean;
   /** Match over, result card on top: ignore keyboard input. */
   frozen?: boolean;
+  /** Live matches: leave the match (Settings → Quit match). */
+  onQuit?: () => void;
 }
 
 const CANVAS_WIDTH = 960;
@@ -717,6 +719,7 @@ export default function GameShell({
   loadedPlayers,
   vsBot = false,
   frozen = false,
+  onQuit,
 }: GameShellProps) {
   // Callers always provide player (even replay passes a synthetic observer object).
   // The null type on the prop exists so replay can pass `null`-ish defaults,
@@ -2789,7 +2792,9 @@ export default function GameShell({
 
       {settingsOpen && (
         <SettingsModal onClose={() => setSettingsOpen(false)} view3d={view3d} onView3d={setView3d}
-          debug={isReplay ? undefined : debugControls} />
+          debug={isReplay ? undefined : debugControls}
+          onQuit={isReplay ? undefined : onQuit}
+          quitWarning={vsBot ? undefined : "Abandoning an online match counts as a loss."} />
       )}
     </div>
   );

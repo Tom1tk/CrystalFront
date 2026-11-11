@@ -295,7 +295,7 @@ export class MatchEngine {
     return match;
   }
 
-  endMatch(matchId: string, winner: PlayerId, winType?: "combat"): MatchState | null {
+  endMatch(matchId: string, winner: PlayerId, winType?: "combat" | "forfeit"): MatchState | null {
     const match = this.matches.get(matchId);
     if (!match) return null;
 

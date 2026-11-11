@@ -63,7 +63,7 @@ function saveStarred(s: Set<string>) {
 // ── display helpers ───────────────────────────────────────────────────────────
 
 const TEAM = { blue: "var(--blue)", red: "var(--red)" } as const;
-const WIN_TYPE: Record<string, string> = { combat: "Crystal destroyed", control: "Node control", timeout: "Time" };
+const WIN_TYPE: Record<string, string> = { combat: "Crystal destroyed", control: "Node control", timeout: "Time", forfeit: "Forfeit" };
 
 function formatDuration(secs: number): string {
   const m = Math.floor(secs / 60), s = Math.floor(secs % 60);

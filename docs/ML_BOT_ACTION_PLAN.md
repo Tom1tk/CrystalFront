@@ -2863,3 +2863,9 @@ Verified: `npm test` 470/470, `training.test_env` PASS, `test_config_persistence
 - **README:** new "interface" screenshots (`docs/screenshots/ui-*.jpg`): menu, Play, lobby, HUD, result card and replays.
 - **Notes for later:** the Debug "Simulate opponent win" button also sends "self" (pre-existing); "Testbed (dev)" is listed in the Play and Lobby map cards; `server/src/match/matchEngine.test.ts` (vitest, not part of `npm test`) has 28 stale failures from older unit stats.
 - **Next:** the user reviews the UI; G-10 M0 waits for their "start".
+
+### 2026-11-11 — Quit from the in-game menu (v0.7.10)
+- **The user asked** for a way to quit from the in-game Esc menu, especially in solo games, with a warning in PvP that abandoning counts as a loss.
+- **Settings → Quit match** (live matches only, not replays). In bot games and Solo Test it quits straight to the menu. In online matches it first asks "Abandoning an online match counts as a loss." with Keep playing / Quit and take the loss.
+- **Server:** leaving or disconnecting mid-match now ends it with `winType: "forfeit"` and lets the match-end callback do the bookkeeping once. Before, both paths also recorded the win themselves (the winner's series score went up by 2) and sent a second MATCH_END without a replay id. Leaving during the loading screen releases the load gate first, so it is a forfeit too. The quitter is dropped before the match ends, so they get no result screen; the opponent's card says "… wins by forfeit".
+- **Verified on the live build:** bot game and Solo Test quit back to the menu, and a new game starts afterwards. In PvP, the warning appears, "Keep playing" closes it, and quitting returns the host to the menu while the joiner sees Victory by forfeit with a series score of 1. Each quit saved a replay marked forfeit; test replays deleted.

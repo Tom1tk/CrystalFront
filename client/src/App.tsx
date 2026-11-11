@@ -56,10 +56,11 @@ function useScreenFlow() {
 
   // Transition to match end when match_end received
   useEffect(() => {
-    if (ws.matchEnd) {
-      setScreen("matchEnd");
-    }
-  }, [ws.matchEnd]);
+    if (!ws.matchEnd) return;
+    // Only a match being played turns into the result screen; one the player quit doesn't.
+    if (screen === "game") setScreen("matchEnd");
+    else if (screen !== "matchEnd") ws.clearMatchEnd();
+  }, [ws.matchEnd, screen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Transition to watching_replay when replay starts (MATCH_START from replay runner)
   useEffect(() => {
@@ -436,6 +437,7 @@ export default function App() {
           loadedPlayers={ws.loadedPlayers}
           vsBot={vsBot}
           frozen={screen === "matchEnd"}
+          onQuit={handleExit}
         />
       )}
       {screen === "matchEnd" && lobby && player && matchWinnerId && (
