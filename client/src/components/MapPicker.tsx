@@ -87,3 +87,26 @@ export default function MapPicker({ value, onChange, disabled }: { value: string
     </div>
   );
 }
+
+/** Map choice as cards (G-12): "Random" plus every listed map, with its theme and size. */
+export function MapCards({ value, onChange, disabled, columns = 2 }: { value: string; onChange: (mapId: string) => void; disabled?: boolean; columns?: number }) {
+  const [maps, setMaps] = useState<MapInfo[]>([]);
+  useEffect(() => { void fetchMaps().then(setMaps); }, []);
+  const W = 196;
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gap: 8 }}>
+      <button type="button" className={`g-card${value === "random" ? " on" : ""}`} disabled={disabled} onClick={() => onChange("random")}>
+        <div style={{ height: Math.round(W * 0.18), display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.06)", fontFamily: "var(--display)", fontSize: 18, color: "var(--ink-dim)" }}>?</div>
+        <span className="g-card-name">Random</span>
+        <span className="g-card-meta">Any pool map</span>
+      </button>
+      {maps.map((m) => (
+        <button key={m.mapId} type="button" className={`g-card${value === m.mapId ? " on" : ""}`} disabled={disabled} onClick={() => onChange(m.mapId)}>
+          <div style={{ width: "100%", overflow: "hidden" }}><MapThumb map={m} width={W} /></div>
+          <span className="g-card-name">{m.name}</span>
+          <span className="g-card-meta">{themeFor(m.mapId).name}{m.pool && !m.approved ? " · candidate" : ""}</span>
+        </button>
+      ))}
+    </div>
+  );
+}

@@ -1,6 +1,6 @@
-# UI Rehaul Plan (G-12) — DRAFT, awaiting sign-off
+# UI Rehaul Plan (G-12)
 
-**Status:** draft 2026-11-11. Nothing here is implemented yet.
+**Status:** signed off 2026-11-11 (direction A), in progress. The user's answers are in section 7; they override anything above them.
 **Asked for by the user:** "the entire site ui also needs a rehaul now to fit the new aesthetic of the 3d mode, lets plan that".
 **Scope:** menus, lobby, loading, in-game HUD, match end, replays and settings. Gameplay, balance and the bot are out of scope.
 
@@ -73,3 +73,24 @@ The rest of this plan assumes **A**. The work items barely change under B; only 
 ## 6. Out of scope
 
 Gameplay rules, balance, the bot and training (G-10), accounts and matchmaking, and mobile/touch controls.
+
+## 7. Decisions (the user, 2026-11-11)
+
+> "'Facet, lit' is by far the best option on the UI Plan."
+
+| # | Question | Answer |
+|---|---|---|
+| 1 | Direction | **A, "Facet, lit".** |
+| 2 | Menu backdrop | **Live 3D.** "a short loading screen into the site is acceptable for this." |
+| 3 | Debug Controls | **Keep them, inside Settings, as a sub-menu.** Today the expanded panel pushes its buttons off-screen so they cannot be pressed; that must be fixed. |
+| 4 | Music | **Yes: a menu track separate from the match/combat track.** A sound icon to toggle audio must be visible from the very first loading screen, so nobody gets unwanted audio, and the choice is saved in the browser. |
+| 5 | Keep as is | **Nothing.** The game's name and the lobby layouts as an idea; both can be radically redesigned. "Functional first, not overly decorative, but pretty." |
+| — | README | The finished UI must be shown in the README with screenshots. |
+| — | Order | Finish the UI work, then start the ML retrain (G-10 M0). |
+
+**What this changes in the plan:**
+- UI-2: a short boot screen loads the 3D models and the backdrop before the first menu appears. The sound icon is on it.
+- UI-4: Settings is a modal with sub-menus: General, Audio (mute, music volume, effects volume), Controls, and Debug (in a match). Debug Controls move out of the HUD into Settings → Debug.
+- Audio: global mute icon on every screen (top right; in the HUD during a match), saved as `cf.mute`; music and effects volumes saved too. Music: Kenney "Music Loops" (CC0) — "Flowing Rocks" in the menus, "Drumming Sticks" in matches and replays, cross-faded, gapless (Web Audio). Music only starts after a user gesture (browser rule), and the mute icon acts on pointer-down so muting first never plays a note.
+- Map previews: the live 3D backdrop shows the selected map (Play, Lobby), so it is the large map preview. Map cards use the theme-coloured 2D thumbnails; no pre-rendered 3D thumbnails are needed.
+

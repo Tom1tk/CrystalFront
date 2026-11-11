@@ -105,6 +105,8 @@ export interface View3D {
   cameraX: number;
   scale: number;
   hudTop: number;
+  /** Menu backdrop: camera yaw (radians) around the view centre. */
+  orbit?: number;
 }
 
 /** One effect particle (muzzle flash, spark, heal mote) or tracer. */
@@ -821,7 +823,8 @@ export class World3D {
     cam.bottom = -hh;
     cam.updateProjectionMatrix();
     const tx = v.cameraX + hw, tz = (v.cssH / 2 - v.hudTop) / v.scale / SIN;
-    cam.position.set(tx, 3000 * SIN, tz + 3000 * COS);
+    const yaw = v.orbit ?? 0;
+    cam.position.set(tx + Math.sin(yaw) * 3000 * COS, 3000 * SIN, tz + Math.cos(yaw) * 3000 * COS);
     cam.lookAt(tx, 0, tz);
     // Sun from the upper left, shadow box following the view.
     this.sun.target.position.set(tx, 0, tz);

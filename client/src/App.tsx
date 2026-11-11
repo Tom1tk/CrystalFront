@@ -1,18 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useWebSocket } from "./hooks/useWebSocket";
 import MainMenu from "./components/MainMenu";
-import BotSelectMenu from "./components/BotSelectMenu";
 import LobbyScreen from "./components/LobbyScreen";
-import GameShell, { initialView3d } from "./components/GameShell";
+import GameShell, { initialView3d, saveView3d } from "./components/GameShell";
 import MatchEndScreen from "./components/MatchEndScreen";
 import ReplayBrowser from "./components/ReplayBrowser";
 import type { Screen, Player, MatchState } from "./types";
-import { FCT } from "./design/facet";
+import MenuBackdrop from "./components/MenuBackdrop";
+import BootScreen from "./components/BootScreen";
+import SettingsModal from "./components/SettingsModal";
+import { fetchMaps, type MapInfo } from "./components/MapPicker";
+import { SoundToggle, IconBtn, setAccent } from "./design/glass";
+import { setMusic } from "./audio";
+import { themeFor } from "./mapThemes";
 
 function useScreenFlow() {
   const [screen, setScreen] = useState<Screen>("menu");
   const [isHost, setIsHost] = useState(false);
-  const [botSelectUsername, setBotSelectUsername] = useState("");
   const [replayTotalTicks, setReplayTotalTicks] = useState<number | undefined>(undefined);
   const hasLobbyStateRef = useRef(false);
 
@@ -128,18 +132,6 @@ function useScreenFlow() {
     },
     [ws.startBotGame]
   );
-
-  const handleShowBotSelect = useCallback(
-    (name: string) => {
-      setBotSelectUsername(name);
-      setScreen("bot_select");
-    },
-    []
-  );
-
-  const handleBotSelectBack = useCallback(() => {
-    setScreen("menu");
-  }, []);
 
   const handleOpenReplays = useCallback(() => {
     setScreen("replays");
@@ -264,9 +256,6 @@ function useScreenFlow() {
     handleDebugSpawn,
     handleGameCommand,
     handleBotGame,
-    handleShowBotSelect,
-    handleBotSelectBack,
-    botSelectUsername,
   };
 }
 
@@ -300,30 +289,60 @@ export default function App() {
     handleDebugSpawn,
     handleGameCommand,
     handleBotGame,
-    handleShowBotSelect,
-    handleBotSelectBack,
-    botSelectUsername,
   } = useScreenFlow();
-
-  // Start fetching the 3D models while the player is still in the menus.
-  useEffect(() => {
-    if (initialView3d()) import("./three/World3D").then((m) => m.preloadModels()).catch(() => { /* retried in-match */ });
-  }, []);
 
   const player = getCurrentPlayer();
   const lobby = getCurrentLobby();
 
+  // ─── G-12: boot screen, live 3D backdrop, music, settings ─────
+  const [view3d, setView3d] = useState(initialView3d);
+  const [maps, setMaps] = useState<MapInfo[]>([]);
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const [backdropReady, setBackdropReady] = useState(false);
+  const [bootDone, setBootDone] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  useEffect(() => {
+    void fetchMaps().then((list) => {
+      setMaps(list);
+      const pool = list.filter((m) => m.pool);
+      const from = pool.length ? pool : list;
+      const pick = from[Math.floor(Math.random() * from.length)];
+      if (pick) setPreviewId(pick.mapId);
+      else setBackdropReady(true);
+    });
+  }, []);
+  // The boot screen stays at least 0.8 s (no flash) and at most 8 s (slow GPU or network).
+  useEffect(() => {
+    const t = setTimeout(() => setBootDone(true), backdropReady ? Math.max(0, 800 - performance.now()) : 8000);
+    return () => clearTimeout(t);
+  }, [backdropReady]);
+  const menuScreen = screen === "menu" || screen === "replays" || screen === "lobby";
+  const inMatch = screen === "game" || screen === "watching_replay";
+  const backdropId = screen === "lobby" && lobby?.mapId && lobby.mapId !== "random" ? lobby.mapId : previewId;
+  const backdropMap = maps.find((m) => m.mapId === backdropId) ?? null;
+  useEffect(() => { setAccent(themeFor(backdropMap?.mapId).id); }, [backdropMap?.mapId]);
+  useEffect(() => { setMusic(inMatch ? "match" : "menu"); }, [inMatch]);
+  const changeView3d = (v: boolean) => { setView3d(v); saveView3d(v); };
+
   return (
     <div style={styles.container}>
-      {screen === "menu" && (
-        <MainMenu onHost={handleHost} onJoin={handleJoin} onSoloTest={handleSoloTest} onBotGame={handleBotGame} onBotSelect={handleShowBotSelect} onReplays={handleOpenReplays} />
+      <BootScreen done={bootDone} status={backdropReady ? "Ready" : "Loading battlefield"} />
+      {!inMatch && screen !== "matchEnd" && (
+        <MenuBackdrop map={backdropMap} use3d={view3d} onReady={() => setBackdropReady(true)} />
       )}
-      {screen === "bot_select" && (
-        <BotSelectMenu
-          username={botSelectUsername}
-          onSelect={(bot, mapId) => handleBotGame(botSelectUsername, bot, mapId)}
-          onBack={handleBotSelectBack}
-        />
+      {!inMatch && (
+        <div className="g-corner">
+          <SoundToggle />
+          {menuScreen && bootDone && <IconBtn icon="gear" title="Settings" onClick={() => setSettingsOpen(true)} />}
+        </div>
+      )}
+      {settingsOpen && !inMatch && (
+        <SettingsModal onClose={() => setSettingsOpen(false)} view3d={view3d} onView3d={changeView3d} />
+      )}
+      {screen === "menu" && (
+        <MainMenu onHost={handleHost} onJoin={handleJoin} onSoloTest={handleSoloTest} onBotGame={handleBotGame}
+          onReplays={handleOpenReplays} onSettings={() => setSettingsOpen(true)}
+          onPreviewMap={(id) => { if (id !== "random") setPreviewId(id); }} error={ws.error} />
       )}
       {screen === "replays" && (
         <ReplayBrowser onBack={handleBackFromReplays} onWatch={handleWatchReplay} />
@@ -395,6 +414,8 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    background: FCT.bg,
+    background: "#05060a",
+    position: "relative" as const,
+    overflow: "hidden",
   },
 };

@@ -1,5 +1,6 @@
 /**
- * Game sound effects (Kenney CC0 impact, interface and RPG packs; see docs/VISUAL_PLAN.md).
+ * Game sound effects (Kenney CC0 impact, interface and RPG packs; see docs/VISUAL_PLAN.md)
+ * and music (Kenney Music Loops, CC0), with the player's mute and volume settings.
  * Works in both the 2D and the 3D view. Sounds come only from what the client can
  * already see: attackLog events between visible entities, deaths, finished buildings
  * and the player's own commands.
@@ -34,34 +35,128 @@ const VOLUME: Partial<Record<SoundName, number>> = {
 };
 /** Minimum gap between two plays of the same sound (ms), so big fights stay readable. */
 const GAP_MS = 70;
-const PREF_KEY = "cf.sound";
 
-export function soundEnabled(): boolean {
-  try { return window.localStorage.getItem(PREF_KEY) !== "0"; } catch { return true; }
+// ─── Preferences (saved in the browser) ─────────────────────────
+// `cf.mute` silences everything; music and effects each have a volume. The old `cf.sound`
+// on/off key seeds the mute flag for players who switched sound off before 0.7.4.
+export interface AudioPrefs { muted: boolean; music: number; sfx: number }
+function readNum(k: string, d: number) {
+  try { const v = window.localStorage.getItem(k); return v === null ? d : Math.max(0, Math.min(1, Number(v) || 0)); } catch { return d; }
 }
-export function setSoundEnabled(on: boolean) {
-  try { window.localStorage.setItem(PREF_KEY, on ? "1" : "0"); } catch { /* storage blocked */ }
+function readPrefs(): AudioPrefs {
+  let muted = false;
+  try {
+    const m = window.localStorage.getItem("cf.mute");
+    muted = m === null ? window.localStorage.getItem("cf.sound") === "0" : m === "1";
+  } catch { /* storage blocked */ }
+  return { muted, music: readNum("cf.vol.music", 0.5), sfx: readNum("cf.vol.sfx", 0.8) };
 }
+let prefs: AudioPrefs = typeof window === "undefined" ? { muted: false, music: 0.5, sfx: 0.8 } : readPrefs();
+const listeners = new Set<() => void>();
+
+export function audioPrefs(): AudioPrefs { return prefs; }
+export function setAudioPrefs(p: Partial<AudioPrefs>) {
+  prefs = { ...prefs, ...p };
+  try {
+    window.localStorage.setItem("cf.mute", prefs.muted ? "1" : "0");
+    window.localStorage.setItem("cf.vol.music", String(prefs.music));
+    window.localStorage.setItem("cf.vol.sfx", String(prefs.sfx));
+  } catch { /* storage blocked */ }
+  applyGains();
+  for (const l of listeners) l();
+}
+export function onAudioPrefs(l: () => void): () => void {
+  listeners.add(l);
+  return () => { listeners.delete(l); };
+}
+export function soundEnabled(): boolean { return !prefs.muted && prefs.sfx > 0; }
 
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
+let sfxBus: GainNode | null = null;
+let musicBus: GainNode | null = null;
 const buffers = new Map<string, AudioBuffer | null>();
 const lastPlayed = new Map<SoundName, number>();
 
-/** Browsers only allow audio after a user gesture; the context is created on the first one. */
+function applyGains() {
+  if (!ctx || !master || !sfxBus || !musicBus) return;
+  const t = ctx.currentTime;
+  master.gain.setTargetAtTime(prefs.muted ? 0 : 0.6, t, 0.03);
+  sfxBus.gain.setTargetAtTime(prefs.sfx, t, 0.03);
+  musicBus.gain.setTargetAtTime(prefs.music * 0.7, t, 0.03);
+}
+
+/** Browsers only allow audio after a user gesture; the context is created on the first one.
+ *  Music starts a moment later, so a click on the mute icon (handled on pointer-down) wins. */
 function unlock() {
   if (ctx) { void ctx.resume(); return; }
   try {
     ctx = new AudioContext();
     master = ctx.createGain();
-    master.gain.value = 0.6;
+    master.gain.value = 0;
     master.connect(ctx.destination);
+    sfxBus = ctx.createGain();
+    sfxBus.connect(master);
+    musicBus = ctx.createGain();
+    musicBus.connect(master);
+    applyGains();
   } catch { ctx = null; return; }
   for (const files of Object.values(SOUNDS)) for (const f of files) void loadBuffer(f);
+  setTimeout(() => { if (wantTrack) void startTrack(wantTrack); }, 0);
 }
 if (typeof window !== "undefined") {
   window.addEventListener("pointerdown", unlock, { capture: true });
   window.addEventListener("keydown", unlock, { capture: true });
+}
+
+// ─── Music (Kenney "Music Loops", CC0) ──────────────────────────
+export type Track = "menu" | "match";
+const MUSIC = `${import.meta.env.BASE_URL}assets/kenney/music/`;
+let wantTrack: Track | null = null;
+let playing: { track: Track; src: AudioBufferSourceNode; gain: GainNode } | null = null;
+const trackBufs = new Map<Track, Promise<AudioBuffer | null>>();
+
+function trackBuffer(t: Track): Promise<AudioBuffer | null> {
+  let p = trackBufs.get(t);
+  if (!p) {
+    p = fetch(`${MUSIC}${t}.ogg`).then((r) => r.arrayBuffer()).then((d) => ctx!.decodeAudioData(d)).catch(() => null);
+    trackBufs.set(t, p);
+  }
+  return p;
+}
+
+async function startTrack(t: Track) {
+  if (!ctx || !musicBus || playing?.track === t) return;
+  const buf = await trackBuffer(t);
+  if (!buf || !ctx || !musicBus || wantTrack !== t || playing?.track === t) return;
+  const now = ctx.currentTime;
+  if (playing) {
+    const old = playing;
+    old.gain.gain.setTargetAtTime(0, now, 0.4);
+    setTimeout(() => { try { old.src.stop(); } catch { /* already stopped */ } }, 2500);
+  }
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.loop = true;
+  const gain = ctx.createGain();
+  gain.gain.value = 0;
+  gain.gain.setTargetAtTime(1, now, 0.6);
+  src.connect(gain).connect(musicBus);
+  src.start();
+  playing = { track: t, src, gain };
+}
+
+/** Which music should play now (null: none). Safe to call before the first user gesture. */
+export function setMusic(t: Track | null) {
+  wantTrack = t;
+  if (!ctx) return;
+  if (t) { void startTrack(t); return; }
+  if (playing) {
+    const old = playing;
+    playing = null;
+    old.gain.gain.setTargetAtTime(0, ctx.currentTime, 0.3);
+    setTimeout(() => { try { old.src.stop(); } catch { /* already stopped */ } }, 2000);
+  }
 }
 
 async function loadBuffer(f: string) {
@@ -75,7 +170,7 @@ async function loadBuffer(f: string) {
 
 /** Play `name`; `pan` is -1 (left) … 1 (right). */
 export function play(name: SoundName, opts: { volume?: number; pan?: number } = {}) {
-  if (!ctx || !master || !soundEnabled() || ctx.state !== "running") return;
+  if (!ctx || !sfxBus || !soundEnabled() || ctx.state !== "running") return;
   const now = performance.now();
   if (now - (lastPlayed.get(name) ?? -1e9) < GAP_MS) return;
   const files = SOUNDS[name];
@@ -89,7 +184,7 @@ export function play(name: SoundName, opts: { volume?: number; pan?: number } = 
   gain.gain.value = (VOLUME[name] ?? 0.5) * (opts.volume ?? 1);
   const pan = ctx.createStereoPanner();
   pan.pan.value = Math.max(-1, Math.min(1, opts.pan ?? 0));
-  src.connect(gain).connect(pan).connect(master);
+  src.connect(gain).connect(pan).connect(sfxBus);
   src.start();
 }
 
