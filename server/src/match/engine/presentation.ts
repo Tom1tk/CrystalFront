@@ -59,5 +59,7 @@ export function staticMapOf(match: MatchState) {
     visionCellSize: visionGridOf(match.terrain).cellSize,
     visionCols: visionGridOf(match.terrain).cols,
     visionRows: visionGridOf(match.terrain).rows,
+    visionOffsetX: visionGridOf(match.terrain).offsetX,
+    visionOffsetY: visionGridOf(match.terrain).offsetY,
   };
 }

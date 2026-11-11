@@ -24,7 +24,7 @@ import { processCombat } from "./engine/combat.js";
 import { processGathering } from "./engine/gathering.js";
 import { processControl } from "./engine/control.js";
 import { processRepairAndHealing, processCrystalRegen } from "./engine/repair.js";
-import { dist } from "./engine/utils.js";
+import { dist, snapPoint } from "./engine/utils.js";
 import { contestedNodesFor, mapSymmetry, terrainFor } from "./maps.js";
 import { createNavGrid, rebuildNavGrid, addStructure, removeStructure } from "./engine/navGrid.js";
 import {
@@ -1173,6 +1173,10 @@ if (command.type === "gather") {
     processRepairAndHealing(match);
     processCrystalRegen(match);
 
+    // Phase 6.5: snap positions to the symmetric 2^-16 px grid (see snapPoint), so
+    // rounding noise never makes mirrored units diverge.
+    for (const e of match.entities.values()) snapPoint(e, match.config.mapWidth, match.config.mapHeight);
+
     // Phase 7: Fog of war — compute visibility per player
     computeVisibility(match);
 
@@ -1590,16 +1594,16 @@ if (command.type === "gather") {
   private spawnOutside(match: MatchState, playerIdx: number, parent: MatchEntity, childRadius: number): { x: number; y: number } {
     const gap = SIMULATION.spawnGap;
     const spawnDist = parent.radius + childRadius + gap;
-    const drawn = match.rng[playerIdx].random() * Math.PI * 2;
-    // Seat 1 uses the map-symmetry image of the angle seat 0 would draw, so a
-    // mirrored position spawns the mirrored unit (mirror: π − a; rotate: a + π).
-    const angle = playerIdx === 1
-      ? (mapSymmetry(match.config.mapId) === "rotate" ? drawn + Math.PI : Math.PI - drawn)
-      : drawn;
-    return {
-      x: parent.x + Math.cos(angle) * spawnDist,
-      y: parent.y + Math.sin(angle) * spawnDist,
-    };
+    const angle = match.rng[playerIdx].random() * Math.PI * 2;
+    // Seat 1 uses the map-symmetry image of the offset seat 0 would draw, so a
+    // mirrored position spawns the mirrored unit (mirror: −dx; rotate: −dx, −dy).
+    // Negating the offset is exact, unlike cos(π − a) or sin(a + π).
+    let dx = Math.cos(angle) * spawnDist, dy = Math.sin(angle) * spawnDist;
+    if (playerIdx === 1) {
+      dx = -dx;
+      if (mapSymmetry(match.config.mapId) === "rotate") dy = -dy;
+    }
+    return snapPoint({ x: parent.x + dx, y: parent.y + dy }, match.config.mapWidth, match.config.mapHeight);
   }
 
 }

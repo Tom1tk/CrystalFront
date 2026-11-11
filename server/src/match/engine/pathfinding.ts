@@ -14,8 +14,9 @@
  *   rough cells the search itself chose, so smoothing never cuts through mud
  *   the route went around.
  *
- * Tie-breaking is total and equivariant under a left-right mirror and a 180°
- * rotation (see tieLess), so a mirrored or rotated state picks the matching path.
+ * Tie-breaking is total and equivariant under the map's own symmetry (left-right
+ * mirror or 180° rotation, see tieLess), so a mirrored or rotated state picks the
+ * matching path.
  */
 import { cellRange, type NavGrid, type Rect } from "./navGrid.js";
 import { TERRAIN } from "@crystalfront/shared";
@@ -54,6 +55,24 @@ export function cellOf(g: NavGrid, x: number, y: number): number {
   const rowRaw = fy < g.rows / 2 ? Math.floor(fy) : Math.ceil(fy) - 1;
   const row = Math.min(g.rows - 1, Math.max(0, rowRaw));
   return row * g.cols + col;
+}
+
+/**
+ * Goal cell for a search from (sx,sy): like cellOf, but a goal exactly on a cell
+ * boundary goes to the cell on the start's side. A point on the map's centre line
+ * is its own image, so cellOf alone would give both seats the same cell and one
+ * of them a goal across the line. A blocked near-side cell falls back to cellOf.
+ */
+function goalCellOf(g: NavGrid, tx: number, ty: number, sx: number, sy: number): number {
+  const c = cellOf(g, tx, ty), col0 = c % g.cols, row0 = (c - col0) / g.cols;
+  const near = nearSide(ty / g.cellSize, ty, sy, g.rows, row0) * g.cols + nearSide(tx / g.cellSize, tx, sx, g.cols, col0);
+  return blocked(g, near) ? c : near;
+}
+
+/** goalCellOf on one axis: grid coordinate f of target t, start s, n cells, cellOf's index as fallback. */
+function nearSide(f: number, t: number, s: number, n: number, fallback: number): number {
+  if (f !== Math.floor(f) || t === s) return fallback;
+  return Math.min(n - 1, Math.max(0, s < t ? f - 1 : f));
 }
 
 function centre(g: NavGrid, i: number): Point {
@@ -125,13 +144,17 @@ function forNeighbours(g: NavGrid, i: number, fn: (n: number, cost: number) => v
 
 // ---- Deterministic, mirror-equivariant priority --------------------------
 
-interface Frame { g: NavGrid; sCol: number; sRow: number; gCol: number; gRow: number }
+interface Frame { g: NavGrid; sCol: number; sRow: number; gCol: number; gRow: number; rotate: boolean }
 
 /**
  * Secondary keys after cost, all unchanged by a left-right mirror AND by a 180°
  * rotation of the whole frame (G-8), so mirror and rotate maps both pick the
  * symmetric path: |cross| from the start→goal line, progress along that line,
  * distance from the map's centre row, then centre column, then index.
+ * On rotate maps the side of the start→goal line comes before the centre-row key:
+ * a rotation keeps the side (a mirror would swap it), so a route around an
+ * obstacle that is symmetric about that line (start and goal on the centre row)
+ * goes round the matching side for both seats instead of by index.
  */
 function tieLess(f: Frame, a: number, b: number): boolean {
   const { cols, rows } = f.g;
@@ -144,6 +167,10 @@ function tieLess(f: Frame, a: number, b: number): boolean {
   const pa = (ac - f.sCol) * lx + (ar - f.sRow) * ly;
   const pb = (bc - f.sCol) * lx + (br - f.sRow) * ly;
   if (pa !== pb) return pa > pb;
+  if (f.rotate) {
+    const sa = Math.sign((ac - f.sCol) * ly - (ar - f.sRow) * lx), sb = Math.sign((bc - f.sCol) * ly - (br - f.sRow) * lx);
+    if (sa !== sb) return sa > sb;
+  }
   const ra = Math.abs(2 * ar - (rows - 1)), rb = Math.abs(2 * br - (rows - 1));
   if (ra !== rb) return ra < rb;
   const ca = Math.abs(2 * ac - (cols - 1)), cb = Math.abs(2 * bc - (cols - 1));
@@ -210,7 +237,7 @@ function octile(g: NavGrid, a: number, b: number): number {
 }
 
 function frameOf(g: NavGrid, start: number, goal: number): Frame {
-  return { g, sCol: start % g.cols, sRow: Math.floor(start / g.cols), gCol: goal % g.cols, gRow: Math.floor(goal / g.cols) };
+  return { g, sCol: start % g.cols, sRow: Math.floor(start / g.cols), gCol: goal % g.cols, gRow: Math.floor(goal / g.cols), rotate: g.terrain?.rotate ?? false };
 }
 
 /** Scratch buffers reused across searches (sized to the largest grid seen). */
@@ -407,14 +434,14 @@ export function planPath(g: NavGrid, sx: number, sy: number, tx: number, ty: num
   // With the structure's footprint (goalRect), the search stops at the nearest
   // free cell touching that footprint, so neither a neighbouring building in the
   // way nor a thick wall of buildings leaves the unit out of reach.
-  const goalBlocked = blocked(g, cellOf(g, tx, ty));
+  const goal = goalCellOf(g, tx, ty, sx, sy);
+  const goalBlocked = blocked(g, goal);
   if (goalBlocked && !goalRect) useField = false;
   else if (hasLineOfSight(g, sx, sy, tx, ty) &&
-      !crossesRough(g, sx, sy, tx, ty, new Set([cellOf(g, sx, sy), cellOf(g, tx, ty)]))) {
+      !crossesRough(g, sx, sy, tx, ty, new Set([cellOf(g, sx, sy), goal]))) {
     return { waypoints: [], truncated: false };
   }
   const start = cellOf(g, sx, sy);
-  const goal = cellOf(g, tx, ty);
   const touches = goalBlocked && goalRect ? touchesRect(g, goalRect) : undefined;
   // A group sent to a structure shares one field seeded with the free cells touching it.
   const seeds = touches && useField ? ringCells(g, goalRect!, touches) : undefined;

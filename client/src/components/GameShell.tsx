@@ -1992,9 +1992,10 @@ export default function GameShell({
     // G-6b: the server's line-of-sight bitmap; circle tiles as a fallback.
     const fog = fogCanvas(matchState.vision, matchState.staticMap);
     if (fog) {
-      const vcs = matchState.staticMap!.visionCellSize ?? 40;
+      const sm = matchState.staticMap!;
+      const vcs = sm.visionCellSize ?? 40;
       if (w3) ctx.globalAlpha = 0.8;
-      ctx.drawImage(fog, 0, 0, fog.width * vcs, fog.height * vcs);
+      ctx.drawImage(fog, -(sm.visionOffsetX ?? 0), -(sm.visionOffsetY ?? 0), fog.width * vcs, fog.height * vcs);
       ctx.globalAlpha = 1;
     } else {
       const myVisionSources = entities.filter(
@@ -2535,7 +2536,17 @@ export default function GameShell({
       // Minimap fog overlay: the G-6b vision bitmap, or circle tiles as a fallback
       const mmFog = fogCanvas(matchState.vision, matchState.staticMap);
       if (mmFog) {
-        ctx.drawImage(mmFog, minimapX, minimapY, MINIMAP_WIDTH, MINIMAP_HEIGHT);
+        // The vision grid overhangs the map by the offset on each side; clip it to the minimap.
+        const sm = matchState.staticMap!;
+        const vcs = sm.visionCellSize ?? 40;
+        const fx = MINIMAP_WIDTH / (mmFog.width * vcs - 2 * (sm.visionOffsetX ?? 0));
+        const fy = MINIMAP_HEIGHT / (mmFog.height * vcs - 2 * (sm.visionOffsetY ?? 0));
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(minimapX, minimapY, MINIMAP_WIDTH, MINIMAP_HEIGHT);
+        ctx.clip();
+        ctx.drawImage(mmFog, minimapX - (sm.visionOffsetX ?? 0) * fx, minimapY - (sm.visionOffsetY ?? 0) * fy, mmFog.width * vcs * fx, mmFog.height * vcs * fy);
+        ctx.restore();
       } else {
         const mmSources = entities.filter(e => e.ownerId === safePlayer.id && e.health > 0);
         if (mmSources.length > 0) {

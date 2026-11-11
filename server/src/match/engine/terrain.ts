@@ -61,6 +61,8 @@ export interface Terrain {
   brushPatch: Int32Array;
   /** True if any cell is non-open (lets hot paths skip terrain work on plain maps). */
   any: boolean;
+  /** The map is symmetric under a 180° rotation (else a left-right mirror); pathfinding tie-breaks need it. */
+  rotate: boolean;
 }
 
 /** Copy of a shape under the map's symmetry transform. */
@@ -87,7 +89,7 @@ export function buildTerrain(def: MapDef | null, mapW: number, mapH: number): Te
       if (def.symmetry !== "none") paint(cells, cols, rows, cellSize, imageOf(s, def.symmetry, mapW, mapH));
     }
   }
-  return finishTerrain(def?.id ?? "classic", def?.version ?? 1, cellSize, cols, rows, cells);
+  return finishTerrain(def?.id ?? "classic", def?.version ?? 1, cellSize, cols, rows, cells, def?.symmetry === "rotate");
 }
 
 function paint(cells: Uint8Array, cols: number, rows: number, cs: number, s: TerrainShape): void {
@@ -111,7 +113,7 @@ function paint(cells: Uint8Array, cols: number, rows: number, cs: number, s: Ter
   }
 }
 
-function finishTerrain(mapId: string, mapVersion: number, cellSize: number, cols: number, rows: number, cells: Uint8Array): Terrain {
+function finishTerrain(mapId: string, mapVersion: number, cellSize: number, cols: number, rows: number, cells: Uint8Array, rotate: boolean): Terrain {
   const brushPatch = new Int32Array(cols * rows);
   let next = 0;
   for (let i = 0; i < cells.length; i++) {
@@ -130,7 +132,7 @@ function finishTerrain(mapId: string, mapVersion: number, cellSize: number, cols
   }
   let any = false;
   for (let i = 0; i < cells.length; i++) if (cells[i] !== T_OPEN) { any = true; break; }
-  return { mapId, mapVersion, cellSize, cols, rows, cells, brushPatch, any };
+  return { mapId, mapVersion, cellSize, cols, rows, cells, brushPatch, any, rotate };
 }
 
 /** Left-right reflection (used by the mirror-invariance harness). */
@@ -141,7 +143,7 @@ export function mirrorTerrain(t: Terrain): Terrain {
       cells[row * t.cols + col] = t.cells[row * t.cols + (t.cols - 1 - col)];
     }
   }
-  return finishTerrain(t.mapId, t.mapVersion, t.cellSize, t.cols, t.rows, cells);
+  return finishTerrain(t.mapId, t.mapVersion, t.cellSize, t.cols, t.rows, cells, t.rotate);
 }
 
 /** Nav cell index of a point (boundary points go toward the map's centre line, mirror-safe). */

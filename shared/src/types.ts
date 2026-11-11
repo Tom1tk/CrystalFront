@@ -171,7 +171,7 @@ export interface MatchState {
   /** G-11: static map data, present on MATCH_START only. */
   staticMap?: {
     cellSize: number; cols: number; rows: number; mapId?: string; mapVersion?: number; terrain?: string;
-    visionCellSize?: number; visionCols?: number; visionRows?: number;
+    visionCellSize?: number; visionCols?: number; visionRows?: number; visionOffsetX?: number; visionOffsetY?: number;
   };
   /** G-6b: the receiving player's lit fog cells, base64 bitset over the vision grid. */
   vision?: string;

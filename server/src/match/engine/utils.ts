@@ -17,6 +17,28 @@ export function onHighGround(entity: MatchEntity, terrain?: Terrain | null): boo
 
 // ── Spatial ────────────────────────────────────────────────────────────────────
 
+/** Position grid: 2^-16 px (exact in binary, so W − x stays exact). */
+const POS_GRID = 65536;
+
+/**
+ * Snap a point to the position grid, measured from the map's centre and rounded
+ * half away from it, so the mirror (x → W − x) or rotation image of a point snaps
+ * to the image of its snapped point. Floating-point noise (W − x and its partner's
+ * sums round differently, ~1e-12 px) is wiped out each tick instead of growing
+ * until a threshold check flips for one seat only. Mutates and returns p.
+ */
+export function snapPoint<T extends { x: number; y: number }>(p: T, mapW: number, mapH: number): T {
+  p.x = snapCoord(p.x, mapW / 2);
+  p.y = snapCoord(p.y, mapH / 2);
+  return p;
+}
+
+function snapCoord(v: number, c: number): number {
+  const d = v - c;
+  const q = Math.round(Math.abs(d) * POS_GRID) / POS_GRID;
+  return d < 0 ? c - q : c + q;
+}
+
 export function dist(x1: number, y1: number, x2: number, y2: number): number {
   const dx = x2 - x1;
   const dy = y2 - y1;

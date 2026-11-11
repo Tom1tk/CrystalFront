@@ -122,4 +122,7 @@ export interface StaticMap {
   visionCellSize?: number;
   visionCols?: number;
   visionRows?: number;
+  /** The vision grid starts at (−visionOffsetX, −visionOffsetY): it is centred on the map. */
+  visionOffsetX?: number;
+  visionOffsetY?: number;
 }

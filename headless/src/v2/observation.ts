@@ -323,7 +323,8 @@ function dynamicGrid(match: MatchState, s: SeatState, d: Dims, seen: Seen[], os:
     if (!os || !vis) { out[g] += 1; out[plane + g] += 1; continue; }
     const w = worldNavCell(s, d, c, r);
     const wc = w % d.nc, wr = (w - wc) / d.nc;
-    const lit = vis.cells[Math.floor(wr / 2) * vg.cols + Math.floor(wc / 2)] === 1;
+    const tc = match.terrain.cellSize;
+    const lit = vis.cells[visionCellOf(vg, (wc + 0.5) * tc, (wr + 0.5) * tc)] === 1;
     const k = r * d.nc + c;
     if (lit) { os.lastLit[k] = match.tick; out[g] += 1; litGrid[g] = 1; }
     if (os.lastLit[k] >= 0) out[plane + g] += 1;

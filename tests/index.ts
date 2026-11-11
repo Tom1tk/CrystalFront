@@ -3225,9 +3225,10 @@ function v2ObservationTests(): void {
     assert(o.nodes.slice(0, 4).some((r) => r[0] === 1) && o.nodes.slice(4, 8).some((r) => r[0] === 1), "own and enemy safe nodes are listed");
   }
 
-  {
-    // Mirror map: mirrored play gives both seats bit-identical observations and masks.
-    const { engine, match, seats, oss } = newMatch("glimmerfen", 3);
+  for (const mapId of ["twin-spires", "glimmerfen"]) {
+    // Mirrored play gives both seats bit-identical observations (fog included) and masks,
+    // on a rotate map (twin-spires) and a mirror map (glimmerfen).
+    const { engine, match, seats, oss } = newMatch(mapId, 3);
     const rnd = lcg(99);
     let same = 0;
     for (let d = 0; d < 150 && match.phase === "playing"; d++) {
@@ -3240,7 +3241,8 @@ function v2ObservationTests(): void {
       V2.applyV2Pair(engine, match, seats, [a, a]);
       for (let t = 0; t < V2.DECISION_TICKS; t++) engine.tick(match.id);
     }
-    assertEqual(same, 150, "glimmerfen: 150 mirrored decisions give both seats bit-identical observations and masks");
+    assertEqual(same, 150, `${mapId}: 150 mirrored decisions give both seats bit-identical observations and masks`);
+    if (mapId !== "glimmerfen") continue;
 
     // Image test: after asymmetric play, the image state with seats swapped gives each player the same observation.
     for (let d = 0; d < 30; d++) {
@@ -3256,9 +3258,7 @@ function v2ObservationTests(): void {
   }
 
   {
-    // Rotate map: the fog-free blocks and the masks are bit-identical in the image state. The fogged
-    // observation is not yet: the engine's 40 px vision grid has 22.5 rows on a 900 px map, so fog is
-    // not rotate-symmetric (reported to the user; see the diary).
+    // Rotate map: the fogged observation, the fog-free blocks and the masks are bit-identical in the image state.
     const { engine, match, seats } = newMatch("shardfall", 4);
     const rnd = lcg(7);
     for (let d = 0; d < 60; d++) {
@@ -3266,6 +3266,9 @@ function v2ObservationTests(): void {
       for (let t = 0; t < V2.DECISION_TICKS; t++) engine.tick(match.id);
     }
     const img = imageState(match), iseats = imageSeats(img, seats);
+    const fresh = (mm: MatchState, st: V2.SeatState) => JSON.stringify(OBS.observe(mm, st, OBS.createObsState(mm, st)));
+    assertEqual(fresh(img, iseats[1]), fresh(match, seats[0]), "shardfall: blue's fogged observation is bit-identical in the image state");
+    assertEqual(fresh(img, iseats[0]), fresh(match, seats[1]), "shardfall: red's fogged observation is bit-identical in the image state");
     const crit = (mm: MatchState, a: V2.SeatState, b: V2.SeatState) => JSON.stringify(OBS.criticState(mm, a, OBS.createObsState(mm, a), b, OBS.createObsState(mm, b)));
     assertEqual(crit(img, iseats[1], iseats[0]), crit(match, seats[0], seats[1]), "shardfall: blue's fog-free (critic) blocks are bit-identical in the image state");
     assertEqual(crit(img, iseats[0], iseats[1]), crit(match, seats[1], seats[0]), "shardfall: red's fog-free (critic) blocks are bit-identical in the image state");

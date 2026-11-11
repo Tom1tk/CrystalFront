@@ -1,8 +1,9 @@
 /**
  * Fog of war with terrain line of sight (G-6b).
  *
- * Vision is resolved on a coarse grid (TERRAIN.visionCellSize px, 2×2 nav
- * cells). Each vision source lights the cells whose centre is within its
+ * Vision is resolved on a coarse grid (TERRAIN.visionCellSize px), centred on
+ * the map so it is symmetric under both map symmetries (a 900 px map has 23
+ * rows starting 10 px above the top edge). Each vision source lights the cells whose centre is within its
  * vision range (+ half a cell) and that a ray from its own cell reaches:
  *   - rock blocks every ray;
  *   - a low-ground source can't see elevated cells (high ground or cliff), and
@@ -34,9 +35,12 @@ export interface VisionGrid {
   cellSize: number;
   cols: number;
   rows: number;
+  /** The grid starts at (−offsetX, −offsetY): it overhangs the map equally on both sides. */
+  offsetX: number;
+  offsetY: number;
   /** Contains rock (blocks every ray). */
   rock: Uint8Array;
-  /** At least 2 of its nav cells are high ground or cliff. */
+  /** At least half its area is high ground or cliff. */
   elevated: Uint8Array;
   /** LOS sets, keyed by `${cell}:${range}:${high}`. */
   /** Cached lit-cell sets: key (cell * 2 + high) → vision range → cells. */
@@ -49,38 +53,44 @@ export function visionGridOf(t: Terrain): VisionGrid {
   let g = grids.get(t);
   if (g) return g;
   const cellSize = TERRAIN.visionCellSize;
-  const k = cellSize / t.cellSize; // nav cells per vision cell (2)
-  const cols = Math.ceil(t.cols / k);
-  const rows = Math.ceil(t.rows / k);
+  const tc = t.cellSize, W = t.cols * tc, H = t.rows * tc;
+  const cols = Math.ceil(W / cellSize);
+  const rows = Math.ceil(H / cellSize);
+  const offsetX = (cols * cellSize - W) / 2, offsetY = (rows * cellSize - H) / 2;
   const rock = new Uint8Array(cols * rows);
   const elevated = new Uint8Array(cols * rows);
   for (let r = 0; r < rows; r++) {
+    const y0 = r * cellSize - offsetY, y1 = y0 + cellSize;
     for (let c = 0; c < cols; c++) {
+      const x0 = c * cellSize - offsetX, x1 = x0 + cellSize;
+      // Nav cells overlapping this vision cell, weighted by overlap area.
       let high = 0;
-      for (let dr = 0; dr < k; dr++) {
-        for (let dc = 0; dc < k; dc++) {
-          const nr = r * k + dr, nc = c * k + dc;
-          if (nr >= t.rows || nc >= t.cols) continue;
+      for (let nr = Math.max(0, Math.floor(y0 / tc)); nr < Math.min(t.rows, Math.ceil(y1 / tc)); nr++) {
+        const hy = Math.min(y1, (nr + 1) * tc) - Math.max(y0, nr * tc);
+        for (let nc = Math.max(0, Math.floor(x0 / tc)); nc < Math.min(t.cols, Math.ceil(x1 / tc)); nc++) {
+          const hx = Math.min(x1, (nc + 1) * tc) - Math.max(x0, nc * tc);
           const code = t.cells[nr * t.cols + nc];
           if (code === T_ROCK) rock[r * cols + c] = 1;
-          if (code === T_HIGH || code === T_CLIFF) high++;
+          if (code === T_HIGH || code === T_CLIFF) high += hx * hy;
         }
       }
-      if (high >= 2) elevated[r * cols + c] = 1;
+      if (high * 2 >= cellSize * cellSize) elevated[r * cols + c] = 1;
     }
   }
-  g = { cellSize, cols, rows, rock, elevated, los: new Map() };
+  g = { cellSize, cols, rows, offsetX, offsetY, rock, elevated, los: new Map() };
   grids.set(t, g);
   return g;
 }
 
-/** Vision cell of a point (boundary points go toward the map's centre line, mirror-safe). */
+/** Vision cell of a point (boundary points go toward the map's centre lines, so this is symmetric under both map symmetries). */
 export function visionCellOf(g: VisionGrid, x: number, y: number): number {
-  const fx = x / g.cellSize;
-  const colRaw = fx < g.cols / 2 ? Math.floor(fx) : Math.ceil(fx) - 1;
-  const col = Math.min(g.cols - 1, Math.max(0, colRaw));
-  const row = Math.min(g.rows - 1, Math.max(0, Math.floor(y / g.cellSize)));
-  return row * g.cols + col;
+  return centreTieCell((y + g.offsetY) / g.cellSize, g.rows) * g.cols + centreTieCell((x + g.offsetX) / g.cellSize, g.cols);
+}
+
+/** Cell index of grid coordinate f on an n-cell axis; a boundary goes to the cell nearer the centre. */
+function centreTieCell(f: number, n: number): number {
+  const raw = f < n / 2 ? Math.floor(f) : Math.ceil(f) - 1;
+  return Math.min(n - 1, Math.max(0, raw));
 }
 
 /** Cells covering coordinate v on one axis: one cell, or both neighbours when v lies on a boundary. */
