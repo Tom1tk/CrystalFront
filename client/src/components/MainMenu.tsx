@@ -100,7 +100,7 @@ export default function MainMenu({ onHost, onJoin, onSoloTest, onBotGame, onRepl
         <div className="g-glass g-enter" style={{ width: 640, maxWidth: "100%", display: "flex", flexDirection: "column", minHeight: 0, alignSelf: "stretch" }}>
           <div style={{ padding: "18px 22px 0", display: "flex", flexDirection: "column", gap: 14 }}>
             <PageTitle label={`Playing as ${name}`} title="Play" right={<IconBtn icon="back" title="Back" small onClick={() => { setPage("home"); setError(""); }} />} />
-            <Tabs<PlayTab> value={tab} onChange={(t) => { setTab(t); setError(""); }} tabs={[
+            <Tabs<PlayTab> value={tab} onChange={(t) => { setTab(t); setError(""); if (t !== "solo" && (mapId === "testbed" || mapId === "classic")) setMapId("random"); }} tabs={[
               { id: "bot", label: "vs Bot", icon: "bot" },
               { id: "online", label: "Online", icon: "users" },
               { id: "solo", label: "Solo test", icon: "wrench" },
@@ -156,7 +156,7 @@ export default function MainMenu({ onHost, onJoin, onSoloTest, onBotGame, onRepl
               <section>
                 <p className="g-sub" style={{ marginTop: 0 }}>A sandbox against an empty opponent. Debug tools are in Settings → Debug during the match.</p>
                 <div className="g-label" style={{ margin: "12px 0 8px" }}>Map</div>
-                <MapCards value={mapId} onChange={pickMap} columns={3} />
+                <MapCards value={mapId} onChange={pickMap} columns={3} dev />
               </section>
             )}
           </div>

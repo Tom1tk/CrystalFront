@@ -5,7 +5,7 @@ import LobbyScreen from "./components/LobbyScreen";
 import GameShell, { initialView3d, saveView3d } from "./components/GameShell";
 import MatchEndScreen from "./components/MatchEndScreen";
 import ReplayBrowser from "./components/ReplayBrowser";
-import type { Screen, Player, MatchState } from "./types";
+import type { Screen, Player, MatchState, Lobby } from "./types";
 import MenuBackdrop from "./components/MenuBackdrop";
 import BootScreen from "./components/BootScreen";
 import SettingsModal from "./components/SettingsModal";
@@ -219,8 +219,8 @@ function useScreenFlow() {
   }, [ws.matchEnd, ws.matchState, ws.clearMatchEnd, ws.clearMatchState, ws.leaveLobby, handleWatchReplay]);
 
   const handleDebugWin = useCallback(
-    (_player: "player1" | "player2") => {
-      ws.debugWin("self");
+    (player: "player1" | "player2") => {
+      ws.debugWin(player);
     },
     [ws.debugWin]
   );
@@ -333,7 +333,19 @@ export default function App() {
   } = useScreenFlow();
 
   const player = getCurrentPlayer();
-  const lobby = getCurrentLobby();
+  const currentLobby = getCurrentLobby();
+  // An opponent who quits leaves the lobby at once; keep their name and score on the
+  // HUD and the result screen until we leave the match ourselves.
+  const matchPlayersRef = useRef<Lobby["players"]>([null, null]);
+  const playing = screen === "game" || screen === "matchEnd";
+  if (!playing || !currentLobby) matchPlayersRef.current = [null, null];
+  else {
+    // The server may move the remaining player into the first slot, so match by id.
+    const now = currentLobby.players;
+    const gone = matchPlayersRef.current.filter((p) => p && !now.some((q) => q?.id === p.id));
+    matchPlayersRef.current = [now[0] ?? gone.shift() ?? null, now[1] ?? gone.shift() ?? null];
+  }
+  const lobby = currentLobby && playing ? { ...currentLobby, players: matchPlayersRef.current } : currentLobby;
 
   // ─── G-12: boot screen, live 3D backdrop, music, settings ─────
   const [view3d, setView3d] = useState(initialView3d);

@@ -12,6 +12,17 @@ function findEntity(match: MatchState, type: string, ownerId?: string): MatchEnt
   return undefined;
 }
 
+/** Ticks until `target` loses health or dies: an attack lands a tick or two after the target is acquired. */
+function tickUntilHit(engine: MatchEngine, match: MatchState, target: MatchEntity, max = 30): void {
+  const hp = target.health;
+  for (let i = 0; i < max && target.health === hp && match.entities.has(target.id); i++) engine.tick(match.id);
+}
+
+/** Ticks until entity `id` has been removed. */
+function tickUntilGone(engine: MatchEngine, match: MatchState, id: string, max = 30): void {
+  for (let i = 0; i < max && match.entities.has(id); i++) engine.tick(match.id);
+}
+
 describe("Combat System", () => {
   let engine: MatchEngine;
   let match: MatchState;
@@ -40,7 +51,7 @@ describe("Combat System", () => {
   describe("Unit Definitions", () => {
     it("skirmisher has correct stats", () => {
       expect(UNIT_DEFS.skirmisher.health).toBe(120);
-      expect(UNIT_DEFS.skirmisher.damage).toBe(15);
+      expect(UNIT_DEFS.skirmisher.damage).toBe(12);
       expect(UNIT_DEFS.skirmisher.range).toBe(20);
       expect(UNIT_DEFS.skirmisher.attackCooldown).toBe(10);
     });
@@ -75,28 +86,28 @@ describe("Combat System", () => {
   });
 
   describe("Counter Multipliers", () => {
-    it("skirmisher deals 2x damage to gunner", () => {
-      expect(COUNTER_MODIFIER.skirmisher.gunner).toBe(2.0);
+    it("skirmisher deals 1.5x damage to gunner", () => {
+      expect(COUNTER_MODIFIER.skirmisher.gunner).toBe(1.5);
     });
 
-    it("skirmisher deals 0.5x damage to bruiser", () => {
-      expect(COUNTER_MODIFIER.skirmisher.bruiser).toBe(0.5);
+    it("skirmisher deals 0.75x damage to bruiser", () => {
+      expect(COUNTER_MODIFIER.skirmisher.bruiser).toBe(0.75);
     });
 
-    it("gunner deals 2x damage to bruiser", () => {
-      expect(COUNTER_MODIFIER.gunner.bruiser).toBe(2.0);
+    it("gunner deals 1.5x damage to bruiser", () => {
+      expect(COUNTER_MODIFIER.gunner.bruiser).toBe(1.5);
     });
 
-    it("gunner deals 0.5x damage to skirmisher", () => {
-      expect(COUNTER_MODIFIER.gunner.skirmisher).toBe(0.5);
+    it("gunner deals 0.75x damage to skirmisher", () => {
+      expect(COUNTER_MODIFIER.gunner.skirmisher).toBe(0.75);
     });
 
-    it("bruiser deals 2x damage to skirmisher", () => {
-      expect(COUNTER_MODIFIER.bruiser.skirmisher).toBe(2.0);
+    it("bruiser deals 1.5x damage to skirmisher", () => {
+      expect(COUNTER_MODIFIER.bruiser.skirmisher).toBe(1.5);
     });
 
-    it("bruiser deals 0.5x damage to gunner", () => {
-      expect(COUNTER_MODIFIER.bruiser.gunner).toBe(0.5);
+    it("bruiser deals 0.75x damage to gunner", () => {
+      expect(COUNTER_MODIFIER.bruiser.gunner).toBe(0.75);
     });
 
     it("medic has no counter bonuses", () => {
@@ -117,7 +128,7 @@ describe("Combat System", () => {
       enemyWorker.x = 110;
       enemyWorker.y = 300;
 
-      engine.tick(match.id);
+      tickUntilHit(engine, match, enemyWorker);
 
       expect(worker.attackTargetId).toBe(enemyWorker.id);
     });
@@ -219,12 +230,12 @@ describe("Combat System", () => {
       enemyWorker.x = 110;
       enemyWorker.y = 300;
 
-      engine.tick(match.id);
+      tickUntilHit(engine, match, enemyWorker);
 
       expect(enemyWorker.health).toBe(originalHealth - UNIT_DEFS.skirmisher.damage);
     });
 
-    it("skirmisher deals 2x damage to gunner (counter)", () => {
+    it("skirmisher deals counter damage to gunner", () => {
       const skirm = findEntity(match, "worker", "p1")!;
       asUnit(skirm, "skirmisher");
       skirm.x = 100;
@@ -236,13 +247,13 @@ describe("Combat System", () => {
       enemy.x = 110;
       enemy.y = 300;
 
-      engine.tick(match.id);
+      tickUntilHit(engine, match, enemy);
 
-      const expectedDmg = Math.round(UNIT_DEFS.skirmisher.damage * 2.0);
+      const expectedDmg = Math.round(UNIT_DEFS.skirmisher.damage * COUNTER_MODIFIER.skirmisher.gunner);
       expect(enemy.health).toBe(originalHealth - expectedDmg);
     });
 
-    it("skirmisher deals 0.5x damage to bruiser (weak)", () => {
+    it("skirmisher deals reduced damage to bruiser (weak)", () => {
       const skirm = findEntity(match, "worker", "p1")!;
       asUnit(skirm, "skirmisher");
       skirm.x = 100;
@@ -254,9 +265,9 @@ describe("Combat System", () => {
       enemy.x = 110;
       enemy.y = 300;
 
-      engine.tick(match.id);
+      tickUntilHit(engine, match, enemy);
 
-      const expectedDmg = Math.round(UNIT_DEFS.skirmisher.damage * 0.5);
+      const expectedDmg = Math.round(UNIT_DEFS.skirmisher.damage * COUNTER_MODIFIER.skirmisher.bruiser);
       expect(enemy.health).toBe(originalHealth - expectedDmg);
     });
 
@@ -271,7 +282,7 @@ describe("Combat System", () => {
       enemyWorker.x = 200;
       enemyWorker.y = 300;
 
-      engine.tick(match.id);
+      tickUntilHit(engine, match, enemyWorker);
 
       expect(gunner.attackTargetId).toBe(enemyWorker.id);
       expect(enemyWorker.health).toBe(originalHealth - UNIT_DEFS.gunner.damage);
@@ -288,7 +299,7 @@ describe("Combat System", () => {
       enemyWorker.x = 115;
       enemyWorker.y = 300;
 
-      engine.tick(match.id);
+      tickUntilHit(engine, match, enemyWorker);
 
       expect(enemyWorker.health).toBe(originalHealth - UNIT_DEFS.bruiser.damage);
     });
@@ -304,7 +315,7 @@ describe("Combat System", () => {
       enemyWorker.x = 150;
       enemyWorker.y = 300;
 
-      engine.tick(match.id);
+      tickUntilHit(engine, match, enemyWorker);
 
       expect(enemyWorker.health).toBe(originalHealth - UNIT_DEFS.medic.damage);
     });
@@ -320,7 +331,7 @@ describe("Combat System", () => {
       enemyWorker.x = 110;
       enemyWorker.y = 300;
 
-      engine.tick(match.id);
+      tickUntilHit(engine, match, enemyWorker);
 
       expect(enemyWorker.health).toBe(originalHealth - UNIT_DEFS.worker.damage);
     });
@@ -336,7 +347,7 @@ describe("Combat System", () => {
       enemyWorker.x = 110;
       enemyWorker.y = 300;
 
-      engine.tick(match.id);
+      tickUntilHit(engine, match, enemyWorker);
       const healthAfterFirst = enemyWorker.health;
 
       expect(healthAfterFirst).toBe(originalHealth - UNIT_DEFS.skirmisher.damage);
@@ -355,7 +366,7 @@ describe("Combat System", () => {
       enemyWorker.y = 300;
       const targetId = enemyWorker.id;
 
-      engine.tick(match.id);
+      tickUntilGone(engine, match, targetId);
 
       expect(match.entities.has(targetId)).toBe(false);
     });
@@ -404,7 +415,7 @@ describe("Combat System", () => {
       medic.x = 100;
       medic.y = 300;
 
-      const allyWorker = findEntity(match, "worker", "p1")!;
+      const allyWorker = [...match.entities.values()].find((e) => e.type === "worker" && e.ownerId === "p1" && e.id !== medic.id)!;
       allyWorker.health = 1;
       allyWorker.x = 150;
       allyWorker.y = 300;
@@ -417,6 +428,7 @@ describe("Combat System", () => {
       enemySkirm.y = 300;
       enemySkirm.attackTargetId = allyWorker.id;
 
+      tickUntilGone(engine, match, allyWorker.id);
       engine.tick(match.id);
 
       expect(medic.healTargetId).toBeUndefined();
@@ -506,7 +518,7 @@ describe("Combat System", () => {
       enemyWorker.x = 110;
       enemyWorker.y = 300;
 
-      engine.tick(match.id);
+      tickUntilHit(engine, match, enemyWorker);
 
       expect(match.attackLog.length).toBeGreaterThan(0);
       const attackEvent = match.attackLog.find(
@@ -550,7 +562,7 @@ describe("Combat System", () => {
       enemyWorker.x = 110;
       enemyWorker.y = 300;
 
-      engine.tick(match.id);
+      tickUntilHit(engine, match, enemyWorker);
       expect(match.attackLog.length).toBeGreaterThan(0);
 
       for (let i = 0; i < 20; i++) {
@@ -714,7 +726,7 @@ describe("Combat System", () => {
 
       expect(result.success).toBe(true);
       expect(worker.moveTarget).toEqual({ x: crystal.x, y: crystal.y });
-      expect(worker.autoAttackEnabled).toBe(false);
+      expect(worker.autoAttackEnabled).toBe(true); // retreat keeps auto-attack (0.1.57)
     });
 
     it("clears attack target on retreat", () => {
@@ -764,8 +776,8 @@ describe("Combat System", () => {
       expect(result.success).toBe(true);
       expect(w1.moveTarget).toEqual({ x: crystal.x, y: crystal.y });
       expect(w2.moveTarget).toEqual({ x: crystal.x, y: crystal.y });
-      expect(w1.autoAttackEnabled).toBe(false);
-      expect(w2.autoAttackEnabled).toBe(false);
+      expect(w1.autoAttackEnabled).toBe(true); // retreat keeps auto-attack (0.1.57)
+      expect(w2.autoAttackEnabled).toBe(true);
     });
 
     it("ignores buildings when retreating", () => {
@@ -857,7 +869,7 @@ describe("Economy System", () => {
     enemy.x = newWorker.x;
     enemy.y = newWorker.y;
     enemy.autoAttackEnabled = true;
-    engine.tick(match.id);
+    tickUntilGone(engine, match, newWorker.id);
 
     expect(match.economy[0]!.supply).toBe(supplyBefore - match.config.workerSupplyCost);
   });
@@ -971,7 +983,7 @@ describe("Economy System", () => {
     enemy.attackTargetId = building.id;
     enemy.autoAttackEnabled = true;
 
-    engine.tick(match.id);
+    tickUntilGone(engine, match, building.id);
 
     expect(match.economy[0]!.maxSupply).toBeLessThan(afterBuildMaxSupply);
   });
@@ -1542,7 +1554,7 @@ describe("Death & Cleanup", () => {
     enemy.x = newWorker.x;
     enemy.y = newWorker.y;
     enemy.autoAttackEnabled = true;
-    engine.tick(match.id);
+    tickUntilGone(engine, match, newWorker.id);
 
     expect(match.economy[0]!.supply).toBe(supplyBefore - 1);
   });
@@ -1572,7 +1584,7 @@ describe("Death & Cleanup", () => {
     enemy.attackTargetId = building.id;
     enemy.autoAttackEnabled = true;
 
-    engine.tick(match.id);
+    tickUntilGone(engine, match, building.id);
 
     expect(worker.buildTargetId).toBeUndefined();
   });
@@ -1608,7 +1620,7 @@ describe("Death & Cleanup", () => {
     enemy.y = building.y;
     enemy.attackTargetId = building.id;
     enemy.autoAttackEnabled = true;
-    engine.tick(match.id);
+    tickUntilGone(engine, match, building.id);
 
     expect(match.economy[0]!.maxSupply).toBeLessThan(maxSupplyAfterBuild);
   });
@@ -1699,7 +1711,7 @@ describe("Match Lifecycle", () => {
     expect(resetResult!.result).toBeNull();
     expect(resetResult!.entities.size).toBe(8);
     expect(resetResult!.economy[0]!.resources).toBe(match.config.startingResources);
-    expect(resetResult!.economy[0]!.supply).toBe(0);
+    expect(resetResult!.economy[0]!.supply).toBe(3 * match.config.workerSupplyCost); // 3 starting workers
   });
 
   it("destroy match removes match from engine", () => {

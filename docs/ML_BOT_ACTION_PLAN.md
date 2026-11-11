@@ -2872,3 +2872,10 @@ Verified: `npm test` 470/470, `training.test_env` PASS, `test_config_persistence
 
 ### 2026-11-11 — Player name remembered as typed (v0.7.11)
 - **The user asked** for the player name to be saved like the audio preferences. It was already stored in `cf.name`, but only when a game started, so a name typed before a reload or a visit to Replays was lost. It is now saved on every change (trimmed). Verified: type a name, reload without playing, and the name is still there.
+
+### 2026-11-11 — v0.7.12: loose ends after G-12
+
+- Debug "Simulate opponent win" now ends the match for the opponent (the client always sent "self").
+- Play and Lobby map cards list only the pool maps; Testbed and Classic stay in Solo test.
+- An opponent who quits a PvP match keeps their name and score on the HUD and the result screen (the client remembers the match's players by id until you leave).
+- Legacy vitest `server/src/match/matchEngine.test.ts` updated to current rules (counters 1.5×/0.75×, attacks land a tick after acquiring, retreat keeps auto-attack, 3 starting workers' supply); 85/85 pass and `npm test` now runs it.

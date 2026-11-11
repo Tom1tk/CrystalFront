@@ -55,8 +55,8 @@ export function MapThumb({ map, width = 250 }: { map: MapInfo; width?: number })
   return <canvas ref={ref} width={width} height={height} style={{ display: "block", width, height }} />;
 }
 
-/** Map choice as cards (G-12): "Random" plus every listed map, with its theme and size. */
-export function MapCards({ value, onChange, disabled, columns = 2 }: { value: string; onChange: (mapId: string) => void; disabled?: boolean; columns?: number }) {
+/** Map choice as cards (G-12): "Random" plus the pool maps; `dev` also lists the dev maps (Solo test). */
+export function MapCards({ value, onChange, disabled, columns = 2, dev = false }: { value: string; onChange: (mapId: string) => void; disabled?: boolean; columns?: number; dev?: boolean }) {
   const [maps, setMaps] = useState<MapInfo[]>([]);
   useEffect(() => { void fetchMaps().then(setMaps); }, []);
   const W = 196;
@@ -67,7 +67,7 @@ export function MapCards({ value, onChange, disabled, columns = 2 }: { value: st
         <span className="g-card-name">Random</span>
         <span className="g-card-meta">Any pool map</span>
       </button>
-      {maps.map((m) => (
+      {maps.filter((m) => dev || m.pool).map((m) => (
         <button key={m.mapId} type="button" className={`g-card${value === m.mapId ? " on" : ""}`} disabled={disabled} onClick={() => onChange(m.mapId)}>
           <div style={{ width: "100%", overflow: "hidden" }}><MapThumb map={m} width={W} /></div>
           <span className="g-card-name">{m.name}</span>
