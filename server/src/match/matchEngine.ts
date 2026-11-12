@@ -53,6 +53,7 @@ export type GameCommand = {
         | "toggle_auto_attack"
         | "retreat"
         | "stop"
+        | "guard"
         | "debug_move_node"
         | "debug_save_layout"
         | "debug_mirror_nodes";
@@ -72,7 +73,7 @@ export type GameCommand = {
 /** Orders that can be shift-queued (G-9f). */
 const QUEUEABLE = new Set<string>(["move", "attack_move", "attack", "build"]);
 /** Unit orders that replace whatever the unit was doing, clearing its queue. */
-const CLEARS_QUEUE = new Set<string>(["move", "attack_move", "attack", "build", "gather", "repair", "heal", "retreat", "stop", "assign_build"]);
+const CLEARS_QUEUE = new Set<string>(["move", "attack_move", "attack", "build", "gather", "repair", "heal", "retreat", "stop", "assign_build", "guard"]);
 
 /** Is the unit carrying out an order (or, unless ignoreQueue, holding queued ones)? */
 function isBusy(e: QEntity, ignoreQueue = false): boolean {
@@ -453,6 +454,13 @@ export class MatchEngine {
 
     const config = match.config;
     const ok = (): { success: true } => {
+      // Any other unit order ends a guard (G-13 E4).
+      if (CLEARS_QUEUE.has(command.type) && command.type !== "guard") {
+        for (const id of [command.entityId, ...(command.entityIds ?? []), ...(command.workerIds ?? [])]) {
+          const u = id ? match.entities.get(id) : undefined;
+          if (u && u.ownerId === playerId && u.guard) u.guard = undefined;
+        }
+      }
       if (log) match.commandLog.push({ tick: match.tick, playerId, command: command as Record<string, unknown> });
       return { success: true };
     };
@@ -862,6 +870,8 @@ if (command.type === "gather") {
       }
 
      entity.attackTargetId = targetId;
+        entity.attackOrdered = true;
+        entity.leash = undefined;
         entity.moveTarget = undefined;
         entity.moveOrder = undefined;
         entity.healTargetId = undefined;
@@ -1007,8 +1017,41 @@ if (command.type === "gather") {
         entity.moveTarget = undefined;
         entity.moveOrder = undefined;
         entity.attackTargetId = undefined;
-        entity.autoAttackEnabled = false;
         entity.healTargetId = undefined;
+        // Auto-attack stays as it was: a stopped unit still defends itself (G-13 E0).
+      }
+      return ok();
+    }
+
+    // --- guard: hold a point, fighting only inside a circle round it (G-13 E4) ---
+    if (command.type === "guard") {
+      const entityIds = command.entityIds || [];
+      if (entityIds.length === 0 || command.targetX === undefined || command.targetY === undefined) {
+        return { success: false, message: "Missing entities or guard point" };
+      }
+      const units = entityIds.map((id) => match.entities.get(id)).filter((e): e is QEntity =>
+        !!e && e.ownerId === playerId && e.type !== "building" && e.type !== "crystal" && e.type !== "resource_node");
+      if (units.length === 0) return { success: false, message: "No units to guard with" };
+      for (const entity of units) {
+        const x = Math.max(entity.radius, Math.min(config.mapWidth - entity.radius, command.targetX));
+        const y = Math.max(entity.radius, Math.min(config.mapHeight - entity.radius, command.targetY));
+        entity.guard = { x, y };
+        // Walk there as an attack-move, then stand guard.
+        entity.moveTarget = { x, y };
+        entity.moveOrder = { x, y, attack: true };
+        entity.attackTargetId = undefined;
+        entity.healTargetId = undefined;
+        entity.autoAttackEnabled = true;
+        if (entity.gatheringNodeId) {
+          const prevNode = match.resourceNodes.find((n) => n.id === entity.gatheringNodeId);
+          if (prevNode) prevNode.gathererSlots.delete(entity.id);
+          entity.gatheringNodeId = undefined;
+        }
+        if (entity.buildTargetId) {
+          const building = match.entities.get(entity.buildTargetId);
+          if (building && building.buildWorkerIds) building.buildWorkerIds.delete(entity.id);
+          entity.buildTargetId = undefined;
+        }
       }
       return ok();
     }

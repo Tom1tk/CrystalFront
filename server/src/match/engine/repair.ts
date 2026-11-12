@@ -1,5 +1,5 @@
 import { HEALING } from "@crystalfront/shared";
-import type { MatchState } from "../types.js";
+import type { MatchEntity, MatchState } from "../types.js";
 import { dist, getRange } from "./utils.js";
 
 export function processRepairAndHealing(match: MatchState): void {
@@ -20,6 +20,29 @@ export function processRepairAndHealing(match: MatchState): void {
           }
         }
       }
+    }
+
+    // Medic auto-heal (G-13 E5): with no heal order and not moving, heal the ally in
+    // range with the lowest HP fraction (then nearest, then entity order). Never moves.
+    if (entity.type === "medic" && !entity.healTargetId && !entity.moveTarget) {
+      const healRange = getRange(entity, match.terrain);
+      let best: MatchEntity | undefined, bestFrac = Infinity, bestDist = Infinity;
+      for (const o of match.entities.values()) {
+        if (o === entity || o.ownerId !== entity.ownerId || o.health >= o.maxHealth || o.health <= 0) continue;
+        if (o.type === "crystal" || o.type === "building" || o.type === "resource_node" || o.type === "placeholder") continue;
+        const d = dist(entity.x, entity.y, o.x, o.y);
+        if (d > healRange + o.radius) continue;
+        const f = o.health / o.maxHealth;
+        if (f < bestFrac || (f === bestFrac && d < bestDist)) { best = o; bestFrac = f; bestDist = d; }
+      }
+      if (best) {
+        best.health = Math.min(best.maxHealth, best.health + HEALING.healRatePerTick);
+        match.attackLog.push({
+          attackerId: entity.id, targetId: best.id,
+          damage: HEALING.healRatePerTick, tick: match.tick, isHeal: true,
+        });
+      }
+      continue;
     }
 
     // Medic healing

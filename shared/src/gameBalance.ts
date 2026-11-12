@@ -290,7 +290,21 @@ export const ENTITY = {
  * Replays are stamped with it; replays with a different stamp are not listed or
  * played (no compatibility layer).
  */
-export const ENGINE_VERSION = 13;
+export const ENGINE_VERSION = 14;
+
+/** Targets a unit picked itself are leashed (G-13 E3): it drops one that can't be hit
+ *  from within `chase` px of where it acquired it, then resumes its order. */
+export const LEASH = {
+  chase: 200,
+} as const;
+
+/** Guard order (G-13 E4). Radii are fractions of the unit type's base vision range. */
+export const GUARD = {
+  acquireFrac: 0.8,         // melee units react to enemies this close (ranged: attack range)
+  radiusFrac: 0.5,          // never chase outside this circle round the guard point
+  rangedMinRange: 60,       // attack range at or above which a unit counts as ranged
+  returnSlack: 8,           // px from the guard point that counts as "at the point"
+} as const;
 
 /** Navigation grid (G-3). */
 export const NAV = {

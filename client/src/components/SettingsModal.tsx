@@ -26,6 +26,7 @@ const SHORTCUTS: Array<[string, string]> = [
   ["Shift + right-click", "Queue an order"],
   ["Q W E R  ·  A S D F", "Commands for the selection (see the command card)"],
   ["A, then left-click", "Attack-move"],
+  ["F, then left-click", "Guard a point (units hold a small area around it)"],
   ["F", "Set rally point (building selected)"],
   ["Ctrl + 1–9", "Assign control group"],
   ["Shift + 1–9", "Add to control group"],

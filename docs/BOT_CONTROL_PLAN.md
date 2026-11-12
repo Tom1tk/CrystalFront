@@ -1,6 +1,6 @@
 # Bot control plan (G-13)
 
-**Status:** signed off 2026-11-12 (Q1–Q4 answered, see §6). Nothing built yet.
+**Status:** signed off 2026-11-12 (Q1–Q4 answered, see §6). Phase E (E0–E5) built in v0.8.8-ML (ENGINE_VERSION 14); E6 balance re-check next.
 **Goal:** bots get the same control over the game as a human player wherever possible, and the engine's own unit behaviour gets fixed for everyone. This comes before ML retrain M1 (`docs/ML_RETRAIN_PLAN.md`), because M1 trains on whatever action space exists at that point.
 
 Decisions already made by the user (2026-11-12):

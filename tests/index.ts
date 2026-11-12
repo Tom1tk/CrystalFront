@@ -9,11 +9,12 @@ import { ALL_ACTIONS, ACTION_SPACE_SIZE, actionToIndex, indexToAction, legalMask
 import { getLegalActions } from "../headless/src/legalActions.js";
 import { expandMacroAction } from "../headless/src/actionSpace.js";
 import { buildObservation } from "../headless/src/observation.js";
-import { ECONOMY, HEALING, ENGINE_VERSION, CONTROL } from "../shared/src/gameBalance.js";
+import { ECONOMY, HEALING, ENGINE_VERSION, CONTROL, LEASH, GUARD } from "../shared/src/gameBalance.js";
 import { processControl, controlNeeded } from "../server/src/match/engine/control.js";
 import { saveReplay, getReplay, listReplays } from "../server/src/match/replayRunner.js";
 import { mirrorState, deepCloneMatchState, diffStates } from "../server/src/match/engine/mirror.js";
 import { planPath } from "../server/src/match/engine/pathfinding.js";
+import { guardRadius } from "../server/src/match/engine/combat.js";
 import { MediumRushBot } from "../headless/src/bots/mediumRushBot.js";
 import { MacroBot } from "../headless/src/bots/macroBot.js";
 import { LiveMatchRunner } from "../server/src/match/liveMatchRunner.js";
@@ -2931,6 +2932,152 @@ console.log("\n--- G-1: Move vs attack-move ---");
     }
     assert(!reacquired, "G-1: retreating unit does not re-engage");
     assert(blue.x < midX - 40, "G-1: retreating unit moves toward own crystal");
+  }
+}
+
+// ---- G-13: unit control (threat order, leash, guard, medic auto-heal, auto-attack) ----
+console.log("\n--- G-13: unit control ---");
+{
+  const setup = () => {
+    const engine = new MatchEngine();
+    const players: [PlayerSlot | null, PlayerSlot | null] = [
+      { playerId: "pb", username: "B", color: "blue", score: 0 },
+      { playerId: "pr", username: "R", color: "red", score: 0 },
+    ];
+    const match = engine.createMatch("g13", players);
+    engine.startMatch(match.id);
+    const spawn = (owner: string, type: "skirmisher" | "worker" | "gunner" | "medic" | "bruiser", x: number, y: number, tough = false) => {
+      const before = new Set(match.entities.keys());
+      engine.debugSpawn(match.id, owner, type, x, y);
+      const e = [...match.entities.values()].find(e => !before.has(e.id))!;
+      if (tough) { e.health = e.maxHealth = 100000; }
+      return e;
+    };
+    return { engine, match, spawn, midX: match.config.mapWidth / 2 };
+  };
+  const d = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
+
+  // E2: threat order picks a combat unit over a nearer worker, and switches to one.
+  {
+    const { engine, match, spawn, midX } = setup();
+    const g = spawn("pb", "gunner", midX, 300);
+    const w = spawn("pr", "worker", midX + 40, 300, true);
+    const s = spawn("pr", "skirmisher", midX + 100, 300, true);
+    s.autoAttackEnabled = false;
+    engine.tick(match.id);
+    assert(g.attackTargetId === s.id, "G-13 E2: gunner targets the skirmisher over a nearer worker");
+    const { engine: e2, match: m2, spawn: sp2, midX: x2 } = setup();
+    const g2 = sp2("pb", "gunner", x2, 300);
+    const w2 = sp2("pr", "worker", x2 + 40, 300, true);
+    e2.tick(m2.id);
+    assert(g2.attackTargetId === w2.id, "G-13 E2: gunner takes the worker when it is the only target");
+    const s2 = sp2("pr", "skirmisher", x2 + 100, 300, true);
+    s2.autoAttackEnabled = false;
+    e2.tick(m2.id);
+    assert(g2.attackTargetId === s2.id, "G-13 E2: gunner switches to a combat unit that comes into range");
+    // E1: an ordered target is never switched.
+    const { engine: e3, match: m3, spawn: sp3, midX: x3 } = setup();
+    const g3 = sp3("pb", "gunner", x3, 300);
+    const w3 = sp3("pr", "worker", x3 + 40, 300, true);
+    const s3 = sp3("pr", "skirmisher", x3 + 100, 300, true);
+    s3.autoAttackEnabled = false;
+    e3.processCommand(m3.id, "pb", { type: "attack", entityId: g3.id, targetEntityId: w3.id });
+    for (let i = 0; i < 5; i++) e3.tick(m3.id);
+    assert(g3.attackTargetId === w3.id && g3.attackOrdered === true, "G-13 E1: ordered target kept despite a higher-threat enemy in range");
+    void w; void s3;
+  }
+
+  // E3: leash. An auto-acquired target that runs is dropped; the unit walks back.
+  {
+    const { engine, match, spawn, midX } = setup();
+    const b = spawn("pb", "skirmisher", midX, 300);
+    const r = spawn("pr", "worker", midX + 25, 300, true);
+    engine.tick(match.id);
+    assert(b.attackTargetId === r.id && !!b.leash, "G-13 E3: auto-acquired target gets a leash");
+    const centre = { x: b.leash!.x, y: b.leash!.y };
+    engine.processCommand(match.id, "pr", { type: "move", entityId: r.id, targetX: midX + 1200, targetY: 300 });
+    let maxD = 0, released = -1;
+    for (let i = 0; i < 300; i++) {
+      engine.tick(match.id);
+      maxD = Math.max(maxD, d(b, centre));
+      if (released < 0 && !b.attackTargetId) released = i;
+    }
+    assert(released >= 0, "G-13 E3: unit drops a target that runs out of its leash");
+    assert(maxD <= LEASH.chase + 5, `G-13 E3: unit never chases past the leash (max ${maxD.toFixed(0)} px)`);
+    assert(d(b, centre) < 15, `G-13 E3: idle unit walks back to where it acquired the target (${d(b, centre).toFixed(0)} px away)`);
+  }
+  {
+    const { engine, match, spawn, midX } = setup();
+    const b = spawn("pb", "skirmisher", midX, 300);
+    const r = spawn("pr", "worker", midX + 25, 300, true);
+    engine.processCommand(match.id, "pb", { type: "attack", entityId: b.id, targetEntityId: r.id });
+    engine.processCommand(match.id, "pr", { type: "move", entityId: r.id, targetX: midX + 1200, targetY: 300 });
+    for (let i = 0; i < 300; i++) engine.tick(match.id);
+    assert(b.attackTargetId === r.id && d(b, { x: midX, y: 300 }) > 600, "G-13 E1: an ordered target is chased without a leash");
+  }
+
+  // E4: guard (melee).
+  {
+    const { engine, match, spawn, midX } = setup();
+    const P = { x: midX, y: 300 };
+    const b = spawn("pb", "skirmisher", midX - 150, 300);
+    engine.processCommand(match.id, "pb", { type: "guard", entityIds: [b.id], targetX: P.x, targetY: P.y });
+    for (let i = 0; i < 80; i++) engine.tick(match.id);
+    assert(!!b.guard && !b.moveOrder && d(b, P) < 10, "G-13 E4: guarding unit walks to its guard point");
+    const R = guardRadius(b);
+    const far = spawn("pr", "worker", P.x + R + 60, 300, true);
+    for (let i = 0; i < 5; i++) engine.tick(match.id);
+    assert(!b.attackTargetId, "G-13 E4: guard ignores an enemy it can't reach from inside its circle");
+    match.entities.delete(far.id);
+    const near = spawn("pr", "worker", P.x + R, 300, true);
+    engine.tick(match.id);
+    assert(b.attackTargetId === near.id, "G-13 E4: melee guard reacts to an enemy within its reach (beyond attack range)");
+    engine.processCommand(match.id, "pr", { type: "move", entityId: near.id, targetX: midX + 1200, targetY: 300 });
+    let maxD = 0;
+    for (let i = 0; i < 300; i++) { engine.tick(match.id); maxD = Math.max(maxD, d(b, P)); }
+    assert(maxD <= R + 5, `G-13 E4: guard never leaves its circle (max ${maxD.toFixed(0)} px, radius ${R})`);
+    assert(!b.attackTargetId && d(b, P) <= GUARD.returnSlack + 1, "G-13 E4: guard releases the target and returns to the point");
+    engine.processCommand(match.id, "pb", { type: "move", entityId: b.id, targetX: midX - 300, targetY: 300 });
+    assert(!b.guard, "G-13 E4: a new order ends the guard");
+  }
+  // E4: guard (ranged reacts only at attack range).
+  {
+    const { engine, match, spawn, midX } = setup();
+    const g = spawn("pb", "gunner", midX, 300);
+    engine.processCommand(match.id, "pb", { type: "guard", entityIds: [g.id], targetX: midX, targetY: 300 });
+    engine.tick(match.id); engine.tick(match.id);
+    const out = spawn("pr", "worker", midX + 200, 300, true);
+    for (let i = 0; i < 3; i++) engine.tick(match.id);
+    assert(!g.attackTargetId, "G-13 E4: ranged guard ignores an enemy outside attack range");
+    out.x = midX + 100;
+    for (let i = 0; i < 2; i++) engine.tick(match.id);
+    assert(g.attackTargetId === out.id, "G-13 E4: ranged guard fires at an enemy inside attack range");
+  }
+
+  // E5: medic auto-heal, no chasing.
+  {
+    const { engine, match, spawn, midX } = setup();
+    const m = spawn("pb", "medic", midX - 600, 300);
+    const a = spawn("pb", "skirmisher", midX - 560, 300); a.health = a.maxHealth * 0.5; a.autoAttackEnabled = false;
+    const b = spawn("pb", "skirmisher", midX - 650, 300); b.health = b.maxHealth * 0.8; b.autoAttackEnabled = false;
+    const far = spawn("pb", "skirmisher", midX - 300, 300); far.health = 10; far.autoAttackEnabled = false;
+    const mx = m.x, my = m.y, a0 = a.health, b0 = b.health;
+    for (let i = 0; i < 10; i++) engine.tick(match.id);
+    assert(a.health > a0 && b.health === b0, "G-13 E5: idle medic heals the lowest-HP ally in range");
+    assert(far.health === 10, "G-13 E5: medic doesn't heal an ally out of range");
+    assert(Math.abs(m.x - mx) < 1 && Math.abs(m.y - my) < 1, "G-13 E5: medic doesn't move to heal");
+  }
+
+  // E0: auto-attack rules.
+  {
+    const { engine, match, spawn, midX } = setup();
+    const b = spawn("pb", "skirmisher", midX, 300);
+    engine.processCommand(match.id, "pb", { type: "stop", entityIds: [b.id] });
+    assert(b.autoAttackEnabled, "G-13 E0: stop keeps auto-attack on");
+    engine.processCommand(match.id, "pb", { type: "toggle_auto_attack", entityIds: [b.id] });
+    assert(!b.autoAttackEnabled, "G-13 E0: the toggle turns auto-attack off");
+    engine.processCommand(match.id, "pb", { type: "attack_move", entityId: b.id, targetX: midX - 100, targetY: 300 });
+    assert(b.autoAttackEnabled, "G-13 E0: attack-move turns auto-attack back on");
   }
 }
 

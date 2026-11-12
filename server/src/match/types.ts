@@ -129,6 +129,12 @@ export interface MatchEntity {
   attackCooldown: number;
   healTargetId?: EntityId;
   autoAttackEnabled: boolean;
+  /** G-13 E1: attackTargetId was ordered by the player (never leashed or re-prioritised). */
+  attackOrdered?: boolean;
+  /** G-13 E3: circle an auto-acquired target may be chased within (set at acquisition). */
+  leash?: { x: number; y: number; r: number };
+  /** G-13 E4: guard point; the unit defends a circle round it until given another order. */
+  guard?: { x: number; y: number };
   /** Active player move order (G-1). attack=false: plain move, ignores enemies until
    *  arrival. attack=true: attack-move, fights anything met, then resumes to (x,y). */
   moveOrder?: { x: number; y: number; attack: boolean };

@@ -99,13 +99,6 @@ const BUILDING_UNIT_MAP: Record<BuildingType, string[]> = {
   turret: [],
 };
 
-const BUILDING_COSTS: Record<BuildingType, number> = {
-  barracks: 75,
-  foundry: 100,
-  supply_depot: 50,
-  turret: 60,
-};
-
 const BUILDING_SIZES: Record<BuildingType, { w: number; h: number }> = {
   barracks: { w: 40, h: 40 },
   foundry: { w: 44, h: 44 },
@@ -751,7 +744,8 @@ export default function GameShell({
   const [debugSpawnMode, setDebugSpawnMode] = useState<string | null>(null);
   const [rallyMode, setRallyMode] = useState<{ buildingId: string } | null>(null);
   // G-1: A arms attack-move; the next left-click issues it, right-click/Escape cancels.
-  const [attackMoveMode, setAttackMoveMode] = useState(false);
+  // G-13: F arms guard the same way ("guard").
+  const [attackMoveMode, setAttackMoveMode] = useState<false | "attack" | "guard">(false);
   const [debugDragMode, setDebugDragMode] = useState(false);
   const [debugDraggingNodeId, setDebugDraggingNodeId] = useState<string | null>(null);
   const debugDragLastSendRef = useRef(0);
@@ -769,6 +763,7 @@ export default function GameShell({
     | "build_turret"
     | "toggle_auto_attack"
     | "attack_move"
+    | "guard"
     | "unit_stop"
     | "retreat"
     | "fortify"
@@ -819,12 +814,14 @@ export default function GameShell({
       (e) => e.type === "building" && (e.buildingType === "barracks" || e.buildingType === "foundry") && e.ownerId === safePlayer.id
     );
 
+    // G-13: costs come from the shared defs.
+    const uc = (t: string) => UNIT_DEFS[t].cost, bc = (t: string) => BUILDING_DEFS[t].cost;
     if (hasWorkers) {
       return [
-        { key: "q", action: "build_supply_depot", label: "Supply Depot (50)", icon: "📦" },
-        { key: "w", action: "build_barracks", label: "Barracks (75)", icon: "🏰" },
-        { key: "e", action: "build_foundry", label: "Foundry (100)", icon: "🏭" },
-        { key: "r", action: "build_turret", label: "Turret (60)", icon: "🔫" },
+        { key: "q", action: "build_supply_depot", label: `Supply Depot (${bc("supply_depot")})`, icon: "📦" },
+        { key: "w", action: "build_barracks", label: `Barracks (${bc("barracks")})`, icon: "🏰" },
+        { key: "e", action: "build_foundry", label: `Foundry (${bc("foundry")})`, icon: "🏭" },
+        { key: "r", action: "build_turret", label: `Turret (${bc("turret")})`, icon: "🔫" },
         { key: "a", action: "none", label: "", icon: "" },
         { key: "s", action: "none", label: "", icon: "" },
         { key: "d", action: "none", label: "", icon: "" },
@@ -833,16 +830,18 @@ export default function GameShell({
     }
 
     return [
-      { key: "q", action: crystalSelected ? "train_worker" : barracksSelected ? "train_skirmisher" : "none", label: crystalSelected ? "Worker (25)" : barracksSelected ? "Skirmisher (50)" : "", icon: crystalSelected ? "👷" : barracksSelected ? "⚔️" : "" },
-      { key: "w", action: barracksSelected ? "train_gunner" : "none", label: barracksSelected ? "Gunner (75)" : "", icon: barracksSelected ? "🔫" : "" },
-      { key: "e", action: foundrySelected ? "train_bruiser" : "none", label: foundrySelected ? "Bruiser (100)" : "", icon: foundrySelected ? "🛡️" : "" },
+      { key: "q", action: crystalSelected ? "train_worker" : barracksSelected ? "train_skirmisher" : "none", label: crystalSelected ? `Worker (${uc("worker")})` : barracksSelected ? `Skirmisher (${uc("skirmisher")})` : "", icon: crystalSelected ? "👷" : barracksSelected ? "⚔️" : "" },
+      { key: "w", action: barracksSelected ? "train_gunner" : "none", label: barracksSelected ? `Gunner (${uc("gunner")})` : "", icon: barracksSelected ? "🔫" : "" },
+      { key: "e", action: foundrySelected ? "train_bruiser" : "none", label: foundrySelected ? `Bruiser (${uc("bruiser")})` : "", icon: foundrySelected ? "🛡️" : "" },
       foundrySelected
-        ? { key: "r", action: "train_medic", label: "Medic (60)", icon: "💊" }
+        ? { key: "r", action: "train_medic", label: `Medic (${uc("medic")})`, icon: "💊" }
         : { key: "r", action: hasCombatUnits ? "toggle_auto_attack" : "none", label: hasCombatUnits ? "Auto-attack" : "", icon: hasCombatUnits ? "🎯" : "" },
       { key: "a", action: hasCombatUnits ? "attack_move" : "none", label: hasCombatUnits ? "Attack-move" : "", icon: hasCombatUnits ? "⚔️" : "" },
       { key: "s", action: hasCombatUnits ? "unit_stop" : "none", label: hasCombatUnits ? "Stop" : "", icon: hasCombatUnits ? "⏹" : "" },
       { key: "d", action: hasCombatUnits ? "retreat" : "none", label: hasCombatUnits ? "Retreat" : "", icon: hasCombatUnits ? "↩️" : "" },
-      { key: "f", action: hasProductionBuilding ? "set_rally" : "none", label: hasProductionBuilding ? "Rally" : "", icon: hasProductionBuilding ? "🚩" : "" },
+      hasProductionBuilding
+        ? { key: "f", action: "set_rally", label: "Rally", icon: "🚩" }
+        : { key: "f", action: hasCombatUnits ? "guard" : "none", label: hasCombatUnits ? "Guard" : "", icon: hasCombatUnits ? "🛡" : "" },
     ];
   }, [selectedEntityIds, matchState, safePlayer.id]);
 
@@ -922,7 +921,7 @@ export default function GameShell({
   const isDraggingRef = useRef(isDragging);
   const dragStartRef = useRef<{ x: number; y: number } | null>(dragStart);
   const debugSpawnModeRef = useRef<string | null>(null);
-  const attackMoveModeRef = useRef(false);
+  const attackMoveModeRef = useRef<false | "attack" | "guard">(false);
   // G-4: units whose planned path is drawn briefly after a move order.
   const pathShowRef = useRef<{ ids: Set<string>; until: number }>({ ids: new Set(), until: 0 });
   const playerRef = useRef(safePlayer);
@@ -1129,6 +1128,11 @@ export default function GameShell({
         if (attackMoveMode) {
           setAttackMoveMode(false);
           const ids = [...(selectedEntityIds.size > 0 ? selectedEntityIds : (selectedEntityId ? [selectedEntityId] : []))];
+          if (attackMoveMode === "guard") {
+            const units = ids.filter((id) => { const m = myEntities.find((x) => x.id === id); return m && m.type !== "crystal" && m.type !== "building"; });
+            if (units.length) onGameCommand({ type: "guard", entityIds: units, targetX: worldX, targetY: worldY });
+            return;
+          }
           const enemy = (matchState?.entities ?? []).find((ent) =>
             ent.ownerId !== safePlayer.id && Math.hypot(worldX - ent.x, worldY - ent.y) <= ent.radius
           );
@@ -1483,7 +1487,11 @@ export default function GameShell({
             break;
           }
           case "attack_move": {
-            if (movableUnitIds.length > 0) setAttackMoveMode(true);
+            if (movableUnitIds.length > 0) setAttackMoveMode("attack");
+            break;
+          }
+          case "guard": {
+            if (movableUnitIds.length > 0) setAttackMoveMode("guard");
             break;
           }
           case "toggle_auto_attack": {
@@ -2356,7 +2364,7 @@ export default function GameShell({
     if (attackMoveModeRef.current && hoverPos) {
       ctx.beginPath();
       ctx.arc(hoverPos.x, hoverPos.y, 9, 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(255, 80, 80, 0.9)";
+      ctx.strokeStyle = attackMoveModeRef.current === "guard" ? "rgba(90, 170, 255, 0.9)" : "rgba(255, 80, 80, 0.9)";
       ctx.lineWidth = 2;
       ctx.stroke();
       ctx.beginPath();
@@ -2663,8 +2671,9 @@ export default function GameShell({
     return { name, count: 1, hp: e.health, maxHp: e.maxHealth, status, enemy: e.ownerId !== safePlayer.id };
   })();
   const modeHint = buildMode && selectedBuildingType
-    ? `Placing ${ENTITY_NAMES[selectedBuildingType]} (${BUILDING_COSTS[selectedBuildingType]}) · click the map`
+    ? `Placing ${ENTITY_NAMES[selectedBuildingType]} (${BUILDING_DEFS[selectedBuildingType].cost}) · click the map`
     : rallyMode ? "Rally point · click the map"
+    : attackMoveMode === "guard" ? "Guard · left-click the map"
     : attackMoveMode ? "Attack-move · left-click the map"
     : debugSpawnMode ? `Debug spawn: ${debugSpawnMode.replace("building:", "")} · click the map`
     : debugDragMode ? "Debug: drag nodes"

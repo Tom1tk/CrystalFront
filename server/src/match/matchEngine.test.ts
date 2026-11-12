@@ -661,7 +661,7 @@ describe("Combat System", () => {
 
       expect(result.success).toBe(true);
       expect(worker.moveTarget).toBeUndefined();
-      expect(worker.autoAttackEnabled).toBe(false);
+      expect(worker.autoAttackEnabled).toBe(true); // G-13 E0: stop keeps auto-attack
       expect(worker.healTargetId).toBeUndefined();
     });
 
@@ -680,9 +680,9 @@ describe("Combat System", () => {
 
       expect(result.success).toBe(true);
       expect(w1.moveTarget).toBeUndefined();
-      expect(w1.autoAttackEnabled).toBe(false);
+      expect(w1.autoAttackEnabled).toBe(true);
       expect(w2.moveTarget).toBeUndefined();
-      expect(w2.autoAttackEnabled).toBe(false);
+      expect(w2.autoAttackEnabled).toBe(true);
     });
 
     it("ignores buildings when stopping", () => {
@@ -981,6 +981,7 @@ describe("Economy System", () => {
     building.health = 1;
 
     enemy.attackTargetId = building.id;
+    enemy.attackOrdered = true; // an ordered target: threat order (G-13 E2) won't switch it to a worker
     enemy.autoAttackEnabled = true;
 
     tickUntilGone(engine, match, building.id);
@@ -1582,6 +1583,7 @@ describe("Death & Cleanup", () => {
     enemy.x = building.x;
     enemy.y = building.y;
     enemy.attackTargetId = building.id;
+    enemy.attackOrdered = true; // an ordered target: threat order (G-13 E2) won't switch it to a worker
     enemy.autoAttackEnabled = true;
 
     tickUntilGone(engine, match, building.id);
@@ -1619,6 +1621,7 @@ describe("Death & Cleanup", () => {
     enemy.x = building.x;
     enemy.y = building.y;
     enemy.attackTargetId = building.id;
+    enemy.attackOrdered = true; // an ordered target: threat order (G-13 E2) won't switch it to a worker
     enemy.autoAttackEnabled = true;
     tickUntilGone(engine, match, building.id);
 
