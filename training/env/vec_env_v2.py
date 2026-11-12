@@ -54,8 +54,10 @@ except ImportError:  # pragma: no cover
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RUNNER_JS = REPO_ROOT / "headless/dist/v2/vecRunner.js"
-# Must match OBS_SCHEMA_VERSION in headless/src/v2/observation.ts.
-OBS_SCHEMA_VERSION = 1
+# Must match OBS_SCHEMA_VERSION in headless/src/v2/observation.ts and
+# ACTION_SPACE_VERSION in headless/src/v2/actions.ts.
+OBS_SCHEMA_VERSION = 2
+ACTION_SPACE_VERSION = 3
 SIDES = ("blue", "red")
 PY_ONLY_KEYS = ("learner",)
 
@@ -67,10 +69,10 @@ class Stream:
     side: str
     role: str                    # "learner" | "frozen" | "teach"
     obs: dict
-    masks: dict                  # econ[E], group[G], order[G][O], target[O][T] as 0/1
+    masks: dict                  # 0/1: econ[E], site[B][S], econPtr[3][P], econTarget[T], group[G], order[G][O], unit[O][P], target[O][T], ptr[O][P]
     critic: dict | None
     opp_labels: dict
-    teacher: dict | None         # {"econ", "army": [g, o, t]} for teach seats
+    teacher: dict | None         # {"econ": [kind, site, econPtr, econTarget], "army": [group, order, unit, target, ptr]} for teach seats
 
 
 @dataclass
@@ -212,6 +214,8 @@ class VecEnvV2:
             msg = self._procs[p].recv("ready")
             if msg.get("schemaVersion") != OBS_SCHEMA_VERSION:
                 raise RuntimeError(f"obs schemaVersion {msg.get('schemaVersion')} != {OBS_SCHEMA_VERSION} (update vec_env_v2.py)")
+            if msg.get("actionSpaceVersion") != ACTION_SPACE_VERSION:
+                raise RuntimeError(f"actionSpaceVersion {msg.get('actionSpaceVersion')} != {ACTION_SPACE_VERSION} (update vec_env_v2.py)")
             per_slot.extend(msg["slots"])
         for i, s in enumerate(per_slot):
             self.static[i], self.episode[i] = s["static"], s["episode"]
@@ -244,7 +248,7 @@ class VecEnvV2:
         return cur
 
     def step(self, actions: list[dict | None]) -> StepOut:
-        """`actions[j]` is the wire action {"econ": e, "army": [g, o, t]} for stream j (None for teach streams)."""
+        """`actions[j]` is the wire action {"econ": [kind, site, econPtr, econTarget], "army": [group, order, unit, target, ptr]} for stream j (None for teach streams)."""
         if len(actions) != len(self.streams):
             raise ValueError(f"expected {len(self.streams)} actions, got {len(actions)}")
         per_slot: list[dict] = [{} for _ in self.cfg]

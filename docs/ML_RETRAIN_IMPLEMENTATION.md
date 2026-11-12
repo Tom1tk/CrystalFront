@@ -249,6 +249,19 @@ Put v2 in new files (`headless/src/v2/…`) so v1 keeps working until the switch
 - Reuse `chooseBuildPosition` and friends for placement, but resolve targets from anchors, never from map-width fractions.
 - You may adjust entry lists and maxima. You may not drop: anchor targets, memory-slot targets, two armies, or the parallel-heads structure. Those are the approved design (R-2).
 
+**Action space v3 (G-13 Phase B, v0.8.9-ML; supersedes the two tables above).** A deviation from R-2 signed off by the user on 2026-11-12 (`docs/BOT_CONTROL_PLAN.md` §2). `ACTION_SPACE_VERSION = 3` in `headless/src/v2/actions.ts`, which is the source of truth for all indices.
+- *Econ:* one flat head of 61 kinds: noop, train ×5, build ×4 (one per building), assign 16 × 3, repair, set rally, cancel last queued. Three sub-heads, each read only for its kinds:
+  - `site` (760): 10 named sites + 750 grid cells (50 × 15 cells of 100 × 60 px). Masked per building by the exact placement check (including the wall-off seal check).
+  - `econPtr` (200): entity row pointer. Repair → a damaged own building (nearest free worker repairs it); rally / cancel → an own production building.
+  - `econTarget` (804, same table as the army target): rally point.
+- *Army:* group (adds `unit`) → order → unit → target → ptr.
+  - Groups: none, all combat, army A/B, 5 unit types, scout, unit (one own unit picked by the `unit` pointer).
+  - Orders: none, attack-move, move, guard (point), guard here (each unit at its own spot; replaces hold), retreat, focus (enemy pointer → ordered `attack`), heal (own-unit pointer, medics), stop, join A/B.
+  - Target (804): 37 anchors + 16 memory slots + 750 grid cells + none.
+- Wire format: `{"econ": [kind, site, econPtr, econTarget], "army": [group, order, unit, target, ptr]}`. Masks: `econ[E]`, `site[4][760]`, `econPtr[3][200]`, `econTarget[804]`, `group[G]`, `order[G][O]`, `unit[O][200]`, `target[O][804]`, `ptr[O][200]`.
+- Pointers index the observation's entity rows (`MAX_ENTITIES = 200`), so the observation must be built before the masks. Observation schema 2 adds a `guarding` entity feature.
+- The "a legal action must do something" rule (P-8) still holds; `botCheck` and the custom suite's random-action test check it.
+
 **Observation (R-1).** All in own frame, all deterministic.
 | Block | Content |
 |---|---|

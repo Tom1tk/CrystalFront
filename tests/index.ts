@@ -3322,6 +3322,25 @@ function goldenHashTests(): void {
 }
 
 /** Named map anchors (G-10 T3): valid, symmetric and reachable on every map. */
+/** A uniformly random legal v3 action for economy entry `econ` (every later head picked from its mask). */
+function v3RandomAction(rnd: () => number, m: V2.V2Masks, econ: number): V2.V2Action {
+  const pick = (x: boolean[]) => {
+    const idx: number[] = [];
+    for (let i = 0; i < x.length; i++) if (x[i]) idx.push(i);
+    return idx.length ? idx[Math.floor(rnd() * idx.length)] : -1;
+  };
+  const ea = V2.decodeEcon(econ);
+  const kind = ea.kind === "repair" ? 0 : ea.kind === "rally" ? 1 : ea.kind === "cancel" ? 2 : -1;
+  const site = ea.kind === "build" ? Math.max(0, pick(m.site[V2.BUILDINGS.indexOf(ea.building)])) : 0;
+  const econPtr = kind >= 0 ? Math.max(0, pick(m.econPtr[kind])) : 0;
+  const econTarget = kind === 1 ? Math.max(0, pick(m.econTarget)) : 0;
+  const group = pick(m.group), order = pick(m.order[group]);
+  const unit = V2.GROUPS[group] === "unit" ? Math.max(0, pick(m.unit[order])) : 0;
+  const target = pick(m.target[order]);
+  const ptr = V2.PTR_ORDERS.has(V2.ORDERS[order]) ? Math.max(0, pick(m.ptr[order])) : 0;
+  return { econ, site, econPtr, econTarget, group, order, unit, target, ptr };
+}
+
 function v2ObservationTests(): void {
   console.log("\n--- Observation v2 (G-10 T6) ---");
   const newMatch = (mapId: string, seed: number) => {
@@ -3347,8 +3366,7 @@ function v2ObservationTests(): void {
     if (econ < 0) econ = 0;
     const ea = V2.decodeEcon(econ);
     if (symmetric && ea.kind === "assign" && seats[0].nodeSlots[ea.slot] === seats[1].nodeSlots[ea.slot]) econ = 0;
-    const group = pickFrom(rnd, m.group), order = pickFrom(rnd, m.order[group]), target = pickFrom(rnd, m.target[order]);
-    return { econ, group, order, target };
+    return v3RandomAction(rnd, m, econ);
   };
   const imageSeats = (img: MatchState, seats: V2.SeatState[]) => {
     // Image: red sits in seat 0, blue in seat 1; carry the per-seat army state over.
@@ -3397,7 +3415,7 @@ function v2ObservationTests(): void {
 
     // Image test: after asymmetric play, the image state with seats swapped gives each player the same observation.
     for (let d = 0; d < 30; d++) {
-      for (const st of seats) { V2.workerAutopilot(engine, match, st); V2.applyV2(engine, match, st, randomAction(rnd, V2.computeMasks(match, st), seats, false)); }
+      seats.forEach((st, i) => { V2.workerAutopilot(engine, match, st); OBS.observe(match, st, oss[i]); V2.applyV2(engine, match, st, randomAction(rnd, V2.computeMasks(match, st), seats, false)); });
       for (let t = 0; t < V2.DECISION_TICKS; t++) engine.tick(match.id);
     }
     const img = imageState(match), iseats = imageSeats(img, seats);
@@ -3410,10 +3428,10 @@ function v2ObservationTests(): void {
 
   {
     // Rotate map: the fogged observation, the fog-free blocks and the masks are bit-identical in the image state.
-    const { engine, match, seats } = newMatch("shardfall", 4);
+    const { engine, match, seats, oss } = newMatch("shardfall", 4);
     const rnd = lcg(7);
     for (let d = 0; d < 60; d++) {
-      for (const st of seats) { V2.workerAutopilot(engine, match, st); V2.applyV2(engine, match, st, randomAction(rnd, V2.computeMasks(match, st), seats, false)); }
+      seats.forEach((st, i) => { V2.workerAutopilot(engine, match, st); OBS.observe(match, st, oss[i]); V2.applyV2(engine, match, st, randomAction(rnd, V2.computeMasks(match, st), seats, false)); });
       for (let t = 0; t < V2.DECISION_TICKS; t++) engine.tick(match.id);
     }
     const img = imageState(match), iseats = imageSeats(img, seats);
@@ -3465,9 +3483,11 @@ function v2ObservationTests(): void {
 }
 
 function v2ActionTests(): void {
-  console.log("\n--- Action space v2 (G-10 T5) ---");
-  assertEqual(V2.ECON_SIZE, 94, "economy head has 94 entries");
-  assertEqual(V2.GROUPS.length * V2.ORDERS.length * V2.TARGET_SIZE, 9 * 7 * 54, "army head is 9 groups x 7 orders x 54 targets");
+  console.log("\n--- Action space v3 (G-10 T5, G-13 Phase B) ---");
+  assertEqual(V2.ACTION_SPACE_VERSION, 3, "action space version 3");
+  assertEqual([V2.ECON_SIZE, V2.BUILD_SITES, V2.ECON_PTR_KINDS.length, V2.PTR_SIZE], [61, 760, 3, 200], "economy: 61 kinds, 760 build sites (10 named + 750 grid), 3 pointer kinds over 200 rows");
+  assertEqual([V2.GROUPS.length, V2.ORDERS.length, V2.TARGET_SIZE], [10, 11, 804], "army: 10 groups x 11 orders x 804 targets (37 anchors + 16 memory + 750 grid + none)");
+  assertEqual(OBS.MAX_ENTITIES, V2.PTR_SIZE, "pointer heads index the observation's entity rows");
   let roundTrip = true;
   for (let i = 0; i < V2.ECON_SIZE; i++) if (V2.encodeEcon(V2.decodeEcon(i)) !== i) roundTrip = false;
   assert(roundTrip, "every economy index decodes and re-encodes to itself");
@@ -3480,7 +3500,8 @@ function v2ActionTests(): void {
     ];
     const match = engine.createMatch(`v2-${mapId}-${seed}`, players, { ...DEFAULT_CONFIG, mapId, maxTicks: 12000 }, seed);
     engine.startMatch(match.id);
-    return { engine, match, seats: [V2.createSeatState(match, "v2-blue"), V2.createSeatState(match, "v2-red")] };
+    const seats = [V2.createSeatState(match, "v2-blue"), V2.createSeatState(match, "v2-red")];
+    return { engine, match, seats, oss: seats.map((st) => OBS.createObsState(match, st)) };
   };
   const lcg = (seed: number) => () => ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) / 2 ** 32);
   const pickFrom = (rnd: () => number, m: boolean[], lo = 0, hi = m.length) => {
@@ -3491,7 +3512,7 @@ function v2ActionTests(): void {
 
   for (const mapId of ["glimmerfen", "shardfall"]) {
     // Own frame: the transform is its own inverse.
-    const { engine, match, seats } = newMatch(mapId, 3);
+    const { engine, match, seats, oss } = newMatch(mapId, 3);
     const f = frameFor(match, "v2-red");
     const p = { x: 1234, y: 456 };
     assertEqual(JSON.stringify(fromOwnFrame(f, toOwnFrame(f, p))), JSON.stringify(p), `${mapId}: own-frame transform round-trips`);
@@ -3501,6 +3522,7 @@ function v2ActionTests(): void {
     let same = 0, trains = 0;
     for (let d = 0; d < 100; d++) {
       for (const st of seats) V2.workerAutopilot(engine, match, st);
+      seats.forEach((st, i) => OBS.observe(match, st, oss[i]));
       const ms = seats.map((st) => V2.computeMasks(match, st));
       if (JSON.stringify(ms[0]) !== JSON.stringify(ms[1])) break;
       same++;
@@ -3514,8 +3536,7 @@ function v2ActionTests(): void {
       const ea = V2.decodeEcon(econ);
       if (ea.kind === "assign" && seats[0].nodeSlots[ea.slot] === seats[1].nodeSlots[ea.slot]) econ = 0;
       if (ea.kind === "train") trains++;
-      const group = pickFrom(rnd, m.group), order = pickFrom(rnd, m.order[group]), target = pickFrom(rnd, m.target[order]);
-      const a = { econ, group, order, target };
+      const a = v3RandomAction(rnd, m, econ);
       V2.applyV2Pair(engine, match, [seats[0], seats[1]], [a, a]);
       for (let t = 0; t < V2.DECISION_TICKS; t++) engine.tick(match.id);
     }
@@ -3544,39 +3565,71 @@ function v2ActionTests(): void {
 
   for (const mapId of ["saltmarsh", "basalt-run"]) {
     // P-8: every legal action does something, under random masked play.
-    const { engine, match, seats } = newMatch(mapId, 5);
+    const { engine, match, seats, oss } = newMatch(mapId, 5);
     const rnd = lcg(4242);
-    let decisions = 0, ineffective = 0, builds = 0, trains = 0, moves = 0, badTargets = 0;
+    // Random play alone rarely affords an army or takes damage, so give each seat a small army
+    // (with a medic) by its crystal, and every 400 ticks wound units and buildings, so that
+    // focus, heal, join, repair and cancel all get legal chances.
+    for (const st of seats) {
+      const c = [...match.entities.values()].find((e) => e.type === "crystal" && e.ownerId === st.playerId)!;
+      ["skirmisher", "skirmisher", "gunner", "bruiser", "medic"].forEach((type, i) => {
+        const e = engine["createEntity"](match.idGen, type, st.playerId, c.x + 80 + 20 * i, c.y + 60, 100, 12, "#888");
+        match.entities.set(e.id, e);
+      });
+    }
+    let decisions = 0, ineffective = 0, badTargets = 0, gridBuilds = 0, siteMismatch = 0;
+    const used: Record<string, number> = {};
     while (match.phase === "playing" && match.tick < 3000) {
-      for (const st of seats) {
+      if (match.tick % 400 === 0) {
+        for (const eco of match.economy) if (eco) eco.resources += 300;
+        for (const e of match.entities.values()) {
+          if ((e.type === "building" ? e.constructionProgress >= 100 : e.type !== "crystal") && e.health > 1) e.health = Math.ceil(e.health * 0.6);
+        }
+      }
+      seats.forEach((st, si) => {
         V2.workerAutopilot(engine, match, st);
+        OBS.observe(match, st, oss[si]);
         const m = V2.computeMasks(match, st);
         for (let o = 0; o < V2.ORDERS.length; o++) {
-          const want = V2.ORDERS[o] === "attack_move" || V2.ORDERS[o] === "move";
-          if (!want && (m.target[o].filter(Boolean).length !== 1 || !m.target[o][V2.TARGET_NONE])) badTargets++;
+          if (!V2.POINT_ORDERS.has(V2.ORDERS[o]) && (m.target[o].filter(Boolean).length !== 1 || !m.target[o][V2.TARGET_NONE])) badTargets++;
+        }
+        // The fast build-site masks agree with the engine's validator (every 10th decision, all grid sites).
+        if (decisions % 10 === 0) {
+          V2.BUILDINGS.forEach((b, bi) => {
+            if (!m.econ[V2.ECON_BUILD0 + bi]) return;
+            for (let g = 0; g < V2.GRID_CELLS; g++) {
+              const c = fromOwnFrame(st.frame, { x: (g % V2.GRID_COLS) * V2.GRID_CELL_W + V2.GRID_CELL_W / 2, y: Math.floor(g / V2.GRID_COLS) * V2.GRID_CELL_H + V2.GRID_CELL_H / 2 });
+              const exact = c.x <= match.config.mapWidth && c.y <= match.config.mapHeight && validateBuildSite(match, st.playerId, b, c.x, c.y).valid;
+              if (exact !== m.site[bi][V2.NAMED_SITES + g]) siteMismatch++;
+            }
+          });
         }
         let econ = 0;
         const r = rnd();
-        if (r < 0.45) econ = pickFrom(rnd, m.econ, V2.ECON_TRAIN0, V2.ECON_BUILD0);
-        else if (r < 0.9) econ = pickFrom(rnd, m.econ, V2.ECON_BUILD0, V2.ECON_ASSIGN0);
-        else if (r < 0.95) econ = pickFrom(rnd, m.econ, V2.ECON_ASSIGN0, V2.ECON_SIZE);
+        if (r < 0.35) econ = pickFrom(rnd, m.econ, V2.ECON_TRAIN0, V2.ECON_BUILD0);
+        else if (r < 0.7) econ = pickFrom(rnd, m.econ, V2.ECON_BUILD0, V2.ECON_ASSIGN0);
+        else if (r < 0.75) econ = pickFrom(rnd, m.econ, V2.ECON_ASSIGN0, V2.ECON_REPAIR);
+        else if (r < 0.9) econ = pickFrom(rnd, m.econ, V2.ECON_REPAIR, V2.ECON_SIZE);
         if (econ < 0) econ = 0;
-        const group = pickFrom(rnd, m.group), order = pickFrom(rnd, m.order[group]), target = pickFrom(rnd, m.target[order]);
-        const a = { econ, group, order, target };
+        const a = v3RandomAction(rnd, m, econ);
         if (!V2.isLegal(m, a)) ineffective++;
         const res = V2.applyV2(engine, match, st, a);
         decisions++;
         if (!res.econEffective || !res.armyEffective) ineffective++;
         const k = V2.decodeEcon(econ).kind;
-        if (k === "build") builds++;
-        if (k === "train") trains++;
-        if (V2.ORDERS[order] === "attack_move" || V2.ORDERS[order] === "move") moves++;
-      }
+        used[k] = (used[k] ?? 0) + 1;
+        if (k === "build" && a.site >= V2.NAMED_SITES) gridBuilds++;
+        if (a.group > 0) used[V2.ORDERS[a.order]] = (used[V2.ORDERS[a.order]] ?? 0) + 1;
+        if (V2.GROUPS[a.group] === "unit") used.unit = (used.unit ?? 0) + 1;
+      });
       for (let t = 0; t < V2.DECISION_TICKS; t++) engine.tick(match.id);
     }
     assertEqual(ineffective, 0, `${mapId}: no ineffective legal actions in ${decisions} random masked decisions`);
-    assert(builds > 50 && trains > 50 && moves > 50, `${mapId}: random play exercised builds (${builds}), training (${trains}) and moves (${moves})`);
-    assertEqual(badTargets, 0, `${mapId}: hold/retreat/join orders only allow the none target`);
+    const need = ["build", "train", "assign", "repair", "rally", "cancel", "attack_move", "move", "guard", "guard_here", "retreat", "focus", "heal", "stop", "join_a", "unit"];
+    const missing = need.filter((k) => !used[k]);
+    assert(missing.length === 0 && gridBuilds > 0, `${mapId}: random play used every action kind (missing: ${missing.join(", ") || "none"}; ${gridBuilds} grid builds; ${JSON.stringify(used)})`);
+    assertEqual(siteMismatch, 0, `${mapId}: grid build-site masks equal validateBuildSite`);
+    assertEqual(badTargets, 0, `${mapId}: only attack-move, move and guard take a point target`);
     assert(seats.every((st) => st.stats.autopilot > 0), `${mapId}: worker autopilot sent idle workers to gather`);
   }
 
@@ -3594,16 +3647,16 @@ function v2ActionTests(): void {
     engine.debugSpawn(match.id, "v2-blue", "skirmisher", base.x, base.y + 30);
     m = V2.computeMasks(match, st);
     const gAll = V2.GROUPS.indexOf("all_combat"), gA = V2.GROUPS.indexOf("army_a"), gGun = V2.GROUPS.indexOf("gunners");
-    const oJoinA = V2.ORDERS.indexOf("join_a"), oMove = V2.ORDERS.indexOf("move"), oHold = V2.ORDERS.indexOf("hold");
-    assert(m.order[gGun][oJoinA] && !m.order[gGun][oHold], "idle gunners can join army A but not hold");
-    const joined = V2.applyV2(engine, match, st, { econ: 0, group: gGun, order: oJoinA, target: V2.TARGET_NONE });
+    const oJoinA = V2.ORDERS.indexOf("join_a"), oMove = V2.ORDERS.indexOf("move"), oStop = V2.ORDERS.indexOf("stop");
+    assert(m.order[gGun][oJoinA] && !m.order[gGun][oStop], "idle gunners can join army A but have nothing to stop");
+    const joined = V2.applyV2(engine, match, st, V2.act({ group: gGun, order: oJoinA }));
     assert(joined.armyEffective && st.armyA.size === 1, "join A puts the gunner in army A");
     m = V2.computeMasks(match, st);
     assert(m.group[gA] && !m.order[gA][oJoinA], "army A is now a group, and can't join itself");
     const enemyBase = V2.ANCHOR_TARGETS.slice(0, 6).reduce((n, [, c]) => n + c, 0);
-    const moved = V2.applyV2(engine, match, st, { econ: 0, group: gA, order: oMove, target: enemyBase });
+    const moved = V2.applyV2(engine, match, st, V2.act({ group: gA, order: oMove, target: enemyBase }));
     assert(moved.armyEffective && moved.accepted.length === 1, "army A moves as one group of 1");
-    const ab = V2.applyV2(engine, match, st, { econ: 0, group: gAll, order: V2.ORDERS.indexOf("join_b"), target: V2.TARGET_NONE });
+    const ab = V2.applyV2(engine, match, st, V2.act({ group: gAll, order: V2.ORDERS.indexOf("join_b") }));
     assert(ab.armyEffective && st.armyB.size === 2 && st.armyA.size === 0, "join B moves both units out of army A");
     assert(!m.target[V2.ORDERS.indexOf("move")][V2.TARGET_MEMORY0], "empty memory slot is not a target");
     st.memory[0] = { x: 3000, y: 1000 };
@@ -3710,7 +3763,7 @@ function v2ReplayTests(): void {
     let n = 0, illegal = 0;
     for (;;) {
       n++;
-      const act = c.blue === "policy" ? { blue: { econ: (n * 7) % 40, army: [n % 3, n % 5, (n * 3) % 9] } } : {};
+      const act = c.blue === "policy" ? { blue: { econ: [(n * 7) % 40, n % 50, n % 7, (n * 3) % 60], army: [n % 3, n % 5, n % 9, (n * 3) % 9, n % 11] } } : {};
       res = r.handle({ type: "step", actions: [act] });
       const sl = res.slots[0];
       if (sl.done || sl.truncated) { keep(sl.terminal); illegal = sl.info.stats.blue.illegal; break; }
@@ -3747,7 +3800,16 @@ function v2RunnerTests(): void {
   const lcg = (seed: number) => () => ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) / 2 ** 32);
   const rnd = lcg(99);
   const pick = (m: number[]) => { const ix = W(m); return ix[Math.floor(rnd() * ix.length)]; };
-  const act = (s: R) => { const g = pick(s.masks.group), o = pick(s.masks.order[g]); return { econ: pick(s.masks.econ), army: [g, o, pick(s.masks.target[o])] }; };
+  const act = (s: R) => {
+    const M = s.masks, p0 = (m: number[]) => pick(m) ?? 0;
+    const econ = pick(M.econ), ea = V2.decodeEcon(econ);
+    const kind = ea.kind === "repair" ? 0 : ea.kind === "rally" ? 1 : ea.kind === "cancel" ? 2 : -1;
+    const g = pick(M.group), o = pick(M.order[g]);
+    return {
+      econ: [econ, ea.kind === "build" ? p0(M.site[V2.BUILDINGS.indexOf(ea.building)]) : 0, kind >= 0 ? p0(M.econPtr[kind]) : 0, kind === 1 ? p0(M.econTarget) : 0],
+      army: [g, o, V2.GROUPS[g] === "unit" ? p0(M.unit[o]) : 0, pick(M.target[o]), p0(M.ptr[o])],
+    };
+  };
   const actionsFor = (slots: R[]) => slots.map((sl) => Object.fromEntries(Object.entries(sl.seats as R).map(([side, s]) => [side, act(s)])));
 
   // 1. Equivalence: the runner's ticks hash the same as a direct in-process loop.
@@ -3851,7 +3913,7 @@ function v2RunnerTests(): void {
     const bad = W(res.slots[0].seats.blue.masks.econ.map((v: number) => 1 - v))[0];
     let n = 0;
     while (res.type === "step_result" ? !(res.slots[0].truncated || res.slots[0].done) : n === 0) {
-      res = r.handle({ type: "step", actions: [{ blue: { econ: bad, army: [0, 0, 0] } }] });
+      res = r.handle({ type: "step", actions: [{ blue: { econ: [bad, 0, 0, 0], army: [0, 0, 0, V2.TARGET_NONE, 0] } }] });
       n++;
       if (res.type !== "step_result") break;
     }
@@ -3876,7 +3938,7 @@ function v2ScriptedTests(): void {
     const out: R[] = new Array(slots.length).fill(null);
     const first = res.slots;
     while (out.some((x) => !x)) {
-      const actions = slots.map((_, i) => (out[i] ? {} : Object.fromEntries(Object.keys((res.slots ?? first)[i].seats).map((k) => [k, { econ: 0, army: [0, 0, V2.TARGET_NONE] }]))));
+      const actions = slots.map((_, i) => (out[i] ? {} : Object.fromEntries(Object.keys((res.slots ?? first)[i].seats).map((k) => [k, { econ: [0, 0, 0, 0], army: [0, 0, 0, V2.TARGET_NONE, 0] }]))));
       res = r.handle({ type: "step", actions });
       if (res.type !== "step_result") throw new Error(String(res.message));
       res.slots.forEach((s: R, i: number) => { if (!out[i] && (s.done || s.truncated)) out[i] = s.info; });

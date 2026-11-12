@@ -32,10 +32,24 @@ def legal(m):
     return [i for i, v in enumerate(m) if v]
 
 
+# Action space v3 layout (headless/src/v2/actions.ts).
+ECON_BUILD0, ECON_ASSIGN0, ECON_REPAIR = 6, 10, 58
+GROUP_UNIT = 9
+
+
 def random_action(rng: random.Random, masks: dict) -> dict:
-    g = rng.choice(legal(masks["group"]))
-    o = rng.choice(legal(masks["order"][g]))
-    return {"econ": rng.choice(legal(masks["econ"])), "army": [g, o, rng.choice(legal(masks["target"][o]))]}
+    def pick(m):
+        ix = legal(m)
+        return rng.choice(ix) if ix else 0
+    e = pick(masks["econ"])
+    site = pick(masks["site"][e - ECON_BUILD0]) if ECON_BUILD0 <= e < ECON_ASSIGN0 else 0
+    kind = e - ECON_REPAIR if e >= ECON_REPAIR else -1  # repair, rally, cancel
+    eptr = pick(masks["econPtr"][kind]) if kind >= 0 else 0
+    etgt = pick(masks["econTarget"]) if kind == 1 else 0
+    g = pick(masks["group"])
+    o = pick(masks["order"][g])
+    unit = pick(masks["unit"][o]) if g == GROUP_UNIT else 0
+    return {"econ": [e, site, eptr, etgt], "army": [g, o, unit, pick(masks["target"][o]), pick(masks["ptr"][o])]}
 
 
 def act_all(rng, cur):

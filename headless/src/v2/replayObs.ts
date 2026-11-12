@@ -29,6 +29,7 @@ export function replayObservations(
   onDecision: (i: number, tick: number, obs: [OBS.ObsV2, OBS.ObsV2], terminal: boolean) => void,
 ): ReplayObsResult {
   if (r.v2.obsSchemaVersion !== OBS.OBS_SCHEMA_VERSION) throw new Error(`replay obs schema ${r.v2.obsSchemaVersion}, this build ${OBS.OBS_SCHEMA_VERSION}`);
+  if (r.v2.actionSpaceVersion !== V2.ACTION_SPACE_VERSION) throw new Error(`replay action space ${r.v2.actionSpaceVersion}, this build ${V2.ACTION_SPACE_VERSION}`);
   const { k, cap, z } = r.v2;
   const engine = new MatchEngine();
   const match = engine.createMatch("v2-replay", players(r), { ...DEFAULT_CONFIG, mapId: r.mapId, maxTicks: cap }, r.seed);

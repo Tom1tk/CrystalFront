@@ -23,9 +23,9 @@ import { T_BRUSH, T_CLIFF, T_HIGH, T_ROCK, T_ROUGH, T_WATER, terrainAt } from ".
 import { visionCellOf, visionGridOf } from "../../../server/src/match/engine/visibility.js";
 import { TRAIN_MAX_TICKS } from "../episode.js";
 import { fromOwnFrame, toOwnFrame } from "./frame.js";
-import { BUILDINGS, MEMORY_SLOTS, N_ANCHOR_TARGETS, PRODUCER_QUEUE_MAX, TRAIN_UNITS, type SeatState } from "./actions.js";
+import { BUILDINGS, GRID_CELL_H, GRID_CELL_W, MEMORY_SLOTS, N_ANCHOR_TARGETS, PRODUCER_QUEUE_MAX, PTR_SIZE, TRAIN_UNITS, type SeatState } from "./actions.js";
 
-export const OBS_SCHEMA_VERSION = 1;
+export const OBS_SCHEMA_VERSION = 2;
 
 /** 4-decimal rounding; also turns −0 into 0. */
 const q = (v: number) => Math.round(v * 1e4) / 1e4 + 0;
@@ -63,10 +63,11 @@ export const ENTITY_FEATURES: string[] = [
   "own", "enemy", ...ENTITY_TYPES.map((t) => `type_${t}`), "x", "y", "hp", "max_hp",
   "built", "queue", "queue_progress",
   "gathering", "building", "moving", "attack_moving", "attacking", "idle",
-  "on_high", "on_brush", "on_rough", "army_a", "army_b", "scout",
+  "on_high", "on_brush", "on_rough", "army_a", "army_b", "scout", "guarding",
 ];
 export const ENTITY_F = ENTITY_FEATURES.length;
-export const MAX_ENTITIES = 200;
+/** Entity rows; also the action pointer size (row i = pointer i, `SeatState.rows`). */
+export const MAX_ENTITIES = PTR_SIZE;
 
 export const MEMORY_FEATURES: string[] = [
   "valid", "army", ...MEMORY_TYPES.map((t) => `type_${t}`), "x", "y", "hp", "age", "destroyed", "count", "built",
@@ -81,9 +82,8 @@ export const NODE_F = NODE_FEATURES.length;
 /** own safe, enemy safe, contested. */
 export const NODE_ROWS = 4 + 4 + 12;
 
-/** Grid cell size (px). 5000×900 → 50×15; both divide the nav cell (20 px) and the map exactly. */
-export const GRID_CELL_W = 100;
-export const GRID_CELL_H = 60;
+/** Grid cell size (px), shared with the action grid. 5000×900 → 50×15; both divide the nav cell (20 px) and the map exactly. */
+export { GRID_CELL_W, GRID_CELL_H };
 export const STATIC_CHANNELS = ["blocked", "rough", "high", "water", "brush"] as const;
 export const DYN_CHANNELS = ["visible", "ever_seen", "since_seen", "own_army", "enemy_army_seen"] as const;
 
@@ -238,6 +238,7 @@ function entityRow(match: MatchState, s: SeatState, d: Dims, v: Seen): number[] 
     +(!isBuilding && !moving && !attackMoving && !attacking && !gathering && !building),
     +(terr === T_HIGH), +(terr === T_BRUSH), +(terr === T_ROUGH),
     +(v.own && s.armyA.has(e.id)), +(v.own && s.armyB.has(e.id)), +(v.own && s.scoutId === e.id),
+    +!!e.guard,
   ];
 }
 
@@ -436,6 +437,7 @@ function blocks(match: MatchState, s: SeatState, rows: (string | null)[], os: Ob
   const seen = seenEntities(match, s, d, os !== null);
   if (os) updateMemory(match, s, d, seen, os);
   return {
+    seen,
     globals: globalsRow(match, s, d, seen, os, cap),
     entities: seen.slice(0, MAX_ENTITIES).map((v) => entityRow(match, s, d, v)),
     nodes: nodeRows(match, s, d, rows, os),
@@ -447,13 +449,15 @@ export interface ObserveOpts { z?: number; cap?: number }
 
 /** The seat's fogged observation (updates its ObsState and `s.memory`). Call once per decision, before masks. */
 export function observe(match: MatchState, s: SeatState, os: ObsState, opts: ObserveOpts = {}): ObsV2 {
-  const b = blocks(match, s, os.nodeRows, os, opts.cap ?? TRAIN_MAX_TICKS);
+  const { seen, ...b } = blocks(match, s, os.nodeRows, os, opts.cap ?? TRAIN_MAX_TICKS);
+  s.rows = seen.slice(0, MAX_ENTITIES).map((v) => v.e.id);
   return { schemaVersion: OBS_SCHEMA_VERSION, z: opts.z ?? 0, ...b, memory: memoryRows(match, os) };
 }
 
 /** Training only: both seats' blocks without fog. Pure (no state updates). */
 export function criticState(match: MatchState, s: SeatState, os: ObsState, other: SeatState, otherOs: ObsState, cap = TRAIN_MAX_TICKS): CriticV2 {
-  return { self: blocks(match, s, os.nodeRows, null, cap), enemy: blocks(match, other, otherOs.nodeRows, null, cap) };
+  const strip = ({ seen: _, ...rest }: ReturnType<typeof blocks>) => rest;
+  return { self: strip(blocks(match, s, os.nodeRows, null, cap)), enemy: strip(blocks(match, other, otherOs.nodeRows, null, cap)) };
 }
 
 /** Training only: what an opponent model should predict about the enemy (true state). */

@@ -8,7 +8,7 @@
 //   scripted (T8, scripted.ts): rush1–3, turtle, macro, heavy, hidden and the
 //           four switchers; each plays a template with its own strategy token z
 import { Rng } from "../../../server/src/match/engine/rng.js";
-import { NOOP_ACTION, TRAIN_UNITS, ECON_TRAIN0, type V2Action, type V2Masks } from "./actions.js";
+import { BUILDINGS, decodeEcon, ECON_TRAIN0, GROUPS, NOOP_ACTION, TRAIN_UNITS, type V2Action, type V2Masks } from "./actions.js";
 import type { ObsV2 } from "./observation.js";
 import { SCRIPTED, ScriptedV2Bot, type BotContext } from "./scripted.js";
 
@@ -41,8 +41,14 @@ export class RandomV2Bot implements V2Bot {
     const r = this.rng.random();
     let econ = r < 0.3 ? this.pick(m.econ, ECON_TRAIN0, ECON_TRAIN0 + TRAIN_UNITS.length) : r < 0.6 ? this.pick(m.econ) : 0;
     if (econ < 0) econ = 0;
-    const group = this.pick(m.group), order = this.pick(m.order[group]), target = this.pick(m.target[order]);
-    return { econ, group, order, target };
+    const pk = (x: boolean[]) => Math.max(0, this.pick(x));
+    const ea = decodeEcon(econ);
+    const kind = ea.kind === "repair" ? 0 : ea.kind === "rally" ? 1 : ea.kind === "cancel" ? 2 : -1;
+    const site = ea.kind === "build" ? pk(m.site[BUILDINGS.indexOf(ea.building)]) : 0;
+    const econPtr = kind >= 0 ? pk(m.econPtr[kind]) : 0, econTarget = kind === 1 ? pk(m.econTarget) : 0;
+    const group = this.pick(m.group), order = this.pick(m.order[group]);
+    const unit = GROUPS[group] === "unit" ? pk(m.unit[order]) : 0;
+    return { econ, site, econPtr, econTarget, group, order, unit, target: this.pick(m.target[order]), ptr: pk(m.ptr[order]) };
   }
 }
 

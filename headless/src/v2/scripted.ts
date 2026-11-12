@@ -17,7 +17,7 @@ import type { MatchState } from "../../../server/src/match/types.js";
 import { toOwnFrame } from "./frame.js";
 import type { SeatState } from "./actions.js";
 import {
-  BUILDINGS, BUILD_SITES, ECON_ASSIGN0, ECON_BUILD0, ECON_TRAIN0, GROUPS, ORDERS, TARGET_NONE, TRAIN_UNITS, WORKER_COUNTS,
+  act, BUILDINGS, ECON_ASSIGN0, ECON_BUILD0, ECON_TRAIN0, GROUPS, ORDERS, TARGET_NONE, TRAIN_UNITS, WORKER_COUNTS,
   type V2Action, type V2Masks,
 } from "./actions.js";
 import { ENTITY_FEATURES, GLOBAL_NAMES, NODE_FEATURES, type ObsV2 } from "./observation.js";
@@ -233,8 +233,16 @@ const F = Object.fromEntries(ENTITY_FEATURES.map((n, i) => [n, i])) as Record<st
 const N = Object.fromEntries(NODE_FEATURES.map((n, i) => [n, i])) as Record<string, number>;
 const COMBAT: Unit[] = ["skirmisher", "gunner", "bruiser", "medic"];
 
-const GROUP_ALL = GROUPS.indexOf("all_combat");
+const GROUP_ALL = GROUPS.indexOf("all_combat"), GROUP_MEDICS = GROUPS.indexOf("medics"), GROUP_UNIT = GROUPS.indexOf("unit");
 const O_AM = ORDERS.indexOf("attack_move"), O_MOVE = ORDERS.indexOf("move"), O_RETREAT = ORDERS.indexOf("retreat");
+const O_GUARD = ORDERS.indexOf("guard"), O_FOCUS = ORDERS.indexOf("focus"), O_HEAL = ORDERS.indexOf("heal");
+/** Micro (v3): enemies and wounded allies within this distance (px) of the army centre count. */
+const MICRO_RADIUS = 300;
+/** A focus order holds the main army order back for this many decisions; micro of one kind repeats at most this often. */
+const FOCUS_DECISIONS = 3;
+const MICRO_GAP = 4;
+/** Focus enemies below this HP fraction; heal allies below this; pull back own units below this when enemies are close. */
+const FOCUS_HP = 0.6, HEAL_HP = 0.7, PULL_HP = 0.25;
 const T_OWN_BASE = 0, T_OWN_POCKET0 = 1, T_OWN_CHOKE0 = 4, T_CENTRE0 = 7, T_NODE0 = 10, T_ENEMY_BASE = 26, T_ENEMY_SAFE0 = 33;
 const NODE_ROW_CONTESTED0 = 8, NODE_ROW_ENEMY_SAFE0 = 4;
 const SLOT_CONTESTED0 = 4;
@@ -273,6 +281,9 @@ export class ScriptedV2Bot {
   /** Control push: best own control progress seen and the tick it was reached. */
   private ctrlBest = 0;
   private ctrlAt = 0;
+  /** Micro: the main army order waits until this decision (after a focus); last decision of each micro kind. */
+  private focusUntil = 0;
+  private lastMicro: Record<"pull" | "focus" | "heal", number> = { pull: -99, focus: -99, heal: -99 };
 
   constructor(name: string, seed: number, private ctx: BotContext, zWanted = 0) {
     const def = SCRIPTED[name];
@@ -317,10 +328,12 @@ export class ScriptedV2Bot {
       this.jitter(this.t, this.rng);
       this.pushing = false; this.viaDone = false; this.lastOrder = ""; this.ctrlBest = 0;
     }
+    this.site = 0;
     const econ = this.econ(obs, v, m);
-    const army = this.armyOrder(obs, v, m);
+    let army: Partial<V2Action> = this.armyOrder(obs, v, m);
+    if (!army.group) army = this.micro(obs, v, m) ?? army;
     this.decisions++;
-    return { econ, ...army };
+    return act({ econ, site: econ >= ECON_BUILD0 && econ < ECON_ASSIGN0 ? this.site : 0, ...army });
   }
 
   // ---- view ----
@@ -360,15 +373,17 @@ export class ScriptedV2Bot {
 
   // ---- economy ----
 
+  /** Build `b` at the first legal preferred site, else any legal site (named first, then grid). Sets `this.site`. */
   private buildAction(m: V2Masks, b: Building, sites: number[]): number {
     const bi = BUILDINGS.indexOf(b);
-    for (const s of sites) {
-      const i = ECON_BUILD0 + bi * BUILD_SITES + s;
-      if (m.econ[i]) return i;
-    }
-    for (let s = 0; s < BUILD_SITES; s++) if (m.econ[ECON_BUILD0 + bi * BUILD_SITES + s]) return ECON_BUILD0 + bi * BUILD_SITES + s;
-    return 0;
+    if (!m.econ[ECON_BUILD0 + bi]) return 0;
+    const site = sites.find((s) => m.site[bi][s]) ?? m.site[bi].indexOf(true);
+    if (site < 0) return 0;
+    this.site = site;
+    return ECON_BUILD0 + bi;
   }
+  /** Build site chosen by the last buildAction this decision. */
+  private site = 0;
 
   private econ(obs: ObsV2, v: View, m: V2Masks): number {
     const t = this.t;
@@ -468,6 +483,8 @@ export class ScriptedV2Bot {
         else { order = O_MOVE; target = via; }
       }
     } else {
+      // Waiting: guard the staging point (v3) instead of attack-moving to it.
+      order = O_GUARD;
       target = this.stageTarget(obs, v);
     }
     return this.issue(m, order, target, false);
@@ -477,9 +494,49 @@ export class ScriptedV2Bot {
   private issue(m: V2Masks, order: number, target: number, force: boolean) {
     const key = `${order}:${target}`;
     if (!force && key === this.lastOrder && this.decisions - this.lastOrderAt < ORDER_REFRESH) return { group: 0, order: 0, target: TARGET_NONE };
+    if (!force && this.decisions < this.focusUntil) return { group: 0, order: 0, target: TARGET_NONE };
     if (!m.order[GROUP_ALL][order] || !m.target[order][target]) return { group: 0, order: 0, target: TARGET_NONE };
     this.lastOrder = key; this.lastOrderAt = this.decisions;
     return { group: GROUP_ALL, order, target };
+  }
+
+  // ---- micro (v3), used on decisions without a main army order ----
+
+  /** Pull back a badly hurt unit, focus a weak enemy near the army, or send medics to a hurt ally; null if none applies. */
+  private micro(obs: ObsV2, v: View, m: V2Masks): Partial<V2Action> | null {
+    if (!v.army.length) return null;
+    const c = this.centroid(v.army);
+    const at = (e: number[]): Pt => ({ x: e[F.x], y: e[F.y] });
+    const isCombat = (e: number[]) => COMBAT.some((u) => e[F[`type_${u}`]]);
+    const enemies = obs.entities.map((e, i) => ({ e, i })).filter(({ e }) => !e[F.own] && isCombat(e));
+    const due = (k: "pull" | "focus" | "heal") => this.decisions - this.lastMicro[k] >= MICRO_GAP;
+    const lowest = (xs: Array<{ e: number[]; i: number }>) => xs.reduce<{ e: number[]; i: number } | null>((b, x) => (!b || x.e[F.hp] < b.e[F.hp] ? x : b), null);
+
+    // 1. Templates that retreat also pull single badly hurt units out of a fight.
+    if (this.t.retreat > 0 && due("pull") && m.group[GROUP_UNIT] && m.order[GROUP_UNIT][O_RETREAT]) {
+      const hurt = obs.entities.map((e, i) => ({ e, i })).filter(({ e, i }) =>
+        e[F.own] && isCombat(e) && !e[F.type_medic] && e[F.hp] < PULL_HP && m.unit[O_RETREAT][i] &&
+        enemies.some((x) => this.dist(at(x.e), at(e)) < MICRO_RADIUS));
+      const u = lowest(hurt);
+      if (u) { this.lastMicro.pull = this.decisions; return { group: GROUP_UNIT, order: O_RETREAT, unit: u.i }; }
+    }
+    // 2. Focus the weakest enemy combat unit near the army.
+    if (v.army.length >= 2 && due("focus") && m.order[GROUP_ALL][O_FOCUS]) {
+      const t = lowest(enemies.filter(({ e, i }) => e[F.hp] < FOCUS_HP && m.ptr[O_FOCUS][i] && this.dist(at(e), c) < MICRO_RADIUS));
+      if (t) {
+        this.lastMicro.focus = this.decisions;
+        this.focusUntil = this.decisions + FOCUS_DECISIONS;
+        this.lastOrder = ""; // the main order goes out again when the focus ends
+        return { group: GROUP_ALL, order: O_FOCUS, ptr: t.i };
+      }
+    }
+    // 3. Medics follow the most hurt ally near the army (they auto-heal in range anyway).
+    if (due("heal") && m.group[GROUP_MEDICS] && m.order[GROUP_MEDICS][O_HEAL]) {
+      const t = lowest(obs.entities.map((e, i) => ({ e, i })).filter(({ e, i }) =>
+        e[F.hp] < HEAL_HP && m.ptr[O_HEAL][i] && this.dist(at(e), c) < MICRO_RADIUS));
+      if (t) { this.lastMicro.heal = this.decisions; return { group: GROUP_MEDICS, order: O_HEAL, ptr: t.i }; }
+    }
+    return null;
   }
 
   private norm(p: Pt): Pt { return { x: p.x / this.ctx.W, y: p.y / this.ctx.H }; }

@@ -7,14 +7,15 @@
 //   { type: "reset_all", decision_interval?: 8, max_ticks?: 12000, critic?: true,
 //     slots: [ { seed, map, blue, red, z?: {blue, red}, scenario?: null, save_replay?: false } ] }
 //       blue/red: "policy" | "bot:<name>" | "teach:<name>"
-//   { type: "step", actions: [ { blue?: {econ, army: [group, order, target]}, red?: … } ] }
+//   { type: "step", actions: [ { blue?: {econ: [kind, site, econPtr, econTarget], army: [group, order, unit, target, ptr]}, red?: … } ] }
+//       action space v3 (actions.ts); heads that do not apply to the chosen kind/order are ignored
 //       one entry per slot; only "policy" seats need an action
 //   { type: "configure", slots: [ { index, …any slot field } ] }
 //       applied at that slot's next (auto)reset; a new seed restarts its seed sequence
 //   { type: "close" }
 //
 // Node → Python
-//   { type: "ready", schemaVersion, slots: [ { seats, static, episode: {…} } ] }
+//   { type: "ready", schemaVersion, actionSpaceVersion, slots: [ { seats, static, episode: {…} } ] }
 //   { type: "step_result", slots: [ { seats, rewards, done, truncated, terminal, info, static?, episode? } ] }
 //   { type: "configured" } | { type: "error", message }
 //
@@ -79,16 +80,23 @@ export function strSeed(s: string): number {
 
 const bit = (b: boolean[]) => b.map((v) => (v ? 1 : 0));
 export function encodeMasks(m: V2.V2Masks) {
-  return { econ: bit(m.econ), group: bit(m.group), order: m.order.map(bit), target: m.target.map(bit) };
+  return {
+    econ: bit(m.econ), site: m.site.map(bit), econPtr: m.econPtr.map(bit), econTarget: bit(m.econTarget),
+    group: bit(m.group), order: m.order.map(bit), unit: m.unit.map(bit), target: m.target.map(bit), ptr: m.ptr.map(bit),
+  };
 }
 
-export interface WireAction { econ: number; army: [number, number, number] }
-export const toWire = (a: V2.V2Action): WireAction => ({ econ: a.econ, army: [a.group, a.order, a.target] });
+export interface WireAction { econ: [number, number, number, number]; army: [number, number, number, number, number] }
+export const toWire = (a: V2.V2Action): WireAction => ({
+  econ: [a.econ, a.site, a.econPtr, a.econTarget], army: [a.group, a.order, a.unit, a.target, a.ptr],
+});
 
 export function fromWire(w: unknown): V2.V2Action | null {
   const a = w as WireAction | undefined;
-  if (!a || !Number.isInteger(a.econ) || !Array.isArray(a.army) || a.army.length !== 3 || !a.army.every(Number.isInteger)) return null;
-  return { econ: a.econ, group: a.army[0], order: a.army[1], target: a.army[2] };
+  const ints = (x: unknown, n: number): x is number[] => Array.isArray(x) && x.length === n && x.every(Number.isInteger);
+  if (!a || !ints(a.econ, 4) || !ints(a.army, 5)) return null;
+  const [econ, site, econPtr, econTarget] = a.econ, [group, order, unit, target, ptr] = a.army;
+  return { econ, site, econPtr, econTarget, group, order, unit, target, ptr };
 }
 
 export interface RunnerOptions {
@@ -109,7 +117,7 @@ export interface V2Replay {
   version: string; engineVersion: number; mapId: string; mapVersion: number; timestamp: number;
   outcome: { winner: Side | null; winnerName: string | null; winType: string | null; ticks: number };
   commandLog: Array<{ tick: number; playerId: string; command: Record<string, unknown> }>;
-  v2: { obsSchemaVersion: number; k: number; cap: number; z: [number, number]; actions: Array<{ tick: number; blue: WireAction; red: WireAction }> };
+  v2: { obsSchemaVersion: number; actionSpaceVersion: number; k: number; cap: number; z: [number, number]; actions: Array<{ tick: number; blue: WireAction; red: WireAction }> };
 }
 
 interface Globals { k: number; cap: number; critic: boolean }
@@ -233,7 +241,7 @@ class Slot {
       outcome: { winner, winnerName: winner === null ? null : this.cfg[winner], winType: m.result?.winType ?? null, ticks: m.tick },
       // The engine's own log: every accepted command in the order it was processed.
       commandLog: m.commandLog.map((e) => ({ ...e })),
-      v2: { obsSchemaVersion: OBS.OBS_SCHEMA_VERSION, k: this.g.k, cap: this.g.cap, z: [...this.zSeat], actions: this.actions },
+      v2: { obsSchemaVersion: OBS.OBS_SCHEMA_VERSION, actionSpaceVersion: V2.ACTION_SPACE_VERSION, k: this.g.k, cap: this.g.cap, z: [...this.zSeat], actions: this.actions },
     };
   }
 
@@ -355,7 +363,7 @@ export class VecRunnerV2 {
             const seats = s.start();
             return { seats, static: OBS.staticGrid(s.match), episode: s.episodeInfo() };
           });
-          return { type: "ready", schemaVersion: OBS.OBS_SCHEMA_VERSION, slots: out };
+          return { type: "ready", schemaVersion: OBS.OBS_SCHEMA_VERSION, actionSpaceVersion: V2.ACTION_SPACE_VERSION, slots: out };
         }
         case "step": {
           const actions = (msg.actions ?? []) as Record<string, unknown>[];
