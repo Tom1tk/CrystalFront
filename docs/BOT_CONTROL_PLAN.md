@@ -35,7 +35,7 @@ Decisions already made by the user (2026-11-12):
 - Medics heal only when given an explicit heal order. Bots can't give one, and humans rarely do.
 - An ordered target (right-click) and an auto-acquired one are stored the same way, so nothing can treat them differently.
 - The v2 bot "hold" order is an attack-move to the unit's own position. That inherits the unbounded chase, so a "holding" unit can be pulled across the map. Humans have no hold or guard order at all.
-- `stop` also turns auto-attack off (the unit then ignores enemies until auto-attack is toggled back on), and attack-move silently turns it back on. Fixed by E0.
+- `stop` also turns auto-attack off (the unit then ignores enemies until auto-attack is toggled back on). Fixed by E0.
 - The command card's cost labels are hard-coded and stale: Worker (25) costs 35, Skirmisher (50) costs 60, Turret (60) costs 50. Fixed in E4's client work (labels read from the unit/building definitions).
 
 ---
@@ -46,11 +46,10 @@ All of Phase E ships as one engine change: one ENGINE_VERSION bump (13 → 14), 
 
 ### E0. Auto-attack rules (user, 2026-11-12)
 - Auto-attack is **on by default** for combat units (already true; workers off, turrets on).
-- Only the auto-attack toggle (selected units, key **R**) turns it off or on.
+- The auto-attack toggle (selected units, key **R**) is the only way to turn it off. Attack-move turns it back on (unchanged).
 - `stop` no longer turns it off: stopped units still defend themselves.
-- Attack-move no longer turns it on.
 - A plain move ignores enemies until the unit arrives (already true); auto-attack applies again on arrival.
-- So the difference between the two moves: an attack-move can be interrupted by an enemy, a plain move can't. (Consequence: for a unit whose auto-attack is toggled off, attack-move behaves like a plain move.)
+- So the difference between the two moves: an attack-move can be interrupted by an enemy, a plain move can't.
 - Bots: the v2/v3 harness never toggles auto-attack, so bot units always have it on.
 
 ### E1. Ordered vs auto-acquired targets
@@ -105,7 +104,7 @@ The bot's current "hold" order becomes **guard at own position**, and v3 adds gu
 - Present the result to the user before shipping. A balance change is a user checkpoint.
 
 **Tests for Phase E** (`npm test`, custom suite):
-- Auto-attack: stop keeps it on, attack-move doesn't change it, plain move ignores enemies until arrival.
+- Auto-attack: stop keeps it on, attack-move turns it on, plain move ignores enemies until arrival.
 - Priority picks a unit over a nearer worker.
 - An ordered target survives priority.
 - The leash drops a fleeing auto-target at the chase distance and resumes the order.
