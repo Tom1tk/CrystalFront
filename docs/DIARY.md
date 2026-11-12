@@ -384,3 +384,9 @@ Verified: `npm test` 470/470, `training.test_env` PASS, `test_config_persistence
 
 ### 2026-11-12 — v0.8.7-ML: edge-panning sensitivity setting
 - Settings → Controls gains an "Edge panning" slider (0–100, saved in the browser as `cf.edgePan`). The camera moves 12 × setting world px per frame at the screen edge; the default 50 gives 6 px, double the old fixed 3 px (user: "double it for the default value, but allow a user to change it"). 0 turns edge panning off. Client only; no engine change.
+
+### 2026-11-12 — G-10 M0 T10 (P-6b): balance matrix with the v2 bots — user checkpoint
+- 14,400 games (12 v2 bots × 10 maps × 20 per pairing per map), write-up in `docs/balance/2026-11-matrix-v2.md`.
+- Per-map gate passes on 9/10 (T1: 4/10), but only because the two turtle bots beat each other. `sw_turtle_grab` (turtle, then take nodes) beats every non-turtle bot above 0.80 on 6/10 maps and averages 0.88. Hollow-crown and twin-spires show real counter-play.
+- Seats are even (mirror 0.50–0.51 on every map). Timeouts are up to 23% (T1 6%), mostly mirrors and weak-v-weak rush pairings.
+- Stopped for the user's decision: lever sweep against v2 bots (recommended), accept and start M1, and/or fix bot timeouts.
