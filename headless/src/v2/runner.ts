@@ -83,9 +83,9 @@ export function encodeMasks(m: V2.V2Masks) {
 }
 
 export interface WireAction { econ: number; army: [number, number, number] }
-const toWire = (a: V2.V2Action): WireAction => ({ econ: a.econ, army: [a.group, a.order, a.target] });
+export const toWire = (a: V2.V2Action): WireAction => ({ econ: a.econ, army: [a.group, a.order, a.target] });
 
-function fromWire(w: unknown): V2.V2Action | null {
+export function fromWire(w: unknown): V2.V2Action | null {
   const a = w as WireAction | undefined;
   if (!a || !Number.isInteger(a.econ) || !Array.isArray(a.army) || a.army.length !== 3 || !a.army.every(Number.isInteger)) return null;
   return { econ: a.econ, group: a.army[0], order: a.army[1], target: a.army[2] };
@@ -94,6 +94,22 @@ function fromWire(w: unknown): V2.V2Action | null {
 export interface RunnerOptions {
   /** Test hook: called after every engine tick. */
   onTick?: (slot: number, match: MatchState) => void;
+  /** Test hook: called with every finished episode's replay (whether or not it is saved). */
+  onReplay?: (slot: number, replay: V2Replay) => void;
+}
+
+/**
+ * A v2 episode in the server's replay format. `commandLog` alone replays the
+ * game on the server; `v2` adds what an observation replay needs (`replayObs.ts`):
+ * the decision interval, cap, each seat's z and every decision's applied actions
+ * (forbidden policy actions recorded as the no-op that was played).
+ */
+export interface V2Replay {
+  id: string; seed: number; blue: string; red: string; bluePlayerId: string; redPlayerId: string;
+  version: string; engineVersion: number; mapId: string; mapVersion: number; timestamp: number;
+  outcome: { winner: Side | null; winnerName: string | null; winType: string | null; ticks: number };
+  commandLog: Array<{ tick: number; playerId: string; command: Record<string, unknown> }>;
+  v2: { obsSchemaVersion: number; k: number; cap: number; z: [number, number]; actions: Array<{ tick: number; blue: WireAction; red: WireAction }> };
 }
 
 interface Globals { k: number; cap: number; critic: boolean }
@@ -116,7 +132,7 @@ class Slot {
   masks = [] as unknown as [V2.V2Masks, V2.V2Masks];
   chosen: [V2.V2Action | null, V2.V2Action | null] = [null, null];
   snap!: RewardSnapshot;
-  log: Array<{ tick: number; playerId: string; command: Record<string, unknown> }> = [];
+  actions: V2Replay["v2"]["actions"] = [];
   illegal: [number, number] = [0, 0];
   botErrors: [number, number] = [0, 0];
   episodeSeed = 0;
@@ -156,7 +172,7 @@ class Slot {
       ? makeV2Bot(s.bot, mixSeed(this.episodeSeed, strSeed(s.bot)), botContext(this.match, this.seats[i], this.g.cap), cfg.z[SIDES[i]])
       : null)) as [V2Bot | null, V2Bot | null];
     this.zSeat = [0, 1].map((i) => cfg.z[SIDES[i]] || this.bots[i]?.z || 0) as [number, number];
-    this.log = [];
+    this.actions = [];
     this.illegal = [0, 0];
     this.botErrors = [0, 0];
     this.episodes++;
@@ -171,7 +187,7 @@ class Slot {
   prepare(): Record<string, unknown> {
     const { engine, match } = this;
     for (const s of this.seats) {
-      for (const c of V2.workerAutopilot(engine, match, s)) this.log.push({ tick: match.tick, playerId: s.playerId, command: c });
+      V2.workerAutopilot(engine, match, s);
     }
     const out: Record<string, unknown> = {};
     const critic = this.g.critic && this.learnerSides().length ? this.critic() : null;
@@ -208,21 +224,28 @@ class Slot {
     return [c0, { self: c0.enemy, enemy: c0.self }];
   }
 
-  /**
-   * Write the episode as a replay in the server's format (replayRunner.saveReplay,
-   * not imported: it pulls in the websocket server) under <cwd>/replays.
-   */
-  private saveReplay(winner: Side | null): string {
-    const m = this.match, dir = resolve(process.cwd(), "replays");
-    mkdirSync(dir, { recursive: true });
-    const id = `${Date.now()}-v2-${this.idx}-${this.episodes - 1}`;
-    writeFileSync(join(dir, `${id}.json`), JSON.stringify({
-      id, seed: m.seed, blue: this.cfg.blue, red: this.cfg.red, bluePlayerId: PLAYER_IDS[0], redPlayerId: PLAYER_IDS[1],
-      version: GAME_VERSION, engineVersion: ENGINE_VERSION, mapId: this.cfg.map, mapVersion: m.terrain.mapVersion, timestamp: Date.now(),
+  /** The finished episode as a replay (server format plus the `v2` block). */
+  private replay(winner: Side | null): V2Replay {
+    const m = this.match, now = Date.now();
+    return {
+      id: `${now}-v2-${this.idx}-${this.episodes - 1}`, seed: m.seed, blue: this.cfg.blue, red: this.cfg.red, bluePlayerId: PLAYER_IDS[0], redPlayerId: PLAYER_IDS[1],
+      version: GAME_VERSION, engineVersion: ENGINE_VERSION, mapId: this.cfg.map, mapVersion: m.terrain.mapVersion, timestamp: now,
       outcome: { winner, winnerName: winner === null ? null : this.cfg[winner], winType: m.result?.winType ?? null, ticks: m.tick },
-      commandLog: this.log,
-    }));
-    return id;
+      // The engine's own log: every accepted command in the order it was processed.
+      commandLog: m.commandLog.map((e) => ({ ...e })),
+      v2: { obsSchemaVersion: OBS.OBS_SCHEMA_VERSION, k: this.g.k, cap: this.g.cap, z: [...this.zSeat], actions: this.actions },
+    };
+  }
+
+  /**
+   * Write the replay under <cwd>/replays (the server's replayRunner.saveReplay is
+   * not imported: it pulls in the websocket server).
+   */
+  private saveReplay(r: V2Replay): string {
+    const dir = resolve(process.cwd(), "replays");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, `${r.id}.json`), JSON.stringify(r));
+    return r.id;
   }
 
   episodeInfo() {
@@ -241,8 +264,8 @@ class Slot {
       if (V2.isLegal(this.masks[i], a)) acts.push(a);
       else { this.illegal[i]++; acts.push({ ...V2.NOOP_ACTION }); }
     }
-    const res = V2.applyV2Pair(engine, match, this.seats, [acts[0], acts[1]]);
-    res.forEach((r, i) => { for (const c of r.accepted) this.log.push({ tick: match.tick, playerId: PLAYER_IDS[i], command: c }); });
+    this.actions.push({ tick: match.tick, blue: toWire(acts[0]), red: toWire(acts[1]) });
+    V2.applyV2Pair(engine, match, this.seats, [acts[0], acts[1]]);
     let st = episodeStatus(match, this.g.cap);
     for (let t = 0; t < this.g.k && !st.terminated && !st.truncated; t++) {
       engine.tick(match.id);
@@ -275,7 +298,11 @@ class Slot {
       ticks: match.tick, terminated: st.terminated, truncated: st.truncated,
       stats: Object.fromEntries(SIDES.map((s, i) => [s, { ...this.seats[i].stats, illegal: this.illegal[i], botErrors: this.botErrors[i] }])),
     };
-    if (this.cfg.save_replay) info.replayId = this.saveReplay(winner);
+    if (this.cfg.save_replay || this.opts.onReplay) {
+      const r = this.replay(winner);
+      this.opts.onReplay?.(this.idx, r);
+      if (this.cfg.save_replay) info.replayId = this.saveReplay(r);
+    }
     engine.destroyMatch(match.id);
     const seats = this.start();
     return {

@@ -40,7 +40,8 @@ import * as V2 from "../headless/src/v2/actions.js";
 import { frameFor, toOwnFrame, fromOwnFrame } from "../headless/src/v2/frame.js";
 import * as OBS from "../headless/src/v2/observation.js";
 import { imageState } from "../headless/src/v2/imageState.js";
-import { VecRunnerV2, PLAYER_IDS as V2_PIDS, mixSeed, strSeed } from "../headless/src/v2/runner.js";
+import { VecRunnerV2, PLAYER_IDS as V2_PIDS, mixSeed, strSeed, type V2Replay } from "../headless/src/v2/runner.js";
+import { replayObservations, replayCommandLog } from "../headless/src/v2/replayObs.js";
 import { makeV2Bot } from "../headless/src/v2/bots.js";
 import { SCRIPTED, SWITCH_WINDOW, ScriptedV2Bot, botContext, scriptedZs } from "../headless/src/v2/scripted.js";
 import { existsSync as _existsSync, unlinkSync as _unlinkSync, writeFileSync as _writeFileSync } from "node:fs";
@@ -3541,6 +3542,57 @@ function anchorTests(): void {
   }
 }
 
+// G-10 M0 T9 (P-8): a v2 replay rebuilds the recorded observations exactly,
+// and its command log replays the same game on the server's replay loop.
+function v2ReplayTests(): void {
+  console.log("\n--- Replay → observations (G-10 T9) ---");
+  type R = Record<string, any>;
+  const H = (m: MatchState) => hashMatchState({ entities: m.entities, economies: m.economies, control: m.control } as unknown as MatchState);
+  const cases = [
+    { name: "shardfall (rotate), teach:macro v teach:rush2, critic on", map: "shardfall", blue: "teach:macro", red: "teach:rush2", cap: 1600 },
+    { name: "glimmerfen (mirror), policy (arbitrary, partly forbidden actions) v bot:turtle", map: "glimmerfen", blue: "policy", red: "bot:turtle", cap: 1200 },
+  ];
+  for (const c of cases) {
+    let replay: V2Replay | null = null;
+    const tickHash: string[] = [];
+    const r = new VecRunnerV2({ onReplay: (_i, x) => { replay = x; }, onTick: (_s, m) => { tickHash[m.tick] = H(m); } });
+    const recorded: Array<[string, string]> = [];
+    const keep = (seats: R) => recorded.push([seats.blue ? JSON.stringify(seats.blue.obs) : "", seats.red ? JSON.stringify(seats.red.obs) : ""]);
+    let res: R = r.handle({ type: "reset_all", max_ticks: c.cap, critic: true, slots: [{ seed: 7, map: c.map, blue: c.blue, red: c.red }] });
+    keep(res.slots[0].seats);
+    let n = 0, illegal = 0;
+    for (;;) {
+      n++;
+      const act = c.blue === "policy" ? { blue: { econ: (n * 7) % 40, army: [n % 3, n % 5, (n * 3) % 9] } } : {};
+      res = r.handle({ type: "step", actions: [act] });
+      const sl = res.slots[0];
+      if (sl.done || sl.truncated) { keep(sl.terminal); illegal = sl.info.stats.blue.illegal; break; }
+      keep(sl.seats);
+    }
+    if (c.blue === "policy") assert(illegal > 0, `T9 ${c.name}: some policy actions were forbidden (${illegal})`);
+    let compared = 0, diffs = 0;
+    let err: string | null = null;
+    let final: MatchState | null = null;
+    try {
+      final = replayObservations(replay!, (i, _t, obs) => {
+        for (const s of [0, 1]) {
+          const want = recorded[i]?.[s];
+          if (!want) continue;
+          compared++;
+          if (want !== JSON.stringify(obs[s])) diffs++;
+        }
+      }).match;
+    } catch (e) { err = (e as Error).message; }
+    assert(err === null, `T9 ${c.name}: replay plays through, same command log${err ? ` (${err})` : ""}`);
+    const expected = recorded.reduce((t, x) => t + (x[0] ? 1 : 0) + (x[1] ? 1 : 0), 0);
+    assert(compared === expected && expected > 100 && diffs === 0, `T9 ${c.name}: replayed observations identical (${compared}/${expected} compared, ${diffs} differ)`);
+    assert(!!final && H(final) === tickHash[c.cap], `T9 ${c.name}: observation replay ends in the same state`);
+    let tickDiffs = 0, ticks = 0;
+    replayCommandLog(replay!, (m) => { if (m.tick < c.cap) { ticks++; if (H(m) !== tickHash[m.tick]) tickDiffs++; } });
+    assert(ticks === c.cap - 1 && tickDiffs === 0, `T9 ${c.name}: command log on the server's replay loop matches every tick before the cap (${ticks} ticks, ${tickDiffs} differ)`);
+  }
+}
+
 function v2RunnerTests(): void {
   console.log("\n--- Runner v2 (G-10 T7) ---");
   type R = Record<string, any>;
@@ -3784,6 +3836,7 @@ void (async () => {
   anchorTests();
   v2ScriptedTests();
   v2RunnerTests();
+  v2ReplayTests();
   truncationTests();
   v2ActionTests();
   v2ObservationTests();
