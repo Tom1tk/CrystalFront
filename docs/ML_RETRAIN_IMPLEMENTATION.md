@@ -69,8 +69,7 @@ Implementation details that keep the approved design intact: file layout, exact 
    ```
    npm run build:shared && npm test          # 614 tests at hand-off; the number must only go up
    cd client && npx tsc --noEmit -p . && cd ..
-   git checkout server/tsconfig.tsbuildinfo shared/tsconfig.tsbuildinfo
-   git add -A -- . ':!train_task32*.log'
+   git add -A
    ```
 5. **Rebuild the headless bundle after any change under `headless/src/` or the engine:** `npm run build:headless`. The Python trainer runs `headless/dist/stdioVecRunner.js`, not the TypeScript. The vec env refuses to start if `dist` is older than the sources; keep that check and extend it to any new runner file.
 6. **Version bump:** any change to training code, reward, observation, action space or game balance bumps the version in **all 5** `package.json` files (root, `server/`, `headless/`, `shared/`, `client/`). They are at `0.7.0`. Use `0.8.0-ML` for the first M0 commit that touches those, then patch versions.

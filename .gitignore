@@ -10,3 +10,6 @@ runs/
 tunableop_results*.csv
 headless/src/**/*.d.ts
 *.pt
+
+# TypeScript incremental build caches (local only)
+*.tsbuildinfo
