@@ -343,7 +343,7 @@ Each probe is a small scenario (`"scenario"` in the reset message, replacing `pr
 | Probe | Scenario | Pass | Proves |
 |---|---|---|---|
 | **Overfit** | one imitation batch | loss < 0.05 | data path, heads, masks |
-| **Idle** | full game vs idle bot | ≥95% wins within 30 minutes of training | reward, actions, termination end to end |
+| **Idle** | full game vs idle bot | ≥95% wins (lower bound of the interval, 208 fixed-seed games) within 5 M decisions of training. Amended 2026-11-12: the original "within 30 minutes" is only 18 PPO updates on this machine (`docs/experiments.md`) | reward, actions, termination end to end |
 | **Memory** | The enemy's army composition (gunner-heavy or bruiser-heavy, random) is visible to a pre-placed scout for the first ~10 decisions, then the scout is removed. The enemy attacks at a fixed later tick. The agent has resources for exactly one counter-composition | recurrent agent ≥90%; the same agent with LSTM state zeroed each step and memory set blanked ≤60% | hidden state is stored, reset and used; memory set works |
 | **Seat** | same policy from both seats, on a mirror map and a rotate map | win rates within the interval of each other | own-frame transform |
 | **Truncation** | an idle-vs-idle style scenario that always hits the cap | value predictions near the cap stay near 0, not ±1 | bootstrap |

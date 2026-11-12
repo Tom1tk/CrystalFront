@@ -437,3 +437,10 @@ Built per `docs/BOT_CONTROL_PLAN.md` §2 (R-2 deviation signed off by the user).
 - **Idle probe run 1** (30 min, 460k decisions): 0/32 in eval, all truncated. No barracks or foundry was ever finished, because 80% of the near-uniform econ mass went to the 48 assign variants. Army targets were spread over 750 grid cells.
 - **Run 2** added kind-balanced starting biases (learnable). The economy is fixed (combat units per episode 15 → 64, shaped return 0.67 → 3.78), but still 0/32 in eval. 30 minutes is only 18 PPO updates and about 1.5 episodes per slot, and throughput halves as armies grow (120–240 decisions/s).
 - The stop rule fired (2 diagnosed iterations). The probe's "≥95% in 30 minutes" needs far more updates than this throughput gives. Options went to the user.
+
+### 2026-11-12 — Idle probe criterion amended; run 3 started (v0.8.13-ML)
+- User on the stop-rule options: "pick the option yourself (or a more suitable option if you have one)".
+- Chosen: budget the idle probe by decisions, not minutes. New criterion: ≥95% wins vs idle (lower bound of the 95% interval over 208 fixed-seed games) within 5 M decisions. The throughput work is not done first. It would gain perhaps 1.5×, while the gap to the old budget is more than 10×, and the machine is otherwise idle.
+- Not chosen: a shorter tick cap, which changes the task the probe tests. Imitation first is the fallback if run 3 misses, because an imitation start would beat idle without showing that PPO learns.
+- Trainer: `--decisions` (schedules run on decisions; resume continues the count) and `--stop-win-rate` (the last 200 training episodes trigger a stop; the fixed-seed evaluation decides).
+- Run `m1-idle-probe-r3` started.

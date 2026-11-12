@@ -37,7 +37,9 @@ def parse() -> argparse.Namespace:
     ap.add_argument("--procs", type=int, default=18)
     ap.add_argument("--slots", type=int, default=8, help="slots per process")
     ap.add_argument("--rollout", type=int, default=128)
-    ap.add_argument("--minutes", type=float, default=5.0, help="wall-clock budget")
+    ap.add_argument("--minutes", type=float, default=5.0, help="wall-clock budget (0 = none)")
+    ap.add_argument("--decisions", type=int, default=0, help="decision budget; schedules then run on decisions, not time (resume continues the count)")
+    ap.add_argument("--stop-win-rate", type=float, default=0.0, help="stop when the last 200 episodes reach this win rate (a trigger for a fixed-seed evaluation, not a result)")
     ap.add_argument("--updates", type=int, default=0, help="stop after this many updates (0 = time budget only)")
     ap.add_argument("--opponents", default="idle", help="comma-separated scripted bots")
     ap.add_argument("--maps", default=",".join(S.TRAIN_MAPS))
@@ -105,12 +107,13 @@ def main() -> None:
 
     agent = Agent().to(dev)
     opt = torch.optim.Adam(agent.parameters(), lr=a.lr, eps=1e-5)
-    update0 = 0
+    update0, decisions0 = 0, 0
     if a.resume:
         ck = torch.load(a.resume, map_location=dev)
         agent.load_state_dict(ck["model"])
         opt.load_state_dict(ck["opt"])
         update0 = ck["update"]
+        decisions0 = ck.get("decisions", 0)
     print(f"params: {sum(p.numel() for p in agent.parameters()) / 1e6:.2f} M, device {dev}", flush=True)
 
     slots = Slots(a, rng)
@@ -128,13 +131,19 @@ def main() -> None:
     recent = deque(maxlen=200)
     t_start = time.time()
     update = update0
-    total_decisions = 0
+    total_decisions = decisions0
     budget_s = a.minutes * 60
     while True:
         elapsed = time.time() - t_start
-        if (a.minutes and elapsed >= budget_s) or (a.updates and update - update0 >= a.updates):
+        if (a.minutes and elapsed >= budget_s) or (a.updates and update - update0 >= a.updates) or (a.decisions and total_decisions >= a.decisions):
             break
-        frac = min(1.0, elapsed / budget_s) if a.minutes else (update - update0) / max(1, a.updates)
+        if a.stop_win_rate and len(recent) == recent.maxlen and np.mean([e["win"] for e in recent]) >= a.stop_win_rate:
+            print(f"stop: last {len(recent)} episodes at or above {a.stop_win_rate} wins", flush=True)
+            break
+        if a.decisions:
+            frac = min(1.0, total_decisions / a.decisions)
+        else:
+            frac = min(1.0, elapsed / budget_s) if a.minutes else (update - update0) / max(1, a.updates)
         lr = a.lr + (a.lr_end - a.lr) * frac
         for pg in opt.param_groups:
             pg["lr"] = lr
@@ -333,11 +342,11 @@ def main() -> None:
               f"update {upd_s:.1f}s | loss {np.mean(logs['loss/total']):.4f} pg {np.mean(logs['loss/policy']):.4f} "
               f"kl {np.mean(logs['ppo/approx_kl']):.4f} | episodes {len(recent)} win {wr:.2f}", flush=True)
         if update % a.checkpoint_every == 0:
-            torch.save({"model": agent.state_dict(), "opt": opt.state_dict(), "update": update, "config": vars(a)}, ck_dir / f"update_{update}.pt")
-    torch.save({"model": agent.state_dict(), "opt": opt.state_dict(), "update": update, "config": vars(a)}, ck_dir / "final.pt")
+            torch.save({"model": agent.state_dict(), "opt": opt.state_dict(), "update": update, "decisions": total_decisions, "config": vars(a)}, ck_dir / f"update_{update}.pt")
+    torch.save({"model": agent.state_dict(), "opt": opt.state_dict(), "update": update, "decisions": total_decisions, "config": vars(a)}, ck_dir / "final.pt")
     writer.close()
     env.close()
-    print(f"done: {update - update0} updates, {total_decisions} decisions, {time.time() - t_start:.0f}s", flush=True)
+    print(f"done: {update - update0} updates, {total_decisions - decisions0} decisions, {time.time() - t_start:.0f}s", flush=True)
 
 
 if __name__ == "__main__":
