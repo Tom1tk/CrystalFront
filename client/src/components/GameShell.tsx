@@ -5,7 +5,7 @@ import { decodeTerrain } from "../terrainCodec";
 import { themeFor } from "../mapThemes";
 import { MatchSfx, play as playSound } from "../audio";
 import { HudTopBar, CommandCard, FirstMatchTip, ReplayBar, MatchLoading, HUD_BAR_HEIGHT, type CommandSlot, type SelectionInfo, type NodesInfo } from "./Hud";
-import SettingsModal from "./SettingsModal";
+import SettingsModal, { edgePanSpeed } from "./SettingsModal";
 import { setAccent } from "../design/glass";
 
 /** G-4: how long a move order's planned path stays on screen. */
@@ -78,7 +78,6 @@ const MINIMAP_HEIGHT = 81; // 450 × (900/5000): map aspect
  *  fit-to-height in the canvas area below, so there is never vertical scrolling. */
 const HUD_TOP = HUD_BAR_HEIGHT;
 const EDGE_SCROLL_THRESHOLD = 50;
-const EDGE_SCROLL_SPEED = 3;
 
 const BUILDING_COLORS: Record<BuildingType, string> = {
   barracks: "#3aa8c8",
@@ -1757,8 +1756,9 @@ export default function GameShell({
           // Edge scrolling — X-axis only (Y is locked, game is side-scrolling)
           if (!minimapDraggingRef.current) {
             let dx = 0;
-            if (pos.x < EDGE_SCROLL_THRESHOLD) dx = -EDGE_SCROLL_SPEED;
-            else if (pos.x > screenW - EDGE_SCROLL_THRESHOLD) dx = EDGE_SCROLL_SPEED;
+            const speed = edgePanSpeed();
+            if (pos.x < EDGE_SCROLL_THRESHOLD) dx = -speed;
+            else if (pos.x > screenW - EDGE_SCROLL_THRESHOLD) dx = speed;
             if (dx !== 0) {
               const mapWidth = ms.mapWidth ?? 5000;
               cameraXRef.current = Math.max(0, Math.min(mapWidth - viewW, cameraXRef.current + dx));

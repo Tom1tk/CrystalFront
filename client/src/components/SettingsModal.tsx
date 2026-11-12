@@ -13,6 +13,13 @@ export function tipsEnabled(): boolean {
   try { return window.localStorage.getItem(TIPS_KEY) !== "0"; } catch { return true; }
 }
 
+/** Edge-pan sensitivity, 0–1 (0 turns edge panning off). The camera moves 12 × this world px per frame at the screen edge; the default 0.5 (6 px) is double the old fixed speed. */
+const EDGE_PAN_KEY = "cf.edgePan";
+let edgePan: number = (() => {
+  try { const v = window.localStorage.getItem(EDGE_PAN_KEY); return v === null ? 0.5 : Math.max(0, Math.min(1, Number(v) || 0)); } catch { return 0.5; }
+})();
+export function edgePanSpeed(): number { return edgePan * 12; }
+
 const SHORTCUTS: Array<[string, string]> = [
   ["Left-click / drag", "Select units and buildings"],
   ["Right-click", "Move, gather, attack or repair"],
@@ -43,6 +50,7 @@ export default function SettingsModal({ onClose, view3d, onView3d, debug, initia
   const [tab, setTab] = useState<Tab>(initialTab ?? "general");
   const audio = useAudioPrefs();
   const [tips, setTips] = useState(tipsEnabled);
+  const [pan, setPan] = useState(edgePan);
   const [confirmQuit, setConfirmQuit] = useState(false);
   const tabs: Array<{ id: Tab; label: string; icon: IconName }> = [
     { id: "general", label: "General", icon: "gear" },
@@ -94,7 +102,15 @@ export default function SettingsModal({ onClose, view3d, onView3d, debug, initia
             </>
           )}
           {tab === "controls" && (
-            <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", columnGap: 18, rowGap: 9, paddingTop: 10 }}>
+            <>
+            <Row name="Edge panning" help="How fast the camera moves when the mouse is at the screen edge. 0 turns it off.">
+              <Slider label="Edge panning sensitivity" value={pan} onChange={(v) => {
+                setPan(v);
+                edgePan = v;
+                try { window.localStorage.setItem(EDGE_PAN_KEY, String(v)); } catch { /* storage blocked */ }
+              }} />
+            </Row>
+            <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", columnGap: 18, rowGap: 9, paddingTop: 14 }}>
               {SHORTCUTS.map(([k, d]) => (
                 <div key={k} style={{ display: "contents" }}>
                   <span className="g-kbd" style={{ justifySelf: "start" }}>{k}</span>
@@ -102,6 +118,7 @@ export default function SettingsModal({ onClose, view3d, onView3d, debug, initia
                 </div>
               ))}
             </div>
+            </>
           )}
           {tab === "debug" && debug}
         </div>

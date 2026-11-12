@@ -381,3 +381,6 @@ Verified: `npm test` 470/470, `training.test_env` PASS, `test_config_persistence
 - `replays_archive/` (7,505 May-era replays) dropped from the repo; `*.tsbuildinfo` untracked. v1 training leftovers moved out of the repo to `/root/archive/crystalfront-v1-training/`; TensorBoard emptied.
 - Stale docs moved to `docs/archive/` (user: "We dont want an agent reading out of date info"): `ML_AGENT.md`, `REVIVAL_PLAN.md`, v0.3.2 release notes and eval, `balance/FINDINGS.md` and the v0.5 matrices, `training/README.md`, and the 2026-05/06 reports that lived in `/root` (diagnosis, ML review, training guide). This diary was split: entries before 2026-11-10 are in `archive/ML_BOT_ACTION_PLAN_v1.md`; this file (`DIARY.md`, previously `ML_BOT_ACTION_PLAN.md`) keeps 2026-11-10 onward.
 - v1 code (`stdioRunner.ts`, `stdioVecRunner.ts`, `training/ppo/`) stays until v2 works, then goes.
+
+### 2026-11-12 — v0.8.7-ML: edge-panning sensitivity setting
+- Settings → Controls gains an "Edge panning" slider (0–100, saved in the browser as `cf.edgePan`). The camera moves 12 × setting world px per frame at the screen edge; the default 50 gives 6 px, double the old fixed 3 px (user: "double it for the default value, but allow a user to change it"). 0 turns edge panning off. Client only; no engine change.
