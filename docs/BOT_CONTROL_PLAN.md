@@ -1,6 +1,6 @@
 # Bot control plan (G-13)
 
-**Status:** draft, awaiting user sign-off (2026-11-12). Nothing here is built yet.
+**Status:** signed off 2026-11-12 (Q1–Q4 answered, see §6). Nothing built yet.
 **Goal:** bots get the same control over the game as a human player wherever possible, and the engine's own unit behaviour gets fixed for everyone. This comes before ML retrain M1 (`docs/ML_RETRAIN_PLAN.md`), because M1 trains on whatever action space exists at that point.
 
 Decisions already made by the user (2026-11-12):
@@ -13,7 +13,11 @@ Decisions already made by the user (2026-11-12):
 | Action space | Option C is the end goal; option B is the first milestone (before M1) |
 | Decision timing | Fixed 0.8 s for M1; a bot-chosen delay comes later (with C) |
 | MCP / text interface for LLM, Laya or Jev play | Pencilled in only, far down the line, no planning yet |
-| New **Guard** order (Age of Empires II style) | Proposed by the user, specified in §1.4 |
+| New **Guard** order (Age of Empires II style) | Proposed by the user, specified in E4 |
+| Guard circle | About **half** sight range: guard must not become a dominant strategy; good macro stays the best option |
+| Guard hotkey | An empty slot on the existing 8-key card, same key for all units: **F** |
+| Auto-attack rules | See E0 |
+| R-2 deviation (Phase B) | Signed off: "all most recent changes are king" |
 
 ---
 
@@ -31,13 +35,23 @@ Decisions already made by the user (2026-11-12):
 - Medics heal only when given an explicit heal order. Bots can't give one, and humans rarely do.
 - An ordered target (right-click) and an auto-acquired one are stored the same way, so nothing can treat them differently.
 - The v2 bot "hold" order is an attack-move to the unit's own position. That inherits the unbounded chase, so a "holding" unit can be pulled across the map. Humans have no hold or guard order at all.
-- `stop` also turns auto-attack off (the unit then ignores enemies until auto-attack is toggled back on). This looks unintended; see open question Q3.
+- `stop` also turns auto-attack off (the unit then ignores enemies until auto-attack is toggled back on), and attack-move silently turns it back on. Fixed by E0.
+- The command card's cost labels are hard-coded and stale: Worker (25) costs 35, Skirmisher (50) costs 60, Turret (60) costs 50. Fixed in E4's client work (labels read from the unit/building definitions).
 
 ---
 
 ## 1. Phase E: engine fixes (game rules, apply to humans and bots)
 
 All of Phase E ships as one engine change: one ENGINE_VERSION bump (13 → 14), new goldens, and a note that older replays are hidden. The uncommitted `CF_TARGETING` experiment in `combat.ts` (T10 lever sweep) is replaced by E2.
+
+### E0. Auto-attack rules (user, 2026-11-12)
+- Auto-attack is **on by default** for combat units (already true; workers off, turrets on).
+- Only the auto-attack toggle (selected units, key **R**) turns it off or on.
+- `stop` no longer turns it off: stopped units still defend themselves.
+- Attack-move no longer turns it on.
+- A plain move ignores enemies until the unit arrives (already true); auto-attack applies again on arrival.
+- So the difference between the two moves: an attack-move can be interrupted by an enemy, a plain move can't. (Consequence: for a unit whose auto-attack is toggled off, attack-move behaves like a plain move.)
+- Bots: the v2/v3 harness never toggles auto-attack, so bot units always have it on.
 
 ### E1. Ordered vs auto-acquired targets
 - Add `attackOrdered: boolean` to the entity (in the state hash).
@@ -61,10 +75,10 @@ Within a class the nearest enemy wins (ties broken by entity order, as now). A u
 `guard { entityIds, targetX, targetY }`, AoE II style:
 1. The units attack-move to the guard point and remember it.
 2. **Acquire:**
-   - Melee units (skirmisher, bruiser, worker) acquire an enemy that comes within `GUARD.acquireFrac × vision` (starting value 0.8, so 240 px for a skirmisher).
+   - Melee units (skirmisher, bruiser) acquire an enemy that comes within `GUARD.acquireFrac × vision` of the unit (starting value 0.8, so 240 px for a skirmisher), as long as it can be reached without leaving the guard circle.
    - Ranged units (gunner) acquire only enemies inside their attack range.
    - Normal E2 priority applies.
-3. **Chase inside the circle only:** the unit chases, but never moves outside `GUARD.radius` of the guard point (starting value: that unit type's vision range).
+3. **Chase inside the circle only:** the unit chases, but never moves outside `GUARD.radius` of the guard point (starting value: **half** that unit type's vision range, e.g. 150 px for a skirmisher, 135 for a gunner). Kept small on purpose: guard must not out-perform an active army, and good macro stays the best option.
    - Ranged units may still shoot a target just outside the circle if it's in range.
 4. **Release:** when the target leaves the circle and is out of attack range, or dies, the unit drops it and walks back to the guard point.
 5. Any new non-queued order (move, attack-move, attack, retreat, stop, another guard) replaces the guard.
@@ -75,7 +89,7 @@ Implementation note: E3 and E4 share one mechanism, a per-unit leash `{x, y, r}`
 - E4 sets it permanently to the guard point and `GUARD.radius`.
 - Releasing a target sends the unit back to the leash centre only when guarding. Otherwise it resumes its order.
 
-Client: a **Guard** button and hotkey on the unit command card. Proposed key **G**: the q-w-e-r / a-s-d-f grid is full, so this would mean one extra slot. Ground-click to place the point, the same flow as attack-move.
+Client: a **Guard** button on the combat-unit command card, key **F** (empty for unit selections; the A-S-D-F row is the unit row). If a production building is also selected, F stays Rally, the same way building actions already take R from auto-attack. Ground-click to place the point, the same flow as attack-move. Card layout for units: R auto-attack, A attack-move, S stop, D retreat, F guard.
 
 The bot's current "hold" order becomes **guard at own position**, and v3 adds guard at a target point (§2).
 
@@ -91,6 +105,7 @@ The bot's current "hold" order becomes **guard at own position**, and v3 adds gu
 - Present the result to the user before shipping. A balance change is a user checkpoint.
 
 **Tests for Phase E** (`npm test`, custom suite):
+- Auto-attack: stop keeps it on, attack-move doesn't change it, plain move ignores enemies until arrival.
 - Priority picks a unit over a nearer worker.
 - An ordered target survives priority.
 - The leash drops a fleeing auto-target at the chase distance and resumes the order.
@@ -164,13 +179,9 @@ An MCP server exposing a text version of the game state and the same typed, mask
 4. **M1**, as planned, with v3 actions (needs the user's go-ahead as before)
 5. **C** after M1, separately approved
 
-## 6. Open questions for sign-off
+## 6. Sign-off (2026-11-12)
 
-- **Q1:** Guard starting numbers. These are starting values for tuning, not final:
-  - melee acquire 0.8 × vision
-  - ranged acquire = attack range
-  - circle radius = vision range
-  - auto-target leash 200 px
-- **Q2:** Guard hotkey **G** as an extra command-card slot. OK?
-- **Q3:** Should `stop` keep turning auto-attack off? Proposal: no. Stop should just stop, and the unit keeps defending itself. Auto-attack stays a separate toggle.
-- **Q4:** Sign-off for the R-2 deviation (Phase B) before M1.
+- **Q1** Guard numbers: melee acquire 0.8 × vision, ranged acquire = attack range, auto-target leash 200 px; guard circle changed to about **half** sight range (user). All starting values, tuned in E6.
+- **Q2** Hotkey: use an empty slot on the existing 8-key card, same key for all units → **F**.
+- **Q3** Stop keeps auto-attack on: yes. Plus the auto-attack rules in E0.
+- **Q4** R-2 deviation for Phase B: signed off.
