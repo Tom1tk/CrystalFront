@@ -312,20 +312,35 @@ function nodeRows(match: MatchState, s: SeatState, d: Dims, rows: (string | null
   });
 }
 
+/** Per own-frame nav cell: its grid cell and the world vision cell it reads (static per episode and seat). */
+const cellMaps = new WeakMap<ObsState, { grid: Int32Array; vision: Int32Array }>();
+function cellMap(match: MatchState, s: SeatState, d: Dims, os: ObsState): { grid: Int32Array; vision: Int32Array } {
+  let m = cellMaps.get(os);
+  if (m) return m;
+  const vg = visionGridOf(match.terrain), tc = match.terrain.cellSize;
+  m = { grid: new Int32Array(d.nr * d.nc), vision: new Int32Array(d.nr * d.nc) };
+  for (let r = 0; r < d.nr; r++) for (let c = 0; c < d.nc; c++) {
+    const k = r * d.nc + c;
+    m.grid[k] = Math.floor(r / d.ky) * d.gc + Math.floor(c / d.kx);
+    const w = worldNavCell(s, d, c, r);
+    const wc = w % d.nc, wr = (w - wc) / d.nc;
+    m.vision[k] = visionCellOf(vg, (wc + 0.5) * tc, (wr + 0.5) * tc);
+  }
+  cellMaps.set(os, m);
+  return m;
+}
+
 function dynamicGrid(match: MatchState, s: SeatState, d: Dims, seen: Seen[], os: ObsState | null): number[] {
   const plane = d.gc * d.gr, n = d.kx * d.ky;
   const out = new Array(DYN_CHANNELS.length * plane).fill(0);
   const vis = match.visibilityData?.get(s.playerId);
-  const vg = visionGridOf(match.terrain);
   const litGrid = new Uint8Array(plane);
+  const map = os && vis ? cellMap(match, s, d, os) : null;
   for (let r = 0; r < d.nr; r++) for (let c = 0; c < d.nc; c++) {
-    const g = Math.floor(r / d.ky) * d.gc + Math.floor(c / d.kx);
-    if (!os || !vis) { out[g] += 1; out[plane + g] += 1; continue; }
-    const w = worldNavCell(s, d, c, r);
-    const wc = w % d.nc, wr = (w - wc) / d.nc;
-    const tc = match.terrain.cellSize;
-    const lit = vis.cells[visionCellOf(vg, (wc + 0.5) * tc, (wr + 0.5) * tc)] === 1;
     const k = r * d.nc + c;
+    const g = map ? map.grid[k] : Math.floor(r / d.ky) * d.gc + Math.floor(c / d.kx);
+    if (!os || !vis || !map) { out[g] += 1; out[plane + g] += 1; continue; }
+    const lit = vis.cells[map.vision[k]] === 1;
     if (lit) { os.lastLit[k] = match.tick; out[g] += 1; litGrid[g] = 1; }
     if (os.lastLit[k] >= 0) out[plane + g] += 1;
     out[2 * plane + g] += os.lastLit[k] < 0 ? 1 : cap1((match.tick - os.lastLit[k]) / AGE_SCALE);

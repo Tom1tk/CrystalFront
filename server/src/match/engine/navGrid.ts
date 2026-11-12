@@ -105,6 +105,10 @@ export function anchorsConnected(g: NavGrid, anchors: Rect[], extra?: Rect): boo
   // The answer depends only on the grid's structures (tracked by `version`), the
   // anchors and `extra`, so it is memoised per grid version (build-site masks ask
   // the same questions every decision).
+  // Exact shortcut: if `extra` stays clear of every anchor's ring and the free cells
+  // in its own 1-cell ring are one run around the ring, any path through it can go
+  // round it instead, so blocking it changes nothing.
+  if (extra && ringIsOneRun(g, extra) && !anchors.some((a) => ringsOverlap(g, a, extra))) return anchorsConnected(g, anchors);
   let memo = connectedMemo.get(g);
   if (!memo || memo.version !== g.version) { memo = { version: g.version, results: new Map() }; connectedMemo.set(g, memo); }
   const r2s = (r: Rect) => `${r.x1},${r.y1},${r.x2},${r.y2}`;
@@ -114,9 +118,34 @@ export function anchorsConnected(g: NavGrid, anchors: Rect[], extra?: Rect): boo
   return res;
 }
 
+/** Does the cell range of `extra` touch the 1-cell ring (or footprint) of anchor `a`? */
+function ringsOverlap(g: NavGrid, a: Rect, extra: Rect): boolean {
+  const A = cellRange(g, a), E = cellRange(g, extra);
+  return E.c1 <= A.c2 + 1 && E.c2 >= A.c1 - 1 && E.r1 <= A.r2 + 1 && E.r2 >= A.r1 - 1;
+}
+
+/** Are the walkable cells of the 1-cell ring around `r` (out-of-grid cells count as blocked) at most one cyclic run? */
+function ringIsOneRun(g: NavGrid, r: Rect): boolean {
+  const { c1, r1, c2, r2 } = cellRange(g, r);
+  const cyc: number[] = [];
+  for (let col = c1 - 1; col <= c2 + 1; col++) cyc.push(cellOrBlocked(g, col, r1 - 1));
+  for (let row = r1; row <= r2; row++) cyc.push(cellOrBlocked(g, c2 + 1, row));
+  for (let col = c2 + 1; col >= c1 - 1; col--) cyc.push(cellOrBlocked(g, col, r2 + 1));
+  for (let row = r2; row >= r1; row--) cyc.push(cellOrBlocked(g, c1 - 1, row));
+  let switches = 0;
+  for (let i = 0; i < cyc.length; i++) if (cyc[i] !== cyc[(i + 1) % cyc.length]) switches++;
+  return switches <= 2;
+}
+
+/** 1 if the cell is walkable (no structure, inside the grid), else 0. */
+function cellOrBlocked(g: NavGrid, col: number, row: number): number {
+  if (col < 0 || row < 0 || col >= g.cols || row >= g.rows) return 0;
+  return g.structures[row * g.cols + col] > 0 ? 0 : 1;
+}
+
 const connectedMemo = new WeakMap<NavGrid, { version: number; results: Map<string, boolean> }>();
 
-function floodConnected(g: NavGrid, anchors: Rect[], extra?: Rect): boolean {
+export function floodConnected(g: NavGrid, anchors: Rect[], extra?: Rect): boolean {
   const blocked = new Uint8Array(g.structures.length);
   for (let i = 0; i < blocked.length; i++) blocked[i] = g.structures[i] > 0 ? 1 : 0;
   if (extra) {

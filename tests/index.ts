@@ -20,7 +20,7 @@ import { LiveMatchRunner } from "../server/src/match/liveMatchRunner.js";
 import { hashMatchState } from "../server/src/match/engine/hash.js";
 import { LoadGate } from "../server/src/match/loadGate.js";
 import { actionStateOf, headingOf, staticMapOf } from "../server/src/match/engine/presentation.js";
-import { isCellBlocked, rebuildNavGrid } from "../server/src/match/engine/navGrid.js";
+import { isCellBlocked, rebuildNavGrid, anchorsConnected, floodConnected, footprintOf, type Rect as NavRect } from "../server/src/match/engine/navGrid.js";
 import { buildTerrain, terrainAt, isObstacleCode, T_ROCK, T_WATER, T_OPEN, T_HIGH, T_CLIFF, T_ROUGH } from "../server/src/match/engine/terrain.js";
 import { getRange, getVisionRange } from "../server/src/match/engine/utils.js";
 import { computeVisibility, encodeVision } from "../server/src/match/engine/visibility.js";
@@ -42,6 +42,7 @@ import * as OBS from "../headless/src/v2/observation.js";
 import { imageState } from "../headless/src/v2/imageState.js";
 import { VecRunnerV2, PLAYER_IDS as V2_PIDS, mixSeed, strSeed } from "../headless/src/v2/runner.js";
 import { makeV2Bot } from "../headless/src/v2/bots.js";
+import { SCRIPTED, SWITCH_WINDOW, ScriptedV2Bot, botContext, scriptedZs } from "../headless/src/v2/scripted.js";
 import { existsSync as _existsSync, unlinkSync as _unlinkSync, writeFileSync as _writeFileSync } from "node:fs";
 import { resolve as _resolve, join as _join } from "node:path";
 
@@ -3663,8 +3664,125 @@ function v2RunnerTests(): void {
   }
 }
 
+function v2ScriptedTests(): void {
+  console.log("\n--- Scripted v2 bots (G-10 T8) ---");
+  type R = Record<string, any>;
+  const zs = scriptedZs();
+  assert(zs.size >= 12 && !zs.has(0), `T8 scripted bots cover ${zs.size} distinct z (need ≥ 12, none 0)`);
+
+  const play = (slots: R[], cap: number): R[] => {
+    const r = new VecRunnerV2();
+    let res: R = r.handle({ type: "reset_all", max_ticks: cap, critic: false, slots });
+    if (res.type !== "ready") throw new Error(String(res.message));
+    const out: R[] = new Array(slots.length).fill(null);
+    const first = res.slots;
+    while (out.some((x) => !x)) {
+      const actions = slots.map((_, i) => (out[i] ? {} : Object.fromEntries(Object.keys((res.slots ?? first)[i].seats).map((k) => [k, { econ: 0, army: [0, 0, V2.TARGET_NONE] }]))));
+      res = r.handle({ type: "step", actions });
+      if (res.type !== "step_result") throw new Error(String(res.message));
+      res.slots.forEach((s: R, i: number) => { if (!out[i] && (s.done || s.truncated)) out[i] = s.info; });
+    }
+    return out;
+  };
+
+  // Every scripted bot runs without exceptions and with zero ineffective or illegal actions (short games; the full
+  // 5-games-per-map check is headless/src/v2/botCheck.ts).
+  {
+    const names = Object.keys(SCRIPTED);
+    const slots = names.map((b, i) => ({ seed: 40 + i, map: ["shardfall", "twin-spires", "glimmerfen"][i % 3], blue: `bot:${b}`, red: `bot:${names[(i + 3) % names.length]}` }));
+    let infos: R[] = [];
+    try { infos = play(slots, 3000); } catch (e) { assert(false, `T8 scripted bots play without exceptions (${(e as Error).message})`); }
+    const bad = infos.flatMap((info, i) => ["blue", "red"].filter((s) => {
+      const st = info.stats[s];
+      return st.econIneffective + st.armyIneffective + st.illegal > 0;
+    }).map((s) => `${slots[i][s as "blue"]}: ${JSON.stringify(info.stats[s])}`));
+    assert(infos.length === slots.length && bad.length === 0, `T8 ${names.length} scripted bots, 3,000 ticks: ineffective-action rate 0` + (bad.length ? ` (${bad.join("; ")})` : ""));
+    const zBad = infos.filter((info, i) => !info.episode.botZ.blue || zs.get(info.episode.botZ.blue) !== slots[i].blue.slice(4));
+    assert(zBad.length === 0, "T8 episode info reports each scripted bot's z");
+  }
+
+  // The ring shortcut in anchorsConnected gives the same answers as the full flood fill (mid-game grids).
+  {
+    let n = 0, diff = 0, sealed = 0;
+    for (const [map, seed] of [["shardfall", 11], ["glimmerfen", 12], ["twin-spires", 13]] as const) {
+      const r = new VecRunnerV2();
+      r.handle({ type: "reset_all", max_ticks: 12000, critic: false, slots: [{ seed, map, blue: "bot:turtle", red: "bot:heavy" }] });
+      for (let d = 0; d < 250; d++) r.handle({ type: "step", actions: [{}] });
+      const m = r.matchOf(0);
+      const crystals = [...m.entities.values()].filter((e) => e.type === "crystal").map((e) => footprintOf(e) as NavRect);
+      let st = seed; const rnd = () => ((st = (Math.imul(st, 1103515245) + 12345) >>> 0) / 2 ** 32);
+      const structs = [...m.entities.values()].filter((e) => e.type === "building" || e.type === "crystal");
+      for (let k = 0; k < 600; k++) {
+        const w = 40 + Math.floor(rnd() * 100), h = 40 + Math.floor(rnd() * 100);
+        let x: number, y: number;
+        if (k % 2 && structs.length) { const e = structs[Math.floor(rnd() * structs.length)]; x = e.x + (rnd() - 0.5) * 220; y = e.y + (rnd() - 0.5) * 220; }
+        else { x = rnd() * m.config.mapWidth; y = rnd() * m.config.mapHeight; }
+        const rect = { x1: x - w / 2, y1: y - h / 2, x2: x + w / 2, y2: y + h / 2 };
+        const a = anchorsConnected(m.nav, crystals, rect), b = floodConnected(m.nav, crystals, rect);
+        n++; if (a !== b) diff++; if (!b) sealed++;
+      }
+    }
+    assert(diff === 0, `T8 anchorsConnected ring shortcut = flood fill on ${n} rects (${sealed} sealing; ${diff} differ)`);
+  }
+
+  // Identical seeds → identical games.
+  {
+    const slot = { seed: 77, map: "ironreed", blue: "bot:macro", red: "bot:sw_rush_turtle" };
+    const hashes: string[][] = [[], []];
+    for (const k of [0, 1]) {
+      const r = new VecRunnerV2({ onTick: (_s, m) => { if (m.tick % 50 === 0) hashes[k].push(hashMatchState(m)); } });
+      r.handle({ type: "reset_all", max_ticks: 2500, critic: false, slots: [slot] });
+      for (let d = 0; d < 2500 / V2.DECISION_TICKS; d++) r.handle({ type: "step", actions: [{}] });
+    }
+    assert(hashes[0].length > 40 && hashes[0].join() === hashes[1].join(), `T8 same seed → same game (${hashes[0].length} hashes)`);
+  }
+
+  // z requests, teach seats and switch ticks.
+  {
+    const r = new VecRunnerV2();
+    const res: R = r.handle({ type: "reset_all", max_ticks: 200, critic: false, slots: [
+      { seed: 5, map: "shardfall", blue: "teach:rush2", red: "bot:idle", z: { blue: 4 } },
+      { seed: 5, map: "shardfall", blue: "teach:turtle", red: "bot:idle" },
+      { seed: 5, map: "shardfall", blue: "policy", red: "bot:heavy" },
+    ] });
+    assertEqual(res.slots[0].seats.blue.obs.z, 4, "T8 requested z picks the template (rush2 → gunner rush, z 4)");
+    assert([5, 6].includes(res.slots[1].seats.blue.obs.z), "T8 teach seat with z 0 observes its bot's z");
+    assertEqual(res.slots[2].seats.blue.obs.z, 0, "T8 policy seat keeps the configured z");
+    assert([9, 10].includes(res.slots[2].episode.botZ.red) && res.slots[2].episode.botZ.blue === 0, "T8 episode info carries the bots' z (heavy: 9 or 10; policy seat: 0)");
+    const m = r.matchOf(0), st = V2.createSeatState(m, V2_PIDS[0]), ctx = botContext(m, st, 12000);
+    let inWindow = true;
+    for (let seed = 1; seed <= 50; seed++) {
+      const b = new ScriptedV2Bot("sw_turtle_grab", seed, ctx);
+      if (b.switchTick === null || b.switchTick < SWITCH_WINDOW[0] || b.switchTick > SWITCH_WINDOW[1]) inWindow = false;
+    }
+    assert(inWindow, "T8 switchers switch at a tick in [1500, 4000]");
+    let threw = false;
+    try { new ScriptedV2Bot("rush1", 1, ctx, 9); } catch { threw = true; }
+    assert(threw, "T8 a z the bot does not play is an error");
+  }
+
+  // The runner survives a bot exception: counted, logged (stderr), played as a no-op.
+  {
+    const orig = ScriptedV2Bot.prototype.decide;
+    ScriptedV2Bot.prototype.decide = function () { throw new Error("test: deliberate bot exception (expected)"); };
+    let info: R | null = null;
+    try {
+      const r = new VecRunnerV2();
+      r.handle({ type: "reset_all", max_ticks: 40, critic: false, slots: [{ seed: 3, map: "shardfall", blue: "bot:macro", red: "bot:idle" }] });
+      for (let d = 0; d < 5 && !info; d++) {
+        const res: R = r.handle({ type: "step", actions: [{}] });
+        if (res.type === "step_result" && res.slots[0].truncated) info = res.slots[0].info;
+      }
+    } finally {
+      ScriptedV2Bot.prototype.decide = orig;
+    }
+    assertEqual(info?.stats.blue.botErrors, 5, "T8 runner survives bot exceptions and counts them (5 decisions in 40 ticks)");
+  }
+}
+
 void (async () => {
   anchorTests();
+  v2ScriptedTests();
   v2RunnerTests();
   truncationTests();
   v2ActionTests();

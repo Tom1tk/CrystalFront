@@ -37,6 +37,7 @@ import { episodeStatus, TRAIN_MAX_TICKS } from "../episode.js";
 import * as V2 from "./actions.js";
 import * as OBS from "./observation.js";
 import { makeV2Bot, type V2Bot } from "./bots.js";
+import { botContext } from "./scripted.js";
 import { rewardSnapshot, windowRewards, type RewardSnapshot, type SeatRewards } from "./rewards.js";
 
 export const PLAYER_IDS = ["v2-blue", "v2-red"] as const;
@@ -117,7 +118,10 @@ class Slot {
   snap!: RewardSnapshot;
   log: Array<{ tick: number; playerId: string; command: Record<string, unknown> }> = [];
   illegal: [number, number] = [0, 0];
+  botErrors: [number, number] = [0, 0];
   episodeSeed = 0;
+  /** Strategy token in each seat's observation: the configured z, or a scripted bot's own z when none is configured. */
+  zSeat: [number, number] = [0, 0];
 
   constructor(cfg: SlotConfig, private idx: number, private g: Globals, private opts: RunnerOptions) {
     this.cfg = cfg;
@@ -148,9 +152,13 @@ class Slot {
     this.oss = [OBS.createObsState(this.match, this.seats[0]), OBS.createObsState(this.match, this.seats[1])];
     // Bot seeds come from the episode seed and the bot's name, never the seat:
     // the same seed with seats swapped then plays the mirrored game.
-    this.bots = this.specs.map((s) => (s.bot ? makeV2Bot(s.bot, mixSeed(this.episodeSeed, strSeed(s.bot))) : null)) as [V2Bot | null, V2Bot | null];
+    this.bots = this.specs.map((s, i) => (s.bot
+      ? makeV2Bot(s.bot, mixSeed(this.episodeSeed, strSeed(s.bot)), botContext(this.match, this.seats[i], this.g.cap), cfg.z[SIDES[i]])
+      : null)) as [V2Bot | null, V2Bot | null];
+    this.zSeat = [0, 1].map((i) => cfg.z[SIDES[i]] || this.bots[i]?.z || 0) as [number, number];
     this.log = [];
     this.illegal = [0, 0];
+    this.botErrors = [0, 0];
     this.episodes++;
     return this.prepare();
   }
@@ -168,9 +176,9 @@ class Slot {
     const out: Record<string, unknown> = {};
     const critic = this.g.critic && this.learnerSides().length ? this.critic() : null;
     for (const i of [0, 1] as const) {
-      const obs = OBS.observe(match, this.seats[i], this.oss[i], { z: this.cfg.z[SIDES[i]], cap: this.g.cap });
+      const obs = OBS.observe(match, this.seats[i], this.oss[i], { z: this.zSeat[i], cap: this.g.cap });
       this.masks[i] = V2.computeMasks(match, this.seats[i]);
-      this.chosen[i] = this.bots[i] ? this.bots[i]!.decide(obs, this.masks[i]) : null;
+      this.chosen[i] = this.bots[i] ? this.botDecide(i, obs) : null;
       if (this.specs[i].kind === "bot") continue;
       out[SIDES[i]] = {
         obs, masks: encodeMasks(this.masks[i]),
@@ -181,6 +189,17 @@ class Slot {
     }
     this.snap = rewardSnapshot(match);
     return out;
+  }
+
+  /** A bot's choice; a bot exception is logged and counted (`stats.botErrors`) and plays a no-op. */
+  private botDecide(i: 0 | 1, obs: OBS.ObsV2): V2.V2Action {
+    try {
+      return this.bots[i]!.decide(obs, this.masks[i]);
+    } catch (e) {
+      this.botErrors[i]++;
+      if (this.botErrors[i] <= 3) process.stderr.write(`v2 runner: slot ${this.idx} ${SIDES[i]} bot ${this.specs[i].bot} threw at tick ${this.match.tick}: ${(e as Error).stack ?? e}\n`);
+      return { ...V2.NOOP_ACTION };
+    }
   }
 
   /** Fog-free blocks for both seats, each in its own frame (computed once, swapped for seat 1). */
@@ -207,7 +226,7 @@ class Slot {
   }
 
   episodeInfo() {
-    return { index: this.episodes - 1, seed: this.episodeSeed, map: this.cfg.map, blue: this.cfg.blue, red: this.cfg.red, z: { ...this.cfg.z } };
+    return { index: this.episodes - 1, seed: this.episodeSeed, map: this.cfg.map, blue: this.cfg.blue, red: this.cfg.red, z: { ...this.cfg.z }, botZ: { blue: this.bots[0]?.z ?? 0, red: this.bots[1]?.z ?? 0 } };
   }
 
   step(wire: Record<string, unknown> | undefined): Record<string, unknown> {
@@ -244,7 +263,7 @@ class Slot {
     const critic = this.g.critic ? this.critic() : null;
     for (const i of this.learnerSides()) {
       terminal[SIDES[i]] = {
-        obs: OBS.observe(match, this.seats[i], this.oss[i], { z: this.cfg.z[SIDES[i]], cap: this.g.cap }),
+        obs: OBS.observe(match, this.seats[i], this.oss[i], { z: this.zSeat[i], cap: this.g.cap }),
         ...(critic ? { critic: critic[i] } : {}),
         oppLabels: OBS.oppLabels(match, this.seats[i]),
       };
@@ -254,7 +273,7 @@ class Slot {
       episode: this.episodeInfo(),
       winner, winType: st.terminated ? match.result?.winType ?? null : null,
       ticks: match.tick, terminated: st.terminated, truncated: st.truncated,
-      stats: Object.fromEntries(SIDES.map((s, i) => [s, { ...this.seats[i].stats, illegal: this.illegal[i] }])),
+      stats: Object.fromEntries(SIDES.map((s, i) => [s, { ...this.seats[i].stats, illegal: this.illegal[i], botErrors: this.botErrors[i] }])),
     };
     if (this.cfg.save_replay) info.replayId = this.saveReplay(winner);
     engine.destroyMatch(match.id);
