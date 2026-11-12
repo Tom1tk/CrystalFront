@@ -102,6 +102,21 @@ export function isCellBlocked(g: NavGrid, col: number, row: number): boolean {
  */
 export function anchorsConnected(g: NavGrid, anchors: Rect[], extra?: Rect): boolean {
   if (anchors.length < 2) return true;
+  // The answer depends only on the grid's structures (tracked by `version`), the
+  // anchors and `extra`, so it is memoised per grid version (build-site masks ask
+  // the same questions every decision).
+  let memo = connectedMemo.get(g);
+  if (!memo || memo.version !== g.version) { memo = { version: g.version, results: new Map() }; connectedMemo.set(g, memo); }
+  const r2s = (r: Rect) => `${r.x1},${r.y1},${r.x2},${r.y2}`;
+  const key = anchors.map(r2s).join(";") + "|" + (extra ? r2s(extra) : "");
+  let res = memo.results.get(key);
+  if (res === undefined) { res = floodConnected(g, anchors, extra); memo.results.set(key, res); }
+  return res;
+}
+
+const connectedMemo = new WeakMap<NavGrid, { version: number; results: Map<string, boolean> }>();
+
+function floodConnected(g: NavGrid, anchors: Rect[], extra?: Rect): boolean {
   const blocked = new Uint8Array(g.structures.length);
   for (let i = 0; i < blocked.length; i++) blocked[i] = g.structures[i] > 0 ? 1 : 0;
   if (extra) {

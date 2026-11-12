@@ -40,6 +40,8 @@ import * as V2 from "../headless/src/v2/actions.js";
 import { frameFor, toOwnFrame, fromOwnFrame } from "../headless/src/v2/frame.js";
 import * as OBS from "../headless/src/v2/observation.js";
 import { imageState } from "../headless/src/v2/imageState.js";
+import { VecRunnerV2, PLAYER_IDS as V2_PIDS, mixSeed, strSeed } from "../headless/src/v2/runner.js";
+import { makeV2Bot } from "../headless/src/v2/bots.js";
 import { existsSync as _existsSync, unlinkSync as _unlinkSync, writeFileSync as _writeFileSync } from "node:fs";
 import { resolve as _resolve, join as _join } from "node:path";
 
@@ -3538,8 +3540,132 @@ function anchorTests(): void {
   }
 }
 
+function v2RunnerTests(): void {
+  console.log("\n--- Runner v2 (G-10 T7) ---");
+  type R = Record<string, any>;
+  const W = (m: number[]) => m.map((v, i) => (v ? i : -1)).filter((i) => i >= 0);
+  const lcg = (seed: number) => () => ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) / 2 ** 32);
+  const rnd = lcg(99);
+  const pick = (m: number[]) => { const ix = W(m); return ix[Math.floor(rnd() * ix.length)]; };
+  const act = (s: R) => { const g = pick(s.masks.group), o = pick(s.masks.order[g]); return { econ: pick(s.masks.econ), army: [g, o, pick(s.masks.target[o])] }; };
+  const actionsFor = (slots: R[]) => slots.map((sl) => Object.fromEntries(Object.entries(sl.seats as R).map(([side, s]) => [side, act(s)])));
+
+  // 1. Equivalence: the runner's ticks hash the same as a direct in-process loop.
+  {
+    const seed = 21, map = "glimmerfen", N = 60;
+    const runHashes: string[] = [];
+    const r = new VecRunnerV2({ onTick: (slot, m) => { if (slot === 0) runHashes.push(hashMatchState(m)); } });
+    let res: R = r.handle({ type: "reset_all", max_ticks: 12000, slots: [{ seed, map, blue: "bot:random", red: "bot:random" }] });
+    assertEqual(res.type, "ready", "T7 equivalence: reset_all → ready");
+    for (let d = 0; d < N; d++) res = r.handle({ type: "step", actions: [{}] });
+    const engine = new MatchEngine();
+    const players: [PlayerSlot, PlayerSlot] = [
+      { playerId: V2_PIDS[0], username: "bot:random", color: "blue", score: 0 },
+      { playerId: V2_PIDS[1], username: "bot:random", color: "red", score: 0 },
+    ];
+    const match = engine.createMatch("v2-0-0", players, { ...DEFAULT_CONFIG, mapId: map, maxTicks: 12000 }, seed);
+    engine.startMatch(match.id);
+    const seats = [V2.createSeatState(match, V2_PIDS[0]), V2.createSeatState(match, V2_PIDS[1])] as [V2.SeatState, V2.SeatState];
+    const oss = seats.map((st) => OBS.createObsState(match, st));
+    const bots = [0, 1].map(() => makeV2Bot("random", mixSeed(seed, strSeed("random"))));
+    const direct: string[] = [];
+    for (let d = 0; d < N; d++) {
+      for (const st of seats) V2.workerAutopilot(engine, match, st);
+      const acts = [0, 1].map((i) => {
+        const obs = OBS.observe(match, seats[i], oss[i], { z: 0, cap: 12000 });
+        return bots[i].decide(obs, V2.computeMasks(match, seats[i]));
+      });
+      V2.applyV2Pair(engine, match, seats, [acts[0], acts[1]]);
+      for (let t = 0; t < V2.DECISION_TICKS; t++) { engine.tick(match.id); direct.push(hashMatchState(match)); }
+    }
+    const firstDiff = direct.findIndex((h, i) => h !== runHashes[i]);
+    assert(runHashes.length === direct.length && firstDiff < 0, `T7 equivalence: ${direct.length} tick hashes match a direct loop` + (firstDiff >= 0 ? ` (first diff at tick ${firstDiff + 1})` : ` (got ${runHashes.length})`));
+  }
+
+  // 2. Autoreset: three autoresets keep map, seats and z; seeds follow the sequence; configure applies at the boundary.
+  {
+    const r = new VecRunnerV2();
+    let res: R = r.handle({ type: "reset_all", max_ticks: 160, slots: [
+      { seed: 7, map: "ironreed", blue: "policy", red: "bot:random", z: { blue: 3 } },
+      { seed: 8, map: "shardfall", blue: "policy", red: "policy" },
+    ] });
+    assertEqual(res.type, "ready", "T7 autoreset: ready");
+    assertEqual(res.schemaVersion, OBS.OBS_SCHEMA_VERSION, "T7 ready carries the obs schema version");
+    assertEqual(Object.keys(res.slots[0].seats).join(), "blue", "T7 bot seats are not sent to Python");
+    assertEqual(Object.keys(res.slots[1].seats).sort().join(), "blue,red", "T7 policy-vs-policy sends both seats");
+    let slots: R[] = res.slots;
+    const ends: R[] = [];
+    let zeroSum = true, configured = false;
+    for (let d = 0; d < 200 && ends.length < 3; d++) {
+      res = r.handle({ type: "step", actions: actionsFor(slots) });
+      if (res.type !== "step_result") { assert(false, `T7 autoreset: step failed — ${res.message}`); return; }
+      const two = res.slots[1].rewards;
+      for (const k of ["res", "army", "dmg", "ctrl"]) if (two.blue.shaped[k] !== -two.red.shaped[k] && !(two.blue.shaped[k] === 0 && two.red.shaped[k] === 0)) zeroSum = false;
+      if (two.blue.win !== -two.red.win) zeroSum = false;
+      const s0 = res.slots[0];
+      if (s0.truncated || s0.done) {
+        ends.push(s0);
+        if (ends.length === 1) {
+          assertEqual(r.handle({ type: "configure", slots: [{ index: 0, z: { blue: 5 } }] }).type, "configured", "T7 configure → configured");
+          configured = true;
+        }
+      }
+      slots = res.slots;
+    }
+    assert(configured && ends.length === 3, `T7 autoreset: three episodes ended (got ${ends.length})`);
+    if (ends.length === 3) {
+      assert(ends.every((e) => e.truncated && !e.done && e.info.ticks === 160 && e.terminal.blue?.obs), "T7 truncation at the cap: truncated, not done, with a terminal obs");
+      assert(ends.every((e) => e.episode.map === "ironreed" && e.episode.blue === "policy" && e.episode.red === "bot:random"), "T7 autoreset keeps map and seats");
+      assertEqual(ends.map((e) => e.episode.seed).join(), [1, 2, 3].map((n) => mixSeed(7, n)).join(), "T7 autoreset seeds follow the sequence");
+      assertEqual(ends.map((e) => `${e.info.episode.z.blue}>${e.episode.z.blue}`).join(), "3>3,3>5,5>5", "T7 configure is applied at the next episode boundary, then persists");
+      assert(ends.every((e) => e.static && e.info.stats.blue.illegal === 0), "T7 autoreset sends the new static grid; random legal actions count no illegal");
+    }
+    assert(zeroSum, "T7 shaped and win rewards are zero-sum between seats");
+  }
+
+  // 3. Seat swap: the same seed with seats swapped plays the mirrored game.
+  {
+    const desc = (m: MatchState, pid: string) => {
+      const f = frameFor(m, pid);
+      return [...m.entities.values()].filter((e) => e.ownerId === pid)
+        .map((e) => { const p = toOwnFrame(f, e); return `${e.type}:${e.buildingType ?? ""}:${p.x.toFixed(3)},${p.y.toFixed(3)}:${e.health}`; })
+        .sort().join("|");
+    };
+    for (const map of ["shardfall", "twin-spires"]) {
+      const run = (blue: string, red: string) => {
+        const r = new VecRunnerV2();
+        r.handle({ type: "reset_all", slots: [{ seed: 31, map, blue, red }] });
+        for (let d = 0; d < 120; d++) r.handle({ type: "step", actions: [{}] });
+        return r.matchOf(0);
+      };
+      const a = run("bot:random", "bot:idle"), b = run("bot:idle", "bot:random");
+      const same = desc(a, V2_PIDS[0]) === desc(b, V2_PIDS[1]) && desc(a, V2_PIDS[1]) === desc(b, V2_PIDS[0]);
+      assert(same && a.tick === b.tick, `T7 seat swap on ${map}: swapped seats play the mirrored game (${a.tick} ticks)`);
+    }
+  }
+
+  // 4. Illegal actions are replaced by a no-op and counted; protocol errors are replies, not crashes.
+  {
+    const r = new VecRunnerV2();
+    let res: R = r.handle({ type: "reset_all", max_ticks: 80, slots: [{ seed: 3, map: "shardfall", blue: "policy", red: "bot:idle" }] });
+    const bad = W(res.slots[0].seats.blue.masks.econ.map((v: number) => 1 - v))[0];
+    let n = 0;
+    while (res.type === "step_result" ? !(res.slots[0].truncated || res.slots[0].done) : n === 0) {
+      res = r.handle({ type: "step", actions: [{ blue: { econ: bad, army: [0, 0, 0] } }] });
+      n++;
+      if (res.type !== "step_result") break;
+    }
+    assertEqual(res.type === "step_result" ? res.slots[0].info.stats.blue.illegal : -1, n, `T7 illegal actions are counted (${n} of ${n})`);
+    assertEqual(r.handle({ type: "step", actions: [] }).type, "error", "T7 wrong action count → error reply");
+    assertEqual(r.handle({ type: "step", actions: [{ blue: { econ: 0 } }] }).type, "error", "T7 malformed action → error reply");
+    assertEqual(r.handle({ type: "nope" }).type, "error", "T7 unknown message → error reply");
+    assertEqual(r.handle({ type: "reset_all", slots: [{ blue: "bot:" }] }).type, "error", "T7 bad seat spec → error reply");
+  }
+}
+
 void (async () => {
   anchorTests();
+  v2RunnerTests();
   truncationTests();
   v2ActionTests();
   v2ObservationTests();
