@@ -162,7 +162,7 @@ export const BUILDING_DEFS: Record<string, BuildingDef> = {
     height: 30,
     color: "#aa8844",
     damage: 18,
-    range: 150,
+    range: 120,         // was 150 — G-13 E6 (user, 2026-11-12): weakens static defence, lifts macro
     attackCooldown: 6,  // was 12 → 8 → 6; dps 1.5 → 2.25 → 3.0; defence needs to hold
     visionRange: 225,
   },
@@ -290,7 +290,7 @@ export const ENTITY = {
  * Replays are stamped with it; replays with a different stamp are not listed or
  * played (no compatibility layer).
  */
-export const ENGINE_VERSION = 14;
+export const ENGINE_VERSION = 15;
 
 /** Targets a unit picked itself are leashed (G-13 E3): it drops one that can't be hit
  *  from within `chase` px of where it acquired it, then resumes its order. */

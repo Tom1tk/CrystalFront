@@ -1,6 +1,6 @@
 # Bot control plan (G-13)
 
-**Status:** signed off 2026-11-12 (Q1–Q4 answered, see §6). Phase E (E0–E5) built in v0.8.8-ML (ENGINE_VERSION 14). Phase B (action space v3, B1–B5) built in v0.8.9-ML; E6 balance re-check and the v3 matrix re-run are the next user checkpoint.
+**Status:** signed off 2026-11-12 (Q1–Q4 answered, see §6). Phase E (E0–E5) built in v0.8.8-ML (ENGINE_VERSION 14). Phase B (action space v3, B1–B5) built in v0.8.9-ML; E6 done; the user chose turret range 120 and the repair range fix (v0.8.10-ML, ENGINE_VERSION 15), then M1.
 **Goal:** bots get the same control over the game as a human player wherever possible, and the engine's own unit behaviour gets fixed for everyone. This comes before ML retrain M1 (`docs/ML_RETRAIN_PLAN.md`), because M1 trains on whatever action space exists at that point.
 
 Decisions already made by the user (2026-11-12):
@@ -152,7 +152,7 @@ This is a deviation from approved item R-2 in `ML_RETRAIN_PLAN.md` and needs sig
 
 **Built (v0.8.9-ML).** Layout and wire format: `docs/ML_RETRAIN_IMPLEMENTATION.md` §5.7, "Action space v3". Differences from the text above:
 - Repair sends the single nearest free worker. The engine allows only one repairer per building.
-- **Scripted turtles do not repair yet.** The engine's repair works from any distance (`server/src/match/engine/repair.ts`: the worker is never moved or range-checked), so a repairing bot would get free remote healing, and turtles already dominate. Repair stays in the action space; fixing the engine is a user decision (raised at the E6 checkpoint).
+- **Scripted bots repair turrets (v0.8.10-ML).** Repair used to work from any distance. After E6 the user approved the fix: the worker walks to the building and repairs only within 60 px. Scripted bots now send a worker to their most damaged turret below 75% health.
 - Scripted bots' new micro: guard at staging points (instead of attack-move), pull back badly hurt units, focus a weak enemy near the army, and medics heal the most hurt ally. Each has a minimum gap of 4 decisions.
 
 ---

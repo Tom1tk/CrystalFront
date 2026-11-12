@@ -1,13 +1,25 @@
-import { HEALING } from "@crystalfront/shared";
+import { GATHERING, HEALING } from "@crystalfront/shared";
 import type { MatchEntity, MatchState } from "../types.js";
 import { dist, getRange } from "./utils.js";
 
+/** End a worker's repair; stop it walking to the building if it still is. */
+export function releaseRepairer(worker: MatchEntity, building: MatchEntity): void {
+  worker.repairTargetId = undefined;
+  if (worker.moveTarget && worker.moveTarget.x === building.x && worker.moveTarget.y === building.y) worker.moveTarget = undefined;
+}
+
 export function processRepairAndHealing(match: MatchState): void {
   for (const entity of match.entities.values()) {
-    // Building repair by assigned worker
-    if (entity.type === "building" && entity.health < entity.maxHealth && entity.repairTargetId) {
+    // Building repair (G-13): the building's repairer must be alive, still assigned to it,
+    // and within working range (the builders' range). Out of range it walks back, as
+    // builders do; any other order ends the repair (matchEngine's ok()).
+    if (entity.type === "building" && entity.repairTargetId) {
       const worker = match.entities.get(entity.repairTargetId);
-      if (worker) {
+      if (!worker || worker.health <= 0 || worker.repairTargetId !== entity.id || entity.health >= entity.maxHealth) {
+        entity.repairTargetId = undefined;
+        if (worker && worker.repairTargetId === entity.id) releaseRepairer(worker, entity);
+      } else if (dist(worker.x, worker.y, entity.x, entity.y) <= GATHERING.range) {
+        if (worker.moveTarget && worker.moveTarget.x === entity.x && worker.moveTarget.y === entity.y) worker.moveTarget = undefined;
         const playerIdx = match.players.findIndex((p) => p?.playerId === entity.ownerId);
         if (playerIdx >= 0 && match.economy[playerIdx]) {
           const economy = match.economy[playerIdx]!;
@@ -16,9 +28,18 @@ export function processRepairAndHealing(match: MatchState): void {
           if (economy.resources >= cost) {
             economy.resources -= cost;
             entity.health = Math.min(entity.maxHealth, entity.health + hpToRestore);
-            if (entity.health >= entity.maxHealth) entity.repairTargetId = undefined;
+            if (entity.health >= entity.maxHealth) { entity.repairTargetId = undefined; releaseRepairer(worker, entity); }
           }
         }
+      } else if (!worker.moveTarget) {
+        worker.moveTarget = { x: entity.x, y: entity.y };
+      }
+    } else if (entity.type !== "building" && entity.repairTargetId) {
+      // A worker whose building is gone, or no longer names it as its repairer.
+      const b = match.entities.get(entity.repairTargetId);
+      if (!b || b.repairTargetId !== entity.id) {
+        entity.repairTargetId = undefined;
+        if (b) releaseRepairer(entity, b);
       }
     }
 

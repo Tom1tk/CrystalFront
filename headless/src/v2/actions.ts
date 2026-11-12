@@ -285,7 +285,7 @@ function builder(match: MatchState, s: SeatState): MatchEntity | null {
 function repairer(match: MatchState, s: SeatState, b: MatchEntity): MatchEntity | null {
   let best: MatchEntity | null = null, bd = Infinity;
   for (const e of match.entities.values()) {
-    if (e.type !== "worker" || e.ownerId !== s.playerId || e.buildTargetId || e.id === s.scoutId) continue;
+    if (e.type !== "worker" || e.ownerId !== s.playerId || e.buildTargetId || e.repairTargetId || e.id === s.scoutId) continue;
     const d = (e.x - b.x) ** 2 + (e.y - b.y) ** 2;
     if (d < bd || (d === bd && best && e.id < best.id)) { best = e; bd = d; }
   }

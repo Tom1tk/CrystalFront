@@ -23,7 +23,7 @@ import { processMovement } from "./engine/movement.js";
 import { processCombat } from "./engine/combat.js";
 import { processGathering } from "./engine/gathering.js";
 import { processControl } from "./engine/control.js";
-import { processRepairAndHealing, processCrystalRegen } from "./engine/repair.js";
+import { processRepairAndHealing, processCrystalRegen, releaseRepairer } from "./engine/repair.js";
 import { dist, snapPoint } from "./engine/utils.js";
 import { contestedNodesFor, mapSymmetry, terrainFor } from "./maps.js";
 import { createNavGrid, rebuildNavGrid, addStructure, removeStructure } from "./engine/navGrid.js";
@@ -454,11 +454,21 @@ export class MatchEngine {
 
     const config = match.config;
     const ok = (): { success: true } => {
-      // Any other unit order ends a guard (G-13 E4).
+      // Any other unit order ends a guard (G-13 E4) and a worker's repair.
       if (CLEARS_QUEUE.has(command.type) && command.type !== "guard") {
         for (const id of [command.entityId, ...(command.entityIds ?? []), ...(command.workerIds ?? [])]) {
           const u = id ? match.entities.get(id) : undefined;
           if (u && u.ownerId === playerId && u.guard) u.guard = undefined;
+        }
+      }
+      if (CLEARS_QUEUE.has(command.type) && command.type !== "repair") {
+        for (const id of [command.entityId, ...(command.entityIds ?? []), ...(command.workerIds ?? [])]) {
+          const u = id ? match.entities.get(id) : undefined;
+          if (u && u.ownerId === playerId && u.type !== "building" && u.repairTargetId) {
+            const b = match.entities.get(u.repairTargetId);
+            if (b && b.repairTargetId === u.id) b.repairTargetId = undefined;
+            u.repairTargetId = undefined;
+          }
         }
       }
       if (log) match.commandLog.push({ tick: match.tick, playerId, command: command as Record<string, unknown> });
@@ -846,9 +856,23 @@ if (command.type === "gather") {
       const economy = match.economy[playerIdx];
       if (!economy) return { success: false, message: "No economy" };
 
-      // Set repair target on building
+      // One repairer per building (G-13): a previous repairer is released.
+      const prev = building.repairTargetId ? match.entities.get(building.repairTargetId) : undefined;
+      if (prev && prev.id !== worker.id && prev.repairTargetId === building.id) releaseRepairer(prev, building);
+      // A worker repairs one building: release its previous one.
+      const prevBuilding = worker.repairTargetId ? match.entities.get(worker.repairTargetId) : undefined;
+      if (prevBuilding && prevBuilding.id !== building.id && prevBuilding.repairTargetId === worker.id) prevBuilding.repairTargetId = undefined;
+      if (worker.buildTargetId) {
+        match.entities.get(worker.buildTargetId)?.buildWorkerIds?.delete(worker.id);
+        worker.buildTargetId = undefined;
+      }
+
+      // The worker walks to the building and repairs only within working range (G-13).
       building.repairTargetId = workerId;
+      worker.repairTargetId = building.id;
       worker.moveOrder = undefined;
+      worker.attackTargetId = undefined;
+      worker.moveTarget = { x: building.x, y: building.y };
 
       return ok();
     }

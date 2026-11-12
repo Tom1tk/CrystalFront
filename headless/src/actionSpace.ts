@@ -225,7 +225,7 @@ const MIN_NODE_REMAINING = 5;
  * that still has resources instead of waiting there on regen.
  */
 export function isIdleWorker(match: MatchState, e: MatchEntity): boolean {
-  if (e.buildTargetId || e.attackTargetId) return false;
+  if (e.buildTargetId || e.attackTargetId || e.repairTargetId) return false;
   if (!e.gatheringNodeId) return true;
   const node = match.resourceNodes.find(n => n.id === e.gatheringNodeId);
   return !node || node.remaining < MIN_NODE_REMAINING;

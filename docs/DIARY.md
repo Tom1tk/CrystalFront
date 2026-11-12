@@ -416,3 +416,11 @@ Built per `docs/BOT_CONTROL_PLAN.md` §2 (R-2 deviation signed off by the user).
 - 3 × 4,900 games, write-up in `docs/balance/2026-11-matrix-v2.md` ("G-13 E6 re-check"). turtle_grab v non-turtle bots: 0.86 before Phase E → 0.84 with Phase E → 0.88 with the v3 bots. Turret range 120 lifts macro to 0.52 and takes one map off the dominant list (4/10).
 - Process note: the first E6 run was started while the v3 files were being edited, and balance runs load source through tsx at start. It was stopped and re-run from a clean git worktree at d87e559. Balance runs now go in a worktree whenever code is changing.
 - Stopped for the user: turret range 120 or not, the repair range bug, and the go-ahead for M1.
+
+### 2026-11-12 — Turret range 120 + repair range fix (v0.8.10-ML, ENGINE_VERSION 15)
+- User at the E6 checkpoint: "All 3 in order please!" (turret range 120, fix repair, then start M1).
+- **Turret range 150 → 120** (`shared/src/gameBalance.ts`).
+- **Repair now needs range.** Repair used to heal from any distance. Now the worker walks to the building and repairs only within gathering range (60 px). If it gets another order it stops repairing, and a repairer that is pushed away walks back. Assigning a new repairer releases the old one, and a worker leaves its previous repair job. Repairing workers no longer count as idle (autopilot and the v3 repair pointer skip them). The old test that relied on remote repair now waits for the worker to arrive.
+- **Scripted bots repair turrets.** Any scripted bot sends a worker to its most damaged turret below 75% health when the repair mask allows it, so the imitation data contains repair (202 repair decisions in 8 test games, 0 ineffective).
+- ENGINE_VERSION 15: older replays are hidden again. Goldens regenerated (20 cases, 167 hashes).
+- **Checks:** 922/922 custom, 85/85 vitest, client type-checks. botCheck (550 games, 18 processes, 356 s): no exceptions, 0 ineffective, deterministic. As blue, W/L/T of 50: sw_turtle_grab 44/4/2, turtle 41/1/8, macro 37/7/6, sw_macro_bruiser 33/12/5, heavy 27/20/3, sw_rush_turtle 23/21/6, rush3 11/24/15, rush1 9/38/3, hidden 9/32/9, sw_fake_brush 5/33/12, rush2 3/36/11.

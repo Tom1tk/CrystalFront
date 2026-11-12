@@ -17,7 +17,7 @@ import type { MatchState } from "../../../server/src/match/types.js";
 import { toOwnFrame } from "./frame.js";
 import type { SeatState } from "./actions.js";
 import {
-  act, BUILDINGS, ECON_ASSIGN0, ECON_BUILD0, ECON_TRAIN0, GROUPS, ORDERS, TARGET_NONE, TRAIN_UNITS, WORKER_COUNTS,
+  act, BUILDINGS, ECON_ASSIGN0, ECON_BUILD0, ECON_REPAIR, ECON_TRAIN0, GROUPS, ORDERS, TARGET_NONE, TRAIN_UNITS, WORKER_COUNTS,
   type V2Action, type V2Masks,
 } from "./actions.js";
 import { ENTITY_FEATURES, GLOBAL_NAMES, NODE_FEATURES, type ObsV2 } from "./observation.js";
@@ -238,6 +238,8 @@ const O_AM = ORDERS.indexOf("attack_move"), O_MOVE = ORDERS.indexOf("move"), O_R
 const O_GUARD = ORDERS.indexOf("guard"), O_FOCUS = ORDERS.indexOf("focus"), O_HEAL = ORDERS.indexOf("heal");
 /** Micro (v3): enemies and wounded allies within this distance (px) of the army centre count. */
 const MICRO_RADIUS = 300;
+/** Scripted bots repair own turrets below this health fraction. */
+const REPAIR_BELOW = 0.75;
 /** A focus order holds the main army order back for this many decisions; micro of one kind repeats at most this often. */
 const FOCUS_DECISIONS = 3;
 const MICRO_GAP = 4;
@@ -328,12 +330,12 @@ export class ScriptedV2Bot {
       this.jitter(this.t, this.rng);
       this.pushing = false; this.viaDone = false; this.lastOrder = ""; this.ctrlBest = 0;
     }
-    this.site = 0;
+    this.site = 0; this.econPtr = 0;
     const econ = this.econ(obs, v, m);
     let army: Partial<V2Action> = this.armyOrder(obs, v, m);
     if (!army.group) army = this.micro(obs, v, m) ?? army;
     this.decisions++;
-    return act({ econ, site: econ >= ECON_BUILD0 && econ < ECON_ASSIGN0 ? this.site : 0, ...army });
+    return act({ econ, site: econ >= ECON_BUILD0 && econ < ECON_ASSIGN0 ? this.site : 0, econPtr: this.econPtr, ...army });
   }
 
   // ---- view ----
@@ -384,12 +386,24 @@ export class ScriptedV2Bot {
   }
   /** Build site chosen by the last buildAction this decision. */
   private site = 0;
+  /** Econ pointer row (repair target) chosen this decision. */
+  private econPtr = 0;
 
   private econ(obs: ObsV2, v: View, m: V2Masks): number {
     const t = this.t;
     const train = (u: Unit) => (m.econ[ECON_TRAIN0 + TRAIN_UNITS.indexOf(u)] ? ECON_TRAIN0 + TRAIN_UNITS.indexOf(u) : 0);
     const armySize = COMBAT.reduce((s, u) => s + v.units[u], 0);
     const producers = v.buildings.barracks + v.buildings.foundry;
+
+    // Repair the most damaged own turret below REPAIR_BELOW health, if a worker can be sent.
+    if (m.econ[ECON_REPAIR]) {
+      let best = -1;
+      obs.entities.forEach((e, i) => {
+        if (e[F.own] && e[F.type_turret] && e[F.hp] < REPAIR_BELOW && m.econPtr[0][i] &&
+            (best < 0 || e[F.hp] < obs.entities[best][F.hp])) best = i;
+      });
+      if (best >= 0) { this.econPtr = best; return ECON_REPAIR; }
+    }
 
     if (producers > 0 && v.freeSupply <= t.headroom && !v.depotBuilding) {
       const d = this.buildAction(m, "supply_depot", POCKETS);

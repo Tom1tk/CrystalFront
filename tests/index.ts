@@ -9,7 +9,7 @@ import { ALL_ACTIONS, ACTION_SPACE_SIZE, actionToIndex, indexToAction, legalMask
 import { getLegalActions } from "../headless/src/legalActions.js";
 import { expandMacroAction } from "../headless/src/actionSpace.js";
 import { buildObservation } from "../headless/src/observation.js";
-import { ECONOMY, HEALING, ENGINE_VERSION, CONTROL, LEASH, GUARD } from "../shared/src/gameBalance.js";
+import { ECONOMY, HEALING, ENGINE_VERSION, CONTROL, LEASH, GUARD, GATHERING } from "../shared/src/gameBalance.js";
 import { processControl, controlNeeded } from "../server/src/match/engine/control.js";
 import { saveReplay, getReplay, listReplays } from "../server/src/match/replayRunner.js";
 import { mirrorState, deepCloneMatchState, diffStates } from "../server/src/match/engine/mirror.js";
@@ -713,8 +713,8 @@ console.log("\n--- Combat: Worker Repair ---");
   assert(repairResult.success, "Repair command succeeds");
   assert(barracks.repairTargetId === worker.id, "Building has repair worker assigned");
 
-  // Tick - repair should progress
-  engine.tick(match.id);
+  // Tick until the worker walks into range (G-13: repair needs range) - repair should progress
+  for (let i = 0; i < 600 && barracks.health <= 300; i++) engine.tick(match.id);
   const barracksAfter = match.entities.get(barracks.id)!;
   assert(barracksAfter.health > 300, "Building health increased from repair");
 
@@ -3078,6 +3078,36 @@ console.log("\n--- G-13: unit control ---");
     assert(!b.autoAttackEnabled, "G-13 E0: the toggle turns auto-attack off");
     engine.processCommand(match.id, "pb", { type: "attack_move", entityId: b.id, targetX: midX - 100, targetY: 300 });
     assert(b.autoAttackEnabled, "G-13 E0: attack-move turns auto-attack back on");
+  }
+
+  // Repair (2026-11-12): the worker walks into working range, a new order ends it, one repairer per building.
+  {
+    const { engine, match, spawn, midX } = setup();
+    const before = new Set(match.entities.keys());
+    engine.debugSpawn(match.id, "pb", "building", midX - 500, 300, "turret");
+    const t = [...match.entities.values()].find((e) => !before.has(e.id))!;
+    t.autoAttackEnabled = false;
+    t.health = t.maxHealth / 2;
+    match.economy[0]!.resources = 5000;
+    const w = spawn("pb", "worker", midX - 900, 300);
+    const w2 = spawn("pb", "worker", midX - 520, 330);
+    const h0 = t.health;
+    assert(engine.processCommand(match.id, "pb", { type: "repair", entityId: w.id, targetEntityId: t.id }).success, "repair: command accepted");
+    engine.tick(match.id);
+    assert(t.health === h0 && !!w.moveTarget, "repair: no repair from out of range; the worker walks to the building");
+    let ticks = 0;
+    while (t.health === h0 && ticks < 600) { engine.tick(match.id); ticks++; }
+    assert(t.health > h0 && Math.hypot(w.x - t.x, w.y - t.y) <= GATHERING.range, `repair: starts once the worker is in range (${ticks} ticks)`);
+    engine.processCommand(match.id, "pb", { type: "move", entityId: w.id, targetX: midX - 1000, targetY: 300 });
+    const h1 = t.health;
+    for (let i = 0; i < 20; i++) engine.tick(match.id);
+    assert(t.health === h1 && !t.repairTargetId && !w.repairTargetId, "repair: a new order ends it");
+    engine.processCommand(match.id, "pb", { type: "repair", entityId: w.id, targetEntityId: t.id });
+    engine.processCommand(match.id, "pb", { type: "repair", entityId: w2.id, targetEntityId: t.id });
+    assert(t.repairTargetId === w2.id && !w.repairTargetId && !w.moveTarget, "repair: one repairer per building, the previous one is released");
+    ticks = 0;
+    while (t.health < t.maxHealth && ticks < 2000) { engine.tick(match.id); ticks++; }
+    assert(t.health === t.maxHealth && !t.repairTargetId && !w2.repairTargetId && !w2.moveTarget, "repair: a finished repair frees the worker");
   }
 }
 
