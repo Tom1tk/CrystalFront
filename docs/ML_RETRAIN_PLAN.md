@@ -1,8 +1,8 @@
 # ML_RETRAIN_PLAN — G-10: an adaptive decision-making bot (v2)
 
-**Status:** **APPROVED by the user, 2026-11-11** (every item in §13). **Not started:** the user asked that work not begin yet. Implementation guide for the implementing agent: `docs/ML_RETRAIN_IMPLEMENTATION.md`.
+**Status:** **APPROVED by the user, 2026-11-11** (every item in §13). **M0 in progress** since 2026-11-11 (progress: end of `docs/DIARY.md`). Implementation guide for the implementing agent: `docs/ML_RETRAIN_IMPLEMENTATION.md`.
 **v2 = v1 audited against the published record of AlphaStar, OpenAI Five and their successors, and against our own harness code.** The audit found 14 problems in v1, 5 of them serious (§2). v1 is in git history (`37e86f3`).
-**Supersedes:** `REVIVAL_PLAN.md` Task 3.2 onward and the 21-stage scripted curriculum.
+**Supersedes:** `archive/REVIVAL_PLAN.md` Task 3.2 onward and the 21-stage scripted curriculum.
 
 ---
 

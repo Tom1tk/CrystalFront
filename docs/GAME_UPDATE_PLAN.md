@@ -1,6 +1,6 @@
 # CrystalFront Game Update Plan ("v0.6 refresh")
 
-**Status:** APPROVED. All items signed off after review rounds 1–2 (see the decision log). Nothing is implemented yet; U0 is ready to start.
+**Status:** APPROVED and shipped through U6, G-11 (3D) and G-12 (UI); G-10 (bot retrain) M0 in progress. The decision log at the end is current.
 **Created:** 2026-11-10 · **Last updated:** 2026-11-10 (round 2 feedback incorporated)
 
 ## Project goal (set 2026-11-10)
@@ -16,7 +16,7 @@ That needs three things, and this whole plan exists to make them possible:
 There is also an option to evaluate in the later retraining plan: **a language model sets the high-level strategy and the trained RL policy carries it out.**
 
 Every game-design choice below should be checked against this goal: does it create decisions worth adapting to?
-**Supersedes:** `REVIVAL_PLAN.md` Task 3.2 onward. Training is paused, and Iteration 27's Option B is shelved. The bot will be retrained from scratch on the updated game, under a new ML plan written after this update ships (G-10).
+**Supersedes:** `archive/REVIVAL_PLAN.md` Task 3.2 onward. Training is paused, and Iteration 27's Option B is shelved. The bot will be retrained from scratch on the updated game, under a new ML plan written after this update ships (G-10).
 **Follow-on:** a separate **3D visual skin plan** (`VISUAL_PLAN.md`, G-11) comes after this update. This plan only has to keep the engine "skinnable".
 
 ## How to use this document

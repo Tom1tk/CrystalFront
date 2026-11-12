@@ -1,7 +1,7 @@
 # CrystalFront v0.6.6 Release Notes — Game Update
 
 **Released:** 2026-11-10
-**Covers:** v0.6.0 – v0.6.6 (plan: `docs/GAME_UPDATE_PLAN.md`, phases U0–U5; details per phase in `docs/ML_BOT_ACTION_PLAN.md`)
+**Covers:** v0.6.0 – v0.6.6 (plan: `docs/GAME_UPDATE_PLAN.md`, phases U0–U5; details per phase in `docs/DIARY.md`)
 
 This update rebuilds the base game before any new bot training. The old single-lane map, the "bank 4500 resources" win and the v0.3.2 ML bot are gone.
 

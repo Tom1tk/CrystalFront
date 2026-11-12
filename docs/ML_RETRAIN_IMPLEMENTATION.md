@@ -2,7 +2,7 @@
 
 **Written:** 2026-11-11, by the planning session. **For:** the agent that implements `ML_RETRAIN_PLAN.md` (v2).
 **Plan status:** every item in the plan's sign-off table (P-1…P-10, R-1…R-11) is **approved by the user**.
-**Work status:** **nothing has been implemented.** The user said: "Don't begin the work just yet." **Do not start until the user tells you to.**
+**Work status (2026-11-12):** M0 in progress (user said "start" on 2026-11-11). T1–T9 are done; see the end of `docs/DIARY.md` for where it stands.
 
 This guide is self-contained for execution, but the plan (`docs/ML_RETRAIN_PLAN.md`) is the authority on *what* and *why*. This guide covers *how*, in what order, and how to know each piece is right. Where this guide and the plan disagree, stop and ask the user.
 
@@ -46,12 +46,9 @@ Implementation details that keep the approved design intact: file layout, exact 
 | `docs/ML_RETRAIN_IMPLEMENTATION.md` (this file) | **current** | execution |
 | `docs/GAME_UPDATE_PLAN.md` | current for the game (maps, terrain, control nodes) | how the game works now; G-10 is the origin of this work |
 | `docs/VISUAL_PLAN.md` | current | the 3D view; unrelated to ML |
-| `docs/ML_BOT_ACTION_PLAN.md` | **diary**: current at the bottom, historical above | add your diary entries at the end; do not trust old conclusions |
-| `docs/REVIVAL_PLAN.md` | **superseded** from Task 3.2 on | history only. Its Phase 0–2 fixes are in the code |
-| `docs/ML_AGENT.md` | **stale** | describes the old 81-action agent and a shipped model that no longer exists. Rewrite it at M1 (§7.3) |
-| `training/README.md` | **stale** | same |
+| `docs/DIARY.md` | **diary** (2026-11-10 on) | add your diary entries at the end |
+| `docs/archive/` | **historical only** | v1 bot, revival plan, old reports. Do not read for current work |
 | `LLM_GUIDE.md` | general coding habits for this repo | still reasonable |
-| `/root/fable-crystalfront-diagnosis.md` (outside the repo) | historical | the 2026-06 root-cause report |
 
 **Old rules that no longer apply:**
 - REVIVAL R3 ("never reorder `ALL_ACTIONS`"): void. There is no shipped model. The action table is being replaced.
@@ -73,7 +70,7 @@ Implementation details that keep the approved design intact: file layout, exact 
    ```
 5. **Rebuild the headless bundle after any change under `headless/src/` or the engine:** `npm run build:headless`. The Python trainer runs `headless/dist/stdioVecRunner.js`, not the TypeScript. The vec env refuses to start if `dist` is older than the sources; keep that check and extend it to any new runner file.
 6. **Version bump:** any change to training code, reward, observation, action space or game balance bumps the version in **all 5** `package.json` files (root, `server/`, `headless/`, `shared/`, `client/`). They are at `0.7.0`. Use `0.8.0-ML` for the first M0 commit that touches those, then patch versions.
-7. **Diary:** after each task that changes behaviour, and at every milestone, add an entry at the end of `docs/ML_BOT_ACTION_PLAN.md`: what was done, what was measured, what was surprising, what is next. An undocumented task is unfinished.
+7. **Diary:** after each task that changes behaviour, and at every milestone, add an entry at the end of `docs/DIARY.md`: what was done, what was measured, what was surprising, what is next. An undocumented task is unfinished.
 8. **Before any training relaunch:** write the diagnosis, the single change and the expected effect in the diary *first*.
 9. **Kill processes by pid.** Never `pkill -f`.
 10. **Surgical diffs.** Note adjacent problems in the diary; don't fix them inline.
@@ -396,7 +393,7 @@ Add components in this order. Each step is compared with the previous one over 3
 
 Then train against the scripted pool (all bots, sampled toward the ones it loses to) on all 8 training maps.
 - **M1 gate:** all probes pass; E-1 ≥70% against each scripted bot on training maps; held-out maps reported.
-- **Deliverables:** a playable snapshot for the user's first playtest (this needs a minimal way to run the PyTorch policy against a human: a local inference process the server calls is enough; the production path comes at M4); rewrite `docs/ML_AGENT.md` and `training/README.md` for the v2 system.
+- **Deliverables:** a playable snapshot for the user's first playtest (this needs a minimal way to run the PyTorch policy against a human: a local inference process the server calls is enough; the production path comes at M4); write new `docs/ML_AGENT.md` and `training/README.md` for the v2 system (the v1 versions are in `docs/archive/`).
 
 ### 7.4 M2 and M3
 **M2: self-play (R-5, R-6).** Add in order: self-play → strategy token `z` → matchup weighting.
@@ -497,7 +494,7 @@ Full table and sources: plan §1 and §14. The points that should guide judgemen
 - [x] Plan v2 written, audited, approved item by item.
 - [x] User decisions recorded (plan §13).
 - [x] This guide written.
-- [x] Stale documents flagged (banners in `ML_AGENT.md`, `REVIVAL_PLAN.md`, `training/README.md`).
+- [x] Stale documents moved to `docs/archive/` (2026-11-12).
 - [ ] **User says "start".**
 - [x] Map sign-off (P-10), 2026-11-11.
 - [ ] M0 … M4.
