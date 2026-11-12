@@ -22,6 +22,8 @@ N_GROUPS, N_ORDERS = 10, 11
 ECON_BUILD0, ECON_ASSIGN0, ECON_REPAIR, ECON_RALLY = 6, 10, 58, 59
 GROUP_UNIT = 9
 TARGET_NONE = 803
+TARGET_GRID0 = 53              # 37 anchors + 16 memory slots, then the 750 grid cells
+NAMED_SITES = 10               # then 750 grid build sites
 POINT_ORDERS = (1, 2, 3)       # attack_move, move, guard
 PTR_ORDERS = (6, 7)            # focus, heal
 

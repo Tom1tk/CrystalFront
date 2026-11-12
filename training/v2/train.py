@@ -313,7 +313,7 @@ def main() -> None:
             writer.add_scalar("episode/loss_rate", np.mean([e["loss"] for e in rc]), step)
             writer.add_scalar("episode/trunc_rate", np.mean([e["trunc"] for e in rc]), step)
             writer.add_scalar("episode/length_ticks", np.mean([e["ticks"] for e in rc]), step)
-            for wt in ("crystal", "control"):
+            for wt in ("combat", "control"):
                 writer.add_scalar(f"episode/wintype_{wt}", np.mean([e["winType"] == wt for e in rc]), step)
             for i, k in enumerate(VALUE_HEADS):
                 writer.add_scalar(f"episode/return_{k}", np.mean([e["ret"][i] for e in rc]), step)

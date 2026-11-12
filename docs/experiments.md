@@ -1,0 +1,9 @@
+# Experiment registry (G-10)
+
+One row per training run (`ML_RETRAIN_IMPLEMENTATION.md` §8). Evaluation uses `training/eval/evaluate.py` with the fixed seeds in `training/eval/seeds/eval-v1.txt`. Gates use the lower bound of the 95% Wilson interval, and never a training-window statistic.
+
+| Date | Run | Commit | Config (diff from previous) | Seeds | Budget | Result | Verdict |
+|---|---|---|---|---|---|---|---|
+| 2026-11-12 | `m1-smoke-idle` | 2ab4b50 | v2 feed-forward PPO, defaults in `training/v2/train.py`, 18 × 8 slots, vs idle, 8 training maps | train seed 1 | 5 min (110,592 decisions) | no NaN, explained variance win 0.97 / shaped 0.90 / aux 0.79, no episode finished | T11(b) PASS |
+| 2026-11-12 | oracle `bot:*` vs idle | 2ab4b50+ | `evaluate.py --checkpoint bot:<name> --opponents idle --seeds 2` (32 games, both seats, 8 training maps) | eval-v1 ×2 | — | rush1 1.00 [0.89, 1.00] at 2,547 ticks; heavy 1.00; turtle 1.00; macro 0.69 [0.51, 0.82] (macro draws on 4 maps, a bot quirk) | the idle probe's task is easy for scripted play; harness works |
+| 2026-11-12 | `m1-idle-probe` | 2ab4b50 | as `m1-smoke-idle` | train seed 1 | 30 min (460,800 decisions, ~300 episodes) | training window 2/200 wins; eval 0/32 [0.00, 0.11], all truncated | **FAIL** (idle probe ≥95%). Diagnosis: no barracks/foundry ever finished in the eval game. The near-uniform econ head spends ~80% of its mass on the 48 assign variants, and army point targets spread over 750 grid cells, never concentrating on the enemy base. Throughput fell to 220–330 decisions/s as games grew |

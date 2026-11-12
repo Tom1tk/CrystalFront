@@ -89,6 +89,14 @@ class Agent(nn.Module):
         for head in (self.econ, self.site, self.etgt, self.group, self.order, self.target):
             nn.init.orthogonal_(head.weight, 0.01)
             nn.init.zeros_(head.bias)
+        # Kind-balanced starting priors (learnable biases): without them a near-uniform
+        # policy spends ~80% of econ decisions on the 48 assign variants and sends
+        # the army to random grid cells instead of named anchors (idle probe run 1).
+        with torch.no_grad():
+            self.econ.bias[S.ECON_ASSIGN0:S.ECON_REPAIR] = -math.log(12.0)  # 48 assigns weigh like 4 actions
+            for head in (self.target, self.etgt):  # 750 grid cells weigh like the 53 named targets
+                head.bias[S.TARGET_GRID0:S.TARGET_NONE] = -math.log(S.GRID_CELLS / S.TARGET_GRID0)
+            self.site.bias[S.NAMED_SITES:] = -math.log(S.GRID_CELLS / S.NAMED_SITES)  # 750 grid sites weigh like the 10 named
 
     # ── trunk ────────────────────────────────────────────────────────────────
 
