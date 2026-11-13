@@ -1,0 +1,56 @@
+100/2500
+200/2500
+300/2500
+400/2500
+500/2500
+600/2500
+700/2500
+800/2500
+900/2500
+1000/2500
+1100/2500
+1200/2500
+1300/2500
+1400/2500
+1500/2500
+1600/2500
+1700/2500
+1800/2500
+1900/2500
+2000/2500
+2100/2500
+2200/2500
+2300/2500
+2400/2500
+2500/2500
+2500 matches, 10 maps, 10 seeds per side, 419s
+
+Strategy matrix (row's score vs column, both sides, all maps):
+           rush  rush4 turtle  macro  heavy
+rush        -     7%     1%    41%    26%  
+rush4     94%      -     3%    49%    55%  
+turtle   100%    98%      -    70%   100%  
+macro     60%    52%    30%      -    91%  
+heavy     74%    46%     0%     9%      -  
+
+Mirror matches, blue score per map (all bots):
+  shardfall      0.44   (rush 0.40  rush4 0.50  turtle 0.30  macro 0.60  heavy 0.40)
+  basalt-run     0.48   (rush 0.30  rush4 0.80  turtle 0.70  macro 0.50  heavy 0.10)
+  twin-spires    0.44   (rush 0.50  rush4 0.40  turtle 0.60  macro 0.40  heavy 0.30)
+  hollow-crown   0.38   (rush 0.40  rush4 0.40  turtle 0.30  macro 0.40  heavy 0.40)
+  prism-ridge    0.52   (rush 0.40  rush4 0.70  turtle 0.50  macro 0.40  heavy 0.60)
+  glimmerfen     0.38   (rush 0.50  rush4 0.40  turtle 0.40  macro 0.40  heavy 0.20)
+  saltmarsh      0.40   (rush 0.30  rush4 0.50  turtle 0.50  macro 0.20  heavy 0.50)
+  ironreed       0.42   (rush 0.40  rush4 0.30  turtle 0.60  macro 0.40  heavy 0.40)
+  duskvale       0.50   (rush 0.70  rush4 0.30  turtle 0.40  macro 0.50  heavy 0.60)
+  cinder-flats   0.48   (rush 0.60  rush4 0.60  turtle 0.60  macro 0.20  heavy 0.40)
+
+Win types: combat 1068 (43%), control 1340 (54%), timeout 92 (4%)
+Average length of decided games: 4268 ticks
+Timeouts per pairing: rush-rush 21/100, rush-rush4 0/100, rush-turtle 2/100, rush-macro 0/100, rush-heavy 0/100, rush4-rush 0/100, rush4-rush4 0/100, rush4-turtle 7/100, rush4-macro 0/100, rush4-heavy 1/100, turtle-rush 2/100, turtle-rush4 6/100, turtle-turtle 40/100, turtle-macro 0/100, turtle-heavy 0/100, macro-rush 0/100, macro-rush4 0/100, macro-turtle 0/100, macro-macro 11/100, macro-heavy 0/100, heavy-rush 0/100, heavy-rush4 0/100, heavy-turtle 0/100, heavy-macro 0/100, heavy-heavy 2/100
+
+G-8 acceptance:
+  [PASS] no strategy wins >70% vs every other
+  [PASS] rush beatable at >=40% (best counter 100%)
+  [FAIL] mirror 50% ± 10% on every map (hollow-crown, glimmerfen)
+  [PASS] timeouts < 15% (4%)

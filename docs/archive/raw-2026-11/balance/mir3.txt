@@ -1,0 +1,28 @@
+960 matches, 10 maps, 24 seeds per side, 154s
+
+Strategy matrix (row's score vs column, both sides, all maps):
+           rush  macro turtle  heavy
+rush        -   NaN%   NaN%   NaN%  
+macro    NaN%      -   NaN%   NaN%  
+turtle   NaN%   NaN%      -   NaN%  
+heavy    NaN%   NaN%   NaN%      -  
+
+Mirror matches, blue score per map (all bots):
+  shardfall      0.46   (rush 0.42  macro 0.42  turtle 0.50  heavy 0.50)
+  basalt-run     0.54   (rush 0.58  macro 0.50  turtle 0.67  heavy 0.42)
+  twin-spires    0.39   (rush 0.38  macro 0.38  turtle 0.42  heavy 0.38)
+  hollow-crown   0.55   (rush 0.50  macro 0.92  turtle 0.50  heavy 0.29)
+  prism-ridge    0.46   (rush 0.50  macro 0.42  turtle 0.38  heavy 0.54)
+  glimmerfen     0.45   (rush 0.54  macro 0.33  turtle 0.33  heavy 0.58)
+  saltmarsh      0.48   (rush 0.54  macro 0.38  turtle 0.54  heavy 0.46)
+  ironreed       0.41   (rush 0.50  macro 0.38  turtle 0.25  heavy 0.50)
+  duskvale       0.51   (rush 0.54  macro 0.50  turtle 0.50  heavy 0.50)
+  cinder-flats   0.49   (rush 0.67  macro 0.38  turtle 0.38  heavy 0.54)
+
+Win types: combat 373 (39%), timeout 344 (36%), resource 243 (25%)
+Average length of decided games: 4596 ticks
+Timeouts per pairing: rush-rush 59/240, rush-macro 0/0, rush-turtle 0/0, rush-heavy 0/0, macro-rush 0/0, macro-macro 141/240, macro-turtle 0/0, macro-heavy 0/0, turtle-rush 0/0, turtle-macro 0/0, turtle-turtle 21/240, turtle-heavy 0/0, heavy-rush 0/0, heavy-macro 0/0, heavy-turtle 0/0, heavy-heavy 123/240
+
+G-8 acceptance:
+  [FAIL] mirror 50% ± 10% on every map (twin-spires)
+  [FAIL] timeouts < 15% (36%)

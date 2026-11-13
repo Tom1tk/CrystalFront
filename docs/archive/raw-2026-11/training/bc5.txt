@@ -1,0 +1,15 @@
+550 games (11 bots × 10 maps × 5), 336s
+  rush1              z 1      W4 L38 T8  avg 6323 ticks
+  rush2              z 2/4    W3 L28 T19  avg 8452 ticks
+  rush3              z 3      W7 L28 T15  avg 7943 ticks
+  turtle             z 5/6    W34 L7 T9  avg 6911 ticks
+  macro              z 7/8    W28 L12 T10  avg 7339 ticks
+  heavy              z 9/10   W29 L19 T2  avg 6532 ticks
+  hidden             z 11     W15 L27 T8  avg 7293 ticks
+  sw_rush_turtle     z 12     W30 L15 T5  avg 7354 ticks
+  sw_macro_bruiser   z 13     W34 L11 T5  avg 6338 ticks
+  sw_fake_brush      z 14     W5 L34 T11  avg 8063 ticks
+  sw_turtle_grab     z 15     W40 L5 T5  avg 7008 ticks
+[PASS] no exceptions
+[PASS] ineffective-action rate 0
+[PASS] identical seeds → identical games

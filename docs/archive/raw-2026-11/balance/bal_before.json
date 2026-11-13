@@ -1,0 +1,101 @@
+{
+  "metadata": {
+    "generated_at": "2026-11-10T13:05:06Z",
+    "total_matches": 180,
+    "version": "1.0",
+    "wall_time_secs": 301.7
+  },
+  "win_rate_matrix": {
+    "rush": {
+      "rush": {
+        "wins": 11,
+        "total": 20,
+        "win_rate": 0.55
+      },
+      "macro": {
+        "wins": 20,
+        "total": 20,
+        "win_rate": 1.0
+      },
+      "turtle": {
+        "wins": 20,
+        "total": 20,
+        "win_rate": 1.0
+      }
+    },
+    "macro": {
+      "rush": {
+        "wins": 0,
+        "total": 20,
+        "win_rate": 0.0
+      },
+      "macro": {
+        "wins": 6,
+        "total": 20,
+        "win_rate": 0.3
+      },
+      "turtle": {
+        "wins": 6,
+        "total": 20,
+        "win_rate": 0.3
+      }
+    },
+    "turtle": {
+      "rush": {
+        "wins": 0,
+        "total": 20,
+        "win_rate": 0.0
+      },
+      "macro": {
+        "wins": 13,
+        "total": 20,
+        "win_rate": 0.65
+      },
+      "turtle": {
+        "wins": 11,
+        "total": 20,
+        "win_rate": 0.55
+      }
+    }
+  },
+  "avg_durations_ticks": {
+    "rush_vs_rush": 5241.0,
+    "rush_vs_macro": 1632.7,
+    "rush_vs_turtle": 3085.7,
+    "macro_vs_rush": 1598.95,
+    "macro_vs_macro": 5733.3,
+    "macro_vs_turtle": 5962.55,
+    "turtle_vs_rush": 3085.5,
+    "turtle_vs_macro": 5957.5,
+    "turtle_vs_turtle": 5671.15
+  },
+  "top_build_orders": {
+    "rush": [
+      {
+        "sequence": "barracks,supply_depot,supply_depot",
+        "count": 60
+      }
+    ],
+    "macro": [
+      {
+        "sequence": "supply_depot,barracks,barracks",
+        "count": 60
+      }
+    ],
+    "turtle": [
+      {
+        "sequence": "turret,turret,turret",
+        "count": 60
+      }
+    ]
+  },
+  "flags": {
+    "rush_vs_rush__timeout": 10,
+    "macro_vs_macro__timeout": 16,
+    "macro_vs_turtle__timeout": 13,
+    "macro_vs_turtle__resource_win": 7,
+    "turtle_vs_macro__resource_win": 8,
+    "turtle_vs_macro__timeout": 12,
+    "turtle_vs_turtle__resource_win": 20
+  }
+}

@@ -1,0 +1,32 @@
+4900 matches, 10 maps, 10 seeds per side, 2089s
+
+Strategy matrix (row's score vs column, both sides, all maps):
+                             turtle   sw_turtle_grab            macro            heavy            rush3   sw_rush_turtle sw_macro_bruiser
+turtle                            -              44%              80%              87%              88%              79%              85%
+sw_turtle_grab                  56%                -              75%              89%              86%              82%              87%
+macro                           20%              25%                -              62%              71%              58%              78%
+heavy                           13%              11%              38%                -              93%              81%              52%
+rush3                           12%              14%              30%               8%                -              61%              25%
+sw_rush_turtle                  21%              18%              42%              19%              40%                -              58%
+sw_macro_bruiser                16%              14%              22%              49%              75%              42%                -
+
+Mirror matches, blue score per map (all bots):
+  shardfall      0.51   (v2:turtle 0.50  v2:sw_turtle_grab 0.55  v2:macro 0.55  v2:heavy 0.50  v2:rush3 0.50  v2:sw_rush_turtle 0.50  v2:sw_macro_bruiser 0.50)
+  basalt-run     0.51   (v2:turtle 0.50  v2:sw_turtle_grab 0.50  v2:macro 0.50  v2:heavy 0.50  v2:rush3 0.50  v2:sw_rush_turtle 0.50  v2:sw_macro_bruiser 0.60)
+  twin-spires    0.50   (v2:turtle 0.50  v2:sw_turtle_grab 0.50  v2:macro 0.50  v2:heavy 0.50  v2:rush3 0.50  v2:sw_rush_turtle 0.50  v2:sw_macro_bruiser 0.50)
+  hollow-crown   0.50   (v2:turtle 0.50  v2:sw_turtle_grab 0.50  v2:macro 0.50  v2:heavy 0.50  v2:rush3 0.50  v2:sw_rush_turtle 0.50  v2:sw_macro_bruiser 0.50)
+  prism-ridge    0.50   (v2:turtle 0.50  v2:sw_turtle_grab 0.50  v2:macro 0.50  v2:heavy 0.50  v2:rush3 0.50  v2:sw_rush_turtle 0.50  v2:sw_macro_bruiser 0.50)
+  glimmerfen     0.50   (v2:turtle 0.50  v2:sw_turtle_grab 0.50  v2:macro 0.50  v2:heavy 0.50  v2:rush3 0.50  v2:sw_rush_turtle 0.50  v2:sw_macro_bruiser 0.50)
+  saltmarsh      0.50   (v2:turtle 0.50  v2:sw_turtle_grab 0.50  v2:macro 0.50  v2:heavy 0.50  v2:rush3 0.50  v2:sw_rush_turtle 0.50  v2:sw_macro_bruiser 0.50)
+  ironreed       0.50   (v2:turtle 0.50  v2:sw_turtle_grab 0.50  v2:macro 0.50  v2:heavy 0.50  v2:rush3 0.50  v2:sw_rush_turtle 0.50  v2:sw_macro_bruiser 0.50)
+  duskvale       0.50   (v2:turtle 0.50  v2:sw_turtle_grab 0.50  v2:macro 0.50  v2:heavy 0.50  v2:rush3 0.50  v2:sw_rush_turtle 0.50  v2:sw_macro_bruiser 0.50)
+  cinder-flats   0.50   (v2:turtle 0.50  v2:sw_turtle_grab 0.50  v2:macro 0.50  v2:heavy 0.50  v2:rush3 0.50  v2:sw_rush_turtle 0.50  v2:sw_macro_bruiser 0.50)
+
+Win types: combat 3358 (69%), timeout 1192 (24%), control 350 (7%)
+Average length of decided games: 5998 ticks
+Timeouts per pairing: v2:turtle-v2:turtle 100/100, v2:turtle-v2:sw_turtle_grab 4/100, v2:turtle-v2:macro 12/100, v2:turtle-v2:heavy 4/100, v2:turtle-v2:rush3 16/100, v2:turtle-v2:sw_rush_turtle 4/100, v2:turtle-v2:sw_macro_bruiser 15/100, v2:sw_turtle_grab-v2:turtle 4/100, v2:sw_turtle_grab-v2:sw_turtle_grab 99/100, v2:sw_turtle_grab-v2:macro 1/100, v2:sw_turtle_grab-v2:heavy 4/100, v2:sw_turtle_grab-v2:rush3 17/100, v2:sw_turtle_grab-v2:sw_rush_turtle 2/100, v2:sw_turtle_grab-v2:sw_macro_bruiser 5/100, v2:macro-v2:turtle 12/100, v2:macro-v2:sw_turtle_grab 0/100, v2:macro-v2:macro 99/100, v2:macro-v2:heavy 6/100, v2:macro-v2:rush3 31/100, v2:macro-v2:sw_rush_turtle 14/100, v2:macro-v2:sw_macro_bruiser 15/100, v2:heavy-v2:turtle 4/100, v2:heavy-v2:sw_turtle_grab 4/100, v2:heavy-v2:macro 6/100, v2:heavy-v2:heavy 100/100, v2:heavy-v2:rush3 7/100, v2:heavy-v2:sw_rush_turtle 4/100, v2:heavy-v2:sw_macro_bruiser 9/100, v2:rush3-v2:turtle 16/100, v2:rush3-v2:sw_turtle_grab 17/100, v2:rush3-v2:macro 31/100, v2:rush3-v2:heavy 7/100, v2:rush3-v2:rush3 100/100, v2:rush3-v2:sw_rush_turtle 39/100, v2:rush3-v2:sw_macro_bruiser 30/100, v2:sw_rush_turtle-v2:turtle 4/100, v2:sw_rush_turtle-v2:sw_turtle_grab 2/100, v2:sw_rush_turtle-v2:macro 14/100, v2:sw_rush_turtle-v2:heavy 4/100, v2:sw_rush_turtle-v2:rush3 39/100, v2:sw_rush_turtle-v2:sw_rush_turtle 100/100, v2:sw_rush_turtle-v2:sw_macro_bruiser 10/100, v2:sw_macro_bruiser-v2:turtle 15/100, v2:sw_macro_bruiser-v2:sw_turtle_grab 5/100, v2:sw_macro_bruiser-v2:macro 14/100, v2:sw_macro_bruiser-v2:heavy 9/100, v2:sw_macro_bruiser-v2:rush3 30/100, v2:sw_macro_bruiser-v2:sw_rush_turtle 10/100, v2:sw_macro_bruiser-v2:sw_macro_bruiser 98/100
+
+G-8 acceptance:
+  [PASS] no strategy wins >70% vs every other
+  [PASS] mirror 50% ± 10% on every map
+  [FAIL] timeouts < 15% (24%)

@@ -1,0 +1,18 @@
+
+CrystalFront Balance Report
+  Blue bots: ['rush', 'macro', 'turtle']
+  Red bots:  ['rush', 'macro', 'turtle']
+  Matches per pair: 20
+  Total matches:    180
+
+  [1/9] rush vs rush … 20 matches in 45.0s — rush WR: 0.55
+  [2/9] rush vs macro … 20 matches in 27.6s — rush WR: 1.00
+  [3/9] rush vs turtle … 20 matches in 38.2s — rush WR: 0.70
+  [4/9] macro vs rush … 20 matches in 27.5s — macro WR: 0.00
+  [5/9] macro vs macro … 20 matches in 41.9s — macro WR: 0.35
+  [6/9] macro vs turtle … 20 matches in 37.2s — macro WR: 0.75
+  [7/9] turtle vs rush … 20 matches in 38.8s — turtle WR: 0.25
+  [8/9] turtle vs macro … 20 matches in 36.8s — turtle WR: 0.35
+  [9/9] turtle vs turtle … 20 matches in 25.6s — turtle WR: 0.65
+
+Report written to /tmp/claude-0/-root/cce514e3-4fac-4a3c-aa23-35090cd21413/scratchpad/bal_g4.json

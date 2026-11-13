@@ -1,0 +1,104 @@
+{
+  "metadata": {
+    "generated_at": "2026-11-10T14:03:24Z",
+    "total_matches": 180,
+    "version": "1.0",
+    "wall_time_secs": 318.5
+  },
+  "win_rate_matrix": {
+    "rush": {
+      "rush": {
+        "wins": 11,
+        "total": 20,
+        "win_rate": 0.55
+      },
+      "macro": {
+        "wins": 20,
+        "total": 20,
+        "win_rate": 1.0
+      },
+      "turtle": {
+        "wins": 14,
+        "total": 20,
+        "win_rate": 0.7
+      }
+    },
+    "macro": {
+      "rush": {
+        "wins": 0,
+        "total": 20,
+        "win_rate": 0.0
+      },
+      "macro": {
+        "wins": 7,
+        "total": 20,
+        "win_rate": 0.35
+      },
+      "turtle": {
+        "wins": 15,
+        "total": 20,
+        "win_rate": 0.75
+      }
+    },
+    "turtle": {
+      "rush": {
+        "wins": 5,
+        "total": 20,
+        "win_rate": 0.25
+      },
+      "macro": {
+        "wins": 7,
+        "total": 20,
+        "win_rate": 0.35
+      },
+      "turtle": {
+        "wins": 13,
+        "total": 20,
+        "win_rate": 0.65
+      }
+    }
+  },
+  "avg_durations_ticks": {
+    "rush_vs_rush": 5099.7,
+    "rush_vs_macro": 2168.3,
+    "rush_vs_turtle": 4812.9,
+    "macro_vs_rush": 2138.9,
+    "macro_vs_macro": 5914.3,
+    "macro_vs_turtle": 5996.25,
+    "turtle_vs_rush": 4863.25,
+    "turtle_vs_macro": 5976.45,
+    "turtle_vs_turtle": 5592.85
+  },
+  "top_build_orders": {
+    "rush": [
+      {
+        "sequence": "barracks,supply_depot,supply_depot",
+        "count": 60
+      }
+    ],
+    "macro": [
+      {
+        "sequence": "supply_depot,barracks,barracks",
+        "count": 60
+      }
+    ],
+    "turtle": [
+      {
+        "sequence": "turret,turret,turret",
+        "count": 60
+      }
+    ]
+  },
+  "flags": {
+    "rush_vs_rush__timeout": 12,
+    "rush_vs_turtle__resource_win": 6,
+    "macro_vs_macro__timeout": 18,
+    "macro_vs_turtle__timeout": 19,
+    "macro_vs_turtle__resource_win": 1,
+    "turtle_vs_rush__resource_win": 5,
+    "turtle_vs_rush__timeout": 1,
+    "turtle_vs_macro__timeout": 16,
+    "turtle_vs_macro__resource_win": 4,
+    "turtle_vs_turtle__resource_win": 20
+  }
+}

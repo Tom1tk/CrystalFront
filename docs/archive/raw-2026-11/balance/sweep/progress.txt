@@ -1,0 +1,15 @@
+13:10:19 start base
+13:39:37 done base exit 0
+13:39:37 start range120
+14:09:14 done range120 exit 0
+14:09:14 start cost100
+14:36:30 done cost100 exit 0
+14:36:30 start prejune
+15:04:51 done prejune exit 0
+15:04:51 start hold400
+15:33:24 done hold400 exit 0
+15:33:24 start tgt_threat
+16:02:35 done tgt_threat exit 0
+16:02:35 start tgt_units
+16:32:57 done tgt_units exit 0
+ALLDONE

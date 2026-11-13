@@ -1,0 +1,100 @@
+{
+  "metadata": {
+    "generated_at": "2026-11-10T13:14:48Z",
+    "total_matches": 180,
+    "version": "1.0",
+    "wall_time_secs": 318.8
+  },
+  "win_rate_matrix": {
+    "rush": {
+      "rush": {
+        "wins": 8,
+        "total": 20,
+        "win_rate": 0.4
+      },
+      "macro": {
+        "wins": 10,
+        "total": 20,
+        "win_rate": 0.5
+      },
+      "turtle": {
+        "wins": 20,
+        "total": 20,
+        "win_rate": 1.0
+      }
+    },
+    "macro": {
+      "rush": {
+        "wins": 11,
+        "total": 20,
+        "win_rate": 0.55
+      },
+      "macro": {
+        "wins": 14,
+        "total": 20,
+        "win_rate": 0.7
+      },
+      "turtle": {
+        "wins": 17,
+        "total": 20,
+        "win_rate": 0.85
+      }
+    },
+    "turtle": {
+      "rush": {
+        "wins": 0,
+        "total": 20,
+        "win_rate": 0.0
+      },
+      "macro": {
+        "wins": 4,
+        "total": 20,
+        "win_rate": 0.2
+      },
+      "turtle": {
+        "wins": 9,
+        "total": 20,
+        "win_rate": 0.45
+      }
+    }
+  },
+  "avg_durations_ticks": {
+    "rush_vs_rush": 6000.0,
+    "rush_vs_macro": 3347.8,
+    "rush_vs_turtle": 5180.15,
+    "macro_vs_rush": 3384.1,
+    "macro_vs_macro": 6000.0,
+    "macro_vs_turtle": 6000.0,
+    "turtle_vs_rush": 5216.35,
+    "turtle_vs_macro": 6000.0,
+    "turtle_vs_turtle": 5748.05
+  },
+  "top_build_orders": {
+    "rush": [
+      {
+        "sequence": "barracks,supply_depot,supply_depot",
+        "count": 60
+      }
+    ],
+    "macro": [
+      {
+        "sequence": "supply_depot,barracks,barracks",
+        "count": 60
+      }
+    ],
+    "turtle": [
+      {
+        "sequence": "turret,turret,turret",
+        "count": 60
+      }
+    ]
+  },
+  "flags": {
+    "rush_vs_rush__timeout": 20,
+    "macro_vs_macro__timeout": 20,
+    "macro_vs_turtle__timeout": 20,
+    "turtle_vs_macro__timeout": 20,
+    "turtle_vs_turtle__resource_win": 19,
+    "turtle_vs_turtle__timeout": 1
+  }
+}

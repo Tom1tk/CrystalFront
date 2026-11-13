@@ -1,0 +1,20 @@
+params: 3.14 M, device cuda
+update 1 decisions 18432 | 366 dec/s (env 57%) update 6.9s | loss -0.0715 pg -0.0065 kl 0.0023 | episodes 0 win nan
+update 2 decisions 36864 | 356 dec/s (env 58%) update 3.5s | loss -0.0754 pg -0.0055 kl 0.0012 | episodes 0 win nan
+update 3 decisions 55296 | 323 dec/s (env 61%) update 5.0s | loss -0.0737 pg -0.0052 kl 0.0013 | episodes 0 win nan
+update 4 decisions 73728 | 289 dec/s (env 63%) update 7.5s | loss -0.0592 pg -0.0039 kl 0.0013 | episodes 0 win nan
+update 5 decisions 92160 | 255 dec/s (env 65%) update 9.3s | loss -0.0254 pg -0.0036 kl 0.0012 | episodes 0 win nan
+update 6 decisions 110592 | 225 dec/s (env 68%) update 11.3s | loss 0.0121 pg -0.0028 kl 0.0010 | episodes 0 win nan
+update 7 decisions 129024 | 197 dec/s (env 70%) update 12.9s | loss 0.0279 pg -0.0022 kl 0.0010 | episodes 0 win nan
+update 8 decisions 147456 | 158 dec/s (env 75%) update 11.3s | loss 0.0533 pg -0.0023 kl 0.0009 | episodes 0 win nan
+update 9 decisions 165888 | 141 dec/s (env 77%) update 12.6s | loss 0.1386 pg -0.0017 kl 0.0010 | episodes 1 win 1.00
+update 10 decisions 184320 | 120 dec/s (env 81%) update 11.3s | loss 0.1764 pg -0.0015 kl 0.0009 | episodes 1 win 1.00
+update 11 decisions 202752 | 99 dec/s (env 84%) update 13.8s | loss 0.1692 pg -0.0009 kl 0.0008 | episodes 3 win 1.00
+update 12 decisions 221184 | 119 dec/s (env 82%) update 11.3s | loss 0.0929 pg -0.0015 kl 0.0005 | episodes 144 win 0.03
+update 13 decisions 239616 | 359 dec/s (env 58%) update 2.9s | loss 0.0209 pg -0.0023 kl 0.0008 | episodes 144 win 0.03
+update 14 decisions 258048 | 328 dec/s (env 60%) update 3.6s | loss 0.0112 pg -0.0024 kl 0.0006 | episodes 144 win 0.03
+update 15 decisions 276480 | 285 dec/s (env 64%) update 5.5s | loss 0.0258 pg -0.0019 kl 0.0008 | episodes 144 win 0.03
+update 16 decisions 294912 | 242 dec/s (env 67%) update 8.0s | loss 0.0418 pg -0.0025 kl 0.0008 | episodes 144 win 0.03
+update 17 decisions 313344 | 206 dec/s (env 70%) update 9.8s | loss 0.0808 pg -0.0021 kl 0.0008 | episodes 144 win 0.03
+update 18 decisions 331776 | 181 dec/s (env 72%) update 13.3s | loss 0.1140 pg -0.0015 kl 0.0008 | episodes 144 win 0.03
+done: 18 updates, 331776 decisions, 1816s

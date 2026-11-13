@@ -1,0 +1,10 @@
+ironreed rush vs rush_medium: A:combat@4878 A:combat@3331 A:combat@3061 A:combat@3381
+ironreed rush vs turtle: B:control@4545 B:control@4278 B:control@4258 B:control@4377
+ironreed rush_medium vs turtle: B:control@3923 B:control@3911 B:control@4081 B:control@3868
+ironreed macro vs rush: B:combat@2911 B:combat@3288 A:control@4531 B:combat@3014
+ironreed macro vs rush_medium: A:control@3974 A:control@3573 A:control@3541 B:combat@3146
+ironreed macro vs turtle: A:control@3244 A:control@3163 A:control@3000 A:control@2881
+ironreed heavy vs rush: B:combat@6529 A:combat@6242 A:combat@4863 A:combat@4762
+ironreed heavy vs rush_medium: A:combat@4397 A:combat@5400 A:combat@4513 A:combat@4712
+ironreed heavy vs turtle: B:control@3863 B:control@3583 B:control@3683 B:control@3706
+ironreed heavy vs macro: B:control@3098 B:control@4102 B:control@3483 A:combat@4249

@@ -1,0 +1,10 @@
+glimmerfen rush vs rush_medium: A:combat@3409 A:combat@3548 A:combat@3442 A:combat@3243
+glimmerfen rush vs turtle: A:control@13284 B:control@6500 A:control@10278 B:control@13829
+glimmerfen rush_medium vs turtle: B:control@4679 B:control@4847 B:control@3864 B:control@4802
+glimmerfen macro vs rush: B:combat@3757 A:control@7540 A:control@4658 B:combat@4024
+glimmerfen macro vs rush_medium: A:control@3794 A:control@3984 A:control@3994 A:control@3852
+glimmerfen macro vs turtle: B:control@6218 B:control@7045 B:control@6707 A:control@5947
+glimmerfen heavy vs rush: B:combat@4487 A:combat@4757 B:combat@3641 B:combat@4001
+glimmerfen heavy vs rush_medium: B:combat@4384 A:combat@4259 B:combat@4016 B:combat@3620
+glimmerfen heavy vs turtle: B:control@4082 B:control@3899 B:control@3855 B:control@3809
+glimmerfen heavy vs macro: B:control@3506 B:control@3881 B:control@3833 B:control@3868

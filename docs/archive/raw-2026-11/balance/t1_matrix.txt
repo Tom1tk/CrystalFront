@@ -1,0 +1,35 @@
+8100 matches, 10 maps, 10 seeds per side, 712s
+
+Strategy matrix (row's score vs column, both sides, all maps):
+           idlepassive  rush1  rush2   rush  rush4 turtle  macro  heavy
+idle        -     0%     0%     0%     0%     0%     0%     0%     0%  
+passive  100%      -     1%     0%     0%     0%     0%     0%     0%  
+rush1    100%    99%      -     2%     0%     0%     0%    10%     2%  
+rush2    100%   100%    99%      -     1%     0%     0%    10%     4%  
+rush     100%   100%   100%   100%      -     7%     0%    41%    25%  
+rush4    100%   100%   100%   100%    94%      -     1%    49%    52%  
+turtle   100%   100%   100%   100%   100%    99%      -    71%   100%  
+macro    100%   100%    90%    90%    60%    52%    29%      -    91%  
+heavy    100%   100%    98%    97%    75%    49%     0%     9%      -  
+
+Mirror matches, blue score per map (all bots):
+  shardfall      0.46   (idle 0.70  passive 0.30  rush1 0.40  rush2 0.50  rush 0.40  rush4 0.50  turtle 0.30  macro 0.60  heavy 0.40)
+  basalt-run     0.46   (idle 0.70  passive 0.30  rush1 0.40  rush2 0.40  rush 0.30  rush4 0.80  turtle 0.60  macro 0.50  heavy 0.10)
+  twin-spires    0.47   (idle 0.70  passive 0.40  rush1 0.60  rush2 0.60  rush 0.50  rush4 0.40  turtle 0.40  macro 0.40  heavy 0.20)
+  hollow-crown   0.47   (idle 0.70  passive 0.60  rush1 0.50  rush2 0.50  rush 0.40  rush4 0.40  turtle 0.30  macro 0.40  heavy 0.40)
+  prism-ridge    0.54   (idle 0.70  passive 0.40  rush1 0.80  rush2 0.50  rush 0.40  rush4 0.70  turtle 0.40  macro 0.40  heavy 0.60)
+  glimmerfen     0.39   (idle 0.40  passive 0.10  rush1 0.80  rush2 0.20  rush 0.50  rush4 0.40  turtle 0.50  macro 0.40  heavy 0.20)
+  saltmarsh      0.47   (idle 0.40  passive 0.50  rush1 0.70  rush2 0.60  rush 0.30  rush4 0.50  turtle 0.50  macro 0.20  heavy 0.50)
+  ironreed       0.44   (idle 0.40  passive 0.30  rush1 0.70  rush2 0.50  rush 0.40  rush4 0.30  turtle 0.60  macro 0.40  heavy 0.40)
+  duskvale       0.51   (idle 0.40  passive 0.50  rush1 0.60  rush2 0.40  rush 0.70  rush4 0.30  turtle 0.60  macro 0.50  heavy 0.60)
+  cinder-flats   0.52   (idle 0.40  passive 0.60  rush1 0.80  rush2 0.60  rush 0.60  rush4 0.60  turtle 0.60  macro 0.20  heavy 0.30)
+
+Win types: timeout 516 (6%), combat 4687 (58%), control 2897 (36%)
+Average length of decided games: 3266 ticks
+Timeouts per pairing: idle-idle 100/100, idle-passive 100/100, idle-rush1 0/100, idle-rush2 0/100, idle-rush 0/100, idle-rush4 0/100, idle-turtle 0/100, idle-macro 0/100, idle-heavy 0/100, passive-idle 100/100, passive-passive 100/100, passive-rush1 1/100, passive-rush2 0/100, passive-rush 0/100, passive-rush4 0/100, passive-turtle 0/100, passive-macro 0/100, passive-heavy 0/100, rush1-idle 0/100, rush1-passive 2/100, rush1-rush1 11/100, rush1-rush2 0/100, rush1-rush 0/100, rush1-rush4 0/100, rush1-turtle 0/100, rush1-macro 0/100, rush1-heavy 0/100, rush2-idle 0/100, rush2-passive 0/100, rush2-rush1 0/100, rush2-rush2 4/100, rush2-rush 0/100, rush2-rush4 0/100, rush2-turtle 0/100, rush2-macro 0/100, rush2-heavy 1/100, rush-idle 0/100, rush-passive 0/100, rush-rush1 0/100, rush-rush2 0/100, rush-rush 21/100, rush-rush4 0/100, rush-turtle 2/100, rush-macro 0/100, rush-heavy 0/100, rush4-idle 0/100, rush4-passive 0/100, rush4-rush1 0/100, rush4-rush2 0/100, rush4-rush 0/100, rush4-rush4 0/100, rush4-turtle 5/100, rush4-macro 0/100, rush4-heavy 1/100, turtle-idle 0/100, turtle-passive 0/100, turtle-rush1 0/100, turtle-rush2 0/100, turtle-rush 0/100, turtle-rush4 5/100, turtle-turtle 49/100, turtle-macro 0/100, turtle-heavy 0/100, macro-idle 0/100, macro-passive 0/100, macro-rush1 0/100, macro-rush2 0/100, macro-rush 0/100, macro-rush4 0/100, macro-turtle 0/100, macro-macro 11/100, macro-heavy 0/100, heavy-idle 0/100, heavy-passive 0/100, heavy-rush1 1/100, heavy-rush2 0/100, heavy-rush 0/100, heavy-rush4 0/100, heavy-turtle 0/100, heavy-macro 0/100, heavy-heavy 2/100
+
+G-8 acceptance:
+  [FAIL] no strategy wins >70% vs every other (turtle)
+  [PASS] rush beatable at >=40% (best counter 100%)
+  [FAIL] mirror 50% ± 10% on every map (glimmerfen)
+  [PASS] timeouts < 15% (6%)

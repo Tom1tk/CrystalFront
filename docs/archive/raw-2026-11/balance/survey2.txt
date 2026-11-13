@@ -1,0 +1,16 @@
+seed 0 mirror det 1.07/1.10 dens 0.02/0.21 shelter 0.25 | blue 0.38 UNFAIR (rush 0.33 macro 0.42) timeouts 11/24
+seed 1 rotate det 1.07/1.15 dens 0.03/0.21 shelter 0.33 | blue 0.58 FAIR (rush 0.58 macro 0.58) timeouts 11/24
+seed 2 mirror det 1.00/1.19 dens 0.04/0.15 shelter 0.34 | blue 0.63 UNFAIR (rush 0.58 macro 0.67) timeouts 24/24
+seed 3 rotate det 1.01/1.10 dens 0.03/0.17 shelter 0.25 | blue 0.58 FAIR (rush 0.42 macro 0.75) timeouts 12/24
+seed 4 mirror det 1.07/1.13 dens 0.04/0.22 shelter 0.22 | blue 0.54 FAIR (rush 0.58 macro 0.50) timeouts 24/24
+seed 5 rotate det 1.01/1.07 dens 0.05/0.17 shelter 0.19 | blue 0.38 UNFAIR (rush 0.50 macro 0.25) timeouts 13/24
+seed 6 mirror det 1.06/1.19 dens 0.03/0.18 shelter 0.24 | blue 0.54 FAIR (rush 0.58 macro 0.50) timeouts 22/24
+seed 7 rotate det 1.09/1.12 dens 0.01/0.19 shelter 0.20 | blue 0.58 FAIR (rush 0.58 macro 0.58) timeouts 13/24
+seed 8 mirror det 1.07/1.15 dens 0.04/0.20 shelter 0.20 | blue 0.63 UNFAIR (rush 0.67 macro 0.58) timeouts 15/24
+seed 9 rotate det 1.02/1.13 dens 0.02/0.19 shelter 0.25 | blue 0.50 FAIR (rush 0.50 macro 0.50) timeouts 16/24
+seed 10 mirror det 1.00/1.26 dens 0.04/0.17 shelter 0.24 | blue 0.50 FAIR (rush 0.67 macro 0.33) timeouts 19/24
+seed 11 rotate det 1.01/1.11 dens 0.03/0.19 shelter 0.18 | blue 0.58 FAIR (rush 0.58 macro 0.58) timeouts 12/24
+seed 12 mirror det 1.03/1.10 dens 0.05/0.19 shelter 0.28 | blue 0.54 FAIR (rush 0.58 macro 0.50) timeouts 15/24
+seed 13 rotate det 1.07/1.09 dens 0.02/0.20 shelter 0.22 | blue 0.46 FAIR (rush 0.42 macro 0.50) timeouts 12/24
+seed 14 mirror det 1.02/1.12 dens 0.04/0.21 shelter 0.20 | blue 0.50 FAIR (rush 0.67 macro 0.33) timeouts 19/24
+seed 15 rotate det 1.08/1.29 dens 0.02/0.21 shelter 0.30 | blue 0.46 FAIR (rush 0.42 macro 0.50) timeouts 15/24

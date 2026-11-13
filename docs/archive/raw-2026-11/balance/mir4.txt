@@ -1,0 +1,19 @@
+Mirror matches, blue score per map (all bots):
+  shardfall      0.44   (rush 0.67  macro 0.25  turtle 0.50  heavy 0.33)
+  basalt-run     0.53   (rush 0.75  macro 0.33  turtle 0.67  heavy 0.38)
+  twin-spires    0.40   (rush 0.71  macro 0.13  turtle 0.38  heavy 0.38)
+  hollow-crown   0.40   (rush 0.75  macro 0.25  turtle 0.33  heavy 0.25)
+  prism-ridge    0.51   (rush 0.63  macro 0.58  turtle 0.38  heavy 0.46)
+  glimmerfen     0.55   (rush 0.46  macro 0.50  turtle 0.63  heavy 0.63)
+  saltmarsh      0.59   (rush 0.54  macro 0.71  turtle 0.54  heavy 0.58)
+  ironreed       0.54   (rush 0.58  macro 0.50  turtle 0.50  heavy 0.58)
+  duskvale       0.54   (rush 0.46  macro 0.33  turtle 0.67  heavy 0.71)
+  cinder-flats   0.52   (rush 0.58  macro 0.38  turtle 0.63  heavy 0.50)
+
+Win types: combat 323 (34%), timeout 397 (41%), resource 240 (25%)
+Average length of decided games: 4574 ticks
+Timeouts per pairing: rush-rush 94/240, rush-macro 0/0, rush-turtle 0/0, rush-heavy 0/0, macro-rush 0/0, macro-macro 86/240, macro-turtle 0/0, macro-heavy 0/0, turtle-rush 0/0, turtle-macro 0/0, turtle-turtle 0/240, turtle-heavy 0/0, heavy-rush 0/0, heavy-macro 0/0, heavy-turtle 0/0, heavy-heavy 217/240
+
+G-8 acceptance:
+  [FAIL] mirror 50% ± 10% on every map (twin-spires, hollow-crown)
+  [FAIL] timeouts < 15% (41%)

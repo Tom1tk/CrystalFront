@@ -1,0 +1,3 @@
+first divergence at tick 1 : worker 129.6,410.0 h100 vs worker 60.0,477.0 h100
+blue cmds: [ '0 gather', '0 gather', '0 gather', '0 train_worker' ]
+red cmds: [ '0 gather', '0 gather', '0 gather', '0 train_worker' ]

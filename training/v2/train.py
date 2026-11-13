@@ -61,6 +61,9 @@ def parse() -> argparse.Namespace:
     ap.add_argument("--shaped-w", default="1,0.5,1,1", help="weights for res,army,dmg,ctrl")
     ap.add_argument("--checkpoint-every", type=int, default=50)
     ap.add_argument("--resume", default="")
+    ap.add_argument("--init", default="", help="start from these model weights (fresh optimiser and counters); with --kl-coef, also the frozen reference policy")
+    ap.add_argument("--kl-coef", type=float, default=0.0, help="KL penalty toward the --init policy (k3 estimator on the taken actions)")
+    ap.add_argument("--kl-anneal", type=float, default=0.5, help="fraction of the budget over which --kl-coef anneals linearly to 0")
     ap.add_argument("--imitate", action="store_true", help="behaviour cloning: both seats are teach:<bot> from --opponents; policy heads learn the teacher's actions (cross-entropy), value heads the returns")
     ap.add_argument("--overfit", action="store_true", help="with --imitate: collect one rollout and train on it repeatedly (overfit probe: loss < 0.05)")
     a = ap.parse_args()
@@ -114,6 +117,15 @@ def main() -> None:
     agent = Agent().to(dev)
     opt = torch.optim.Adam(agent.parameters(), lr=a.lr, eps=1e-5)
     update0, decisions0 = 0, 0
+    ref = None
+    if a.init:
+        agent.load_state_dict(torch.load(a.init, map_location=dev)["model"])
+        if a.kl_coef > 0:
+            ref = Agent().to(dev)
+            ref.load_state_dict(agent.state_dict())
+            ref.eval()
+            for p_ in ref.parameters():
+                p_.requires_grad_(False)
     if a.resume:
         ck = torch.load(a.resume, map_location=dev)
         agent.load_state_dict(ck["model"])
@@ -157,6 +169,7 @@ def main() -> None:
         ent_coef = a.ent + (a.ent_end - a.ent) * frac
         mix = mix0 + (mix1 - mix0) * frac
         mix[1] = max(mix[1], 0.1)
+        kl_coef = a.kl_coef * max(0.0, 1.0 - frac / a.kl_anneal) if ref is not None else 0.0
 
         # ── rollout ──────────────────────────────────────────────────────────
         T = a.rollout
@@ -179,6 +192,9 @@ def main() -> None:
                     given = teacher_actions([s.teacher for s in cur], dev) if a.imitate else None
                     out, rows, lp, _ = agent.policy(h, E, valid, masks=to_t(masks, dev), given=given)
                     v = agent.values(h, ot["critic"])
+                    if ref is not None:
+                        hr, Er, vr = ref.trunk(ot)
+                        store["ref_lp"].append(ref.policy(hr, Er, vr, rows=rows, given=out)[2].cpu().numpy())
                 acts = [None] * B if a.imitate else wire_actions(out)
                 store["obs"].append({k: (x.astype(np.float16) if k in ("grid", "ent") else x) for k, x in obs.items()})
                 store["rows"].append({k: r.cpu().numpy() for k, r in rows.items()})
@@ -257,6 +273,7 @@ def main() -> None:
             f_rows = {k: np.concatenate([r[k] for r in store["rows"]]) for k in store["rows"][0]}
             f_act = {k: np.concatenate([x[k] for x in store["act"]]) for k in HEADS}
             f_lp = np.concatenate(store["lp"])
+            f_ref = np.concatenate(store["ref_lp"]) if ref is not None else None
             f_adv = adv.reshape(N, 3)
             f_ret = ret.reshape(N, 3)
             f_v = vals.reshape(N, 3)
@@ -295,6 +312,11 @@ def main() -> None:
                 vl = torch.max((v - R) ** 2, (vc - R) ** 2).mean(0)  # per head
                 ent_total = sum(e.mean() for e in ent.values())
                 loss = pg + a.vf * vl.sum() - (0.0 if a.imitate else ent_coef) * ent_total
+                if ref is not None:  # k3 estimator of KL(policy || reference) on the taken actions
+                    logr = (torch.as_tensor(f_ref[idx], device=dev) - lp).clamp(max=20.0)
+                    kl_ref = (logr.exp() - 1 - logr).mean()
+                    loss = loss + kl_coef * kl_ref
+                    logs["kl/ref"].append(kl_ref.item())
                 opt.zero_grad()
                 loss.backward()
                 gn = torch.nn.utils.clip_grad_norm_(agent.parameters(), a.max_grad)
@@ -333,6 +355,7 @@ def main() -> None:
         writer.add_scalar("sched/lr", lr, step)
         writer.add_scalar("sched/ent_coef", ent_coef, step)
         writer.add_scalar("sched/mix_win", float(mix[0]), step)
+        writer.add_scalar("sched/kl_coef", kl_coef, step)
         if recent:
             rc = list(recent)
             writer.add_scalar("episode/win_rate", np.mean([e["win"] for e in rc]), step)

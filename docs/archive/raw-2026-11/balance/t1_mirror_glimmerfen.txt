@@ -1,0 +1,23 @@
+100/168
+168 matches, 1 maps, 24 seeds per side, 47s
+
+Strategy matrix (row's score vs column, both sides, all maps):
+          rush1  rush2   rush  rush4 turtle  macro  heavy
+rush1       -   NaN%   NaN%   NaN%   NaN%   NaN%   NaN%  
+rush2    NaN%      -   NaN%   NaN%   NaN%   NaN%   NaN%  
+rush     NaN%   NaN%      -   NaN%   NaN%   NaN%   NaN%  
+rush4    NaN%   NaN%   NaN%      -   NaN%   NaN%   NaN%  
+turtle   NaN%   NaN%   NaN%   NaN%      -   NaN%   NaN%  
+macro    NaN%   NaN%   NaN%   NaN%   NaN%      -   NaN%  
+heavy    NaN%   NaN%   NaN%   NaN%   NaN%   NaN%      -  
+
+Mirror matches, blue score per map (all bots):
+  glimmerfen     0.48   (rush1 0.50  rush2 0.33  rush 0.50  rush4 0.50  turtle 0.50  macro 0.54  heavy 0.50)
+
+Win types: combat 114 (68%), timeout 41 (24%), control 13 (8%)
+Average length of decided games: 4183 ticks
+Timeouts per pairing: rush1-rush1 4/24, rush1-rush2 0/0, rush1-rush 0/0, rush1-rush4 0/0, rush1-turtle 0/0, rush1-macro 0/0, rush1-heavy 0/0, rush2-rush1 0/0, rush2-rush2 0/24, rush2-rush 0/0, rush2-rush4 0/0, rush2-turtle 0/0, rush2-macro 0/0, rush2-heavy 0/0, rush-rush1 0/0, rush-rush2 0/0, rush-rush 2/24, rush-rush4 0/0, rush-turtle 0/0, rush-macro 0/0, rush-heavy 0/0, rush4-rush1 0/0, rush4-rush2 0/0, rush4-rush 0/0, rush4-rush4 0/24, rush4-turtle 0/0, rush4-macro 0/0, rush4-heavy 0/0, turtle-rush1 0/0, turtle-rush2 0/0, turtle-rush 0/0, turtle-rush4 0/0, turtle-turtle 23/24, turtle-macro 0/0, turtle-heavy 0/0, macro-rush1 0/0, macro-rush2 0/0, macro-rush 0/0, macro-rush4 0/0, macro-turtle 0/0, macro-macro 12/24, macro-heavy 0/0, heavy-rush1 0/0, heavy-rush2 0/0, heavy-rush 0/0, heavy-rush4 0/0, heavy-turtle 0/0, heavy-macro 0/0, heavy-heavy 0/24
+
+G-8 acceptance:
+  [PASS] mirror 50% ± 10% on every map
+  [FAIL] timeouts < 15% (24%)

@@ -1,0 +1,10 @@
+shardfall rush vs rush_medium: A:combat@4694 A:combat@3858 A:combat@3223 A:combat@4094
+shardfall rush vs turtle: B:control@3533 B:control@3529 B:control@3740 B:control@3649
+shardfall rush_medium vs turtle: B:control@3323 B:control@3682 B:control@3479 B:control@3366
+shardfall macro vs rush: B:combat@3386 B:combat@3262 A:control@3038 B:combat@2658
+shardfall macro vs rush_medium: B:combat@3034 A:control@3117 B:combat@2819 B:combat@2591
+shardfall macro vs turtle: B:control@3684 B:control@3710 A:control@3165 B:control@3526
+shardfall heavy vs rush: B:combat@3742 B:combat@3490 B:combat@4155 A:combat@4623
+shardfall heavy vs rush_medium: B:combat@3960 B:combat@3710 B:combat@3909 A:combat@3997
+shardfall heavy vs turtle: B:control@3261 B:control@3245 B:control@3190 B:control@3300
+shardfall heavy vs macro: B:control@2739 B:control@3036 B:control@3187 B:control@3008

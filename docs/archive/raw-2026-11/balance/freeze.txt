@@ -1,0 +1,10 @@
+froze shardfall v1 (seed 1) blue 0.583 timeouts 12/24
+froze basalt-run v1 (seed 3) blue 0.417 timeouts 14/24
+froze twin-spires v1 (seed 9) blue 0.542 timeouts 15/24
+froze hollow-crown v1 (seed 11) blue 0.542 timeouts 12/24
+froze prism-ridge v1 (seed 19) blue 0.5 timeouts 20/24
+froze glimmerfen v1 (seed 0) blue 0.542 timeouts 19/24
+froze saltmarsh v1 (seed 2) blue 0.583 timeouts 17/24
+froze ironreed v1 (seed 4) blue 0.458 timeouts 14/24
+froze duskvale v1 (seed 10) blue 0.458 timeouts 21/24
+froze cinder-flats v1 (seed 14) blue 0.542 timeouts 18/24

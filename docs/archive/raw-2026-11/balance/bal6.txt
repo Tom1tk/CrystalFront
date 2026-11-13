@@ -1,0 +1,39 @@
+100/960
+200/960
+300/960
+400/960
+500/960
+600/960
+700/960
+800/960
+900/960
+960 matches, 10 maps, 6 seeds per side, 292s
+
+Strategy matrix (row's score vs column, both sides, all maps):
+           rush  macro turtle  heavy
+rush        -    52%     2%    25%  
+macro     48%      -    26%    73%  
+turtle    98%    74%      -   100%  
+heavy     75%    28%     0%      -  
+
+Mirror matches, blue score per map (all bots):
+  shardfall      0.54   (rush 0.50  macro 0.17  turtle 1.00  heavy 0.50)
+  basalt-run     0.46   (rush 0.50  macro 0.50  turtle 0.50  heavy 0.33)
+  twin-spires    0.58   (rush 0.50  macro 0.83  turtle 0.50  heavy 0.50)
+  hollow-crown   0.63   (rush 0.83  macro 0.50  turtle 0.83  heavy 0.33)
+  prism-ridge    0.50   (rush 0.50  macro 0.33  turtle 0.50  heavy 0.67)
+  glimmerfen     0.42   (rush 0.67  macro 0.33  turtle 0.33  heavy 0.33)
+  saltmarsh      0.29   (rush 0.50  macro 0.00  turtle 0.17  heavy 0.50)
+  ironreed       0.46   (rush 0.50  macro 0.33  turtle 0.33  heavy 0.67)
+  duskvale       0.42   (rush 0.50  macro 0.33  turtle 0.33  heavy 0.50)
+  cinder-flats   0.54   (rush 0.83  macro 0.17  turtle 0.50  heavy 0.67)
+
+Win types: combat 288 (30%), timeout 448 (47%), control 224 (23%)
+Average length of decided games: 3941 ticks
+Timeouts per pairing: rush-rush 26/60, rush-macro 24/60, rush-turtle 48/60, rush-heavy 1/60, macro-rush 23/60, macro-macro 53/60, macro-turtle 36/60, macro-heavy 12/60, turtle-rush 46/60, turtle-macro 42/60, turtle-turtle 52/60, turtle-heavy 29/60, heavy-rush 1/60, heavy-macro 6/60, heavy-turtle 31/60, heavy-heavy 18/60
+
+G-8 acceptance:
+  [FAIL] no strategy wins >70% vs every other (turtle)
+  [PASS] rush beatable at >=40% (best counter 98%)
+  [FAIL] mirror 50% ± 10% on every map (hollow-crown, saltmarsh)
+  [FAIL] timeouts < 15% (47%)
