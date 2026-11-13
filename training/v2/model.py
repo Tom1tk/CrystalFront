@@ -129,11 +129,12 @@ class Agent(nn.Module):
 
     # ── policy ───────────────────────────────────────────────────────────────
 
-    def policy(self, h, E, valid, masks=None, rows=None, given=None, greedy=False):
+    def policy(self, h, E, valid, masks=None, rows=None, given=None, greedy=False, head_lp=None):
         """
         Sampling: pass full `masks` (stack_masks layout); the mask rows used are returned for storage.
         Scoring: pass stored `rows` and `given` actions.
         Returns (actions dict of (B,) long, rows dict, log-prob (B,), entropy dict of (B,)).
+        `head_lp`, if a dict, receives each head's log-prob (B,) (0 where the head is inactive).
         """
         b = h.shape[0]
         ar = torch.arange(b, device=h.device)
@@ -153,6 +154,8 @@ class Agent(nn.Module):
             out[key], R[key], ent[key] = a, mask, e
             out[key + "_on"] = act
             lp = lp + l
+            if head_lp is not None:
+                head_lp[key] = l
 
         def pad_valid(m):  # pointer masks: only real entity rows
             return m & F.pad(valid, (0, S.PTR - valid.shape[1]), value=False)
@@ -189,6 +192,15 @@ class Agent(nn.Module):
 
 
 HEADS = ("econ", "site", "econPtr", "econTarget", "group", "order", "unit", "target", "ptr")
+
+
+WIRE = {"econ": ("econ", 0), "site": ("econ", 1), "econPtr": ("econ", 2), "econTarget": ("econ", 3),
+        "group": ("army", 0), "order": ("army", 1), "unit": ("army", 2), "target": ("army", 3), "ptr": ("army", 4)}
+
+
+def teacher_actions(teachers: list[dict], dev) -> dict[str, torch.Tensor]:
+    """Teach-seat wire actions → per-head action tensors (the `given` argument of `policy`)."""
+    return {k: torch.tensor([t[w][i] for t in teachers], dtype=torch.long, device=dev) for k, (w, i) in WIRE.items()}
 
 
 def wire_actions(out: dict[str, torch.Tensor]) -> list[dict]:

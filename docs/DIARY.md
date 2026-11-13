@@ -444,3 +444,12 @@ Built per `docs/BOT_CONTROL_PLAN.md` §2 (R-2 deviation signed off by the user).
 - Not chosen: a shorter tick cap, which changes the task the probe tests. Imitation first is the fallback if run 3 misses, because an imitation start would beat idle without showing that PPO learns.
 - Trainer: `--decisions` (schedules run on decisions; resume continues the count) and `--stop-win-rate` (the last 200 training episodes trigger a stop; the fixed-seed evaluation decides).
 - Run `m1-idle-probe-r3` started.
+
+### 2026-11-13 — Idle probe run 3 fails; imitation first (v0.8.14-ML)
+- **Run 3** (`m1-idle-probe-r3`, 5 M decisions, 272 updates, 8.9 h): training-window win rate flat at 1–6%. It learned an economy and masses gunners (65–100 per episode), and the win value head is accurate (explained variance 0.99), but army control never became coherent. In a final.pt rollout most orders went to the scout or single units with mixed retreat, stop, guard and move, mostly to grid cells, and the whole army almost never attack-moved on the enemy base. Fixed-seed eval: 3 wins, 205 draws of 208 [0.00, 0.04]. **FAIL** against the amended criterion.
+- Fallback, as announced: **imitation first** (plan §7.3 step 3 moved ahead; plan amended).
+- Trainer `--imitate`: both seats of every slot are `teach:<bot>` (the 11 scripted bots, training maps only). The policy scores the teacher's actions (`teacher_actions` maps the wire actions to heads) and the loss is cross-entropy plus the value losses; no PPO ratio, no entropy bonus. Per-head cross-entropy is logged as `ce/<head>` (over decisions where the head applies). Teachers carry their template's z, but evaluation plays z = 0, so z is zeroed on half of the samples. `--overfit` trains on the first rollout only.
+- Overfit probe: PASS, cross-entropy 2.07 → 0.0034 on one 512-decision batch.
+- Teachers act (not no-op) on 16% of econ decisions and 30% of army decisions, so plain cross-entropy is fine.
+- Run `m1-imitate` started (10 M decisions). Gate: the imitation policy alone wins ≥40% (lower bound) against the scripted pool. Then PPO from it with a KL penalty toward it (annealed to 0), and the idle probe re-checked.
+

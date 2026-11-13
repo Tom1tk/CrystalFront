@@ -395,6 +395,8 @@ Taken from RAISocketAI's published table (checked against the paper text) and Op
 
 ### 7.3 M1: first learner (no self-play)
 Add components in this order. Each step is compared with the previous one over 3 seeds at a short fixed budget, on training maps, and stays only if it is not worse.
+
+*Amended 2026-11-13:* the idle probe failed with from-scratch PPO (run 3: 3/208 within 5 M decisions, `docs/experiments.md`), so step 3 (imitation) runs before steps 1–2 are closed, as announced when the criterion was amended. PPO then starts from the imitation policy and the idle probe is re-checked from there.
 1. **Feed-forward PPO** on the v2 observation and actions against the idle bot, then the weakest rush. Overfit and idle probes pass.
 2. **LSTM.** Memory, seat and truncation probes pass.
 3. **Imitation + KL** (R-4):

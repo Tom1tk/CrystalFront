@@ -1,0 +1,3990 @@
+{
+ "checkpoint": "checkpoints/v2/m1-idle-probe-r3/final.pt",
+ "greedy": false,
+ "seeds": 13,
+ "seconds": 2785,
+ "opponents": {
+  "idle": {
+   "n": 208,
+   "win": 3,
+   "loss": 0,
+   "draw": 205,
+   "win_ci": [
+    0.004916968346132377,
+    0.0415403846950078
+   ],
+   "loss_ci": [
+    0.0,
+    0.01813430412157008
+   ],
+   "draw_ci": [
+    0.9584596153049922,
+    0.9950830316538677
+   ],
+   "ticks": 11948.014423076924,
+   "winTypes": {
+    "control": 2,
+    "combat": 1
+   },
+   "maps": {
+    "basalt-run": {
+     "n": 26,
+     "win": 2,
+     "loss": 0,
+     "draw": 24,
+     "win_ci": [
+      0.02135463918337556,
+      0.24141947480515052
+     ],
+     "loss_ci": [
+      0.0,
+      0.12873304380462175
+     ],
+     "draw_ci": [
+      0.7585805251948495,
+      0.9786453608166245
+     ],
+     "ticks": 11683.692307692309,
+     "winTypes": {
+      "control": 2
+     }
+    },
+    "cinder-flats": {
+     "n": 26,
+     "win": 0,
+     "loss": 0,
+     "draw": 26,
+     "win_ci": [
+      0.0,
+      0.12873304380462175
+     ],
+     "loss_ci": [
+      0.0,
+      0.12873304380462175
+     ],
+     "draw_ci": [
+      0.8712669561953784,
+      1.0
+     ],
+     "ticks": 12000.0,
+     "winTypes": {}
+    },
+    "glimmerfen": {
+     "n": 26,
+     "win": 0,
+     "loss": 0,
+     "draw": 26,
+     "win_ci": [
+      0.0,
+      0.12873304380462175
+     ],
+     "loss_ci": [
+      0.0,
+      0.12873304380462175
+     ],
+     "draw_ci": [
+      0.8712669561953784,
+      1.0
+     ],
+     "ticks": 12000.0,
+     "winTypes": {}
+    },
+    "hollow-crown": {
+     "n": 26,
+     "win": 0,
+     "loss": 0,
+     "draw": 26,
+     "win_ci": [
+      0.0,
+      0.12873304380462175
+     ],
+     "loss_ci": [
+      0.0,
+      0.12873304380462175
+     ],
+     "draw_ci": [
+      0.8712669561953784,
+      1.0
+     ],
+     "ticks": 12000.0,
+     "winTypes": {}
+    },
+    "ironreed": {
+     "n": 26,
+     "win": 0,
+     "loss": 0,
+     "draw": 26,
+     "win_ci": [
+      0.0,
+      0.12873304380462175
+     ],
+     "loss_ci": [
+      0.0,
+      0.12873304380462175
+     ],
+     "draw_ci": [
+      0.8712669561953784,
+      1.0
+     ],
+     "ticks": 12000.0,
+     "winTypes": {}
+    },
+    "saltmarsh": {
+     "n": 26,
+     "win": 1,
+     "loss": 0,
+     "draw": 25,
+     "win_ci": [
+      0.0068218089769898765,
+      0.18893176991958405
+     ],
+     "loss_ci": [
+      0.0,
+      0.12873304380462175
+     ],
+     "draw_ci": [
+      0.811068230080416,
+      0.9931781910230102
+     ],
+     "ticks": 11900.423076923076,
+     "winTypes": {
+      "combat": 1
+     }
+    },
+    "shardfall": {
+     "n": 26,
+     "win": 0,
+     "loss": 0,
+     "draw": 26,
+     "win_ci": [
+      0.0,
+      0.12873304380462175
+     ],
+     "loss_ci": [
+      0.0,
+      0.12873304380462175
+     ],
+     "draw_ci": [
+      0.8712669561953784,
+      1.0
+     ],
+     "ticks": 12000.0,
+     "winTypes": {}
+    },
+    "twin-spires": {
+     "n": 26,
+     "win": 0,
+     "loss": 0,
+     "draw": 26,
+     "win_ci": [
+      0.0,
+      0.12873304380462175
+     ],
+     "loss_ci": [
+      0.0,
+      0.12873304380462175
+     ],
+     "draw_ci": [
+      0.8712669561953784,
+      1.0
+     ],
+     "ticks": 12000.0,
+     "winTypes": {}
+    }
+   },
+   "sides": {
+    "blue": {
+     "n": 104,
+     "win": 2,
+     "loss": 0,
+     "draw": 102,
+     "win_ci": [
+      0.0052896007240565805,
+      0.06742445396355932
+     ],
+     "loss_ci": [
+      0.0,
+      0.03562261687512055
+     ],
+     "draw_ci": [
+      0.9325755460364407,
+      0.9947103992759434
+     ],
+     "ticks": 11920.057692307691,
+     "winTypes": {
+      "control": 1,
+      "combat": 1
+     }
+    },
+    "red": {
+     "n": 104,
+     "win": 1,
+     "loss": 0,
+     "draw": 103,
+     "win_ci": [
+      0.0016993291044208915,
+      0.05246900667694733
+     ],
+     "loss_ci": [
+      0.0,
+      0.03562261687512055
+     ],
+     "draw_ci": [
+      0.9475309933230526,
+      0.998300670895579
+     ],
+     "ticks": 11975.971153846154,
+     "winTypes": {
+      "control": 1
+     }
+    }
+   }
+  }
+ },
+ "games": [
+  {
+   "seed": 268237859,
+   "map": "basalt-run",
+   "opp": "idle",
+   "side": "blue",
+   "result": "win",
+   "winType": "control",
+   "ticks": 6275,
+   "stats": {
+    "decisions": 785,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 118,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "basalt-run",
+   "opp": "idle",
+   "side": "red",
+   "result": "win",
+   "winType": "control",
+   "ticks": 9501,
+   "stats": {
+    "decisions": 1188,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 143,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "shardfall",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 279,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "shardfall",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 110,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "shardfall",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 132,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "shardfall",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 386,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "shardfall",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 150,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "shardfall",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 194,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "shardfall",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 72,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "shardfall",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 151,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "shardfall",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 172,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "shardfall",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 447,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "shardfall",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 246,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "shardfall",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 377,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 788446839,
+   "map": "shardfall",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 200,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 788446839,
+   "map": "shardfall",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 163,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 951329861,
+   "map": "shardfall",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 184,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 951329861,
+   "map": "shardfall",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 147,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 268237859,
+   "map": "shardfall",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 389,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 268237859,
+   "map": "shardfall",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 317,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 1027804647,
+   "map": "shardfall",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 224,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 1027804647,
+   "map": "shardfall",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 280,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 648600218,
+   "map": "shardfall",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 262,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 648600218,
+   "map": "shardfall",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 209,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 1049870537,
+   "map": "shardfall",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 119,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 1049870537,
+   "map": "shardfall",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 225,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 124375345,
+   "map": "shardfall",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 244,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 124375345,
+   "map": "shardfall",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 167,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "basalt-run",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 522,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "basalt-run",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 144,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "basalt-run",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 166,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "basalt-run",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 176,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "basalt-run",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 328,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "basalt-run",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 243,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "basalt-run",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 121,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "basalt-run",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 213,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "basalt-run",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 165,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "basalt-run",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 174,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "basalt-run",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 202,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 788446839,
+   "map": "basalt-run",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 191,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 788446839,
+   "map": "basalt-run",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 233,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 951329861,
+   "map": "basalt-run",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 128,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 951329861,
+   "map": "basalt-run",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 122,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 268237859,
+   "map": "basalt-run",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 113,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 1027804647,
+   "map": "basalt-run",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 359,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 1027804647,
+   "map": "basalt-run",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 435,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 648600218,
+   "map": "basalt-run",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 136,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 648600218,
+   "map": "basalt-run",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 266,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 1049870537,
+   "map": "basalt-run",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 208,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 1049870537,
+   "map": "basalt-run",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 262,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 124375345,
+   "map": "basalt-run",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 122,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 124375345,
+   "map": "basalt-run",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 513,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "twin-spires",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 112,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "twin-spires",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 190,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "twin-spires",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 1,
+    "autopilot": 303,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "twin-spires",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 395,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "twin-spires",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 417,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "twin-spires",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 137,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "twin-spires",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 146,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "twin-spires",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 252,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "twin-spires",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 242,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "twin-spires",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 200,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "twin-spires",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 278,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "twin-spires",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 202,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 788446839,
+   "map": "twin-spires",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 294,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 788446839,
+   "map": "twin-spires",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 707,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 951329861,
+   "map": "twin-spires",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 226,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 951329861,
+   "map": "twin-spires",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 283,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 268237859,
+   "map": "twin-spires",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 161,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 268237859,
+   "map": "twin-spires",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 209,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 1027804647,
+   "map": "twin-spires",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 222,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 1027804647,
+   "map": "twin-spires",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 186,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 648600218,
+   "map": "twin-spires",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 452,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 648600218,
+   "map": "twin-spires",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 205,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 1049870537,
+   "map": "twin-spires",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 91,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 1049870537,
+   "map": "twin-spires",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 163,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 124375345,
+   "map": "twin-spires",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 188,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 124375345,
+   "map": "twin-spires",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 143,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "hollow-crown",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 389,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "hollow-crown",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 150,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "hollow-crown",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 360,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "hollow-crown",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 292,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "hollow-crown",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 212,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "hollow-crown",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 264,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "hollow-crown",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 309,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "hollow-crown",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 179,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "hollow-crown",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 250,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "hollow-crown",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 245,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "hollow-crown",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 268,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "hollow-crown",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 186,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 788446839,
+   "map": "hollow-crown",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 272,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 788446839,
+   "map": "hollow-crown",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 530,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 951329861,
+   "map": "hollow-crown",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 103,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 951329861,
+   "map": "hollow-crown",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 343,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 268237859,
+   "map": "hollow-crown",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 249,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 268237859,
+   "map": "hollow-crown",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 207,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 1027804647,
+   "map": "hollow-crown",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 482,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 1027804647,
+   "map": "hollow-crown",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 304,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 648600218,
+   "map": "hollow-crown",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 191,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 648600218,
+   "map": "hollow-crown",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 208,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 1049870537,
+   "map": "hollow-crown",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 108,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 1049870537,
+   "map": "hollow-crown",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 207,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 124375345,
+   "map": "hollow-crown",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 404,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 124375345,
+   "map": "hollow-crown",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 265,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "glimmerfen",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 293,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "glimmerfen",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 209,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "glimmerfen",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 336,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "glimmerfen",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 225,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "glimmerfen",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 308,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "glimmerfen",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 342,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "glimmerfen",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 197,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "glimmerfen",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 381,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "glimmerfen",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 158,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "glimmerfen",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 218,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "glimmerfen",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 248,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "glimmerfen",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 559,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 788446839,
+   "map": "glimmerfen",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 1,
+    "autopilot": 134,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 788446839,
+   "map": "glimmerfen",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 431,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 951329861,
+   "map": "glimmerfen",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 185,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 951329861,
+   "map": "glimmerfen",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 135,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 268237859,
+   "map": "glimmerfen",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 185,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 268237859,
+   "map": "glimmerfen",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 364,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 1027804647,
+   "map": "glimmerfen",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 253,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 1027804647,
+   "map": "glimmerfen",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 249,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 648600218,
+   "map": "glimmerfen",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 311,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 648600218,
+   "map": "glimmerfen",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 133,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 1049870537,
+   "map": "glimmerfen",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 272,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 1049870537,
+   "map": "glimmerfen",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 139,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 124375345,
+   "map": "glimmerfen",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 249,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 124375345,
+   "map": "glimmerfen",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 208,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "saltmarsh",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 126,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "saltmarsh",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 168,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "saltmarsh",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 172,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "saltmarsh",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 497,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "saltmarsh",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 420,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "saltmarsh",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 282,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "saltmarsh",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 130,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "saltmarsh",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 392,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "saltmarsh",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 503,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "saltmarsh",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 198,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "saltmarsh",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 131,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "saltmarsh",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 174,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 788446839,
+   "map": "saltmarsh",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 170,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 788446839,
+   "map": "saltmarsh",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 197,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "cinder-flats",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 166,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 268237859,
+   "map": "saltmarsh",
+   "opp": "idle",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 9411,
+   "stats": {
+    "decisions": 1177,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 190,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 648600218,
+   "map": "ironreed",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 290,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 951329861,
+   "map": "saltmarsh",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 214,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 951329861,
+   "map": "saltmarsh",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 255,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 268237859,
+   "map": "saltmarsh",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 229,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 1027804647,
+   "map": "saltmarsh",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 161,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 1027804647,
+   "map": "saltmarsh",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 264,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 648600218,
+   "map": "saltmarsh",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 141,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 648600218,
+   "map": "saltmarsh",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 156,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 1049870537,
+   "map": "saltmarsh",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 109,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 1049870537,
+   "map": "saltmarsh",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 420,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 124375345,
+   "map": "saltmarsh",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 258,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 124375345,
+   "map": "saltmarsh",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 420,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "ironreed",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 124,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "ironreed",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 157,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "ironreed",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 170,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "ironreed",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 140,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "ironreed",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 142,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "ironreed",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 249,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "ironreed",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 268,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "ironreed",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 152,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "ironreed",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 565,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "ironreed",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 112,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "ironreed",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 190,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "ironreed",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 344,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 788446839,
+   "map": "ironreed",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 388,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 788446839,
+   "map": "ironreed",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 148,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 951329861,
+   "map": "ironreed",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 149,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 951329861,
+   "map": "ironreed",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 330,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 268237859,
+   "map": "ironreed",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 142,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 268237859,
+   "map": "ironreed",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 96,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 1027804647,
+   "map": "ironreed",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 504,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 1027804647,
+   "map": "ironreed",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 382,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 648600218,
+   "map": "ironreed",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 271,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 1049870537,
+   "map": "ironreed",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 164,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 1049870537,
+   "map": "ironreed",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 200,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 124375345,
+   "map": "ironreed",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 109,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 124375345,
+   "map": "ironreed",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 307,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "cinder-flats",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 145,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "cinder-flats",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 346,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "cinder-flats",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 234,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "cinder-flats",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 312,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "cinder-flats",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 242,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "cinder-flats",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 131,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "cinder-flats",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 252,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "cinder-flats",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 172,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "cinder-flats",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 275,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "cinder-flats",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 176,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "cinder-flats",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 672,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 788446839,
+   "map": "cinder-flats",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 86,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 788446839,
+   "map": "cinder-flats",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 194,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 951329861,
+   "map": "cinder-flats",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 101,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 951329861,
+   "map": "cinder-flats",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 277,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 268237859,
+   "map": "cinder-flats",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 349,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 268237859,
+   "map": "cinder-flats",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 248,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 1027804647,
+   "map": "cinder-flats",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 175,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 1027804647,
+   "map": "cinder-flats",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 192,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 648600218,
+   "map": "cinder-flats",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 199,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 648600218,
+   "map": "cinder-flats",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 632,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 1049870537,
+   "map": "cinder-flats",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 520,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 1049870537,
+   "map": "cinder-flats",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 169,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 124375345,
+   "map": "cinder-flats",
+   "opp": "idle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 402,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 124375345,
+   "map": "cinder-flats",
+   "opp": "idle",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 169,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  }
+ ]
+}
