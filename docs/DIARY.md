@@ -461,3 +461,8 @@ Built per `docs/BOT_CONTROL_PLAN.md` §2 (R-2 deviation signed off by the user).
 - Raw results from the session scratchpad (training logs, eval JSONs, balance/matrix/sweep outputs and their analysis scripts) archived in `docs/archive/raw-2026-11/`.
 - **Paused at the user's request** after this run. Next when resumed: PPO from `checkpoints/v2/m1-imitate/final.pt` with the KL penalty, against the scripted pool; then the idle probe re-check, LSTM, opponent-model head, and the M1 gate (E-1 ≥70% vs each scripted bot).
 
+### 2026-11-14 — PPO from the imitation policy started (v0.8.16-ML)
+- User: "start now!"
+- Run `m1-ppo-kl`: PPO against the 11 scripted bots (uniform), training maps, starting from `checkpoints/v2/m1-imitate/final.pt`. KL penalty toward the frozen imitation policy, coefficient 1.0 annealed linearly to 0 over the first half of the 10 M decisions. Entropy bonus lowered to 0.003 → 0.001 (the imitation policy already has sensible entropy; 0.01 summed over 9 heads would push it away). Opponent weighting toward the bots it loses to comes later.
+- Watch: `kl/ref` (should stay small while the coefficient is high), `episode/win_rate` and `win_rate/bot_<name>` (start near 0.5), `sched/kl_coef`.
+
