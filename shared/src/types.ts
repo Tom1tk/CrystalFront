@@ -41,7 +41,8 @@ export type EntityType =
   | "skirmisher"
   | "gunner"
   | "bruiser"
-  | "medic";
+  | "medic"
+  | "bulwark";
 
 export type BuildingType = "barracks" | "foundry" | "supply_depot" | "turret";
 
@@ -141,6 +142,8 @@ export interface AttackEvent {
   damage: number;
   tick: number;
   isHeal: boolean;
+  /** Bulwark (prototype): the shot was aimed at this entity and blocked by `targetId`. */
+  blockedFor?: EntityId;
 }
 
 export interface MatchConfig {

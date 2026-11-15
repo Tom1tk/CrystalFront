@@ -324,7 +324,7 @@ export class MatchEngine {
   debugSpawn(
     matchId: string,
     playerId: PlayerId,
-    entityType: "worker" | "skirmisher" | "gunner" | "bruiser" | "medic" | "building",
+    entityType: "worker" | "skirmisher" | "gunner" | "bruiser" | "medic" | "bulwark" | "building",
     x: number,
     y: number,
     buildingType?: BuildingType
@@ -1584,7 +1584,7 @@ if (command.type === "gather") {
 
   private createEntity(
     idGen: IdGen,
-    type: "crystal" | "worker" | "placeholder" | "resource_node" | "building" | "skirmisher" | "gunner" | "bruiser" | "medic",
+    type: "crystal" | "worker" | "placeholder" | "resource_node" | "building" | "skirmisher" | "gunner" | "bruiser" | "medic" | "bulwark",
     ownerId: PlayerId,
     x: number,
     y: number,

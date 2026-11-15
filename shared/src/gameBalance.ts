@@ -89,6 +89,21 @@ export const UNIT_DEFS: Record<string, UnitDef> = {
     attackCooldown: 8,
     visionRange: 195,
   },
+  // Prototype (2026-11-15): a moving shield. Cannot attack. Enemy ranged shots whose line
+  // crosses its front hit it instead of their target. Not trainable yet (no building produces it).
+  bulwark: {
+    cost: 125,
+    supplyCost: 2,
+    buildTime: 180,
+    health: 400,
+    radius: 14,
+    damage: 0,
+    range: 0,
+    speed: 3.0,
+    color: "#c0c8d8",
+    attackCooldown: 0,
+    visionRange: 195,
+  },
   medic: {
     cost: 60,
     supplyCost: 1,
@@ -305,6 +320,12 @@ export const RETALIATE = {
   assist: 200,              // allies this close to the victim join in
 } as const;
 
+/** Bulwark (prototype): the shield faces the enemy crystal. */
+export const BULWARK = {
+  halfWidth: 20,            // a shot passing this close to the bulwark's centre, from its front, is blocked
+  standoff: 100,            // on attack-move it stops this far from the nearest enemy combat unit or turret
+} as const;
+
 /** Guard order (G-13 E4). Radii are fractions of the unit type's base vision range. */
 export const GUARD = {
   acquireFrac: 0.8,         // melee units react to enemies this close (ranged: attack range)
@@ -370,9 +391,9 @@ export const HEALING = {
 
 // was 2.0/0.5 — 4× swing made fights binary and rush dominant; 1.5/0.75 keeps RPS without instawin
 export const COUNTER_MODIFIER: Record<string, Record<string, number>> = {
-  skirmisher: { gunner: 1.5, bruiser: 0.75, worker: 1.0, medic: 1.0 },
+  skirmisher: { gunner: 1.5, bruiser: 0.75, worker: 1.0, medic: 1.0, bulwark: 1.5 },
   gunner:     { bruiser: 1.5, skirmisher: 0.75, worker: 1.0, medic: 1.0 },
-  bruiser:    { skirmisher: 1.5, gunner: 0.75, worker: 1.0, medic: 1.0 },
+  bruiser:    { skirmisher: 1.5, gunner: 0.75, worker: 1.0, medic: 1.0, bulwark: 1.5 },
   medic:      { worker: 1.0, skirmisher: 1.0, gunner: 1.0, bruiser: 1.0 },
   worker:     { worker: 1.0, skirmisher: 1.0, gunner: 1.0, bruiser: 1.0, medic: 1.0 },
 };

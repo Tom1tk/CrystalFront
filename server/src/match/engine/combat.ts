@@ -1,11 +1,11 @@
-import { UNIT_DEFS, GUARD, LEASH, RETALIATE } from "@crystalfront/shared";
+import { UNIT_DEFS, GUARD, LEASH, RETALIATE, BULWARK } from "@crystalfront/shared";
 import type { MatchEntity, MatchState } from "../types.js";
 import { dist, getRange, getDamage, getAttackCooldown, getCounterMultiplier } from "./utils.js";
 import { isVisibleTo } from "./visibility.js";
 
 /** G-13 E2 threat order for auto-targeting: 0 combat units and finished turrets, 1 workers, 2 everything else. Lower wins. */
 export function targetClass(o: Pick<MatchEntity, "type" | "buildingType" | "constructionProgress">): number {
-  if (o.type === "worker") return 1;
+  if (o.type === "worker" || o.type === "bulwark") return 1; // unarmed: shoot what shoots back first
   if (o.type === "building") return o.buildingType === "turret" && o.constructionProgress >= 100 ? 0 : 2;
   if (o.type === "crystal" || o.type === "resource_node" || o.type === "placeholder") return 2;
   return 0;
@@ -48,7 +48,25 @@ export function processCombat(match: MatchState): Map<string, number> {
   // entities it could see at the end of last tick (G-6b), in entity order, built
   // once per owner per tick.
   const candidatesOf = new Map<string, typeof entities>();
+  const candidatesFor = (ownerId: string) => {
+    let c = candidatesOf.get(ownerId);
+    if (!c) {
+      c = entities.filter((o) => o.ownerId !== ownerId && isVisibleTo(match, ownerId, o));
+      candidatesOf.set(ownerId, c);
+    }
+    return c;
+  };
   for (const entity of entities) {
+    if (entity.type === "bulwark") {
+      // No weapon. On attack-move it stops short of the enemy line and holds there.
+      entity.attackTargetId = undefined;
+      if (entity.moveOrder?.attack) {
+        const held = candidatesFor(entity.ownerId).some((o) => targetClass(o) === 0 && dist(entity.x, entity.y, o.x, o.y) <= BULWARK.standoff + o.radius);
+        if (held) entity.moveTarget = undefined;
+        else if (!entity.moveTarget) entity.moveTarget = { x: entity.moveOrder.x, y: entity.moveOrder.y };
+      }
+      continue;
+    }
     if (!entity.attackTargetId) {
       if (entity.attackOrdered) entity.attackOrdered = undefined;
       if (entity.leash) entity.leash = undefined;
@@ -79,12 +97,7 @@ export function processCombat(match: MatchState): Map<string, number> {
     const guardReach = guard ? guardRadius(entity) + range : 0;
     let nearestDist = Infinity, nearestClass = Infinity;
     let nearestId: string | undefined;
-    let candidates = candidatesOf.get(entity.ownerId);
-    if (!candidates) {
-      candidates = entities.filter((o) => o.ownerId !== entity.ownerId && isVisibleTo(match, entity.ownerId, o));
-      candidatesOf.set(entity.ownerId, candidates);
-    }
-    for (const other of candidates) {
+    for (const other of candidatesFor(entity.ownerId)) {
       // Workers cannot initiate combat on crystals or buildings — only workers and combat units
       if (entity.type === "worker" && (other.type === "crystal" || other.type === "building")) continue;
       const d = dist(entity.x, entity.y, other.x, other.y);
@@ -159,9 +172,18 @@ export function processCombat(match: MatchState): Map<string, number> {
 
   // Resolve attacks
   const shotBy = new Map<MatchEntity, MatchEntity>(); // victim → first attacker this tick
+  // Bulwarks (prototype) with the direction each faces: toward the enemy crystal.
+  const bulwarks: { e: MatchEntity; fx: number; fy: number }[] = [];
+  for (const e of entities) {
+    if (e.type !== "bulwark") continue;
+    const crystal = entities.find((c) => c.type === "crystal" && c.ownerId !== e.ownerId);
+    if (!crystal) continue;
+    const d = dist(e.x, e.y, crystal.x, crystal.y) || 1;
+    bulwarks.push({ e, fx: (crystal.x - e.x) / d, fy: (crystal.y - e.y) / d });
+  }
   for (const entity of entities) {
     if (!entity.attackTargetId) continue;
-    const target = match.entities.get(entity.attackTargetId!);
+    let target = match.entities.get(entity.attackTargetId!);
     if (!target) { entity.attackTargetId = undefined; continue; }
 
     const range = getRange(entity, match.terrain);
@@ -181,12 +203,31 @@ export function processCombat(match: MatchState): Map<string, number> {
 
     if (entity.attackCooldown > 0) { entity.attackCooldown--; continue; }
 
+    // A ranged shot whose line crosses the front of an enemy bulwark hits the bulwark instead
+    // (the first one along the shot). Melee is never blocked.
+    let blockedFor: string | undefined;
+    if (bulwarks.length && (entity.type === "building" || (UNIT_DEFS[entity.type]?.range ?? 0) >= GUARD.rangedMinRange)) {
+      const sx = target.x - entity.x, sy = target.y - entity.y, len2 = sx * sx + sy * sy;
+      let bestT = 1, blocker: MatchEntity | undefined;
+      for (const b of bulwarks) {
+        if (b.e === target || b.e.ownerId === entity.ownerId) continue;
+        if ((damageLog.get(b.e.id) ?? 0) >= b.e.health) continue; // already broken this tick
+        const bx = b.e.x - entity.x, by = b.e.y - entity.y;
+        if (bx * b.fx + by * b.fy >= 0) continue; // shooter is behind the shield
+        const t = len2 > 0 ? (bx * sx + by * sy) / len2 : 0;
+        if (t <= 0 || t >= bestT) continue;
+        if (dist(entity.x + sx * t, entity.y + sy * t, b.e.x, b.e.y) > BULWARK.halfWidth) continue;
+        bestT = t; blocker = b.e;
+      }
+      if (blocker) { blockedFor = target.id; target = blocker; }
+    }
+
     const baseDamage = getDamage(entity, match.config);
     const multiplier = getCounterMultiplier(entity.type, target.type, target.buildingType);
     const finalDamage = Math.round(baseDamage * multiplier);
     const currentDamage = damageLog.get(target.id) ?? 0;
     damageLog.set(target.id, currentDamage + finalDamage);
-    match.attackLog.push({ attackerId: entity.id, targetId: target.id, damage: finalDamage, tick: match.tick, isHeal: false });
+    match.attackLog.push({ attackerId: entity.id, targetId: target.id, damage: finalDamage, tick: match.tick, isHeal: false, ...(blockedFor ? { blockedFor } : {}) });
 
     entity.attackCooldown = getAttackCooldown(entity);
     if (!shotBy.has(target)) shotBy.set(target, entity);

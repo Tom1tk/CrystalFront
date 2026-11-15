@@ -1,0 +1,34 @@
+3240 matches, 10 maps, 4 seeds per side, 2198s
+
+Strategy matrix (row's score vs column, both sides, all maps):
+                              rush3            rush2       swarm_mass            swarm            macro            heavy sw_macro_bruiser           turtle   sw_turtle_grab
+rush3                             -              79%              14%               9%              13%               0%              12%               1%               8%
+rush2                           21%                -               5%               3%              10%               0%               3%               1%               4%
+swarm_mass                      86%              95%                -               0%              40%               0%              45%               1%              11%
+swarm                           91%              98%             100%                -              65%              59%              83%               4%              20%
+macro                           88%              90%              60%              35%                -              85%              74%              16%               9%
+heavy                          100%             100%             100%              41%              15%                -              38%              10%               8%
+sw_macro_bruiser                88%              98%              55%              18%              26%              63%                -              15%               8%
+turtle                          99%              99%              99%              96%              84%              90%              85%                -              19%
+sw_turtle_grab                  93%              96%              89%              80%              91%              93%              93%              81%                -
+
+Mirror matches, blue score per map (all bots):
+  shardfall      0.50   (v2:rush3 0.50  v2:rush2 0.50  v2:swarm_mass 0.50  v2:swarm 0.50  v2:macro 0.50  v2:heavy 0.50  v2:sw_macro_bruiser 0.50  v2:turtle 0.50  v2:sw_turtle_grab 0.50)
+  basalt-run     0.50   (v2:rush3 0.50  v2:rush2 0.50  v2:swarm_mass 0.50  v2:swarm 0.50  v2:macro 0.50  v2:heavy 0.50  v2:sw_macro_bruiser 0.50  v2:turtle 0.50  v2:sw_turtle_grab 0.50)
+  twin-spires    0.49   (v2:rush3 0.50  v2:rush2 0.50  v2:swarm_mass 0.50  v2:swarm 0.50  v2:macro 0.38  v2:heavy 0.50  v2:sw_macro_bruiser 0.50  v2:turtle 0.50  v2:sw_turtle_grab 0.50)
+  hollow-crown   0.50   (v2:rush3 0.50  v2:rush2 0.50  v2:swarm_mass 0.50  v2:swarm 0.50  v2:macro 0.50  v2:heavy 0.50  v2:sw_macro_bruiser 0.50  v2:turtle 0.50  v2:sw_turtle_grab 0.50)
+  prism-ridge    0.50   (v2:rush3 0.50  v2:rush2 0.50  v2:swarm_mass 0.50  v2:swarm 0.50  v2:macro 0.50  v2:heavy 0.50  v2:sw_macro_bruiser 0.50  v2:turtle 0.50  v2:sw_turtle_grab 0.50)
+  glimmerfen     0.50   (v2:rush3 0.50  v2:rush2 0.50  v2:swarm_mass 0.50  v2:swarm 0.50  v2:macro 0.50  v2:heavy 0.50  v2:sw_macro_bruiser 0.50  v2:turtle 0.50  v2:sw_turtle_grab 0.50)
+  saltmarsh      0.50   (v2:rush3 0.50  v2:rush2 0.50  v2:swarm_mass 0.50  v2:swarm 0.50  v2:macro 0.50  v2:heavy 0.50  v2:sw_macro_bruiser 0.50  v2:turtle 0.50  v2:sw_turtle_grab 0.50)
+  ironreed       0.50   (v2:rush3 0.50  v2:rush2 0.50  v2:swarm_mass 0.50  v2:swarm 0.50  v2:macro 0.50  v2:heavy 0.50  v2:sw_macro_bruiser 0.50  v2:turtle 0.50  v2:sw_turtle_grab 0.50)
+  duskvale       0.50   (v2:rush3 0.50  v2:rush2 0.50  v2:swarm_mass 0.50  v2:swarm 0.50  v2:macro 0.50  v2:heavy 0.50  v2:sw_macro_bruiser 0.50  v2:turtle 0.50  v2:sw_turtle_grab 0.50)
+  cinder-flats   0.50   (v2:rush3 0.50  v2:rush2 0.50  v2:swarm_mass 0.50  v2:swarm 0.50  v2:macro 0.50  v2:heavy 0.50  v2:sw_macro_bruiser 0.50  v2:turtle 0.50  v2:sw_turtle_grab 0.50)
+
+Win types: combat 2514 (78%), timeout 525 (16%), control 201 (6%)
+Average length of decided games: 5479 ticks
+Timeouts per pairing: v2:rush3-v2:rush3 40/40, v2:rush3-v2:rush2 5/40, v2:rush3-v2:swarm_mass 4/40, v2:rush3-v2:swarm 3/40, v2:rush3-v2:macro 6/40, v2:rush3-v2:heavy 0/40, v2:rush3-v2:sw_macro_bruiser 3/40, v2:rush3-v2:turtle 1/40, v2:rush3-v2:sw_turtle_grab 2/40, v2:rush2-v2:rush3 5/40, v2:rush2-v2:rush2 40/40, v2:rush2-v2:swarm_mass 2/40, v2:rush2-v2:swarm 2/40, v2:rush2-v2:macro 8/40, v2:rush2-v2:heavy 0/40, v2:rush2-v2:sw_macro_bruiser 2/40, v2:rush2-v2:turtle 1/40, v2:rush2-v2:sw_turtle_grab 1/40, v2:swarm_mass-v2:rush3 5/40, v2:swarm_mass-v2:rush2 2/40, v2:swarm_mass-v2:swarm_mass 40/40, v2:swarm_mass-v2:swarm 0/40, v2:swarm_mass-v2:macro 6/40, v2:swarm_mass-v2:heavy 0/40, v2:swarm_mass-v2:sw_macro_bruiser 4/40, v2:swarm_mass-v2:turtle 1/40, v2:swarm_mass-v2:sw_turtle_grab 1/40, v2:swarm-v2:rush3 3/40, v2:swarm-v2:rush2 2/40, v2:swarm-v2:swarm_mass 0/40, v2:swarm-v2:swarm 40/40, v2:swarm-v2:macro 2/40, v2:swarm-v2:heavy 1/40, v2:swarm-v2:sw_macro_bruiser 0/40, v2:swarm-v2:turtle 1/40, v2:swarm-v2:sw_turtle_grab 0/40, v2:macro-v2:rush3 6/40, v2:macro-v2:rush2 8/40, v2:macro-v2:swarm_mass 6/40, v2:macro-v2:swarm 2/40, v2:macro-v2:macro 39/40, v2:macro-v2:heavy 6/40, v2:macro-v2:sw_macro_bruiser 7/40, v2:macro-v2:turtle 3/40, v2:macro-v2:sw_turtle_grab 1/40, v2:heavy-v2:rush3 0/40, v2:heavy-v2:rush2 0/40, v2:heavy-v2:swarm_mass 0/40, v2:heavy-v2:swarm 1/40, v2:heavy-v2:macro 6/40, v2:heavy-v2:heavy 40/40, v2:heavy-v2:sw_macro_bruiser 4/40, v2:heavy-v2:turtle 0/40, v2:heavy-v2:sw_turtle_grab 0/40, v2:sw_macro_bruiser-v2:rush3 4/40, v2:sw_macro_bruiser-v2:rush2 2/40, v2:sw_macro_bruiser-v2:swarm_mass 4/40, v2:sw_macro_bruiser-v2:swarm 0/40, v2:sw_macro_bruiser-v2:macro 7/40, v2:sw_macro_bruiser-v2:heavy 4/40, v2:sw_macro_bruiser-v2:sw_macro_bruiser 40/40, v2:sw_macro_bruiser-v2:turtle 2/40, v2:sw_macro_bruiser-v2:sw_turtle_grab 0/40, v2:turtle-v2:rush3 1/40, v2:turtle-v2:rush2 1/40, v2:turtle-v2:swarm_mass 1/40, v2:turtle-v2:swarm 1/40, v2:turtle-v2:macro 3/40, v2:turtle-v2:heavy 0/40, v2:turtle-v2:sw_macro_bruiser 2/40, v2:turtle-v2:turtle 40/40, v2:turtle-v2:sw_turtle_grab 3/40, v2:sw_turtle_grab-v2:rush3 2/40, v2:sw_turtle_grab-v2:rush2 1/40, v2:sw_turtle_grab-v2:swarm_mass 1/40, v2:sw_turtle_grab-v2:swarm 0/40, v2:sw_turtle_grab-v2:macro 1/40, v2:sw_turtle_grab-v2:heavy 0/40, v2:sw_turtle_grab-v2:sw_macro_bruiser 0/40, v2:sw_turtle_grab-v2:turtle 3/40, v2:sw_turtle_grab-v2:sw_turtle_grab 40/40
+
+G-8 acceptance:
+  [FAIL] no strategy wins >70% vs every other (v2:sw_turtle_grab)
+  [PASS] mirror 50% ± 10% on every map
+  [FAIL] timeouts < 15% (16%)

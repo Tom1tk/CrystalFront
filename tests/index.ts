@@ -9,7 +9,7 @@ import { ALL_ACTIONS, ACTION_SPACE_SIZE, actionToIndex, indexToAction, legalMask
 import { getLegalActions } from "../headless/src/legalActions.js";
 import { expandMacroAction } from "../headless/src/actionSpace.js";
 import { buildObservation } from "../headless/src/observation.js";
-import { ECONOMY, HEALING, ENGINE_VERSION, CONTROL, LEASH, GUARD, GATHERING, RETALIATE } from "../shared/src/gameBalance.js";
+import { ECONOMY, HEALING, ENGINE_VERSION, CONTROL, LEASH, GUARD, GATHERING, RETALIATE, BULWARK } from "../shared/src/gameBalance.js";
 import { processControl, controlNeeded } from "../server/src/match/engine/control.js";
 import { saveReplay, getReplay, listReplays } from "../server/src/match/replayRunner.js";
 import { mirrorState, deepCloneMatchState, diffStates } from "../server/src/match/engine/mirror.js";
@@ -2946,7 +2946,7 @@ console.log("\n--- G-13: unit control ---");
     ];
     const match = engine.createMatch("g13", players);
     engine.startMatch(match.id);
-    const spawn = (owner: string, type: "skirmisher" | "worker" | "gunner" | "medic" | "bruiser", x: number, y: number, tough = false) => {
+    const spawn = (owner: string, type: "skirmisher" | "worker" | "gunner" | "medic" | "bruiser" | "bulwark", x: number, y: number, tough = false) => {
       const before = new Set(match.entities.keys());
       engine.debugSpawn(match.id, owner, type, x, y);
       const e = [...match.entities.values()].find(e => !before.has(e.id))!;
@@ -3171,6 +3171,58 @@ console.log("\n--- G-13: unit control ---");
     const r = spawn("pr", "gunner", midX + 110, 300, true);
     for (let i = 0; i < 60; i++) engine.tick(match.id);
     assert(b.attackTargetId === r.id, "G-14: units near a building under fire go for the shooter");
+  }
+
+  // ---- Bulwark (prototype): a shield unit. Blue's faces red's crystal (+x). ----
+  const blocks = (match: { attackLog: { blockedFor?: string }[] }) => match.attackLog.filter((a) => a.blockedFor).length;
+  // A ranged shot from the front that crosses the shield hits the shield, not its target.
+  {
+    const { engine, match, spawn, midX } = setup();
+    const g = spawn("pb", "gunner", midX, 300);
+    const s = spawn("pb", "bulwark", midX + 40, 300);
+    const r = spawn("pr", "gunner", midX + 130, 300, true);
+    for (let i = 0; i < 40; i++) engine.tick(match.id);
+    assert(r.attackTargetId === g.id, "Bulwark: enemies aim at the armed unit, not the nearer shield");
+    assert(g.health === g.maxHealth && s.health < s.maxHealth, "Bulwark: a shot from the front is taken by the shield");
+    assert(match.attackLog.some((a) => a.attackerId === r.id && a.targetId === s.id && a.blockedFor === g.id), "Bulwark: the attack log records the blocked shot and who it was aimed at");
+    assert(!s.attackTargetId, "Bulwark: the shield never attacks");
+  }
+  // From behind the shield nothing is blocked.
+  {
+    const { engine, match, spawn, midX } = setup();
+    const g = spawn("pb", "gunner", midX, 300);
+    const s = spawn("pb", "bulwark", midX - 40, 300);
+    spawn("pr", "gunner", midX - 130, 300, true);
+    for (let i = 0; i < 40; i++) engine.tick(match.id);
+    assert(g.health < g.maxHealth && s.health === s.maxHealth && blocks(match) === 0, "Bulwark: a shot from behind the shield passes");
+  }
+  // A shot that misses the shield's front passes; melee is never blocked.
+  {
+    const { engine, match, spawn, midX } = setup();
+    const g = spawn("pb", "gunner", midX, 300);
+    const s = spawn("pb", "bulwark", midX + 40, 300 + BULWARK.halfWidth + 30);
+    spawn("pr", "gunner", midX + 130, 300, true);
+    for (let i = 0; i < 40; i++) engine.tick(match.id);
+    assert(g.health < g.maxHealth && s.health === s.maxHealth, "Bulwark: a shot passing wide of the shield is not blocked");
+  }
+  {
+    const { engine, match, spawn, midX } = setup();
+    // The line from the skirmisher to the gunner passes 16 px from the shield's centre, from its front.
+    const g = spawn("pb", "gunner", midX, 300, true);
+    const s = spawn("pb", "bulwark", midX + 20, 316);
+    spawn("pr", "skirmisher", midX + 40, 300, true);
+    for (let i = 0; i < 30; i++) engine.tick(match.id);
+    assert(g.health < g.maxHealth && s.health === s.maxHealth && blocks(match) === 0, "Bulwark: melee attacks are not blocked");
+  }
+  // On attack-move the shield stops short of the enemy line.
+  {
+    const { engine, match, spawn, midX } = setup();
+    const s = spawn("pb", "bulwark", midX - 200, 300, true);
+    const r = spawn("pr", "gunner", midX + 200, 300, true);
+    r.autoAttackEnabled = false;
+    engine.processCommand(match.id, "pb", { type: "attack_move", entityId: s.id, targetX: midX + 300, targetY: 300 });
+    for (let i = 0; i < 200; i++) engine.tick(match.id);
+    assert(d(s, r) <= BULWARK.standoff + r.radius && d(s, r) > BULWARK.standoff + r.radius - 8, `Bulwark: on attack-move it holds ${BULWARK.standoff} px from the nearest armed enemy (${d(s, r).toFixed(0)} px)`);
   }
 }
 

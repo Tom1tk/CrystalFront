@@ -64,6 +64,8 @@ export interface AttackEvent {
   damage: number;
   tick: number;
   isHeal: boolean;
+  /** Bulwark (prototype): the shot was aimed at this entity and blocked by `targetId`. */
+  blockedFor?: EntityId;
 }
 
 export interface MatchState {
@@ -107,7 +109,7 @@ export interface MatchState {
 
 export interface MatchEntity {
   id: EntityId;
-  type: "crystal" | "worker" | "placeholder" | "resource_node" | "building" | "skirmisher" | "gunner" | "bruiser" | "medic";
+  type: "crystal" | "worker" | "placeholder" | "resource_node" | "building" | "skirmisher" | "gunner" | "bruiser" | "medic" | "bulwark";
   ownerId: PlayerId;
   x: number;
   y: number;
