@@ -262,6 +262,12 @@ Put v2 in new files (`headless/src/v2/…`) so v1 keeps working until the switch
 - Pointers index the observation's entity rows (`MAX_ENTITIES = 200`), so the observation must be built before the masks. Observation schema 2 adds a `guarding` entity feature.
 - The "a legal action must do something" rule (P-8) still holds; `botCheck` and the custom suite's random-action test check it.
 
+**Action space v4 and observation schema 3 (bulwark, v0.8.20-ML).** Adds the bulwark shield unit (trained at the foundry, no attack). All checkpoints made before this are unusable: the layouts changed.
+- *Econ:* 62 kinds: train ×6 (bulwark added last), so build starts at 7, assign at 11, repair 59, set rally 60, cancel 61.
+- *Groups:* 11: `bulwarks` added after `medics`; `scout` is 9, `unit` is 10. Bulwarks take every order except `focus`.
+- *Observation:* 57 globals (`own_bulwark`, `queued_bulwark`, `seen_bulwark`, `seen_bulwark_age`, and at the end `shots_blocked`, `shots_shielded`: the share of own ranged shots that enemy bulwarks stopped and the share of enemy ranged shots that own bulwarks stopped, over the last decision window); entity rows have 33 features (`type_bulwark`).
+- `training/v2/spaces.py` mirrors these constants (`N_GLOBALS 57`, `ENTITY_F 33`, `ECON 62`, `N_GROUPS 11`, `GROUP_UNIT 10`, `OPP_UNITS 6`).
+
 **Observation (R-1).** All in own frame, all deterministic.
 | Block | Content |
 |---|---|

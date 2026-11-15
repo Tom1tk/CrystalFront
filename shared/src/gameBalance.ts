@@ -89,13 +89,13 @@ export const UNIT_DEFS: Record<string, UnitDef> = {
     attackCooldown: 8,
     visionRange: 195,
   },
-  // Prototype (2026-11-15): a moving shield. Cannot attack. Enemy ranged shots whose line
-  // crosses its front hit it instead of their target. Not trainable yet (no building produces it).
+  // A moving shield (2026-11-15). Cannot attack. Enemy ranged shots whose line crosses its
+  // front hit it instead of their target (see BULWARK). Melee deals 1.5× to it.
   bulwark: {
     cost: 125,
     supplyCost: 2,
     buildTime: 180,
-    health: 400,
+    health: 300,       // fight test: 400 let gunners + shields keep half their army v pure gunners; 300 keeps 20–28%
     radius: 14,
     damage: 0,
     range: 0,
@@ -156,7 +156,7 @@ export const BUILDING_DEFS: Record<string, BuildingDef> = {
     width: 44,
     height: 44,
     color: "#cc6644",
-    produces: ["bruiser", "medic"],
+    produces: ["bruiser", "medic", "bulwark"],
     visionRange: 180,
   },
   supply_depot: {
@@ -320,7 +320,7 @@ export const RETALIATE = {
   assist: 200,              // allies this close to the victim join in
 } as const;
 
-/** Bulwark (prototype): the shield faces the enemy crystal. */
+/** Bulwark: the shield faces the enemy crystal and covers that whole side. */
 export const BULWARK = {
   halfWidth: 20,            // a shot passing this close to the bulwark's centre, from its front, is blocked
   standoff: 100,            // on attack-move it stops this far from the nearest enemy combat unit or turret

@@ -29,7 +29,7 @@ import { PLACEMENT } from "@crystalfront/shared";
 
 export const DECISION_TICKS = 8;
 /** Action space version (wire format and head layout). */
-export const ACTION_SPACE_VERSION = 3;
+export const ACTION_SPACE_VERSION = 4;
 
 /** Own-frame grid (also the observation grid). 5000×900 → 50×15; smaller maps leave cells invalid. */
 export const GRID_CELL_W = 100;
@@ -41,7 +41,7 @@ export const GRID_CELLS = GRID_COLS * GRID_ROWS; // 750
 export const PTR_SIZE = 200;
 
 // ---- Economy head ----
-export const TRAIN_UNITS = ["worker", "skirmisher", "gunner", "bruiser", "medic"] as const;
+export const TRAIN_UNITS = ["worker", "skirmisher", "gunner", "bruiser", "medic", "bulwark"] as const;
 export const BUILDINGS = ["barracks", "foundry", "supply_depot", "turret"] as const;
 /** Build sites, own frame: own base, own pockets, own chokes, centre anchors. */
 export const NAMED_SITES = 1 + ANCHOR_MAX.pockets + ANCHOR_MAX.chokes + ANCHOR_MAX.centre; // 10
@@ -57,17 +57,17 @@ export const NODE_SLOTS = ANCHOR_MAX.safeNodes + ANCHOR_MAX.nodes; // 16
 export const WORKER_COUNTS = [1, 2, 4] as const;
 
 export const ECON_TRAIN0 = 1;
-export const ECON_BUILD0 = ECON_TRAIN0 + TRAIN_UNITS.length;                  // 6  (+ building; site head)
-export const ECON_ASSIGN0 = ECON_BUILD0 + BUILDINGS.length;                   // 10
-export const ECON_REPAIR = ECON_ASSIGN0 + NODE_SLOTS * WORKER_COUNTS.length;  // 58 (econ pointer: own building)
-export const ECON_RALLY = ECON_REPAIR + 1;                                    // 59 (econ pointer: producer; econ target)
-export const ECON_CANCEL = ECON_RALLY + 1;                                    // 60 (econ pointer: producer with a queue)
-export const ECON_SIZE = ECON_CANCEL + 1;                                     // 61
+export const ECON_BUILD0 = ECON_TRAIN0 + TRAIN_UNITS.length;                  // 7  (+ building; site head)
+export const ECON_ASSIGN0 = ECON_BUILD0 + BUILDINGS.length;                   // 11
+export const ECON_REPAIR = ECON_ASSIGN0 + NODE_SLOTS * WORKER_COUNTS.length;  // 59 (econ pointer: own building)
+export const ECON_RALLY = ECON_REPAIR + 1;                                    // 60 (econ pointer: producer; econ target)
+export const ECON_CANCEL = ECON_RALLY + 1;                                    // 61 (econ pointer: producer with a queue)
+export const ECON_SIZE = ECON_CANCEL + 1;                                     // 62
 /** Econ pointer mask rows: repair, rally, cancel. */
 export const ECON_PTR_KINDS = ["repair", "rally", "cancel"] as const;
 
 // ---- Army head ----
-export const GROUPS = ["none", "all_combat", "army_a", "army_b", "skirmishers", "gunners", "bruisers", "medics", "scout", "unit"] as const;
+export const GROUPS = ["none", "all_combat", "army_a", "army_b", "skirmishers", "gunners", "bruisers", "medics", "bulwarks", "scout", "unit"] as const;
 export const ORDERS = ["none", "attack_move", "move", "guard", "guard_here", "retreat", "focus", "heal", "stop", "join_a", "join_b"] as const;
 /** Orders that take a point target; orders that take an entity pointer. */
 export const POINT_ORDERS: ReadonlySet<string> = new Set(["attack_move", "move", "guard"]);
@@ -89,8 +89,8 @@ export const TARGET_GRID0 = N_ANCHOR_TARGETS + MEMORY_SLOTS; // 53
 export const TARGET_NONE = TARGET_GRID0 + GRID_CELLS; // 803
 export const TARGET_SIZE = TARGET_NONE + 1; // 804
 
-const COMBAT = new Set(["skirmisher", "gunner", "bruiser", "medic"]);
-const MOVABLE = new Set(["worker", "skirmisher", "gunner", "bruiser", "medic"]);
+const COMBAT = new Set(["skirmisher", "gunner", "bruiser", "medic", "bulwark"]);
+const MOVABLE = new Set(["worker", "skirmisher", "gunner", "bruiser", "medic", "bulwark"]);
 const FAST = new Set(["skirmisher", "medic"]);
 /** Producers keep at most this many units queued (a busy producer is not "free"). */
 export const PRODUCER_QUEUE_MAX = 2;
@@ -445,7 +445,8 @@ function groupMembers(match: MatchState, s: SeatState, g: Group): MatchEntity[] 
     if (e.ownerId !== s.playerId || !COMBAT.has(e.type)) continue;
     if (g === "all_combat" || (g === "army_a" && s.armyA.has(e.id)) || (g === "army_b" && s.armyB.has(e.id)) ||
         (g === "skirmishers" && e.type === "skirmisher") || (g === "gunners" && e.type === "gunner") ||
-        (g === "bruisers" && e.type === "bruiser") || (g === "medics" && e.type === "medic")) out.push(e);
+        (g === "bruisers" && e.type === "bruiser") || (g === "medics" && e.type === "medic") ||
+        (g === "bulwarks" && e.type === "bulwark")) out.push(e);
   }
   return out;
 }
@@ -467,7 +468,7 @@ function memberAccepts(match: MatchState, s: SeatState, g: Group, o: Order, e: M
     case "attack_move": case "move": case "guard": return true;
     case "guard_here": return !e.guard || !!e.moveTarget;
     case "retreat": return !!crystal && !isRetreating(e, crystal) && (e.x - crystal.x) ** 2 + (e.y - crystal.y) ** 2 > HOME_RADIUS ** 2;
-    case "focus": return e.type !== "medic";
+    case "focus": return e.type !== "medic" && e.type !== "bulwark"; // a bulwark cannot attack
     case "heal": return e.type === "medic";
     case "stop": return !!(e.moveTarget || e.moveOrder || e.attackTargetId || e.healTargetId || e.guard);
     case "join_a": return g !== "scout" && COMBAT.has(e.type) && !s.armyA.has(e.id);

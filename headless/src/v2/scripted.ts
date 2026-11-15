@@ -84,6 +84,8 @@ export interface Template {
   stage: Stage;
   /** Retreat when pushing and the army's mean health fraction drops below this. */
   retreat: number;
+  /** Push and regroup sizes count only the units gathered around the foremost one (not the whole army). */
+  mass?: boolean;
   /** From this tick on, rebuild the economy to these targets (rushes that did not end the game). */
   late?: { tick: number; workers: number; contested: number };
 }
@@ -218,6 +220,14 @@ export const TEMPLATES: Record<string, Template> = {
     ],
     mix: { skirmisher: 4, medic: 1 }, push: { tick: 0, size: 24, regroup: 12, targets: ["enemy_base"] }, stage: "base", retreat: 0.4,
   },
+  // Gunners behind bulwarks: the shields take the enemy's shots.
+  phalanx: {
+    z: 19, label: "economy, then gunners behind bulwarks", workers: 7, contested: 2, headroom: 3,
+    builds: [
+      { b: "barracks", n: 1, sites: BASE }, { b: "foundry", n: 1, sites: BASE }, { b: "barracks", n: 2, sites: BASE, army: 4 },
+    ],
+    mix: { gunner: 4, bulwark: 1 }, push: { tick: 0, size: 12, regroup: 6, targets: ["enemy_base", "control"] }, stage: "choke", retreat: 0.3, mass: true,
+  },
 };
 
 interface BotDef { templates: string[]; switchTo?: string; z?: number }
@@ -238,6 +248,7 @@ export const SCRIPTED: Record<string, BotDef> = {
   swarm: { templates: ["skirm_swarm"] },
   swarm_mass: { templates: ["skirm_mass"] },
   swarm_tide: { templates: ["skirm_tide"] },
+  phalanx: { templates: ["phalanx"] },
 };
 export const SWITCH_WINDOW: [number, number] = [1500, 4000];
 
@@ -256,13 +267,15 @@ export function scriptedZs(): Map<number, string> {
 const G = Object.fromEntries(GLOBAL_NAMES.map((n, i) => [n, i])) as Record<string, number>;
 const F = Object.fromEntries(ENTITY_FEATURES.map((n, i) => [n, i])) as Record<string, number>;
 const N = Object.fromEntries(NODE_FEATURES.map((n, i) => [n, i])) as Record<string, number>;
-const COMBAT: Unit[] = ["skirmisher", "gunner", "bruiser", "medic"];
+const COMBAT: Unit[] = ["skirmisher", "gunner", "bruiser", "medic", "bulwark"];
 
 const GROUP_ALL = GROUPS.indexOf("all_combat"), GROUP_MEDICS = GROUPS.indexOf("medics"), GROUP_UNIT = GROUPS.indexOf("unit");
 const O_AM = ORDERS.indexOf("attack_move"), O_MOVE = ORDERS.indexOf("move"), O_RETREAT = ORDERS.indexOf("retreat");
 const O_GUARD = ORDERS.indexOf("guard"), O_FOCUS = ORDERS.indexOf("focus"), O_HEAL = ORDERS.indexOf("heal");
 /** Micro (v3): enemies and wounded allies within this distance (px) of the army centre count. */
 const MICRO_RADIUS = 300;
+/** Units this close to the army's foremost unit count as gathered (templates with `mass`). */
+const MASS_RADIUS = 400;
 /** Scripted bots repair own turrets below this health fraction. */
 const REPAIR_BELOW = 0.75;
 /** A focus order holds the main army order back for this many decisions; micro of one kind repeats at most this often. */
@@ -277,6 +290,9 @@ const SLOT_CONTESTED0 = 4;
 const ORDER_REFRESH = 6;
 const THREAT_RADIUS = 600;
 const CONTROL_PATIENCE = 1500;
+/** Enemy bulwarks stopping more than this share of own shots (recent peak) turn half of new production to melee. */
+const SHIELD_REACT = 0.2;
+const SHIELD_DECAY = 0.98;
 
 interface View {
   tick: number;
@@ -310,7 +326,9 @@ export class ScriptedV2Bot {
   private ctrlAt = 0;
   /** Micro: the main army order waits until this decision (after a focus); last decision of each micro kind. */
   private focusUntil = 0;
-  private lastMicro: Record<"pull" | "focus" | "heal", number> = { pull: -99, focus: -99, heal: -99 };
+  private lastMicro: Record<"pull" | "focus" | "heal" | "shield", number> = { pull: -99, focus: -99, heal: -99, shield: -99 };
+  /** Recent peak of the share of own shots stopped by enemy bulwarks (decays per decision). */
+  private shielded = 0;
 
   constructor(name: string, seed: number, private ctx: BotContext, zWanted = 0) {
     const def = SCRIPTED[name];
@@ -356,6 +374,7 @@ export class ScriptedV2Bot {
       this.pushing = false; this.viaDone = false; this.lastOrder = ""; this.ctrlBest = 0;
     }
     this.site = 0; this.econPtr = 0;
+    this.shielded = Math.max(obs.globals[G.shots_blocked], this.shielded * SHIELD_DECAY);
     const econ = this.econ(obs, v, m);
     let army: Partial<V2Action> = this.armyOrder(obs, v, m);
     if (!army.group) army = this.micro(obs, v, m) ?? army;
@@ -449,6 +468,13 @@ export class ScriptedV2Bot {
     if (!saving) {
       // Most-needed unit first; save for it when it is unaffordable, try the next when its producers are busy.
       const weights = (Object.entries(t.mix) as Array<[Unit, number]>).filter(([u]) => this.canProduce(obs, u));
+      if (this.shielded > SHIELD_REACT) {
+        // Shots are being stopped by enemy bulwarks: melee is not, so it gets half of new production.
+        const melee = (["skirmisher", "bruiser"] as Unit[]).find((u) => this.canProduce(obs, u));
+        const sum = weights.reduce((s, [, w]) => s + w, 0);
+        const have = weights.find(([u]) => u === melee);
+        if (melee && have) have[1] += sum; else if (melee) weights.push([melee, sum]);
+      }
       const total = weights.reduce((s, [, w]) => s + w, 0);
       const order = weights.map(([u, w]) => ({ u, d: (w / total) * (armySize + 1) - v.units[u] })).sort((a, b) => b.d - a.d);
       for (const { u } of order) {
@@ -491,8 +517,8 @@ export class ScriptedV2Bot {
 
   private armyOrder(obs: ObsV2, v: View, m: V2Masks): { group: number; order: number; target: number } {
     const none = { group: 0, order: 0, target: TARGET_NONE };
-    const size = v.army.length;
-    if (size === 0 || !m.group[GROUP_ALL]) { this.pushing = false; return none; }
+    if (v.army.length === 0 || !m.group[GROUP_ALL]) { this.pushing = false; return none; }
+    const size = this.t.mass ? this.massed(v) : v.army.length;
     if (!this.pushing && size >= this.pushSize && v.tick >= this.pushTick) {
       this.pushing = true; this.viaDone = false; this.ctrlAt = v.tick;
     }
@@ -509,7 +535,7 @@ export class ScriptedV2Bot {
     if (v.threat) {
       target = T_OWN_BASE;
     } else if (this.pushing) {
-      const hp = v.army.reduce((s, e) => s + e[F.hp], 0) / size;
+      const hp = v.army.reduce((s, e) => s + e[F.hp], 0) / v.army.length;
       if (this.t.retreat > 0 && hp < this.t.retreat && m.order[GROUP_ALL][O_RETREAT]) {
         this.pushing = false;
         return this.issue(m, O_RETREAT, TARGET_NONE, true);
@@ -541,16 +567,25 @@ export class ScriptedV2Bot {
 
   // ---- micro (v3), used on decisions without a main army order ----
 
-  /** Pull back a badly hurt unit, focus a weak enemy near the army, or send medics to a hurt ally; null if none applies. */
+  /** Pull back a stranded bulwark or a badly hurt unit, focus a weak enemy near the army, or send medics to a hurt ally; null if none applies. */
   private micro(obs: ObsV2, v: View, m: V2Masks): Partial<V2Action> | null {
     if (!v.army.length) return null;
     const c = this.centroid(v.army);
     const at = (e: number[]): Pt => ({ x: e[F.x], y: e[F.y] });
     const isCombat = (e: number[]) => COMBAT.some((u) => e[F[`type_${u}`]]);
-    const enemies = obs.entities.map((e, i) => ({ e, i })).filter(({ e }) => !e[F.own] && isCombat(e));
-    const due = (k: "pull" | "focus" | "heal") => this.decisions - this.lastMicro[k] >= MICRO_GAP;
+    // Enemy bulwarks are not worth a focus order: armed units first.
+    const enemies = obs.entities.map((e, i) => ({ e, i })).filter(({ e }) => !e[F.own] && isCombat(e) && !e[F.type_bulwark]);
+    const due = (k: "pull" | "focus" | "heal" | "shield") => this.decisions - this.lastMicro[k] >= MICRO_GAP;
     const lowest = (xs: Array<{ e: number[]; i: number }>) => xs.reduce<{ e: number[]; i: number } | null>((b, x) => (!b || x.e[F.hp] < b.e[F.hp] ? x : b), null);
 
+    // 0. A bulwark near enemies with no armed ally left near it goes home (it cannot fight).
+    if (due("shield") && m.group[GROUP_UNIT] && m.order[GROUP_UNIT][O_RETREAT]) {
+      const armed = v.army.filter((e) => !e[F.type_bulwark] && !e[F.type_medic]);
+      const lone = obs.entities.map((e, i) => ({ e, i })).find(({ e, i }) =>
+        e[F.own] && e[F.type_bulwark] && m.unit[O_RETREAT][i] &&
+        enemies.some((x) => this.dist(at(x.e), at(e)) < MICRO_RADIUS) && !armed.some((a) => this.dist(at(a), at(e)) < MICRO_RADIUS));
+      if (lone) { this.lastMicro.shield = this.decisions; return { group: GROUP_UNIT, order: O_RETREAT, unit: lone.i }; }
+    }
     // 1. Templates that retreat also pull single badly hurt units out of a fight.
     if (this.t.retreat > 0 && due("pull") && m.group[GROUP_UNIT] && m.order[GROUP_UNIT][O_RETREAT]) {
       const hurt = obs.entities.map((e, i) => ({ e, i })).filter(({ e, i }) =>
@@ -576,6 +611,14 @@ export class ScriptedV2Bot {
       if (t) { this.lastMicro.heal = this.decisions; return { group: GROUP_MEDICS, order: O_HEAL, ptr: t.i }; }
     }
     return null;
+  }
+
+  /** Army units within MASS_RADIUS of the one nearest the enemy base. */
+  private massed(v: View): number {
+    const goal = this.norm(this.ctx.targets[T_ENEMY_BASE]);
+    const at = (e: number[]): Pt => ({ x: e[F.x], y: e[F.y] });
+    const lead = v.army.reduce((b, e) => (this.dist(at(e), goal) < this.dist(at(b), goal) ? e : b));
+    return v.army.filter((e) => this.dist(at(e), at(lead)) < MASS_RADIUS).length;
   }
 
   private norm(p: Pt): Pt { return { x: p.x / this.ctx.W, y: p.y / this.ctx.H }; }

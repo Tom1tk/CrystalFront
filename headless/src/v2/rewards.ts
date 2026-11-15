@@ -20,8 +20,8 @@ export const DMG_SCALE = 1000;
 export interface ShapedRewards { res: number; army: number; dmg: number; ctrl: number }
 export interface SeatRewards { win: number; shaped: ShapedRewards }
 
-const COMBAT = new Set(["skirmisher", "gunner", "bruiser", "medic"]);
-const DAMAGEABLE = new Set(["crystal", "worker", "building", "skirmisher", "gunner", "bruiser", "medic"]);
+const COMBAT = new Set(["skirmisher", "gunner", "bruiser", "medic", "bulwark"]);
+const DAMAGEABLE = new Set(["crystal", "worker", "building", "skirmisher", "gunner", "bruiser", "medic", "bulwark"]);
 
 /** What a decision window is measured against, per seat. */
 export interface RewardSnapshot {

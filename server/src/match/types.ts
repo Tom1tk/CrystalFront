@@ -48,7 +48,7 @@ export interface ResourceNode {
 
 export type BuildingType = "barracks" | "foundry" | "supply_depot" | "turret";
 
-export type UnitType = "worker" | "skirmisher" | "gunner" | "bruiser" | "medic";
+export type UnitType = "worker" | "skirmisher" | "gunner" | "bruiser" | "medic" | "bulwark";
 
 export interface ProductionQueueItem {
   unitType: UnitType;
@@ -64,7 +64,7 @@ export interface AttackEvent {
   damage: number;
   tick: number;
   isHeal: boolean;
-  /** Bulwark (prototype): the shot was aimed at this entity and blocked by `targetId`. */
+  /** Bulwark: the shot was aimed at this entity and blocked by `targetId`. */
   blockedFor?: EntityId;
 }
 

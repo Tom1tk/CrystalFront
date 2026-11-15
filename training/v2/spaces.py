@@ -1,11 +1,11 @@
 """
-Sizes and layout of observation v2 / action space v3 (headless/src/v2/observation.ts,
+Sizes and layout of observation v2 (schema 3) / action space v4 (headless/src/v2/observation.ts,
 headless/src/v2/actions.ts). `check_sizes` compares them with a live observation.
 """
 
 # Observation
-N_GLOBALS = 51
-ENTITY_F = 32
+N_GLOBALS = 57
+ENTITY_F = 33
 N_NODES, NODE_F = 20, 13
 N_MEMORY, MEMORY_F = 16, 14
 GRID_DYN_C, GRID_STATIC_C, GRID_ROWS, GRID_COLS = 5, 5, 15, 50
@@ -13,14 +13,14 @@ GRID_CELLS = GRID_ROWS * GRID_COLS
 N_Z = 32                       # strategy token embedding size (z < N_Z)
 
 # Actions
-ECON = 61
+ECON = 62
 N_BUILDINGS, BUILD_SITES = 4, 760
 PTR = 200
 ECON_PTR_KINDS = 3
 TARGETS = 804
-N_GROUPS, N_ORDERS = 10, 11
-ECON_BUILD0, ECON_ASSIGN0, ECON_REPAIR, ECON_RALLY = 6, 10, 58, 59
-GROUP_UNIT = 9
+N_GROUPS, N_ORDERS = 11, 11
+ECON_BUILD0, ECON_ASSIGN0, ECON_REPAIR, ECON_RALLY = 7, 11, 59, 60
+GROUP_UNIT = 10
 TARGET_NONE = 803
 TARGET_GRID0 = 53              # 37 anchors + 16 memory slots, then the 750 grid cells
 NAMED_SITES = 10               # then 750 grid build sites
@@ -33,7 +33,7 @@ HELD_OUT_MAPS = ("prism-ridge", "duskvale")
 TRAIN_MAPS = ("shardfall", "basalt-run", "twin-spires", "hollow-crown", "glimmerfen", "saltmarsh", "ironreed", "cinder-flats")
 
 # Opponent-model labels (observation.ts oppLabels)
-OPP_UNITS, OPP_BUILDINGS = 5, 4
+OPP_UNITS, OPP_BUILDINGS = 6, 4
 
 # Reward components (headless/src/v2/rewards.ts)
 SHAPED_KEYS = ("res", "army", "dmg", "ctrl")

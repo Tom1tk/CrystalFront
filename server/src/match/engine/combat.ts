@@ -172,7 +172,7 @@ export function processCombat(match: MatchState): Map<string, number> {
 
   // Resolve attacks
   const shotBy = new Map<MatchEntity, MatchEntity>(); // victim → first attacker this tick
-  // Bulwarks (prototype) with the direction each faces: toward the enemy crystal.
+  // Bulwarks with the direction each faces: toward the enemy crystal.
   const bulwarks: { e: MatchEntity; fx: number; fy: number }[] = [];
   for (const e of entities) {
     if (e.type !== "bulwark") continue;

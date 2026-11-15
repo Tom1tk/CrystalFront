@@ -34,7 +34,7 @@ def legal(m):
 
 # Action space v3 layout (headless/src/v2/actions.ts).
 ECON_BUILD0, ECON_ASSIGN0, ECON_REPAIR = 6, 10, 58
-GROUP_UNIT = 9
+GROUP_UNIT = 10
 
 
 def random_action(rng: random.Random, masks: dict) -> dict:

@@ -80,7 +80,7 @@ export type MacroActionType =
 export interface MacroAction {
   type: MacroActionType;
   // train_unit
-  unitType?: "skirmisher" | "gunner" | "bruiser" | "medic";
+  unitType?: "skirmisher" | "gunner" | "bruiser" | "medic" | "bulwark";
   // build
   buildingType?: "barracks" | "foundry" | "supply_depot" | "turret";
   xZone?: "near_crystal" | "mid_base" | "forward";

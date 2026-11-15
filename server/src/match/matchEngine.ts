@@ -892,6 +892,7 @@ if (command.type === "gather") {
       if (target.ownerId === playerId) {
         return { success: false, message: "Cannot attack friendly units" };
       }
+      if (entity.type === "bulwark") return { success: false, message: "This unit cannot attack" };
 
      entity.attackTargetId = targetId;
         entity.attackOrdered = true;

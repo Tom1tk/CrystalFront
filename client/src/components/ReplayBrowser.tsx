@@ -89,6 +89,7 @@ function unitsSummary(units?: Record<string, number>) {
   if (units.gunner)     p.push(`G${units.gunner}`);
   if (units.bruiser)    p.push(`B${units.bruiser}`);
   if (units.medic)      p.push(`M${units.medic}`);
+  if (units.bulwark)    p.push(`W${units.bulwark}`);
   return p.join(" ") || "—";
 }
 

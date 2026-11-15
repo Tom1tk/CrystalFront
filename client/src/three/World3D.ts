@@ -71,13 +71,15 @@ type ModelKey = keyof typeof MODELS;
  */
 type Variant = 0 | 1 | "r0" | "r1" | "g0" | "g1" | "gold" | null;
 
-interface UnitSpec { model: ModelKey; height: number; right?: ModelKey; left?: ModelKey; greens?: boolean }
+interface UnitSpec { model: ModelKey; height: number; right?: ModelKey; left?: ModelKey; greens?: boolean; /** scale of held items */ held?: number }
 const UNITS: Record<string, UnitSpec> = {
   worker: { model: "worker", height: 4.1 },
   skirmisher: { model: "skirmisher", height: 4.1, right: "spear", greens: true },
   gunner: { model: "gunner", height: 4.1, right: "shooter", greens: true },
   bruiser: { model: "bruiser", height: 4.1, right: "sword", left: "shield" },
   medic: { model: "medic", height: 4.1, right: "defib", greens: true },
+  // The knight again, with a large shield on each arm held out in front and no weapon.
+  bulwark: { model: "bruiser", height: 4.4, right: "shield", left: "shield", held: 1.9 },
 };
 
 interface Obj {
@@ -510,6 +512,7 @@ export class World3D {
       const w = this.gltf.get(k)!.scene.clone(true);
       this.paint(w, v);
       w.position.set(left ? 0.02 : -0.02, -0.11, 0.04);
+      if (spec.held) w.scale.setScalar(spec.held);
       arm.add(w);
     };
     attach("arm-right", spec.right, false);
@@ -594,6 +597,7 @@ export class World3D {
 
   private animFor(o: Obj, e: MatchEntity): string {
     if (e.actionState === "dying" || e.health <= 0) return "die";
+    if (o.kind === "bulwark") return o.speed > 6 ? "walk" : "holding-both";
     if (o.speed > 6) return o.kind === "skirmisher" ? "sprint" : "walk";
     const armed = !!UNITS[o.kind]?.right;
     switch (e.actionState) {
@@ -671,7 +675,11 @@ export class World3D {
       if (isUnit) {
         let want: number | undefined;
         if (o.speed > 6 && (dx || dy)) want = Math.atan2(dx, dy / SIN);
-        else if (e.heading !== undefined) want = Math.atan2(Math.cos(e.heading), Math.sin(e.heading) / SIN);
+        else if (e.type === "bulwark") {
+          // Standing still, it shows the side it covers: toward the enemy crystal.
+          const foe = entities.find((c) => c.type === "crystal" && c.ownerId !== e.ownerId);
+          if (foe) want = Math.atan2(foe.x - e.x, (foe.y - e.y) / SIN);
+        } else if (e.heading !== undefined) want = Math.atan2(Math.cos(e.heading), Math.sin(e.heading) / SIN);
         if (want !== undefined) {
           const diff = Math.atan2(Math.sin(want - o.yaw), Math.cos(want - o.yaw));
           o.yaw += diff * Math.min(1, dt * 10);
@@ -759,7 +767,9 @@ export class World3D {
         if (this.tracers.length < TRACER_MAX) {
           this.tracers.push({ p: from, v: new THREE.Vector3(), to: hit.clone(), life: 0.09, max: 0.09, size: a.kind === "turret" ? 2.6 : 1.8, color: new THREE.Color(1, 0.75, 0.35), grav: 0 });
         }
-        this.sparks(hit, 5, new THREE.Color(1, 0.55, 0.15), 60, 2.4);
+        // A shot stopped by a bulwark: a wider, pale-blue burst on the shield.
+        if (evt.blockedFor) this.sparks(hit, 9, new THREE.Color(0.6, 0.85, 1), 75, 2.8);
+        else this.sparks(hit, 5, new THREE.Color(1, 0.55, 0.15), 60, 2.4);
       } else {
         this.sparks(hit, tUnit ? 5 : 7, new THREE.Color(1, 0.85, 0.35), 50, 2.2);
       }

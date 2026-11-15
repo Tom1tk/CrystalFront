@@ -87,14 +87,14 @@ const BUILDING_COLORS: Record<BuildingType, string> = {
 };
 
 const ENTITY_NAMES: Record<string, string> = {
-  worker: "Worker", skirmisher: "Skirmisher", gunner: "Gunner", bruiser: "Bruiser", medic: "Medic",
+  worker: "Worker", skirmisher: "Skirmisher", gunner: "Gunner", bruiser: "Bruiser", medic: "Medic", bulwark: "Bulwark",
   barracks: "Barracks", foundry: "Foundry", supply_depot: "Supply Depot", turret: "Turret",
 };
 
 
 const BUILDING_UNIT_MAP: Record<BuildingType, string[]> = {
   barracks: ["skirmisher", "gunner"],
-  foundry: ["bruiser", "medic"],
+  foundry: ["bruiser", "medic", "bulwark"],
   supply_depot: [],
   turret: [],
 };
@@ -111,6 +111,7 @@ const UNIT_COSTS: Record<string, { cost: number; supplyCost: number }> = {
   gunner: { cost: 75, supplyCost: 1 },
   bruiser: { cost: 100, supplyCost: 2 },
   medic: { cost: 60, supplyCost: 1 },
+  bulwark: { cost: 125, supplyCost: 2 },
 };
 
 // ─── Terrain rendering (G-5/G-6) ─────────────────────────────────
@@ -319,7 +320,15 @@ function drawAttackLines(
 
     const color = evt.isHeal
       ? `rgba(80,255,80,${(0.7 * alpha).toFixed(2)})`
+      : evt.blockedFor ? `rgba(150,215,255,${(0.8 * alpha).toFixed(2)})` // stopped by a bulwark
       : `rgba(255,70,70,${(0.7 * alpha).toFixed(2)})`;
+    if (evt.blockedFor) {
+      ctx.beginPath();
+      ctx.arc(target.x, target.y, target.radius + 5 + 4 * (1 - alpha), 0, Math.PI * 2);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
 
     ctx.beginPath();
     ctx.moveTo(attacker.x, attacker.y);
@@ -671,6 +680,26 @@ function drawBruiser(ctx: CanvasRenderingContext2D, x: number, y: number, isMyTe
   ctx.restore();
 }
 
+/** Bulwark: a round body with a thick shield arc on the side it covers (`facing`, radians). */
+function drawBulwark(ctx: CanvasRenderingContext2D, x: number, y: number, isMyTeam: boolean, selected: boolean, facing: number) {
+  const c = silColors(isMyTeam);
+  ctx.save();
+  ctx.translate(x, y);
+  if (selected) {
+    ctx.beginPath(); ctx.arc(0, 0, 19, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(255,255,68,0.7)"; ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+  ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2);
+  ctx.fillStyle = c.fill; ctx.strokeStyle = c.stroke; ctx.lineWidth = 2;
+  ctx.fill(); ctx.stroke();
+  ctx.rotate(facing);
+  ctx.beginPath(); ctx.arc(0, 0, 15, -Math.PI / 2.4, Math.PI / 2.4);
+  ctx.strokeStyle = c.stroke; ctx.lineWidth = 5; ctx.lineCap = "round";
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawMedic(ctx: CanvasRenderingContext2D, x: number, y: number, isMyTeam: boolean, selected: boolean) {
   const c = silColors(isMyTeam);
   ctx.save();
@@ -757,6 +786,7 @@ export default function GameShell({
     | "train_gunner"
     | "train_bruiser"
     | "train_medic"
+    | "train_bulwark"
     | "build_supply_depot"
     | "build_barracks"
     | "build_foundry"
@@ -831,7 +861,9 @@ export default function GameShell({
 
     return [
       { key: "q", action: crystalSelected ? "train_worker" : barracksSelected ? "train_skirmisher" : "none", label: crystalSelected ? `Worker (${uc("worker")})` : barracksSelected ? `Skirmisher (${uc("skirmisher")})` : "", icon: crystalSelected ? "👷" : barracksSelected ? "⚔️" : "" },
-      { key: "w", action: barracksSelected ? "train_gunner" : "none", label: barracksSelected ? `Gunner (${uc("gunner")})` : "", icon: barracksSelected ? "🔫" : "" },
+      barracksSelected
+        ? { key: "w", action: "train_gunner", label: `Gunner (${uc("gunner")})`, icon: "🔫" }
+        : { key: "w", action: foundrySelected ? "train_bulwark" : "none", label: foundrySelected ? `Bulwark (${uc("bulwark")})` : "", icon: foundrySelected ? "🧱" : "" },
       { key: "e", action: foundrySelected ? "train_bruiser" : "none", label: foundrySelected ? `Bruiser (${uc("bruiser")})` : "", icon: foundrySelected ? "🛡️" : "" },
       foundrySelected
         ? { key: "r", action: "train_medic", label: `Medic (${uc("medic")})`, icon: "💊" }
@@ -1141,8 +1173,10 @@ export default function GameShell({
             const ent = myEntities.find((m) => m.id === id);
             if (!ent || ent.type === "crystal" || ent.type === "building") continue;
             const queued = e.shiftKey || undefined;
-            onGameCommand(enemy
+            // A bulwark cannot attack: it advances on the target and holds in front of it.
+            onGameCommand(enemy && ent.type !== "bulwark"
               ? { type: "attack", entityId: id, targetEntityId: enemy.id, queued }
+              : enemy ? { type: "attack_move", entityId: id, targetX: enemy.x, targetY: enemy.y, queued }
               : { type: "attack_move", entityId: id, targetX: worldX, targetY: worldY, queued });
           }
           return;
@@ -1224,6 +1258,11 @@ export default function GameShell({
 
           // Attack enemy unit/building
           if (clickedEntity && clickedEntity.ownerId !== safePlayer.id) {
+            if (selEntity.type === "bulwark") {
+              // Cannot attack: advance on the target and hold in front of it.
+              onGameCommand({ type: "attack_move", entityId: sid, targetX: clickedEntity.x, targetY: clickedEntity.y, queued: e.shiftKey || undefined });
+              continue;
+            }
             onGameCommand({
               type: "attack",
               entityId: sid,
@@ -1454,7 +1493,8 @@ export default function GameShell({
           case "train_skirmisher":
           case "train_gunner":
           case "train_bruiser":
-          case "train_medic": {
+          case "train_medic":
+          case "train_bulwark": {
             // Train unit from selected building
             const unitType = hotkey.action.replace("train_", "");
             let building: MatchEntity | undefined;
@@ -2258,6 +2298,11 @@ export default function GameShell({
           drawBruiser(ctx, entity.x, entity.y, localIsMyTeam, isUnitSelected);
         } else if (entity.type === "medic") {
           drawMedic(ctx, entity.x, entity.y, localIsMyTeam, isUnitSelected);
+        } else if (entity.type === "bulwark") {
+          const foe = entities.find((o) => o.type === "crystal" && o.ownerId !== entity.ownerId);
+          const home = foe ? undefined : entities.find((o) => o.type === "crystal" && o.ownerId === entity.ownerId);
+          const facing = foe ? Math.atan2(foe.y - entity.y, foe.x - entity.x) : home ? Math.atan2(entity.y - home.y, entity.x - home.x) : 0;
+          drawBulwark(ctx, entity.x, entity.y, localIsMyTeam, isUnitSelected, facing);
         }
 
         // Auto-attack enabled dash border
@@ -2705,7 +2750,7 @@ export default function GameShell({
       <section>
         <div className="g-label" style={{ marginBottom: 8 }}>Spawn (then click the map)</div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {(["worker", "skirmisher", "gunner", "bruiser", "medic"] as const).map((t) => (
+          {(["worker", "skirmisher", "gunner", "bruiser", "medic", "bulwark"] as const).map((t) => (
             <button key={t} type="button" className="g-btn small" onClick={() => { setDebugSpawnMode(t); setSettingsOpen(false); }}>+ {ENTITY_NAMES[t]}</button>
           ))}
           {(["barracks", "foundry", "supply_depot", "turret"] as const).map((b) => (

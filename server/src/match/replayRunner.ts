@@ -119,7 +119,7 @@ interface EnrichedMetadata {
   flags: string[];
 }
 
-const UNIT_TYPES = ["skirmisher", "gunner", "bruiser", "medic", "worker"];
+const UNIT_TYPES = ["skirmisher", "gunner", "bruiser", "medic", "bulwark", "worker"];
 const BUILDING_TYPES = ["barracks", "foundry", "supply_depot", "turret"];
 
 const FLAG_FAST_TICKS    = 600;   // games ending before this get "fast" flag
@@ -189,7 +189,7 @@ function analyzeReplay(raw: Record<string, unknown>): EnrichedMetadata {
   const flags: string[] = [];
   if (ticks > 0 && ticks <= FLAG_FAST_TICKS) flags.push("fast");
 
-  const COMBAT_TYPES = ["skirmisher", "gunner", "bruiser", "medic"] as const;
+  const COMBAT_TYPES = ["skirmisher", "gunner", "bruiser", "medic", "bulwark"] as const;
   const blueTotal   = Object.values(blueUnits).reduce((a, b) => a + b, 0);
   const redTotal    = Object.values(redUnits).reduce((a, b) => a + b, 0);
   if (Math.abs(blueTotal - redTotal) >= FLAG_LOPSIDED_MIN) flags.push("lopsided");

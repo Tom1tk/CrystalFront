@@ -3224,6 +3224,26 @@ console.log("\n--- G-13: unit control ---");
     for (let i = 0; i < 200; i++) engine.tick(match.id);
     assert(d(s, r) <= BULWARK.standoff + r.radius && d(s, r) > BULWARK.standoff + r.radius - 8, `Bulwark: on attack-move it holds ${BULWARK.standoff} px from the nearest armed enemy (${d(s, r).toFixed(0)} px)`);
   }
+  // It takes no attack order, and comes from the foundry only.
+  {
+    const { engine, match, spawn, midX } = setup();
+    const s = spawn("pb", "bulwark", midX, 300);
+    const r = spawn("pr", "gunner", midX + 300, 300, true);
+    assert(!engine.processCommand(match.id, "pb", { type: "attack", entityId: s.id, targetEntityId: r.id }).success, "Bulwark: an attack order is rejected");
+    match.economy[0]!.resources = 2000;
+    const workers = [...match.entities.values()].filter((e) => e.type === "worker" && e.ownerId === "pb");
+    const made: Record<string, string> = {};
+    for (const [i, b, x] of [[0, "foundry", 300], [1, "barracks", 520]] as const) {
+      const before = new Set(match.entities.keys());
+      const res = engine.processCommand(match.id, "pb", { type: "build", buildingType: b, targetX: x, targetY: 300, workerIds: [workers[i].id] });
+      assert(res.success, `Bulwark: test ${b} placed (${res.message ?? ""})`);
+      const e = [...match.entities.values()].find((e) => !before.has(e.id) && e.buildingType === b)!;
+      e.constructionProgress = 100;
+      made[b] = e.id;
+    }
+    assert(!engine.processCommand(match.id, "pb", { type: "train_unit", entityId: made.barracks, unitType: "bulwark" }).success, "Bulwark: the barracks cannot train it");
+    assert(engine.processCommand(match.id, "pb", { type: "train_unit", entityId: made.foundry, unitType: "bulwark" }).success, "Bulwark: the foundry trains it");
+  }
 }
 
 // ---- G-1 / G-9d: Determinism ----
@@ -3539,6 +3559,22 @@ function v2ObservationTests(): void {
     assert(o.nodes.slice(0, 4).some((r) => r[0] === 1) && o.nodes.slice(4, 8).some((r) => r[0] === 1), "own and enemy safe nodes are listed");
   }
 
+  {
+    // Bulwark feedback: both sides are told what share of ranged shots the shields stopped.
+    const { engine, match, seats, oss } = newMatch("glimmerfen", 2);
+    const midX = match.config.mapWidth / 2, y = 300; // open ground on this map
+    engine.debugSpawn(match.id, "o-blue", "gunner", midX, y);
+    engine.debugSpawn(match.id, "o-blue", "bulwark", midX + 40, y);
+    engine.debugSpawn(match.id, "o-red", "gunner", midX + 130, y);
+    for (const e of match.entities.values()) if (e.type === "gunner") e.health = e.maxHealth = 100000;
+    // Observe right after a blocked shot (a lone gunner fires less often than the feedback window is long).
+    for (let i = 0; i < 80 && !match.attackLog.some((a) => a.blockedFor && a.tick >= match.tick - 2); i++) engine.tick(match.id);
+    const g = (seat: number, name: string) => OBS.observe(match, seats[seat], oss[seat], { z: 0 }).globals[OBS.GLOBAL_NAMES.indexOf(name)];
+    assert(g(0, "shots_shielded") > 0 && g(0, "shots_blocked") === 0, "bulwark owner sees the share of enemy shots its shields stopped");
+    assert(g(1, "shots_blocked") > 0 && g(1, "shots_shielded") === 0, "the shooter sees the share of its shots that were blocked");
+    assert(g(0, "own_bulwark") > 0, "own bulwarks are counted in the globals");
+  }
+
   for (const mapId of ["twin-spires", "glimmerfen"]) {
     // Mirrored play gives both seats bit-identical observations (fog included) and masks,
     // on a rotate map (twin-spires) and a mirror map (glimmerfen).
@@ -3629,9 +3665,9 @@ function v2ObservationTests(): void {
 
 function v2ActionTests(): void {
   console.log("\n--- Action space v3 (G-10 T5, G-13 Phase B) ---");
-  assertEqual(V2.ACTION_SPACE_VERSION, 3, "action space version 3");
-  assertEqual([V2.ECON_SIZE, V2.BUILD_SITES, V2.ECON_PTR_KINDS.length, V2.PTR_SIZE], [61, 760, 3, 200], "economy: 61 kinds, 760 build sites (10 named + 750 grid), 3 pointer kinds over 200 rows");
-  assertEqual([V2.GROUPS.length, V2.ORDERS.length, V2.TARGET_SIZE], [10, 11, 804], "army: 10 groups x 11 orders x 804 targets (37 anchors + 16 memory + 750 grid + none)");
+  assertEqual(V2.ACTION_SPACE_VERSION, 4, "action space version 4");
+  assertEqual([V2.ECON_SIZE, V2.BUILD_SITES, V2.ECON_PTR_KINDS.length, V2.PTR_SIZE], [62, 760, 3, 200], "economy: 62 kinds, 760 build sites (10 named + 750 grid), 3 pointer kinds over 200 rows");
+  assertEqual([V2.GROUPS.length, V2.ORDERS.length, V2.TARGET_SIZE], [11, 11, 804], "army: 11 groups x 11 orders x 804 targets (37 anchors + 16 memory + 750 grid + none)");
   assertEqual(OBS.MAX_ENTITIES, V2.PTR_SIZE, "pointer heads index the observation's entity rows");
   let roundTrip = true;
   for (let i = 0; i < V2.ECON_SIZE; i++) if (V2.encodeEcon(V2.decodeEcon(i)) !== i) roundTrip = false;
@@ -4075,6 +4111,15 @@ function v2ScriptedTests(): void {
   type R = Record<string, any>;
   const zs = scriptedZs();
   assert(zs.size >= 12 && !zs.has(0), `T8 scripted bots cover ${zs.size} distinct z (need ≥ 12, none 0)`);
+
+  {
+    // The phalanx bot fields bulwarks.
+    let shields = 0;
+    const r = new VecRunnerV2({ onTick: (_s, m) => { if (m.tick % 100 === 0) shields = Math.max(shields, [...m.entities.values()].filter((e) => e.type === "bulwark" && e.ownerId === V2_PIDS[0]).length); } });
+    let res: R = r.handle({ type: "reset_all", max_ticks: 4000, critic: false, slots: [{ seed: 7, map: "shardfall", blue: "bot:phalanx", red: "bot:idle" }] });
+    while (!(res.slots[0].done || res.slots[0].truncated)) res = r.handle({ type: "step", actions: [{}] });
+    assert(zs.has(19) && shields > 0, `phalanx (z 19) trains bulwarks (${shields} at once)`);
+  }
 
   const play = (slots: R[], cap: number): R[] => {
     const r = new VecRunnerV2();

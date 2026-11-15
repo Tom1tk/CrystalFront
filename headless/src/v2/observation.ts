@@ -16,26 +16,26 @@
 // memory, last-seen counts and grid history are per-seat state (`ObsState`),
 // reset per episode, updated once per decision.
 import type { MatchEntity, MatchState } from "../../../server/src/match/types.js";
-import { CONTROL } from "@crystalfront/shared";
+import { CONTROL, GUARD, UNIT_DEFS } from "@crystalfront/shared";
 import { anchorsFor } from "../../../server/src/match/maps.js";
 import { seatAnchors, type Pt } from "../../../server/src/match/engine/anchors.js";
 import { T_BRUSH, T_CLIFF, T_HIGH, T_ROCK, T_ROUGH, T_WATER, terrainAt } from "../../../server/src/match/engine/terrain.js";
 import { visionCellOf, visionGridOf } from "../../../server/src/match/engine/visibility.js";
 import { TRAIN_MAX_TICKS } from "../episode.js";
 import { fromOwnFrame, toOwnFrame } from "./frame.js";
-import { BUILDINGS, GRID_CELL_H, GRID_CELL_W, MEMORY_SLOTS, N_ANCHOR_TARGETS, PRODUCER_QUEUE_MAX, PTR_SIZE, TRAIN_UNITS, type SeatState } from "./actions.js";
+import { BUILDINGS, DECISION_TICKS, GRID_CELL_H, GRID_CELL_W, MEMORY_SLOTS, N_ANCHOR_TARGETS, PRODUCER_QUEUE_MAX, PTR_SIZE, TRAIN_UNITS, type SeatState } from "./actions.js";
 
-export const OBS_SCHEMA_VERSION = 2;
+export const OBS_SCHEMA_VERSION = 3;
 
 /** 4-decimal rounding; also turns −0 into 0. */
 const q = (v: number) => Math.round(v * 1e4) / 1e4 + 0;
 const cap1 = (v: number) => Math.min(1, v);
 const AGE_SCALE = 1000;
 
-const COMBAT = ["skirmisher", "gunner", "bruiser", "medic"] as const;
+const COMBAT = ["skirmisher", "gunner", "bruiser", "medic", "bulwark"] as const;
 const COMBAT_SET = new Set<string>(COMBAT);
 /** Entity type vocabulary (one-hot order). */
-export const ENTITY_TYPES = ["crystal", "worker", "skirmisher", "gunner", "bruiser", "medic", "barracks", "foundry", "supply_depot", "turret"] as const;
+export const ENTITY_TYPES = ["crystal", "worker", "skirmisher", "gunner", "bruiser", "medic", "bulwark", "barracks", "foundry", "supply_depot", "turret"] as const;
 const MEMORY_TYPES = ["crystal", "barracks", "foundry", "supply_depot", "turret"] as const;
 
 function typeOf(e: MatchEntity): string | null {
@@ -57,6 +57,9 @@ export const GLOBAL_NAMES: string[] = [
   ...BUILDINGS.flatMap((b) => [`seen_${b}`, `seen_${b}_age`]),
   "enemy_army_age",
   "army_a", "army_b", "scout",
+  // Bulwark feedback over the last decision window: share of own ranged shots that enemy
+  // bulwarks stopped, and share of enemy ranged shots that own bulwarks stopped.
+  "shots_blocked", "shots_shielded",
 ];
 
 export const ENTITY_FEATURES: string[] = [
@@ -285,7 +288,26 @@ function globalsRow(match: MatchState, s: SeatState, d: Dims, seen: Seen[], os: 
     ...seenBlock,
     armyAge,
     q(s.armyA.size / 20), q(s.armyB.size / 20), +(s.scoutId !== null && match.entities.has(s.scoutId)),
+    ...blockedShots(match, s),
   ];
+}
+
+/** [share of own ranged shots stopped by enemy bulwarks, share of enemy ranged shots stopped by own bulwarks], last DECISION_TICKS. */
+function blockedShots(match: MatchState, s: SeatState): [number, number] {
+  let own = 0, ownBlocked = 0, foe = 0, foeBlocked = 0;
+  for (const ev of match.attackLog) {
+    if (ev.isHeal || ev.tick <= match.tick - DECISION_TICKS) continue;
+    const a = match.entities.get(ev.attackerId);
+    if (!a || !(a.type === "building" || (UNIT_DEFS[a.type]?.range ?? 0) >= GUARD.rangedMinRange)) continue;
+    if (a.ownerId === s.playerId) { own++; if (ev.blockedFor) ownBlocked++; }
+    else {
+      // Enemy shots count only when they land on something of ours (the log is not fog-filtered here).
+      const t = match.entities.get(ev.targetId);
+      if (!t || t.ownerId !== s.playerId) continue;
+      foe++; if (ev.blockedFor) foeBlocked++;
+    }
+  }
+  return [q(own ? ownBlocked / own : 0), q(foe ? foeBlocked / foe : 0)];
 }
 
 function nodeRows(match: MatchState, s: SeatState, d: Dims, rows: (string | null)[], os: ObsState | null): number[][] {

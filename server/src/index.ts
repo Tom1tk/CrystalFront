@@ -960,7 +960,7 @@ wss.on("connection", (ws) => {
         const result = matchEngine.debugSpawn(
           session.matchId,
           playerId,
-          spawnPayload.entityType as "worker" | "skirmisher" | "gunner" | "bruiser" | "medic" | "building",
+          spawnPayload.entityType as "worker" | "skirmisher" | "gunner" | "bruiser" | "medic" | "bulwark" | "building",
           spawnPayload.x,
           spawnPayload.y,
           spawnPayload.buildingType as "barracks" | "foundry" | "supply_depot" | "turret" | undefined

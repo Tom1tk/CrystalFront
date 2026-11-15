@@ -366,7 +366,7 @@ def main() -> None:
                 writer.add_scalar(f"episode/wintype_{wt}", np.mean([e["winType"] == wt for e in rc]), step)
             for i, k in enumerate(VALUE_HEADS):
                 writer.add_scalar(f"episode/return_{k}", np.mean([e["ret"][i] for e in rc]), step)
-            for i, u in enumerate(("worker", "skirmisher", "gunner", "bruiser", "medic")):
+            for i, u in enumerate(("worker", "skirmisher", "gunner", "bruiser", "medic", "bulwark")):
                 writer.add_scalar(f"production/{u}", np.mean([e["train"][i] for e in rc]), step)
             for side in ("blue", "red"):
                 sw = [e["win"] for e in rc if e["side"] == side]
