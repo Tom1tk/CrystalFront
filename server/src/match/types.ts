@@ -131,8 +131,9 @@ export interface MatchEntity {
   autoAttackEnabled: boolean;
   /** G-13 E1: attackTargetId was ordered by the player (never leashed or re-prioritised). */
   attackOrdered?: boolean;
-  /** G-13 E3: circle an auto-acquired target may be chased within (set at acquisition). */
-  leash?: { x: number; y: number; r: number };
+  /** G-13 E3: circle an auto-acquired target may be chased within (set at acquisition).
+   *  G-14: `retaliate` marks a retaliation target's circle, which overrides the guard circle. */
+  leash?: { x: number; y: number; r: number; retaliate?: boolean };
   /** G-13 E4: guard point; the unit defends a circle round it until given another order. */
   guard?: { x: number; y: number };
   /** Active player move order (G-1). attack=false: plain move, ignores enemies until

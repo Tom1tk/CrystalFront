@@ -290,12 +290,19 @@ export const ENTITY = {
  * Replays are stamped with it; replays with a different stamp are not listed or
  * played (no compatibility layer).
  */
-export const ENGINE_VERSION = 15;
+export const ENGINE_VERSION = 16;
 
 /** Targets a unit picked itself are leashed (G-13 E3): it drops one that can't be hit
  *  from within `chase` px of where it acquired it, then resumes its order. */
 export const LEASH = {
   chase: 200,
+} as const;
+
+/** Retaliation (G-14): a holding combat unit (idle or on guard) goes for an enemy that damages
+ *  it, a nearby ally or a nearby building of its own, even outside its normal reach. */
+export const RETALIATE = {
+  chase: 320,               // px from the unit's guard point (or where it stood) it may go to hit that enemy
+  assist: 200,              // allies this close to the victim join in
 } as const;
 
 /** Guard order (G-13 E4). Radii are fractions of the unit type's base vision range. */

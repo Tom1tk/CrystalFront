@@ -1,4 +1,4 @@
-import { UNIT_DEFS, GUARD, LEASH } from "@crystalfront/shared";
+import { UNIT_DEFS, GUARD, LEASH, RETALIATE } from "@crystalfront/shared";
 import type { MatchEntity, MatchState } from "../types.js";
 import { dist, getRange, getDamage, getAttackCooldown, getCounterMultiplier } from "./utils.js";
 import { isVisibleTo } from "./visibility.js";
@@ -24,6 +24,7 @@ function guarding(e: MatchEntity): e is MatchEntity & { guard: { x: number; y: n
 /** Circle the unit's current target may be chased within, or null (ordered targets, buildings). */
 function chaseCircle(e: MatchEntity): { x: number; y: number; r: number } | null {
   if (e.attackOrdered) return null;
+  if (e.leash?.retaliate) return e.leash;
   if (guarding(e)) return { x: e.guard.x, y: e.guard.y, r: guardRadius(e) };
   return e.leash ?? null;
 }
@@ -60,16 +61,19 @@ export function processCombat(match: MatchState): Map<string, number> {
     }
     if (entity.attackOrdered) continue;
     let curClass = Infinity;
+    const range = getRange(entity, match.terrain);
+    // A unit on its way to a retaliation target (G-14) fights what it meets first.
+    let enRoute = false;
     if (entity.attackTargetId) {
       const cur = match.entities.get(entity.attackTargetId);
       curClass = cur ? targetClass(cur) : Infinity;
-      if (curClass === 0) continue;
+      enRoute = !!cur && !!entity.leash?.retaliate && dist(entity.x, entity.y, cur.x, cur.y) > range + cur.radius;
+      if (curClass === 0 && !enRoute) continue;
     }
 
-    const range = getRange(entity, match.terrain);
     // Standing guard (G-13 E4): melee units react further out, but only to enemies
     // they can reach without leaving the guard circle.
-    const guard = entity.type !== "building" && guarding(entity) ? entity.guard : null;
+    const guard = entity.type !== "building" && guarding(entity) && !entity.leash?.retaliate ? entity.guard : null;
     const def = UNIT_DEFS[entity.type as keyof typeof UNIT_DEFS];
     const reach = guard && def && def.range < GUARD.rangedMinRange ? Math.max(range, (def.visionRange ?? 0) * GUARD.acquireFrac) : range;
     const guardReach = guard ? guardRadius(entity) + range : 0;
@@ -93,7 +97,7 @@ export function processCombat(match: MatchState): Map<string, number> {
         nearestId = other.id;
       }
     }
-    if (nearestId && nearestClass < curClass) {
+    if (nearestId && (nearestClass < curClass || (enRoute && nearestClass === curClass))) {
       entity.attackTargetId = nearestId;
       if (entity.type !== "building" && !guard && !entity.leash) entity.leash = { x: entity.x, y: entity.y, r: LEASH.chase };
     } else if (entity.attackTargetId) {
@@ -154,6 +158,7 @@ export function processCombat(match: MatchState): Map<string, number> {
   }
 
   // Resolve attacks
+  const shotBy = new Map<MatchEntity, MatchEntity>(); // victim → first attacker this tick
   for (const entity of entities) {
     if (!entity.attackTargetId) continue;
     const target = match.entities.get(entity.attackTargetId!);
@@ -184,6 +189,28 @@ export function processCombat(match: MatchState): Map<string, number> {
     match.attackLog.push({ attackerId: entity.id, targetId: target.id, damage: finalDamage, tick: match.tick, isHeal: false });
 
     entity.attackCooldown = getAttackCooldown(entity);
+    if (!shotBy.has(target)) shotBy.set(target, entity);
+  }
+
+  // Retaliation (G-14): a holding combat unit (idle or on guard) with nothing to attack goes for
+  // the nearest enemy that damaged it, a nearby ally or a nearby building of its own this tick,
+  // even outside its own reach or guard circle.
+  if (shotBy.size) {
+    for (const u of entities) {
+      if (u.attackTargetId || !u.autoAttackEnabled || (u.moveOrder && !u.moveOrder.attack)) continue;
+      if (u.type !== "skirmisher" && u.type !== "gunner" && u.type !== "bruiser") continue;
+      let best: MatchEntity | undefined, bestD = Infinity;
+      for (const [victim, attacker] of shotBy) {
+        if (victim.ownerId !== u.ownerId || attacker.ownerId === u.ownerId) continue;
+        if (u !== victim && dist(u.x, u.y, victim.x, victim.y) > RETALIATE.assist + victim.radius) continue;
+        const d = dist(u.x, u.y, attacker.x, attacker.y);
+        if (d < bestD) { bestD = d; best = attacker; }
+      }
+      if (!best) continue;
+      const anchor = guarding(u) ? u.guard : u;
+      u.attackTargetId = best.id;
+      u.leash = { x: anchor.x, y: anchor.y, r: RETALIATE.chase, retaliate: true };
+    }
   }
 
   return damageLog;

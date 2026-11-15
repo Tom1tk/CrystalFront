@@ -1,0 +1,32 @@
+
+== 5 gunners (375 resources) ==
+equal cost     A: 6 skirmisher                       (360, 6 sup)  B: 5 gunner     (375, 5 sup) | both attack: A keeps 56% (149t) | A attacks, B guards: A keeps 50% (187t) | B attacks, A guards: A keeps 50% (220t)
+equal supply   A: 5 skirmisher                       (300, 5 sup)  B: 5 gunner     (375, 5 sup) | both attack: A keeps 40% (157t) | A attacks, B guards: A keeps 33% (212t) | B attacks, A guards: A keeps 23% (244t)
+bruisers       A: 4 bruiser                          (400, 8 sup)  B: 5 gunner     (375, 5 sup) | both attack: B keeps 44% (171t) | A attacks, B guards: B keeps 49% (227t) | B attacks, A guards: B keeps 56% (247t)
+skirm+gunner   A: 3 skirmisher + 3 gunner            (405, 6 sup)  B: 5 gunner     (375, 5 sup) | both attack: A keeps 61% (139t) | A attacks, B guards: A keeps 46% (214t) | B attacks, A guards: A keeps 51% (227t)
+skirm+medic    A: 5 skirmisher + 1 medic             (360, 6 sup)  B: 5 gunner     (375, 5 sup) | both attack: A keeps 70% (144t) | A attacks, B guards: A keeps 70% (187t) | B attacks, A guards: A keeps 44% (270t)
+mirror         A: 5 gunner                           (375, 5 sup)  B: 5 gunner     (375, 5 sup) | both attack: B keeps 0% (191t) | A attacks, B guards: A keeps 15% (217t) | B attacks, A guards: B keeps 15% (217t)
+
+== 15 gunners (1125 resources) ==
+equal cost     A: 19 skirmisher                      (1140, 19 sup)  B: 15 gunner    (1125, 15 sup) | both attack: A keeps 48% (176t) | A attacks, B guards: A keeps 41% (229t) | B attacks, A guards: A keeps 37% (262t)
+equal supply   A: 15 skirmisher                      (900, 15 sup)  B: 15 gunner    (1125, 15 sup) | both attack: A keeps 20% (230t) | A attacks, B guards: A keeps 16% (276t) | B attacks, A guards: B keeps 11% (322t)
+bruisers       A: 11 bruiser                         (1100, 22 sup)  B: 15 gunner    (1125, 15 sup) | both attack: B keeps 75% (161t) | A attacks, B guards: B keeps 76% (201t) | B attacks, A guards: B keeps 76% (219t)
+skirm+gunner   A: 9 skirmisher + 8 gunner            (1140, 17 sup)  B: 15 gunner    (1125, 15 sup) | both attack: A keeps 53% (182t) | A attacks, B guards: A keeps 21% (256t) | B attacks, A guards: A keeps 25% (270t)
+skirm+medic    A: 15 skirmisher + 4 medic            (1140, 19 sup)  B: 15 gunner    (1125, 15 sup) | both attack: A keeps 78% (181t) | A attacks, B guards: A keeps 76% (232t) | B attacks, A guards: A keeps 21% (355t)
+mirror         A: 15 gunner                          (1125, 15 sup)  B: 15 gunner    (1125, 15 sup) | both attack: B keeps 0% (209t) | A attacks, B guards: A keeps 17% (251t) | B attacks, A guards: B keeps 17% (251t)
+
+== 30 gunners (2250 resources) ==
+equal cost     A: 38 skirmisher                      (2280, 38 sup)  B: 30 gunner    (2250, 30 sup) | both attack: A keeps 40% (217t) | A attacks, B guards: A keeps 37% (269t) | B attacks, A guards: A keeps 26% (328t)
+equal supply   A: 30 skirmisher                      (1800, 30 sup)  B: 30 gunner    (2250, 30 sup) | both attack: B keeps 26% (252t) | A attacks, B guards: B keeps 31% (271t) | B attacks, A guards: B keeps 25% (306t)
+bruisers       A: 23 bruiser                         (2300, 46 sup)  B: 30 gunner    (2250, 30 sup) | both attack: B keeps 77% (175t) | A attacks, B guards: B keeps 78% (208t) | B attacks, A guards: B keeps 82% (219t)
+skirm+gunner   A: 19 skirmisher + 15 gunner          (2265, 34 sup)  B: 30 gunner    (2250, 30 sup) | both attack: A keeps 17% (251t) | A attacks, B guards: B keeps 7% (329t) | B attacks, A guards: A keeps 29% (306t)
+skirm+medic    A: 30 skirmisher + 8 medic            (2280, 38 sup)  B: 30 gunner    (2250, 30 sup) | both attack: A keeps 74% (222t) | A attacks, B guards: A keeps 68% (283t) | B attacks, A guards: B keeps 36% (285t)
+mirror         A: 30 gunner                          (2250, 30 sup)  B: 30 gunner    (2250, 30 sup) | both attack: B keeps 0% (261t) | A attacks, B guards: A keeps 13% (285t) | B attacks, A guards: B keeps 13% (285t)
+
+== 55 gunners (4125 resources) ==
+equal cost     A: 69 skirmisher                      (4140, 69 sup)  B: 55 gunner    (4125, 55 sup) | both attack: A keeps 24% (278t) | A attacks, B guards: A keeps 26% (322t) | B attacks, A guards: A keeps 24% (329t)
+equal supply   A: 55 skirmisher                      (3300, 55 sup)  B: 55 gunner    (4125, 55 sup) | both attack: B keeps 33% (245t) | A attacks, B guards: B keeps 38% (274t) | B attacks, A guards: B keeps 33% (298t)
+bruisers       A: 41 bruiser                         (4100, 82 sup)  B: 55 gunner    (4125, 55 sup) | both attack: B keeps 83% (179t) | A attacks, B guards: B keeps 81% (217t) | B attacks, A guards: B keeps 86% (220t)
+skirm+gunner   A: 34 skirmisher + 28 gunner          (4140, 62 sup)  B: 55 gunner    (4125, 55 sup) | both attack: B keeps 14% (293t) | A attacks, B guards: B keeps 3% (398t) | B attacks, A guards: A keeps 8% (358t)
+skirm+medic    A: 55 skirmisher + 14 medic           (4140, 69 sup)  B: 55 gunner    (4125, 55 sup) | both attack: A keeps 62% (267t) | A attacks, B guards: A keeps 60% (316t) | B attacks, A guards: B keeps 38% (287t)
+mirror         A: 55 gunner                          (4125, 55 sup)  B: 55 gunner    (4125, 55 sup) | both attack: B keeps 0% (300t) | A attacks, B guards: A keeps 10% (300t) | B attacks, A guards: B keeps 10% (300t)

@@ -9,7 +9,7 @@ import { ALL_ACTIONS, ACTION_SPACE_SIZE, actionToIndex, indexToAction, legalMask
 import { getLegalActions } from "../headless/src/legalActions.js";
 import { expandMacroAction } from "../headless/src/actionSpace.js";
 import { buildObservation } from "../headless/src/observation.js";
-import { ECONOMY, HEALING, ENGINE_VERSION, CONTROL, LEASH, GUARD, GATHERING } from "../shared/src/gameBalance.js";
+import { ECONOMY, HEALING, ENGINE_VERSION, CONTROL, LEASH, GUARD, GATHERING, RETALIATE } from "../shared/src/gameBalance.js";
 import { processControl, controlNeeded } from "../server/src/match/engine/control.js";
 import { saveReplay, getReplay, listReplays } from "../server/src/match/replayRunner.js";
 import { mirrorState, deepCloneMatchState, diffStates } from "../server/src/match/engine/mirror.js";
@@ -3108,6 +3108,69 @@ console.log("\n--- G-13: unit control ---");
     ticks = 0;
     while (t.health < t.maxHealth && ticks < 2000) { engine.tick(match.id); ticks++; }
     assert(t.health === t.maxHealth && !t.repairTargetId && !w2.repairTargetId && !w2.moveTarget, "repair: a finished repair frees the worker");
+  }
+
+  // ---- G-14: retaliation. Units answer an enemy that shoots them or a nearby ally. ----
+  // Idle: a skirmisher shot from outside its own reach goes for the shooter.
+  {
+    const { engine, match, spawn, midX } = setup();
+    const b = spawn("pb", "skirmisher", midX, 300, true);
+    const r = spawn("pr", "gunner", midX + 100, 300, true);
+    for (let i = 0; i < 60; i++) engine.tick(match.id);
+    assert(b.attackTargetId === r.id, "G-14: an idle unit targets the enemy that shoots it");
+    assert(d(b, r) <= 20 + b.radius + r.radius + 1, `G-14: and closes in to hit it (${d(b, r).toFixed(0)} px away)`);
+  }
+  // Guard: an ally is shot from outside the guard circle; the guard goes out, but no further
+  // than RETALIATE.chase from its guard point, and walks back afterwards.
+  {
+    const { engine, match, spawn, midX } = setup();
+    const b = spawn("pb", "skirmisher", midX, 300, true);
+    engine.processCommand(match.id, "pb", { type: "guard", entityIds: [b.id], targetX: midX, targetY: 300 });
+    const v = spawn("pb", "skirmisher", midX + 150, 300, true);
+    v.autoAttackEnabled = false;
+    const r = spawn("pr", "gunner", midX + 260, 300, true);
+    assert(d(b, r) > guardRadius(b) + 20 + r.radius, "G-14 setup: the shooter is outside the guard's reach");
+    for (let i = 0; i < 80; i++) engine.tick(match.id);
+    assert(b.attackTargetId === r.id, "G-14: a guarding unit goes for an enemy shooting a nearby ally outside its guard circle");
+    assert(d(b, { x: midX, y: 300 }) > guardRadius(b) + 20, "G-14: and leaves the guard circle to do it");
+    assert(!v.attackTargetId, "G-14: a unit with auto-attack off does not retaliate");
+    engine.processCommand(match.id, "pr", { type: "move", entityId: r.id, targetX: midX + 1500, targetY: 300 });
+    let maxD = 0, released = -1;
+    for (let i = 0; i < 500; i++) {
+      engine.tick(match.id);
+      maxD = Math.max(maxD, d(b, { x: midX, y: 300 }));
+      if (released < 0 && !b.attackTargetId) released = i;
+    }
+    assert(released >= 0, "G-14: retaliation ends when the enemy leaves the retaliation circle");
+    assert(maxD <= RETALIATE.chase + 5, `G-14: never chases past RETALIATE.chase from the guard point (max ${maxD.toFixed(0)} px)`);
+    assert(d(b, { x: midX, y: 300 }) < 15 && !!b.guard, "G-14: then walks back to the guard point, still guarding");
+  }
+  // Who answers: combat units near the victim; not workers, medics, units on a plain move, or far allies.
+  {
+    const { engine, match, spawn, midX } = setup();
+    const v = spawn("pb", "skirmisher", midX, 300, true);
+    v.autoAttackEnabled = false;
+    const near = spawn("pb", "bruiser", midX - 60, 300, true);
+    const w = spawn("pb", "worker", midX - 40, 340, true);
+    const m = spawn("pb", "medic", midX - 40, 260, true);
+    const mover = spawn("pb", "skirmisher", midX - 80, 340, true);
+    const far = spawn("pb", "skirmisher", midX - RETALIATE.assist - 60, 300, true);
+    engine.processCommand(match.id, "pb", { type: "move", entityId: mover.id, targetX: midX - 900, targetY: 340 });
+    const r = spawn("pr", "gunner", midX + 100, 300, true);
+    for (let i = 0; i < 40; i++) engine.tick(match.id);
+    assert(near.attackTargetId === r.id, "G-14: a combat unit near the victim joins in");
+    assert(!w.attackTargetId && !m.attackTargetId, "G-14: workers and medics do not retaliate");
+    assert(!mover.attackTargetId && !!mover.moveOrder, "G-14: a unit on a plain move order keeps moving");
+    assert(!far.attackTargetId, "G-14: an ally further than RETALIATE.assist from the victim stays put");
+  }
+  // A building under fire calls nearby units.
+  {
+    const { engine, match, spawn, midX } = setup();
+    engine.debugSpawn(match.id, "pb", "building", midX, 300, "barracks");
+    const b = spawn("pb", "skirmisher", midX - 100, 300, true);
+    const r = spawn("pr", "gunner", midX + 110, 300, true);
+    for (let i = 0; i < 60; i++) engine.tick(match.id);
+    assert(b.attackTargetId === r.id, "G-14: units near a building under fire go for the shooter");
   }
 }
 
