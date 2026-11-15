@@ -1,11 +1,11 @@
 """
-Sizes and layout of observation v2 (schema 3) / action space v4 (headless/src/v2/observation.ts,
+Sizes and layout of observation v2 (schema 4) / action space v5 (headless/src/v2/observation.ts,
 headless/src/v2/actions.ts). `check_sizes` compares them with a live observation.
 """
 
 # Observation
 N_GLOBALS = 57
-ENTITY_F = 33
+ENTITY_F = 35
 N_NODES, NODE_F = 20, 13
 N_MEMORY, MEMORY_F = 16, 14
 GRID_DYN_C, GRID_STATIC_C, GRID_ROWS, GRID_COLS = 5, 5, 15, 50
@@ -18,14 +18,14 @@ N_BUILDINGS, BUILD_SITES = 4, 760
 PTR = 200
 ECON_PTR_KINDS = 3
 TARGETS = 804
-N_GROUPS, N_ORDERS = 11, 11
+N_GROUPS, N_ORDERS = 11, 12
 ECON_BUILD0, ECON_ASSIGN0, ECON_REPAIR, ECON_RALLY = 7, 11, 59, 60
 GROUP_UNIT = 10
 TARGET_NONE = 803
 TARGET_GRID0 = 53              # 37 anchors + 16 memory slots, then the 750 grid cells
 NAMED_SITES = 10               # then 750 grid build sites
 POINT_ORDERS = (1, 2, 3)       # attack_move, move, guard
-PTR_ORDERS = (6, 7)            # focus, heal
+PTR_ORDERS = (6, 7, 11)        # focus, heal, cover
 
 # Maps (server/src/match/pool/manifest.json). The held-out maps must never be
 # used for imitation data, training or hyperparameter selection.

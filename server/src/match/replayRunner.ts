@@ -445,6 +445,7 @@ function serializeMatch(match: import("./types.js").MatchState | undefined): Rec
       attackTargetId: e.attackTargetId,
       attackCooldown: e.attackCooldown,
       healTargetId: e.healTargetId,
+      coverTargetId: e.coverTargetId,
       autoAttackEnabled: e.autoAttackEnabled,
       rallyPoint: e.rallyPoint,
       heading: headingOf(e, match),

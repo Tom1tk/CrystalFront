@@ -73,11 +73,11 @@ export type GameCommand = {
 /** Orders that can be shift-queued (G-9f). */
 const QUEUEABLE = new Set<string>(["move", "attack_move", "attack", "build"]);
 /** Unit orders that replace whatever the unit was doing, clearing its queue. */
-const CLEARS_QUEUE = new Set<string>(["move", "attack_move", "attack", "build", "gather", "repair", "heal", "retreat", "stop", "assign_build", "guard"]);
+const CLEARS_QUEUE = new Set<string>(["move", "attack_move", "attack", "build", "gather", "repair", "heal", "cover", "retreat", "stop", "assign_build", "guard"]);
 
 /** Is the unit carrying out an order (or, unless ignoreQueue, holding queued ones)? */
 function isBusy(e: QEntity, ignoreQueue = false): boolean {
-  return !!(e.moveTarget || e.moveOrder || e.attackTargetId || e.buildTargetId || e.repairTargetId || e.healTargetId) ||
+  return !!(e.moveTarget || e.moveOrder || e.attackTargetId || e.buildTargetId || e.repairTargetId || e.healTargetId || e.coverTargetId) ||
     (!ignoreQueue && (e.orderQueue?.length ?? 0) > 0);
 }
 
@@ -459,6 +459,13 @@ export class MatchEngine {
         for (const id of [command.entityId, ...(command.entityIds ?? []), ...(command.workerIds ?? [])]) {
           const u = id ? match.entities.get(id) : undefined;
           if (u && u.ownerId === playerId && u.guard) u.guard = undefined;
+        }
+      }
+      // ... and a bulwark's cover.
+      if (CLEARS_QUEUE.has(command.type) && command.type !== "cover") {
+        for (const id of [command.entityId, ...(command.entityIds ?? [])]) {
+          const u = id ? match.entities.get(id) : undefined;
+          if (u && u.ownerId === playerId && u.coverTargetId) u.coverTargetId = undefined;
         }
       }
       if (CLEARS_QUEUE.has(command.type) && command.type !== "repair") {
@@ -921,6 +928,19 @@ if (command.type === "gather") {
 
        return ok();
      }
+
+    // --- cover: a bulwark stands between a friendly unit and the enemy, and follows it ---
+    if (command.type === "cover") {
+      const shield = command.entityId ? match.entities.get(command.entityId) : undefined;
+      if (!shield || shield.type !== "bulwark" || shield.ownerId !== playerId) return { success: false, message: "Bulwark not found" };
+      const target = command.targetEntityId ? match.entities.get(command.targetEntityId) : undefined;
+      if (!target || target.ownerId !== playerId) return { success: false, message: "Target not found or not friendly" };
+      if (target.type === "crystal" || target.type === "building" || target.type === "bulwark") return { success: false, message: "Cannot cover this" };
+      shield.coverTargetId = target.id;
+      shield.moveOrder = undefined;
+      shield.moveTarget = undefined;
+      return ok();
+    }
 
      if (command.type === "heal") {
       const medicId = command.entityId;

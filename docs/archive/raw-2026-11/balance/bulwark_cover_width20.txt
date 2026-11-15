@@ -1,0 +1,29 @@
+640 matches, 10 maps, 4 seeds per side, 578s
+
+Strategy matrix (row's score vs column, both sides, all maps):
+          phalanx gunline   swarm  turtle
+phalanx         -     43%     47%     88%
+gunline       57%       -     65%     95%
+swarm         53%     35%       -      4%
+turtle        13%      5%     96%       -
+
+Mirror matches, blue score per map (all bots):
+  shardfall      0.53   (v2:phalanx 0.50  v2:gunline 0.63  v2:swarm 0.50  v2:turtle 0.50)
+  basalt-run     0.50   (v2:phalanx 0.50  v2:gunline 0.50  v2:swarm 0.50  v2:turtle 0.50)
+  twin-spires    0.50   (v2:phalanx 0.50  v2:gunline 0.50  v2:swarm 0.50  v2:turtle 0.50)
+  hollow-crown   0.50   (v2:phalanx 0.50  v2:gunline 0.50  v2:swarm 0.50  v2:turtle 0.50)
+  prism-ridge    0.50   (v2:phalanx 0.50  v2:gunline 0.50  v2:swarm 0.50  v2:turtle 0.50)
+  glimmerfen     0.50   (v2:phalanx 0.50  v2:gunline 0.50  v2:swarm 0.50  v2:turtle 0.50)
+  saltmarsh      0.50   (v2:phalanx 0.50  v2:gunline 0.50  v2:swarm 0.50  v2:turtle 0.50)
+  ironreed       0.50   (v2:phalanx 0.50  v2:gunline 0.50  v2:swarm 0.50  v2:turtle 0.50)
+  duskvale       0.50   (v2:phalanx 0.50  v2:gunline 0.50  v2:swarm 0.50  v2:turtle 0.50)
+  cinder-flats   0.50   (v2:phalanx 0.50  v2:gunline 0.50  v2:swarm 0.50  v2:turtle 0.50)
+
+Win types: combat 406 (63%), timeout 186 (29%), control 48 (8%)
+Average length of decided games: 5818 ticks
+Timeouts per pairing: v2:phalanx-v2:phalanx 40/40, v2:phalanx-v2:gunline 4/40, v2:phalanx-v2:swarm 5/40, v2:phalanx-v2:turtle 0/40, v2:gunline-v2:phalanx 4/40, v2:gunline-v2:gunline 39/40, v2:gunline-v2:swarm 2/40, v2:gunline-v2:turtle 2/40, v2:swarm-v2:phalanx 4/40, v2:swarm-v2:gunline 2/40, v2:swarm-v2:swarm 40/40, v2:swarm-v2:turtle 1/40, v2:turtle-v2:phalanx 0/40, v2:turtle-v2:gunline 2/40, v2:turtle-v2:swarm 1/40, v2:turtle-v2:turtle 40/40
+
+G-8 acceptance:
+  [PASS] no strategy wins >70% vs every other
+  [PASS] mirror 50% ± 10% on every map
+  [FAIL] timeouts < 15% (29%)

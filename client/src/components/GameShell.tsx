@@ -10,7 +10,7 @@ import { setAccent } from "../design/glass";
 
 /** G-4: how long a move order's planned path stays on screen. */
 const PATH_SHOW_MS = 1200;
-import { UNIT_DEFS, BUILDING_DEFS } from "@crystalfront/shared";
+import { UNIT_DEFS, BUILDING_DEFS, BULWARK } from "@crystalfront/shared";
 import type { World3D } from "../three/World3D";
 
 /** G-11: 3D/2D preference key ("3d" | "2d"). Replaces the old "cf.view3d", which saved
@@ -697,6 +697,10 @@ function drawBulwark(ctx: CanvasRenderingContext2D, x: number, y: number, isMyTe
   ctx.beginPath(); ctx.arc(0, 0, 15, -Math.PI / 2.4, Math.PI / 2.4);
   ctx.strokeStyle = c.stroke; ctx.lineWidth = 5; ctx.lineCap = "round";
   ctx.stroke();
+  // The width it blocks shots across.
+  ctx.beginPath(); ctx.moveTo(17, -BULWARK.halfWidth); ctx.lineTo(17, BULWARK.halfWidth);
+  ctx.globalAlpha = 0.35; ctx.lineWidth = 2;
+  ctx.stroke();
   ctx.restore();
 }
 
@@ -1277,6 +1281,17 @@ export default function GameShell({
               clickedEntity.type !== "crystal" && clickedEntity.type !== "building") {
             onGameCommand({
               type: "heal",
+              entityId: sid,
+              targetEntityId: clickedEntity.id,
+            });
+            continue;
+          }
+
+          // Bulwark covers a friendly unit: stands between it and the enemy, and follows it
+          if (selEntity.type === "bulwark" && clickedEntity && clickedEntity.ownerId === safePlayer.id &&
+              clickedEntity.type !== "crystal" && clickedEntity.type !== "building" && clickedEntity.type !== "bulwark") {
+            onGameCommand({
+              type: "cover",
               entityId: sid,
               targetEntityId: clickedEntity.id,
             });

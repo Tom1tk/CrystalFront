@@ -564,7 +564,7 @@ sudo systemctl restart crystalfront-rts
 - **Synchronised start**: a loading screen holds the match until both players have loaded, so both see the first tick together.
 - **RTS Gameplay**:
   - Six unit types (worker, skirmisher, gunner, bruiser, medic, bulwark) and four buildings (barracks, foundry, supply depot, turret)
-  - The bulwark is an unarmed shield: ranged shots that cross its front hit it instead of their target; melee ignores it
+  - The bulwark is an unarmed shield: ranged shots that cross its front hit it instead of their target; melee ignores it. Right-click a friendly unit with a bulwark selected and it covers that unit: it stands between the unit and the enemy and follows it, and the unit walks at the bulwark's speed while it is close
   - Worker-based building, with several workers able to build together
   - Resource gathering with range limits
   - Unit movement, selection, attack-move and rally points

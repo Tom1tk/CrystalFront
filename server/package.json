@@ -1,6 +1,6 @@
 {
   "name": "@crystalfront/server",
-  "version": "0.8.20-ML",
+  "version": "0.8.21-ML",
   "private": true,
   "type": "module",
   "scripts": {

@@ -29,7 +29,7 @@ import { PLACEMENT } from "@crystalfront/shared";
 
 export const DECISION_TICKS = 8;
 /** Action space version (wire format and head layout). */
-export const ACTION_SPACE_VERSION = 4;
+export const ACTION_SPACE_VERSION = 5;
 
 /** Own-frame grid (also the observation grid). 5000×900 → 50×15; smaller maps leave cells invalid. */
 export const GRID_CELL_W = 100;
@@ -68,10 +68,10 @@ export const ECON_PTR_KINDS = ["repair", "rally", "cancel"] as const;
 
 // ---- Army head ----
 export const GROUPS = ["none", "all_combat", "army_a", "army_b", "skirmishers", "gunners", "bruisers", "medics", "bulwarks", "scout", "unit"] as const;
-export const ORDERS = ["none", "attack_move", "move", "guard", "guard_here", "retreat", "focus", "heal", "stop", "join_a", "join_b"] as const;
+export const ORDERS = ["none", "attack_move", "move", "guard", "guard_here", "retreat", "focus", "heal", "stop", "join_a", "join_b", "cover"] as const;
 /** Orders that take a point target; orders that take an entity pointer. */
 export const POINT_ORDERS: ReadonlySet<string> = new Set(["attack_move", "move", "guard"]);
-export const PTR_ORDERS: ReadonlySet<string> = new Set(["focus", "heal"]);
+export const PTR_ORDERS: ReadonlySet<string> = new Set(["focus", "heal", "cover"]);
 export type Group = typeof GROUPS[number];
 export type Order = typeof ORDERS[number];
 
@@ -102,7 +102,7 @@ const MIN_NODE_REMAINING = 5;
 /**
  * One decision. `site` applies to build, `econPtr` to repair/rally/cancel,
  * `econTarget` to rally, `unit` to group `unit`, `target` to point orders
- * (TARGET_NONE otherwise), `ptr` to focus/heal. Heads that do not apply are ignored.
+ * (TARGET_NONE otherwise), `ptr` to focus/heal/cover. Heads that do not apply are ignored.
  */
 export interface V2Action {
   econ: number; site: number; econPtr: number; econTarget: number;
@@ -463,6 +463,9 @@ function isRetreating(e: MatchEntity, c: MatchEntity): boolean {
 
 /** Whether order `o` does something for unit `e` (target/pointer choice aside). */
 function memberAccepts(match: MatchState, s: SeatState, g: Group, o: Order, e: MatchEntity, crystal: MatchEntity | undefined): boolean {
+  // A covering bulwark stays with its unit when the army as a whole is ordered about;
+  // only an order to the bulwarks group or to the unit itself replaces the cover.
+  if (e.coverTargetId && (g === "all_combat" || g === "army_a" || g === "army_b") && o !== "join_a" && o !== "join_b") return false;
   switch (o) {
     case "none": return false;
     case "attack_move": case "move": case "guard": return true;
@@ -470,7 +473,8 @@ function memberAccepts(match: MatchState, s: SeatState, g: Group, o: Order, e: M
     case "retreat": return !!crystal && !isRetreating(e, crystal) && (e.x - crystal.x) ** 2 + (e.y - crystal.y) ** 2 > HOME_RADIUS ** 2;
     case "focus": return e.type !== "medic" && e.type !== "bulwark"; // a bulwark cannot attack
     case "heal": return e.type === "medic";
-    case "stop": return !!(e.moveTarget || e.moveOrder || e.attackTargetId || e.healTargetId || e.guard);
+    case "cover": return e.type === "bulwark";
+    case "stop": return !!(e.moveTarget || e.moveOrder || e.attackTargetId || e.healTargetId || e.coverTargetId || e.guard);
     case "join_a": return g !== "scout" && COMBAT.has(e.type) && !s.armyA.has(e.id);
     case "join_b": return g !== "scout" && COMBAT.has(e.type) && !s.armyB.has(e.id);
   }
@@ -543,13 +547,17 @@ export function computeMasks(match: MatchState, s: SeatState): V2Masks {
   // Army.
   const enemyRows = new Array<boolean>(PTR_SIZE).fill(false);
   const hurtRows = new Array<boolean>(PTR_SIZE).fill(false);
+  const coverRows = new Array<boolean>(PTR_SIZE).fill(false); // own units a bulwark can cover
   rowEnt.forEach((e, i) => {
     if (!e || i >= PTR_SIZE || e.health <= 0) return;
     if (e.ownerId !== s.playerId) enemyRows[i] = true;
-    else if (MOVABLE.has(e.type) && e.health < e.maxHealth) hurtRows[i] = true;
+    else if (MOVABLE.has(e.type)) {
+      if (e.health < e.maxHealth) hurtRows[i] = true;
+      if (e.type !== "bulwark") coverRows[i] = true;
+    }
   });
-  const anyEnemy = enemyRows.some(Boolean), anyHurt = hurtRows.some(Boolean);
-  const ptrOk = (o: Order) => (o === "focus" ? anyEnemy : o === "heal" ? anyHurt : true);
+  const anyEnemy = enemyRows.some(Boolean), anyHurt = hurtRows.some(Boolean), anyCover = coverRows.some(Boolean);
+  const ptrOk = (o: Order) => (o === "focus" ? anyEnemy : o === "heal" ? anyHurt : o === "cover" ? anyCover : true);
 
   const group: boolean[] = [], order: boolean[][] = [];
   const unit = ORDERS.map(() => new Array<boolean>(PTR_SIZE).fill(false));
@@ -574,7 +582,7 @@ export function computeMasks(match: MatchState, s: SeatState): V2Masks {
   noneOnly[TARGET_NONE] = true;
   const target = ORDERS.map((o) => (POINT_ORDERS.has(o) ? points.slice() : noneOnly.slice()));
   const nothing = new Array<boolean>(PTR_SIZE).fill(false);
-  const ptr = ORDERS.map((o) => (o === "focus" ? enemyRows.slice() : o === "heal" ? hurtRows.slice() : nothing.slice()));
+  const ptr = ORDERS.map((o) => (o === "focus" ? enemyRows.slice() : o === "heal" ? hurtRows.slice() : o === "cover" ? coverRows.slice() : nothing.slice()));
   return { econ, site, econPtr, econTarget: points, group, order, unit, target, ptr };
 }
 
@@ -684,11 +692,12 @@ function armyCommands(match: MatchState, s: SeatState, g: Group, o: Order, a: V2
     }
     case "guard_here": return doers.map((e) => ({ type: "guard", entityIds: [e.id], targetX: e.x, targetY: e.y }));
     case "retreat": return [{ type: "retreat", entityIds: ids }];
-    case "focus": case "heal": {
+    case "focus": case "heal": case "cover": {
       const t = rowEntity(match, s, a.ptr);
       if (!t || t.health <= 0) return [];
       if (o === "focus" ? t.ownerId === s.playerId : t.ownerId !== s.playerId || !MOVABLE.has(t.type)) return [];
-      return ids.map((id) => ({ type: o === "focus" ? "attack" : "heal", entityId: id, targetEntityId: t.id }));
+      if (o === "cover" && t.type === "bulwark") return [];
+      return ids.map((id) => ({ type: o === "focus" ? "attack" : o, entityId: id, targetEntityId: t.id }));
     }
     case "stop": return [{ type: "stop", entityIds: ids }];
     case "join_a": case "join_b": {

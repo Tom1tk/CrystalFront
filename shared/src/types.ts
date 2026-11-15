@@ -70,6 +70,7 @@ export interface Entity {
   attackTargetId?: string;
   attackCooldown: number;
   healTargetId?: string;
+  coverTargetId?: string;
   autoAttackEnabled: boolean;
   rallyPoint?: { x: number; y: number };
   /** G-11: facing in radians toward the current target (undefined = keep last). */
@@ -203,6 +204,7 @@ export type CommandType =
   | "repair"
   | "attack"
   | "heal"
+  | "cover"
   | "set_rally"
   | "debug_move_node"
   | "debug_save_layout"

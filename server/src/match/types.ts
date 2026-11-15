@@ -130,6 +130,8 @@ export interface MatchEntity {
   attackTargetId?: EntityId;
   attackCooldown: number;
   healTargetId?: EntityId;
+  /** Bulwark: the friendly unit it stands in front of and follows (cover order). */
+  coverTargetId?: EntityId;
   autoAttackEnabled: boolean;
   /** G-13 E1: attackTargetId was ordered by the player (never leashed or re-prioritised). */
   attackOrdered?: boolean;
@@ -186,7 +188,8 @@ export interface CommandEntry {
     | "build"
     | "repair"
     | "attack"
-    | "heal";
+    | "heal"
+    | "cover";
   entityId?: string;
   entityIds?: string[];
   targetX?: number;

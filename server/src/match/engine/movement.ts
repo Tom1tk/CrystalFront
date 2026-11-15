@@ -1,4 +1,4 @@
-import { UNIT_DEFS, SIMULATION, TERRAIN } from "@crystalfront/shared";
+import { UNIT_DEFS, SIMULATION, TERRAIN, BULWARK } from "@crystalfront/shared";
 import type { MatchState } from "../types.js";
 import { dist, getRange, entityIdNum } from "./utils.js";
 import { footprintOf, pushOutOfRect, type Rect } from "./navGrid.js";
@@ -83,16 +83,24 @@ export function processMovement(match: MatchState): void {
     cell.push({ id: e.id, x: e.x, y: e.y, radius: e.radius });
   }
 
+  // A unit covered by a nearby bulwark walks no faster than it.
+  const covered = new Set<string>();
+  for (const b of entities) {
+    if (b.type !== "bulwark" || !b.coverTargetId) continue;
+    const t = match.entities.get(b.coverTargetId);
+    if (t && dist(b.x, b.y, t.x, t.y) <= BULWARK.coverSense) covered.add(t.id);
+  }
+
   for (const entity of entities) {
     if (entity.type === "crystal" || entity.type === "building") continue;
     if (!entity.moveTarget) { entity.route = undefined; continue; }
 
     const unitDef = UNIT_DEFS[entity.type as keyof typeof UNIT_DEFS];
     const baseSpeed = unitDef?.speed ?? 2;
-    const speedPerTick = (
+    const speedPerTick = Math.min(covered.has(entity.id) ? UNIT_DEFS.bulwark.speed : Infinity, (
       entity.type === "worker"     && match.config.workerSpeed     !== undefined ? match.config.workerSpeed :
       entity.type === "skirmisher" && match.config.skirmisherSpeed !== undefined ? match.config.skirmisherSpeed :
-      baseSpeed) * (match.terrain.any && terrainAt(match.terrain, entity.x, entity.y) === T_ROUGH ? TERRAIN.roughSpeed : 1);
+      baseSpeed)) * (match.terrain.any && terrainAt(match.terrain, entity.x, entity.y) === T_ROUGH ? TERRAIN.roughSpeed : 1);
     if (dist(entity.x, entity.y, entity.moveTarget.x, entity.moveTarget.y) <= arrivalThreshold) {
       arrive(entity);
       continue;

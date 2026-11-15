@@ -268,6 +268,12 @@ Put v2 in new files (`headless/src/v2/…`) so v1 keeps working until the switch
 - *Observation:* 57 globals (`own_bulwark`, `queued_bulwark`, `seen_bulwark`, `seen_bulwark_age`, and at the end `shots_blocked`, `shots_shielded`: the share of own ranged shots that enemy bulwarks stopped and the share of enemy ranged shots that own bulwarks stopped, over the last decision window); entity rows have 33 features (`type_bulwark`).
 - `training/v2/spaces.py` mirrors these constants (`N_GLOBALS 57`, `ENTITY_F 33`, `ECON 62`, `N_GROUPS 11`, `GROUP_UNIT 10`, `OPP_UNITS 6`).
 
+**Action space v5 and observation schema 4 (cover order, v0.8.21-ML).** Supersedes the sizes above where they differ.
+- *Orders:* 12: `cover` appended at index 11 (existing indices unchanged). Bulwarks only; takes an entity pointer to an own unit that is not a bulwark (`ptr[11]`). The bulwark stands between that unit and the nearest armed enemy and follows it (engine command `cover`). The covered unit walks no faster than the bulwark while it is within 300 px.
+- A covering bulwark does not take orders given to `all_combat`, `army_a` or `army_b` (it stays with its unit when the army is ordered about); an order to the `bulwarks` group or to the `unit` group replaces the cover. `join_a` / `join_b` still apply.
+- *Observation:* entity rows have 35 features: `covering` (this bulwark has a cover target) and `covered` (a bulwark is covering this unit) appended.
+- `training/v2/spaces.py`: `ENTITY_F 35`, `N_ORDERS 12`, `PTR_ORDERS (6, 7, 11)`; `training/env/vec_env_v2.py` asserts schema 4 / action space 5.
+
 **Observation (R-1).** All in own frame, all deterministic.
 | Block | Content |
 |---|---|

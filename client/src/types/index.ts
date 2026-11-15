@@ -41,6 +41,7 @@ export interface MatchEntity {
   attackTargetId?: string;
   attackCooldown: number;
   healTargetId?: string;
+  coverTargetId?: string;
   autoAttackEnabled: boolean;
   rallyPoint?: { x: number; y: number };
   /** G-11: facing in radians toward the current target (undefined = keep last). */

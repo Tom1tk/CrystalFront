@@ -232,6 +232,7 @@ function serializeEntities(match: MatchState): Array<{
   attackTargetId?: string;
   attackCooldown: number;
   healTargetId?: string;
+  coverTargetId?: string;
   autoAttackEnabled: boolean;
   rallyPoint?: { x: number; y: number };
   heading?: number;
@@ -266,6 +267,7 @@ function serializeEntities(match: MatchState): Array<{
     attackTargetId: e.attackTargetId,
     attackCooldown: e.attackCooldown,
     healTargetId: e.healTargetId,
+    coverTargetId: e.coverTargetId,
     autoAttackEnabled: e.autoAttackEnabled,
     rallyPoint: e.rallyPoint,
     heading: headingOf(e, match),
@@ -813,7 +815,7 @@ wss.on("connection", (ws) => {
           queued?: boolean;
         };
         const result = matchEngine.processCommand(matchId, playerId, {
-          type: cmd.type as "move" | "attack_move" | "deselect" | "gather" | "train_worker" | "train_unit" | "cancel_queue" | "build" | "assign_build" | "repair" | "attack" | "heal" | "set_rally" | "toggle_auto_attack" | "retreat" | "stop" | "guard" | "debug_move_node" | "debug_save_layout" | "debug_mirror_nodes",
+          type: cmd.type as "move" | "attack_move" | "deselect" | "gather" | "train_worker" | "train_unit" | "cancel_queue" | "build" | "assign_build" | "repair" | "attack" | "heal" | "cover" | "set_rally" | "toggle_auto_attack" | "retreat" | "stop" | "guard" | "debug_move_node" | "debug_save_layout" | "debug_mirror_nodes",
           entityId: cmd.entityId,
           entityIds: cmd.entityIds,
           targetX: cmd.targetX,

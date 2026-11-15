@@ -1,0 +1,33 @@
+2560 matches, 10 maps, 4 seeds per side, 2243s
+
+Strategy matrix (row's score vs column, both sides, all maps):
+                        phalanx        gunline          swarm          macro          heavy         turtle sw_turtle_grab          rush2
+phalanx                       -            63%            33%            80%           100%            76%            46%           100%
+gunline                     38%              -            65%            99%           100%            90%            63%            96%
+swarm                       68%            35%              -            65%            59%             4%            20%            98%
+macro                       20%             1%            35%              -            85%            16%             9%            90%
+heavy                        0%             0%            41%            15%              -            10%             8%           100%
+turtle                      24%            10%            96%            84%            90%              -            19%            99%
+sw_turtle_grab              54%            38%            80%            91%            93%            81%              -            96%
+rush2                        0%             4%             3%            10%             0%             1%             4%              -
+
+Mirror matches, blue score per map (all bots):
+  shardfall      0.50   (v2:phalanx 0.50  v2:gunline 0.50  v2:swarm 0.50  v2:macro 0.50  v2:heavy 0.50  v2:turtle 0.50  v2:sw_turtle_grab 0.50  v2:rush2 0.50)
+  basalt-run     0.50   (v2:phalanx 0.50  v2:gunline 0.50  v2:swarm 0.50  v2:macro 0.50  v2:heavy 0.50  v2:turtle 0.50  v2:sw_turtle_grab 0.50  v2:rush2 0.50)
+  twin-spires    0.48   (v2:phalanx 0.50  v2:gunline 0.50  v2:swarm 0.50  v2:macro 0.38  v2:heavy 0.50  v2:turtle 0.50  v2:sw_turtle_grab 0.50  v2:rush2 0.50)
+  hollow-crown   0.50   (v2:phalanx 0.50  v2:gunline 0.50  v2:swarm 0.50  v2:macro 0.50  v2:heavy 0.50  v2:turtle 0.50  v2:sw_turtle_grab 0.50  v2:rush2 0.50)
+  prism-ridge    0.50   (v2:phalanx 0.50  v2:gunline 0.50  v2:swarm 0.50  v2:macro 0.50  v2:heavy 0.50  v2:turtle 0.50  v2:sw_turtle_grab 0.50  v2:rush2 0.50)
+  glimmerfen     0.50   (v2:phalanx 0.50  v2:gunline 0.50  v2:swarm 0.50  v2:macro 0.50  v2:heavy 0.50  v2:turtle 0.50  v2:sw_turtle_grab 0.50  v2:rush2 0.50)
+  saltmarsh      0.50   (v2:phalanx 0.50  v2:gunline 0.50  v2:swarm 0.50  v2:macro 0.50  v2:heavy 0.50  v2:turtle 0.50  v2:sw_turtle_grab 0.50  v2:rush2 0.50)
+  ironreed       0.50   (v2:phalanx 0.50  v2:gunline 0.50  v2:swarm 0.50  v2:macro 0.50  v2:heavy 0.50  v2:turtle 0.50  v2:sw_turtle_grab 0.50  v2:rush2 0.50)
+  duskvale       0.50   (v2:phalanx 0.50  v2:gunline 0.50  v2:swarm 0.50  v2:macro 0.50  v2:heavy 0.50  v2:turtle 0.50  v2:sw_turtle_grab 0.50  v2:rush2 0.50)
+  cinder-flats   0.50   (v2:phalanx 0.50  v2:gunline 0.50  v2:swarm 0.50  v2:macro 0.50  v2:heavy 0.50  v2:turtle 0.50  v2:sw_turtle_grab 0.50  v2:rush2 0.50)
+
+Win types: combat 1958 (76%), timeout 439 (17%), control 163 (6%)
+Average length of decided games: 5844 ticks
+Timeouts per pairing: v2:phalanx-v2:phalanx 40/40, v2:phalanx-v2:gunline 8/40, v2:phalanx-v2:swarm 4/40, v2:phalanx-v2:macro 2/40, v2:phalanx-v2:heavy 0/40, v2:phalanx-v2:turtle 3/40, v2:phalanx-v2:sw_turtle_grab 1/40, v2:phalanx-v2:rush2 0/40, v2:gunline-v2:phalanx 8/40, v2:gunline-v2:gunline 40/40, v2:gunline-v2:swarm 1/40, v2:gunline-v2:macro 1/40, v2:gunline-v2:heavy 0/40, v2:gunline-v2:turtle 4/40, v2:gunline-v2:sw_turtle_grab 4/40, v2:gunline-v2:rush2 3/40, v2:swarm-v2:phalanx 4/40, v2:swarm-v2:gunline 1/40, v2:swarm-v2:swarm 40/40, v2:swarm-v2:macro 2/40, v2:swarm-v2:heavy 1/40, v2:swarm-v2:turtle 1/40, v2:swarm-v2:sw_turtle_grab 0/40, v2:swarm-v2:rush2 2/40, v2:macro-v2:phalanx 2/40, v2:macro-v2:gunline 1/40, v2:macro-v2:swarm 2/40, v2:macro-v2:macro 39/40, v2:macro-v2:heavy 6/40, v2:macro-v2:turtle 3/40, v2:macro-v2:sw_turtle_grab 1/40, v2:macro-v2:rush2 8/40, v2:heavy-v2:phalanx 0/40, v2:heavy-v2:gunline 0/40, v2:heavy-v2:swarm 1/40, v2:heavy-v2:macro 6/40, v2:heavy-v2:heavy 40/40, v2:heavy-v2:turtle 0/40, v2:heavy-v2:sw_turtle_grab 0/40, v2:heavy-v2:rush2 0/40, v2:turtle-v2:phalanx 3/40, v2:turtle-v2:gunline 4/40, v2:turtle-v2:swarm 1/40, v2:turtle-v2:macro 3/40, v2:turtle-v2:heavy 0/40, v2:turtle-v2:turtle 40/40, v2:turtle-v2:sw_turtle_grab 3/40, v2:turtle-v2:rush2 1/40, v2:sw_turtle_grab-v2:phalanx 1/40, v2:sw_turtle_grab-v2:gunline 4/40, v2:sw_turtle_grab-v2:swarm 0/40, v2:sw_turtle_grab-v2:macro 1/40, v2:sw_turtle_grab-v2:heavy 0/40, v2:sw_turtle_grab-v2:turtle 3/40, v2:sw_turtle_grab-v2:sw_turtle_grab 40/40, v2:sw_turtle_grab-v2:rush2 1/40, v2:rush2-v2:phalanx 0/40, v2:rush2-v2:gunline 3/40, v2:rush2-v2:swarm 2/40, v2:rush2-v2:macro 8/40, v2:rush2-v2:heavy 0/40, v2:rush2-v2:turtle 1/40, v2:rush2-v2:sw_turtle_grab 1/40, v2:rush2-v2:rush2 40/40
+
+G-8 acceptance:
+  [PASS] no strategy wins >70% vs every other
+  [PASS] mirror 50% ± 10% on every map
+  [FAIL] timeouts < 15% (17%)

@@ -3244,6 +3244,47 @@ console.log("\n--- G-13: unit control ---");
     assert(!engine.processCommand(match.id, "pb", { type: "train_unit", entityId: made.barracks, unitType: "bulwark" }).success, "Bulwark: the barracks cannot train it");
     assert(engine.processCommand(match.id, "pb", { type: "train_unit", entityId: made.foundry, unitType: "bulwark" }).success, "Bulwark: the foundry trains it");
   }
+  // Cover order: the shield stands between the unit it covers and the nearest armed enemy.
+  {
+    const { engine, match, spawn, midX } = setup();
+    const g = spawn("pb", "gunner", midX, 300, true);
+    const s = spawn("pb", "bulwark", midX - 60, 340);
+    const r = spawn("pr", "gunner", midX + 130, 300, true);
+    assert(engine.processCommand(match.id, "pb", { type: "cover", entityId: s.id, targetEntityId: g.id }).success, "Cover: a bulwark takes the order on a friendly unit");
+    let coverBlocks = 0;
+    for (let i = 0; i < 80; i++) { engine.tick(match.id); coverBlocks += match.attackLog.filter((a) => a.tick === match.tick && a.attackerId === r.id && a.blockedFor === g.id).length; }
+    assert(s.coverTargetId === g.id && d(s, { x: g.x + BULWARK.coverDist, y: g.y }) <= 8, `Cover: the shield stands ${BULWARK.coverDist} px from its unit, toward the enemy (${(s.x - g.x).toFixed(0)}, ${(s.y - g.y).toFixed(0)})`);
+    assert(coverBlocks > 0, `Cover: shots at the covered unit are blocked (${coverBlocks})`);
+    // Rejected: not a bulwark, an enemy, a building, another bulwark.
+    const s2 = spawn("pb", "bulwark", midX - 100, 300);
+    const crystal = [...match.entities.values()].find((e) => e.type === "crystal" && e.ownerId === "pb")!;
+    const no = (entityId: string, targetEntityId: string) => !engine.processCommand(match.id, "pb", { type: "cover", entityId, targetEntityId }).success;
+    assert(no(g.id, s.id) && no(s.id, r.id) && no(s.id, crystal.id) && no(s.id, s2.id), "Cover: only a bulwark, only on a friendly unit that is not a bulwark");
+    // Two shields on one unit stand side by side.
+    engine.processCommand(match.id, "pb", { type: "cover", entityId: s2.id, targetEntityId: g.id });
+    for (let i = 0; i < 80; i++) engine.tick(match.id);
+    assert(d(s, s2) >= BULWARK.halfWidth * 2 - 8 && s.x > g.x && s2.x > g.x, `Cover: two shields on one unit stand side by side (${d(s, s2).toFixed(0)} px apart)`);
+    // Another order ends the cover; so does losing the unit.
+    engine.processCommand(match.id, "pb", { type: "move", entityId: s.id, targetX: midX - 200, targetY: 300 });
+    assert(!s.coverTargetId && s2.coverTargetId === g.id, "Cover: a move order ends it");
+    match.entities.delete(g.id);
+    engine.tick(match.id);
+    assert(!s2.coverTargetId, "Cover: ends when the covered unit is gone");
+  }
+  // The covered unit walks at the shield's speed; the shield takes its place in front once the unit stops.
+  {
+    const { engine, match, spawn, midX } = setup();
+    const k = spawn("pb", "skirmisher", midX - 400, 300);
+    const s = spawn("pb", "bulwark", midX - 440, 300);
+    const free = spawn("pb", "skirmisher", midX - 400, 500);
+    engine.processCommand(match.id, "pb", { type: "cover", entityId: s.id, targetEntityId: k.id });
+    for (const u of [k, free]) engine.processCommand(match.id, "pb", { type: "move", entityId: u.id, targetX: midX + 200, targetY: u.y });
+    for (let i = 0; i < 150; i++) engine.tick(match.id);
+    const walked = k.x - (midX - 400);
+    assert(free.x > midX + 190 && walked > 420 && walked < 460, `Cover: the covered unit walks at the shield's speed (covered ${walked.toFixed(0)} px, free ${(free.x - midX + 400).toFixed(0)} px in 150 ticks)`);
+    for (let i = 0; i < 150; i++) engine.tick(match.id);
+    assert(s.x > k.x + BULWARK.coverDist - 15 && d(s, k) < BULWARK.coverDist + 15, `Cover: the shield takes its place in front once the unit stops (${(s.x - k.x).toFixed(0)} px ahead)`);
+  }
 }
 
 // ---- G-1 / G-9d: Determinism ----
@@ -3665,9 +3706,9 @@ function v2ObservationTests(): void {
 
 function v2ActionTests(): void {
   console.log("\n--- Action space v3 (G-10 T5, G-13 Phase B) ---");
-  assertEqual(V2.ACTION_SPACE_VERSION, 4, "action space version 4");
+  assertEqual(V2.ACTION_SPACE_VERSION, 5, "action space version 5");
   assertEqual([V2.ECON_SIZE, V2.BUILD_SITES, V2.ECON_PTR_KINDS.length, V2.PTR_SIZE], [62, 760, 3, 200], "economy: 62 kinds, 760 build sites (10 named + 750 grid), 3 pointer kinds over 200 rows");
-  assertEqual([V2.GROUPS.length, V2.ORDERS.length, V2.TARGET_SIZE], [11, 11, 804], "army: 11 groups x 11 orders x 804 targets (37 anchors + 16 memory + 750 grid + none)");
+  assertEqual([V2.GROUPS.length, V2.ORDERS.length, V2.TARGET_SIZE], [11, 12, 804], "army: 11 groups x 12 orders x 804 targets (37 anchors + 16 memory + 750 grid + none)");
   assertEqual(OBS.MAX_ENTITIES, V2.PTR_SIZE, "pointer heads index the observation's entity rows");
   let roundTrip = true;
   for (let i = 0; i < V2.ECON_SIZE; i++) if (V2.encodeEcon(V2.decodeEcon(i)) !== i) roundTrip = false;
@@ -3753,7 +3794,7 @@ function v2ActionTests(): void {
     // focus, heal, join, repair and cancel all get legal chances.
     for (const st of seats) {
       const c = [...match.entities.values()].find((e) => e.type === "crystal" && e.ownerId === st.playerId)!;
-      ["skirmisher", "skirmisher", "gunner", "bruiser", "medic"].forEach((type, i) => {
+      ["skirmisher", "skirmisher", "gunner", "bruiser", "medic", "bulwark"].forEach((type, i) => {
         const e = engine["createEntity"](match.idGen, type, st.playerId, c.x + 80 + 20 * i, c.y + 60, 100, 12, "#888");
         match.entities.set(e.id, e);
       });
@@ -3806,7 +3847,7 @@ function v2ActionTests(): void {
       for (let t = 0; t < V2.DECISION_TICKS; t++) engine.tick(match.id);
     }
     assertEqual(ineffective, 0, `${mapId}: no ineffective legal actions in ${decisions} random masked decisions`);
-    const need = ["build", "train", "assign", "repair", "rally", "cancel", "attack_move", "move", "guard", "guard_here", "retreat", "focus", "heal", "stop", "join_a", "unit"];
+    const need = ["build", "train", "assign", "repair", "rally", "cancel", "attack_move", "move", "guard", "guard_here", "retreat", "focus", "heal", "cover", "stop", "join_a", "unit"];
     const missing = need.filter((k) => !used[k]);
     assert(missing.length === 0 && gridBuilds > 0, `${mapId}: random play used every action kind (missing: ${missing.join(", ") || "none"}; ${gridBuilds} grid builds; ${JSON.stringify(used)})`);
     assertEqual(siteMismatch, 0, `${mapId}: grid build-site masks equal validateBuildSite`);
@@ -3843,6 +3884,32 @@ function v2ActionTests(): void {
     st.memory[0] = { x: 3000, y: 1000 };
     m = V2.computeMasks(match, st);
     assert(m.target[V2.ORDERS.indexOf("move")][V2.TARGET_MEMORY0], "filled memory slot is a move target");
+  }
+
+  {
+    // Cover: bulwarks only, pointer to an own unit; a covering bulwark ignores whole-army orders.
+    const { engine, match, seats, oss } = newMatch("glimmerfen", 9);
+    const st = seats[0], base = st.targets[0];
+    engine.debugSpawn(match.id, "v2-blue", "gunner", base.x + 60, base.y);
+    engine.debugSpawn(match.id, "v2-blue", "bulwark", base.x + 60, base.y + 40);
+    const gun = [...match.entities.values()].find((e) => e.type === "gunner")!, shield = [...match.entities.values()].find((e) => e.type === "bulwark")!;
+    OBS.observe(match, st, oss[0]);
+    let m = V2.computeMasks(match, st);
+    const gAll = V2.GROUPS.indexOf("all_combat"), gBul = V2.GROUPS.indexOf("bulwarks"), gGun = V2.GROUPS.indexOf("gunners");
+    const oCover = V2.ORDERS.indexOf("cover"), oAm = V2.ORDERS.indexOf("attack_move");
+    const gunRow = st.rows.indexOf(gun.id), shieldRow = st.rows.indexOf(shield.id);
+    assert(m.order[gBul][oCover] && !m.order[gGun][oCover], "cover is an order for bulwarks only");
+    assert(m.ptr[oCover][gunRow] && !m.ptr[oCover][shieldRow], "cover points at an own unit that is not a bulwark");
+    const res = V2.applyV2(engine, match, st, V2.act({ group: gBul, order: oCover, ptr: gunRow }));
+    assert(res.armyEffective && shield.coverTargetId === gun.id, "cover order sets the bulwark's cover target");
+    const enemyBase = V2.ANCHOR_TARGETS.slice(0, 6).reduce((n, [, c]) => n + c, 0);
+    V2.applyV2(engine, match, st, V2.act({ group: gAll, order: oAm, target: enemyBase }));
+    assert(!!gun.moveOrder && !shield.moveOrder && shield.coverTargetId === gun.id, "a whole-army order moves the gunner and leaves the covering bulwark with it");
+    const o = OBS.observe(match, st, oss[0]);
+    const f = (id: string, name: string) => o.entities[st.rows.indexOf(id)][OBS.ENTITY_FEATURES.indexOf(name)];
+    assert(f(shield.id, "covering") === 1 && f(gun.id, "covered") === 1 && f(gun.id, "covering") === 0, "observation marks the covering bulwark and the covered unit");
+    V2.applyV2(engine, match, st, V2.act({ group: gBul, order: oAm, target: enemyBase }));
+    assert(!shield.coverTargetId && !!shield.moveOrder, "an order to the bulwarks group replaces the cover");
   }
 }
 

@@ -322,8 +322,11 @@ export const RETALIATE = {
 
 /** Bulwark: the shield faces the enemy crystal and covers that whole side. */
 export const BULWARK = {
-  halfWidth: 20,            // a shot passing this close to the bulwark's centre, from its front, is blocked
+  halfWidth: 40,            // a shot passing this close to the bulwark's centre, from its front, is blocked (20 and 30 did not pay in bot games)
   standoff: 100,            // on attack-move it stops this far from the nearest enemy combat unit or turret
+  coverDist: 40,            // cover order: it stands this far in front of the unit it covers...
+  coverSense: 300,          // ...on the side of the nearest armed enemy within this distance of that unit (else toward the enemy crystal).
+                            // A covered unit with its bulwark within this distance walks no faster than the bulwark.
 } as const;
 
 /** Guard order (G-13 E4). Radii are fractions of the unit type's base vision range. */

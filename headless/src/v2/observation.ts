@@ -25,7 +25,7 @@ import { TRAIN_MAX_TICKS } from "../episode.js";
 import { fromOwnFrame, toOwnFrame } from "./frame.js";
 import { BUILDINGS, DECISION_TICKS, GRID_CELL_H, GRID_CELL_W, MEMORY_SLOTS, N_ANCHOR_TARGETS, PRODUCER_QUEUE_MAX, PTR_SIZE, TRAIN_UNITS, type SeatState } from "./actions.js";
 
-export const OBS_SCHEMA_VERSION = 3;
+export const OBS_SCHEMA_VERSION = 4;
 
 /** 4-decimal rounding; also turns −0 into 0. */
 const q = (v: number) => Math.round(v * 1e4) / 1e4 + 0;
@@ -67,6 +67,8 @@ export const ENTITY_FEATURES: string[] = [
   "built", "queue", "queue_progress",
   "gathering", "building", "moving", "attack_moving", "attacking", "idle",
   "on_high", "on_brush", "on_rough", "army_a", "army_b", "scout", "guarding",
+  // Bulwark cover order: this bulwark is covering a unit; this unit has a bulwark covering it.
+  "covering", "covered",
 ];
 export const ENTITY_F = ENTITY_FEATURES.length;
 /** Entity rows; also the action pointer size (row i = pointer i, `SeatState.rows`). */
@@ -222,14 +224,14 @@ function seenEntities(match: MatchState, s: SeatState, d: Dims, fog: boolean): S
   return out.sort(sortSeen);
 }
 
-function entityRow(match: MatchState, s: SeatState, d: Dims, v: Seen): number[] {
+function entityRow(match: MatchState, s: SeatState, d: Dims, v: Seen, covered: Set<string>): number[] {
   const e = v.e;
   const head = e.productionQueue[0];
   const terr = terrainAt(match.terrain, v.x * d.W, v.y * d.H);
   const isBuilding = e.type === "building" || e.type === "crystal";
   const moving = !!e.moveOrder && !e.moveOrder.attack;
   const attackMoving = !!e.moveOrder && e.moveOrder.attack;
-  const attacking = !!(e.attackTargetId || e.healTargetId);
+  const attacking = !!(e.attackTargetId || e.healTargetId || e.coverTargetId);
   const gathering = !!e.gatheringNodeId, building = !!e.buildTargetId;
   return [
     +v.own, +!v.own, ...ENTITY_TYPES.map((t) => +(t === v.type)), v.x, v.y,
@@ -242,6 +244,7 @@ function entityRow(match: MatchState, s: SeatState, d: Dims, v: Seen): number[] 
     +(terr === T_HIGH), +(terr === T_BRUSH), +(terr === T_ROUGH),
     +(v.own && s.armyA.has(e.id)), +(v.own && s.armyB.has(e.id)), +(v.own && s.scoutId === e.id),
     +!!e.guard,
+    +!!e.coverTargetId, +covered.has(e.id),
   ];
 }
 
@@ -458,10 +461,12 @@ function blocks(match: MatchState, s: SeatState, rows: (string | null)[], os: Ob
   const d = dims(match);
   const seen = seenEntities(match, s, d, os !== null);
   if (os) updateMemory(match, s, d, seen, os);
+  const covered = new Set<string>();
+  for (const e of match.entities.values()) if (e.coverTargetId) covered.add(e.coverTargetId);
   return {
     seen,
     globals: globalsRow(match, s, d, seen, os, cap),
-    entities: seen.slice(0, MAX_ENTITIES).map((v) => entityRow(match, s, d, v)),
+    entities: seen.slice(0, MAX_ENTITIES).map((v) => entityRow(match, s, d, v, covered)),
     nodes: nodeRows(match, s, d, rows, os),
     grid: dynamicGrid(match, s, d, seen, os),
   };

@@ -56,8 +56,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 RUNNER_JS = REPO_ROOT / "headless/dist/v2/vecRunner.js"
 # Must match OBS_SCHEMA_VERSION in headless/src/v2/observation.ts and
 # ACTION_SPACE_VERSION in headless/src/v2/actions.ts.
-OBS_SCHEMA_VERSION = 3
-ACTION_SPACE_VERSION = 4
+OBS_SCHEMA_VERSION = 4
+ACTION_SPACE_VERSION = 5
 SIDES = ("blue", "red")
 PY_ONLY_KEYS = ("learner",)
 

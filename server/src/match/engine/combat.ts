@@ -38,6 +38,9 @@ function release(e: MatchEntity, circle: { x: number; y: number }): void {
   else e.moveTarget = { x: circle.x, y: circle.y };
 }
 
+/** A covering bulwark is in place within this many px of its slot (and re-aims when the slot moves this far). */
+const COVER_SLACK = 6;
+
 export function processCombat(match: MatchState): Map<string, number> {
   const damageLog = new Map<string, number>();
   const entities = Array.from(match.entities.values());
@@ -60,6 +63,50 @@ export function processCombat(match: MatchState): Map<string, number> {
     if (entity.type === "bulwark") {
       // No weapon. On attack-move it stops short of the enemy line and holds there.
       entity.attackTargetId = undefined;
+      if (entity.coverTargetId) {
+        // Cover: stand between the covered unit and the nearest armed enemy near it, and follow it.
+        const t = match.entities.get(entity.coverTargetId);
+        if (!t || t.ownerId !== entity.ownerId) entity.coverTargetId = undefined;
+        else {
+          let near: MatchEntity | undefined, nd = BULWARK.coverSense;
+          for (const o of candidatesFor(entity.ownerId)) {
+            if (targetClass(o) !== 0) continue;
+            const d = dist(t.x, t.y, o.x, o.y);
+            if (d < nd) { nd = d; near = o; }
+          }
+          const toward = near ?? entities.find((c) => c.type === "crystal" && c.ownerId !== entity.ownerId);
+          const len = toward ? dist(t.x, t.y, toward.x, toward.y) : 0;
+          if (toward && len > 0) {
+            const dx = (toward.x - t.x) / len, dy = (toward.y - t.y) / len;
+            // Several bulwarks covering one unit stand side by side, in the order they already are across the line.
+            const side = (b: MatchEntity) => (b.x - t.x) * -dy + (b.y - t.y) * dx;
+            const mine = side(entity);
+            let rank = 0, n = 0;
+            for (const b of entities) {
+              if (b.type !== "bulwark" || b.coverTargetId !== t.id || b.ownerId !== entity.ownerId) continue;
+              n++;
+              if (b !== entity && (side(b) < mine || (side(b) === mine && b.id < entity.id))) rank++;
+            }
+            const off = (rank - (n - 1) / 2) * BULWARK.halfWidth * 2;
+            let sx = t.x + dx * BULWARK.coverDist - dy * off, sy = t.y + dy * BULWARK.coverDist + dx * off;
+            // Behind its unit with the unit in the way: go round it first, on the side it is already on
+            // (dead behind: toward the middle of the map, which keeps mirrored games mirrored).
+            const clear = entity.radius + t.radius + 4;
+            if ((entity.x - t.x) * dx + (entity.y - t.y) * dy < 0 && Math.abs(mine) < clear) {
+              let sgn = mine > 1e-6 ? 1 : mine < -1e-6 ? -1 : 0;
+              if (!sgn) {
+                sgn = Math.abs(dx) > 1e-6 ? ((dx > 0) === (t.y < match.config.mapHeight / 2) ? 1 : -1)
+                  : ((-dy > 0) === (t.x < match.config.mapWidth / 2) ? 1 : -1);
+              }
+              // (a little ahead of level with it, so that arriving there counts as past it)
+              sx = t.x + dx * 2 * COVER_SLACK - dy * sgn * clear; sy = t.y + dy * 2 * COVER_SLACK + dx * sgn * clear;
+            }
+            if (dist(entity.x, entity.y, sx, sy) <= COVER_SLACK) entity.moveTarget = undefined;
+            else if (!entity.moveTarget || dist(entity.moveTarget.x, entity.moveTarget.y, sx, sy) > COVER_SLACK) entity.moveTarget = { x: sx, y: sy };
+          }
+          continue;
+        }
+      }
       if (entity.moveOrder?.attack) {
         const held = candidatesFor(entity.ownerId).some((o) => targetClass(o) === 0 && dist(entity.x, entity.y, o.x, o.y) <= BULWARK.standoff + o.radius);
         if (held) entity.moveTarget = undefined;
