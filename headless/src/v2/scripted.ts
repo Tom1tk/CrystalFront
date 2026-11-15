@@ -196,6 +196,28 @@ export const TEMPLATES: Record<string, Template> = {
     ],
     mix: { gunner: 1 }, push: { tick: 0, size: 99, regroup: 0, targets: ["control"] }, stage: "own_nodes", retreat: 0,
   },
+  // Counters to a gunner mass (found by PPO run m1-ppo-kl): skirmishers that charge instead of standing.
+  skirm_swarm: {
+    z: 16, label: "economy, then a skirmisher + medic swarm", workers: 8, contested: 2, headroom: 3,
+    builds: [
+      { b: "barracks", n: 1, sites: BASE }, { b: "barracks", n: 2, sites: BASE }, { b: "foundry", n: 1, sites: BASE, army: 4 },
+      { b: "barracks", n: 3, sites: BASE, army: 8 },
+    ],
+    mix: { skirmisher: 4, medic: 1 }, push: { tick: 0, size: 18, regroup: 10, targets: ["enemy_base"] }, stage: "base", retreat: 0.4,
+  },
+  skirm_mass: {
+    z: 17, label: "economy, then massed skirmishers", workers: 8, contested: 2, headroom: 3,
+    builds: [{ b: "barracks", n: 1, sites: BASE }, { b: "barracks", n: 2, sites: BASE }, { b: "barracks", n: 3, sites: BASE, army: 6 }],
+    mix: { skirmisher: 1 }, push: { tick: 0, size: 20, regroup: 10, targets: ["enemy_base"] }, stage: "base", retreat: 0,
+  },
+  skirm_tide: {
+    z: 18, label: "turrets at home, late skirmisher + medic swarm", workers: 8, contested: 2, headroom: 3,
+    builds: [
+      { b: "barracks", n: 1, sites: BASE }, { b: "turret", n: 1, sites: BASE }, { b: "barracks", n: 2, sites: BASE },
+      { b: "foundry", n: 1, sites: BASE, army: 4 }, { b: "turret", n: 2, sites: BASE, army: 6 },
+    ],
+    mix: { skirmisher: 4, medic: 1 }, push: { tick: 0, size: 24, regroup: 12, targets: ["enemy_base"] }, stage: "base", retreat: 0.4,
+  },
 };
 
 interface BotDef { templates: string[]; switchTo?: string; z?: number }
@@ -213,6 +235,9 @@ export const SCRIPTED: Record<string, BotDef> = {
   sw_macro_bruiser: { templates: ["macro_light"], switchTo: "bruiser_timing", z: 13 },
   sw_fake_brush: { templates: ["fake_expand"], switchTo: "brush_strike", z: 14 },
   sw_turtle_grab: { templates: ["turtle_hold"], switchTo: "control_grab", z: 15 },
+  swarm: { templates: ["skirm_swarm"] },
+  swarm_mass: { templates: ["skirm_mass"] },
+  swarm_tide: { templates: ["skirm_tide"] },
 };
 export const SWITCH_WINDOW: [number, number] = [1500, 4000];
 
