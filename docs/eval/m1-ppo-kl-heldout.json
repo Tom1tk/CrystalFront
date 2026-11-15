@@ -1,0 +1,6053 @@
+{
+ "checkpoint": "checkpoints/v2/m1-ppo-kl/final.pt",
+ "greedy": false,
+ "seeds": 6,
+ "seconds": 906,
+ "opponents": {
+  "rush2": {
+   "n": 24,
+   "win": 24,
+   "loss": 0,
+   "draw": 0,
+   "win_ci": [
+    0.8620194241710247,
+    1.0
+   ],
+   "loss_ci": [
+    0.0,
+    0.13798057582897535
+   ],
+   "draw_ci": [
+    0.0,
+    0.13798057582897535
+   ],
+   "ticks": 4032.0,
+   "winTypes": {
+    "control": 4,
+    "combat": 20
+   },
+   "maps": {
+    "duskvale": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 3892.8333333333335,
+     "winTypes": {
+      "control": 4,
+      "combat": 8
+     }
+    },
+    "prism-ridge": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 4171.166666666667,
+     "winTypes": {
+      "combat": 12
+     }
+    }
+   },
+   "sides": {
+    "blue": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 3973.5833333333335,
+     "winTypes": {
+      "control": 3,
+      "combat": 9
+     }
+    },
+    "red": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 4090.4166666666665,
+     "winTypes": {
+      "control": 1,
+      "combat": 11
+     }
+    }
+   }
+  },
+  "turtle": {
+   "n": 24,
+   "win": 22,
+   "loss": 1,
+   "draw": 1,
+   "win_ci": [
+    0.741507847985494,
+    0.9768416721570266
+   ],
+   "loss_ci": [
+    0.007393265354805126,
+    0.20242226248842232
+   ],
+   "draw_ci": [
+    0.007393265354805126,
+    0.20242226248842232
+   ],
+   "ticks": 5708.333333333333,
+   "winTypes": {
+    "control": 8,
+    "combat": 14
+   },
+   "maps": {
+    "duskvale": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 4569.333333333333,
+     "winTypes": {
+      "control": 8,
+      "combat": 4
+     }
+    },
+    "prism-ridge": {
+     "n": 12,
+     "win": 10,
+     "loss": 1,
+     "draw": 1,
+     "win_ci": [
+      0.5519636426153274,
+      0.9530358523851776
+     ],
+     "loss_ci": [
+      0.014864709450773478,
+      0.35388592179859524
+     ],
+     "draw_ci": [
+      0.014864709450773478,
+      0.35388592179859524
+     ],
+     "ticks": 6847.333333333333,
+     "winTypes": {
+      "combat": 10
+     }
+    }
+   },
+   "sides": {
+    "blue": {
+     "n": 12,
+     "win": 10,
+     "loss": 1,
+     "draw": 1,
+     "win_ci": [
+      0.5519636426153274,
+      0.9530358523851776
+     ],
+     "loss_ci": [
+      0.014864709450773478,
+      0.35388592179859524
+     ],
+     "draw_ci": [
+      0.014864709450773478,
+      0.35388592179859524
+     ],
+     "ticks": 6017.083333333333,
+     "winTypes": {
+      "control": 4,
+      "combat": 6
+     }
+    },
+    "red": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 5399.583333333333,
+     "winTypes": {
+      "control": 4,
+      "combat": 8
+     }
+    }
+   }
+  },
+  "rush3": {
+   "n": 24,
+   "win": 24,
+   "loss": 0,
+   "draw": 0,
+   "win_ci": [
+    0.8620194241710247,
+    1.0
+   ],
+   "loss_ci": [
+    0.0,
+    0.13798057582897535
+   ],
+   "draw_ci": [
+    0.0,
+    0.13798057582897535
+   ],
+   "ticks": 3610.4166666666665,
+   "winTypes": {
+    "combat": 22,
+    "control": 2
+   },
+   "maps": {
+    "duskvale": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 3694.1666666666665,
+     "winTypes": {
+      "combat": 10,
+      "control": 2
+     }
+    },
+    "prism-ridge": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 3526.6666666666665,
+     "winTypes": {
+      "combat": 12
+     }
+    }
+   },
+   "sides": {
+    "blue": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 3599.5833333333335,
+     "winTypes": {
+      "combat": 11,
+      "control": 1
+     }
+    },
+    "red": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 3621.25,
+     "winTypes": {
+      "combat": 11,
+      "control": 1
+     }
+    }
+   }
+  },
+  "rush1": {
+   "n": 24,
+   "win": 24,
+   "loss": 0,
+   "draw": 0,
+   "win_ci": [
+    0.8620194241710247,
+    1.0
+   ],
+   "loss_ci": [
+    0.0,
+    0.13798057582897535
+   ],
+   "draw_ci": [
+    0.0,
+    0.13798057582897535
+   ],
+   "ticks": 3802.8333333333335,
+   "winTypes": {
+    "combat": 24
+   },
+   "maps": {
+    "duskvale": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 3776.4166666666665,
+     "winTypes": {
+      "combat": 12
+     }
+    },
+    "prism-ridge": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 3829.25,
+     "winTypes": {
+      "combat": 12
+     }
+    }
+   },
+   "sides": {
+    "blue": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 3853.9166666666665,
+     "winTypes": {
+      "combat": 12
+     }
+    },
+    "red": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 3751.75,
+     "winTypes": {
+      "combat": 12
+     }
+    }
+   }
+  },
+  "heavy": {
+   "n": 24,
+   "win": 24,
+   "loss": 0,
+   "draw": 0,
+   "win_ci": [
+    0.8620194241710247,
+    1.0
+   ],
+   "loss_ci": [
+    0.0,
+    0.13798057582897535
+   ],
+   "draw_ci": [
+    0.0,
+    0.13798057582897535
+   ],
+   "ticks": 4089.7916666666665,
+   "winTypes": {
+    "combat": 21,
+    "control": 3
+   },
+   "maps": {
+    "duskvale": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 4163.25,
+     "winTypes": {
+      "control": 3,
+      "combat": 9
+     }
+    },
+    "prism-ridge": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 4016.3333333333335,
+     "winTypes": {
+      "combat": 12
+     }
+    }
+   },
+   "sides": {
+    "blue": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 4120.75,
+     "winTypes": {
+      "combat": 12
+     }
+    },
+    "red": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 4058.8333333333335,
+     "winTypes": {
+      "combat": 9,
+      "control": 3
+     }
+    }
+   }
+  },
+  "macro": {
+   "n": 24,
+   "win": 24,
+   "loss": 0,
+   "draw": 0,
+   "win_ci": [
+    0.8620194241710247,
+    1.0
+   ],
+   "loss_ci": [
+    0.0,
+    0.13798057582897535
+   ],
+   "draw_ci": [
+    0.0,
+    0.13798057582897535
+   ],
+   "ticks": 4346.958333333333,
+   "winTypes": {
+    "control": 8,
+    "combat": 16
+   },
+   "maps": {
+    "duskvale": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 4210.333333333333,
+     "winTypes": {
+      "control": 8,
+      "combat": 4
+     }
+    },
+    "prism-ridge": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 4483.583333333333,
+     "winTypes": {
+      "combat": 12
+     }
+    }
+   },
+   "sides": {
+    "blue": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 4211.666666666667,
+     "winTypes": {
+      "control": 5,
+      "combat": 7
+     }
+    },
+    "red": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 4482.25,
+     "winTypes": {
+      "control": 3,
+      "combat": 9
+     }
+    }
+   }
+  },
+  "sw_rush_turtle": {
+   "n": 24,
+   "win": 24,
+   "loss": 0,
+   "draw": 0,
+   "win_ci": [
+    0.8620194241710247,
+    1.0
+   ],
+   "loss_ci": [
+    0.0,
+    0.13798057582897535
+   ],
+   "draw_ci": [
+    0.0,
+    0.13798057582897535
+   ],
+   "ticks": 3560.3333333333335,
+   "winTypes": {
+    "combat": 21,
+    "control": 3
+   },
+   "maps": {
+    "duskvale": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 3538.0833333333335,
+     "winTypes": {
+      "combat": 9,
+      "control": 3
+     }
+    },
+    "prism-ridge": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 3582.5833333333335,
+     "winTypes": {
+      "combat": 12
+     }
+    }
+   },
+   "sides": {
+    "blue": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 3534.8333333333335,
+     "winTypes": {
+      "combat": 10,
+      "control": 2
+     }
+    },
+    "red": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 3585.8333333333335,
+     "winTypes": {
+      "combat": 11,
+      "control": 1
+     }
+    }
+   }
+  },
+  "sw_fake_brush": {
+   "n": 24,
+   "win": 24,
+   "loss": 0,
+   "draw": 0,
+   "win_ci": [
+    0.8620194241710247,
+    1.0
+   ],
+   "loss_ci": [
+    0.0,
+    0.13798057582897535
+   ],
+   "draw_ci": [
+    0.0,
+    0.13798057582897535
+   ],
+   "ticks": 3858.5,
+   "winTypes": {
+    "combat": 23,
+    "control": 1
+   },
+   "maps": {
+    "duskvale": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 3900.6666666666665,
+     "winTypes": {
+      "combat": 11,
+      "control": 1
+     }
+    },
+    "prism-ridge": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 3816.3333333333335,
+     "winTypes": {
+      "combat": 12
+     }
+    }
+   },
+   "sides": {
+    "blue": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 3751.25,
+     "winTypes": {
+      "combat": 11,
+      "control": 1
+     }
+    },
+    "red": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 3965.75,
+     "winTypes": {
+      "combat": 12
+     }
+    }
+   }
+  },
+  "hidden": {
+   "n": 24,
+   "win": 24,
+   "loss": 0,
+   "draw": 0,
+   "win_ci": [
+    0.8620194241710247,
+    1.0
+   ],
+   "loss_ci": [
+    0.0,
+    0.13798057582897535
+   ],
+   "draw_ci": [
+    0.0,
+    0.13798057582897535
+   ],
+   "ticks": 3566.875,
+   "winTypes": {
+    "combat": 21,
+    "control": 3
+   },
+   "maps": {
+    "duskvale": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 3524.25,
+     "winTypes": {
+      "combat": 9,
+      "control": 3
+     }
+    },
+    "prism-ridge": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 3609.5,
+     "winTypes": {
+      "combat": 12
+     }
+    }
+   },
+   "sides": {
+    "blue": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 3563.0833333333335,
+     "winTypes": {
+      "control": 3,
+      "combat": 9
+     }
+    },
+    "red": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 3570.6666666666665,
+     "winTypes": {
+      "combat": 12
+     }
+    }
+   }
+  },
+  "sw_macro_bruiser": {
+   "n": 24,
+   "win": 24,
+   "loss": 0,
+   "draw": 0,
+   "win_ci": [
+    0.8620194241710247,
+    1.0
+   ],
+   "loss_ci": [
+    0.0,
+    0.13798057582897535
+   ],
+   "draw_ci": [
+    0.0,
+    0.13798057582897535
+   ],
+   "ticks": 4320.5,
+   "winTypes": {
+    "combat": 20,
+    "control": 4
+   },
+   "maps": {
+    "duskvale": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 4398.916666666667,
+     "winTypes": {
+      "combat": 8,
+      "control": 4
+     }
+    },
+    "prism-ridge": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 4242.083333333333,
+     "winTypes": {
+      "combat": 12
+     }
+    }
+   },
+   "sides": {
+    "blue": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 4325.0,
+     "winTypes": {
+      "combat": 9,
+      "control": 3
+     }
+    },
+    "red": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 4316.0,
+     "winTypes": {
+      "combat": 11,
+      "control": 1
+     }
+    }
+   }
+  },
+  "sw_turtle_grab": {
+   "n": 24,
+   "win": 24,
+   "loss": 0,
+   "draw": 0,
+   "win_ci": [
+    0.8620194241710247,
+    1.0
+   ],
+   "loss_ci": [
+    0.0,
+    0.13798057582897535
+   ],
+   "draw_ci": [
+    0.0,
+    0.13798057582897535
+   ],
+   "ticks": 7192.583333333333,
+   "winTypes": {
+    "control": 10,
+    "combat": 14
+   },
+   "maps": {
+    "duskvale": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 6274.75,
+     "winTypes": {
+      "control": 10,
+      "combat": 2
+     }
+    },
+    "prism-ridge": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 8110.416666666667,
+     "winTypes": {
+      "combat": 12
+     }
+    }
+   },
+   "sides": {
+    "blue": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 7251.25,
+     "winTypes": {
+      "control": 5,
+      "combat": 7
+     }
+    },
+    "red": {
+     "n": 12,
+     "win": 12,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.7574992425007574,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "draw_ci": [
+      0.0,
+      0.2425007574992425
+     ],
+     "ticks": 7133.916666666667,
+     "winTypes": {
+      "control": 5,
+      "combat": 7
+     }
+    }
+   }
+  }
+ },
+ "games": [
+  {
+   "seed": 226241612,
+   "map": "duskvale",
+   "opp": "rush2",
+   "side": "blue",
+   "result": "win",
+   "winType": "control",
+   "ticks": 3181,
+   "stats": {
+    "decisions": 398,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 192,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "duskvale",
+   "opp": "turtle",
+   "side": "red",
+   "result": "win",
+   "winType": "control",
+   "ticks": 3204,
+   "stats": {
+    "decisions": 401,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 209,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "duskvale",
+   "opp": "rush2",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3225,
+   "stats": {
+    "decisions": 404,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 237,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "prism-ridge",
+   "opp": "rush3",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3307,
+   "stats": {
+    "decisions": 414,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 403,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "duskvale",
+   "opp": "rush2",
+   "side": "blue",
+   "result": "win",
+   "winType": "control",
+   "ticks": 3330,
+   "stats": {
+    "decisions": 417,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 256,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "prism-ridge",
+   "opp": "rush3",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3332,
+   "stats": {
+    "decisions": 417,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 347,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "duskvale",
+   "opp": "rush2",
+   "side": "red",
+   "result": "win",
+   "winType": "control",
+   "ticks": 3340,
+   "stats": {
+    "decisions": 418,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 422,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "duskvale",
+   "opp": "rush2",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3372,
+   "stats": {
+    "decisions": 422,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 58,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "prism-ridge",
+   "opp": "rush3",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3385,
+   "stats": {
+    "decisions": 424,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 302,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "prism-ridge",
+   "opp": "rush3",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3417,
+   "stats": {
+    "decisions": 428,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 233,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "duskvale",
+   "opp": "turtle",
+   "side": "blue",
+   "result": "win",
+   "winType": "control",
+   "ticks": 3434,
+   "stats": {
+    "decisions": 430,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 137,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "duskvale",
+   "opp": "rush1",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3442,
+   "stats": {
+    "decisions": 431,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 221,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "duskvale",
+   "opp": "rush2",
+   "side": "blue",
+   "result": "win",
+   "winType": "control",
+   "ticks": 3458,
+   "stats": {
+    "decisions": 433,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 340,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "prism-ridge",
+   "opp": "rush3",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3465,
+   "stats": {
+    "decisions": 434,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 248,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "duskvale",
+   "opp": "rush1",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3485,
+   "stats": {
+    "decisions": 436,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 154,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "duskvale",
+   "opp": "rush3",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3481,
+   "stats": {
+    "decisions": 436,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 146,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "prism-ridge",
+   "opp": "rush3",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3492,
+   "stats": {
+    "decisions": 437,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 305,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "prism-ridge",
+   "opp": "rush1",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3501,
+   "stats": {
+    "decisions": 438,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 192,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "duskvale",
+   "opp": "rush3",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3515,
+   "stats": {
+    "decisions": 440,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 391,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "prism-ridge",
+   "opp": "rush3",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3542,
+   "stats": {
+    "decisions": 443,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 298,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "prism-ridge",
+   "opp": "rush3",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3541,
+   "stats": {
+    "decisions": 443,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 101,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "prism-ridge",
+   "opp": "heavy",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3542,
+   "stats": {
+    "decisions": 443,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 498,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "duskvale",
+   "opp": "rush3",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3550,
+   "stats": {
+    "decisions": 444,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 322,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "duskvale",
+   "opp": "rush1",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3557,
+   "stats": {
+    "decisions": 445,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 155,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "duskvale",
+   "opp": "heavy",
+   "side": "red",
+   "result": "win",
+   "winType": "control",
+   "ticks": 3563,
+   "stats": {
+    "decisions": 446,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 365,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "prism-ridge",
+   "opp": "heavy",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3572,
+   "stats": {
+    "decisions": 447,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 332,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "prism-ridge",
+   "opp": "rush1",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3579,
+   "stats": {
+    "decisions": 448,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 270,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "duskvale",
+   "opp": "macro",
+   "side": "blue",
+   "result": "win",
+   "winType": "control",
+   "ticks": 3584,
+   "stats": {
+    "decisions": 448,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 306,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "prism-ridge",
+   "opp": "rush3",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3599,
+   "stats": {
+    "decisions": 450,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 45,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "duskvale",
+   "opp": "rush3",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3594,
+   "stats": {
+    "decisions": 450,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 264,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "duskvale",
+   "opp": "heavy",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3606,
+   "stats": {
+    "decisions": 451,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 400,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "prism-ridge",
+   "opp": "rush1",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3624,
+   "stats": {
+    "decisions": 453,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 258,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "duskvale",
+   "opp": "macro",
+   "side": "blue",
+   "result": "win",
+   "winType": "control",
+   "ticks": 3620,
+   "stats": {
+    "decisions": 453,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 275,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "duskvale",
+   "opp": "macro",
+   "side": "blue",
+   "result": "win",
+   "winType": "control",
+   "ticks": 3619,
+   "stats": {
+    "decisions": 453,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 469,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "prism-ridge",
+   "opp": "heavy",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3617,
+   "stats": {
+    "decisions": 453,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 165,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "duskvale",
+   "opp": "rush3",
+   "side": "blue",
+   "result": "win",
+   "winType": "control",
+   "ticks": 3633,
+   "stats": {
+    "decisions": 455,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 435,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "duskvale",
+   "opp": "turtle",
+   "side": "blue",
+   "result": "win",
+   "winType": "control",
+   "ticks": 3644,
+   "stats": {
+    "decisions": 456,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 214,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "duskvale",
+   "opp": "turtle",
+   "side": "red",
+   "result": "win",
+   "winType": "control",
+   "ticks": 3643,
+   "stats": {
+    "decisions": 456,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 329,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "duskvale",
+   "opp": "rush3",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3652,
+   "stats": {
+    "decisions": 457,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 314,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "prism-ridge",
+   "opp": "rush3",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3659,
+   "stats": {
+    "decisions": 458,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 390,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "duskvale",
+   "opp": "macro",
+   "side": "red",
+   "result": "win",
+   "winType": "control",
+   "ticks": 3662,
+   "stats": {
+    "decisions": 458,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 188,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "prism-ridge",
+   "opp": "heavy",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3667,
+   "stats": {
+    "decisions": 459,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 256,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "prism-ridge",
+   "opp": "macro",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3680,
+   "stats": {
+    "decisions": 460,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 320,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "duskvale",
+   "opp": "rush3",
+   "side": "red",
+   "result": "win",
+   "winType": "control",
+   "ticks": 3686,
+   "stats": {
+    "decisions": 461,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 368,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "prism-ridge",
+   "opp": "rush1",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3701,
+   "stats": {
+    "decisions": 463,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 302,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "duskvale",
+   "opp": "rush1",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3709,
+   "stats": {
+    "decisions": 464,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 408,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "prism-ridge",
+   "opp": "rush3",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3708,
+   "stats": {
+    "decisions": 464,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 141,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "duskvale",
+   "opp": "rush1",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3726,
+   "stats": {
+    "decisions": 466,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 266,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "duskvale",
+   "opp": "rush2",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3749,
+   "stats": {
+    "decisions": 469,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 95,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "duskvale",
+   "opp": "heavy",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3761,
+   "stats": {
+    "decisions": 471,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 172,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "duskvale",
+   "opp": "rush1",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3771,
+   "stats": {
+    "decisions": 472,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 176,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "prism-ridge",
+   "opp": "rush1",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3778,
+   "stats": {
+    "decisions": 473,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 397,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "prism-ridge",
+   "opp": "rush2",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3785,
+   "stats": {
+    "decisions": 474,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 225,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "prism-ridge",
+   "opp": "heavy",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3788,
+   "stats": {
+    "decisions": 474,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 290,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "prism-ridge",
+   "opp": "macro",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3793,
+   "stats": {
+    "decisions": 475,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 153,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "duskvale",
+   "opp": "rush3",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3806,
+   "stats": {
+    "decisions": 476,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 387,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "prism-ridge",
+   "opp": "rush1",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3809,
+   "stats": {
+    "decisions": 477,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 103,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "duskvale",
+   "opp": "rush1",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3813,
+   "stats": {
+    "decisions": 477,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 292,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "duskvale",
+   "opp": "rush3",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3810,
+   "stats": {
+    "decisions": 477,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 390,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "duskvale",
+   "opp": "rush3",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3818,
+   "stats": {
+    "decisions": 478,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 93,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "duskvale",
+   "opp": "heavy",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3826,
+   "stats": {
+    "decisions": 479,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 341,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "prism-ridge",
+   "opp": "rush2",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3836,
+   "stats": {
+    "decisions": 480,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 125,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "duskvale",
+   "opp": "rush1",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3843,
+   "stats": {
+    "decisions": 481,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 193,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "prism-ridge",
+   "opp": "rush1",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3850,
+   "stats": {
+    "decisions": 482,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 435,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "prism-ridge",
+   "opp": "rush2",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3851,
+   "stats": {
+    "decisions": 482,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 251,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "prism-ridge",
+   "opp": "rush1",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3864,
+   "stats": {
+    "decisions": 483,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 166,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "duskvale",
+   "opp": "rush1",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3859,
+   "stats": {
+    "decisions": 483,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 301,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "duskvale",
+   "opp": "rush3",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3863,
+   "stats": {
+    "decisions": 483,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 143,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "duskvale",
+   "opp": "heavy",
+   "side": "red",
+   "result": "win",
+   "winType": "control",
+   "ticks": 3865,
+   "stats": {
+    "decisions": 484,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 460,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "prism-ridge",
+   "opp": "rush3",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3873,
+   "stats": {
+    "decisions": 485,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 164,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "prism-ridge",
+   "opp": "heavy",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3874,
+   "stats": {
+    "decisions": 485,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 194,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "prism-ridge",
+   "opp": "rush2",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3896,
+   "stats": {
+    "decisions": 487,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 302,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "duskvale",
+   "opp": "rush2",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3903,
+   "stats": {
+    "decisions": 488,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 515,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "prism-ridge",
+   "opp": "heavy",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3898,
+   "stats": {
+    "decisions": 488,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 89,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "prism-ridge",
+   "opp": "rush1",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3918,
+   "stats": {
+    "decisions": 490,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 322,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "duskvale",
+   "opp": "rush1",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3926,
+   "stats": {
+    "decisions": 491,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 549,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "duskvale",
+   "opp": "rush3",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3922,
+   "stats": {
+    "decisions": 491,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 355,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "prism-ridge",
+   "opp": "rush2",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3929,
+   "stats": {
+    "decisions": 492,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 336,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "prism-ridge",
+   "opp": "macro",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3932,
+   "stats": {
+    "decisions": 492,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 262,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "duskvale",
+   "opp": "macro",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3937,
+   "stats": {
+    "decisions": 493,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 386,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "prism-ridge",
+   "opp": "rush1",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3963,
+   "stats": {
+    "decisions": 496,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 444,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "duskvale",
+   "opp": "turtle",
+   "side": "red",
+   "result": "win",
+   "winType": "control",
+   "ticks": 3969,
+   "stats": {
+    "decisions": 497,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 400,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "duskvale",
+   "opp": "rush1",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3996,
+   "stats": {
+    "decisions": 500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 261,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "prism-ridge",
+   "opp": "rush2",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4011,
+   "stats": {
+    "decisions": 502,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 388,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "duskvale",
+   "opp": "heavy",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4024,
+   "stats": {
+    "decisions": 503,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 498,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "prism-ridge",
+   "opp": "rush2",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4027,
+   "stats": {
+    "decisions": 504,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 262,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "prism-ridge",
+   "opp": "macro",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4029,
+   "stats": {
+    "decisions": 504,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 334,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "prism-ridge",
+   "opp": "heavy",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4031,
+   "stats": {
+    "decisions": 504,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 374,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "prism-ridge",
+   "opp": "macro",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4040,
+   "stats": {
+    "decisions": 505,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 249,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "duskvale",
+   "opp": "heavy",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4047,
+   "stats": {
+    "decisions": 506,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 219,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "prism-ridge",
+   "opp": "heavy",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4055,
+   "stats": {
+    "decisions": 507,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 371,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "duskvale",
+   "opp": "macro",
+   "side": "red",
+   "result": "win",
+   "winType": "control",
+   "ticks": 4082,
+   "stats": {
+    "decisions": 511,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 91,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "prism-ridge",
+   "opp": "rush1",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4100,
+   "stats": {
+    "decisions": 513,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 292,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "prism-ridge",
+   "opp": "heavy",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4101,
+   "stats": {
+    "decisions": 513,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 294,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "duskvale",
+   "opp": "rush2",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4111,
+   "stats": {
+    "decisions": 514,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 181,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "duskvale",
+   "opp": "macro",
+   "side": "red",
+   "result": "win",
+   "winType": "control",
+   "ticks": 4116,
+   "stats": {
+    "decisions": 515,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 282,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "duskvale",
+   "opp": "heavy",
+   "side": "red",
+   "result": "win",
+   "winType": "control",
+   "ticks": 4114,
+   "stats": {
+    "decisions": 515,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 372,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "prism-ridge",
+   "opp": "macro",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4145,
+   "stats": {
+    "decisions": 519,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 355,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "prism-ridge",
+   "opp": "heavy",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4146,
+   "stats": {
+    "decisions": 519,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 463,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "duskvale",
+   "opp": "rush1",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4190,
+   "stats": {
+    "decisions": 524,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 408,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "prism-ridge",
+   "opp": "rush2",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4192,
+   "stats": {
+    "decisions": 524,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 459,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "duskvale",
+   "opp": "turtle",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4193,
+   "stats": {
+    "decisions": 525,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 331,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "prism-ridge",
+   "opp": "macro",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4198,
+   "stats": {
+    "decisions": 525,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 337,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "duskvale",
+   "opp": "heavy",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4203,
+   "stats": {
+    "decisions": 526,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 192,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "prism-ridge",
+   "opp": "rush1",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4264,
+   "stats": {
+    "decisions": 533,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 472,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "prism-ridge",
+   "opp": "macro",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4311,
+   "stats": {
+    "decisions": 539,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 557,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "duskvale",
+   "opp": "heavy",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4332,
+   "stats": {
+    "decisions": 542,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 197,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "prism-ridge",
+   "opp": "rush2",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4341,
+   "stats": {
+    "decisions": 543,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 156,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "duskvale",
+   "opp": "turtle",
+   "side": "blue",
+   "result": "win",
+   "winType": "control",
+   "ticks": 4344,
+   "stats": {
+    "decisions": 543,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 534,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "duskvale",
+   "opp": "rush2",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4354,
+   "stats": {
+    "decisions": 545,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 378,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "prism-ridge",
+   "opp": "turtle",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4441,
+   "stats": {
+    "decisions": 556,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 319,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "prism-ridge",
+   "opp": "rush2",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4464,
+   "stats": {
+    "decisions": 558,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 224,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "duskvale",
+   "opp": "heavy",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4466,
+   "stats": {
+    "decisions": 559,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 315,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "prism-ridge",
+   "opp": "macro",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4519,
+   "stats": {
+    "decisions": 565,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 72,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "prism-ridge",
+   "opp": "macro",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4523,
+   "stats": {
+    "decisions": 566,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 419,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "prism-ridge",
+   "opp": "turtle",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4535,
+   "stats": {
+    "decisions": 567,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 428,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "duskvale",
+   "opp": "macro",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4648,
+   "stats": {
+    "decisions": 581,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 274,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "duskvale",
+   "opp": "macro",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4659,
+   "stats": {
+    "decisions": 583,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 339,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "duskvale",
+   "opp": "macro",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4670,
+   "stats": {
+    "decisions": 584,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 167,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "duskvale",
+   "opp": "rush2",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4739,
+   "stats": {
+    "decisions": 593,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 364,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "duskvale",
+   "opp": "macro",
+   "side": "blue",
+   "result": "win",
+   "winType": "control",
+   "ticks": 4740,
+   "stats": {
+    "decisions": 593,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 468,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "duskvale",
+   "opp": "turtle",
+   "side": "red",
+   "result": "win",
+   "winType": "control",
+   "ticks": 4754,
+   "stats": {
+    "decisions": 595,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 462,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "prism-ridge",
+   "opp": "rush2",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4789,
+   "stats": {
+    "decisions": 599,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 168,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "duskvale",
+   "opp": "turtle",
+   "side": "blue",
+   "result": "win",
+   "winType": "control",
+   "ticks": 4786,
+   "stats": {
+    "decisions": 599,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 438,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "prism-ridge",
+   "opp": "rush2",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4933,
+   "stats": {
+    "decisions": 617,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 431,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "prism-ridge",
+   "opp": "macro",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5120,
+   "stats": {
+    "decisions": 640,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 348,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "duskvale",
+   "opp": "macro",
+   "side": "blue",
+   "result": "win",
+   "winType": "control",
+   "ticks": 5187,
+   "stats": {
+    "decisions": 649,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 331,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "duskvale",
+   "opp": "turtle",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5678,
+   "stats": {
+    "decisions": 710,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 328,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "prism-ridge",
+   "opp": "turtle",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5737,
+   "stats": {
+    "decisions": 718,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 339,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "prism-ridge",
+   "opp": "turtle",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5793,
+   "stats": {
+    "decisions": 725,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 96,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "prism-ridge",
+   "opp": "heavy",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5905,
+   "stats": {
+    "decisions": 739,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 542,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "duskvale",
+   "opp": "rush2",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5952,
+   "stats": {
+    "decisions": 744,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 550,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "prism-ridge",
+   "opp": "turtle",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6029,
+   "stats": {
+    "decisions": 754,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 469,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "prism-ridge",
+   "opp": "turtle",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6041,
+   "stats": {
+    "decisions": 756,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 627,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "duskvale",
+   "opp": "heavy",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6152,
+   "stats": {
+    "decisions": 769,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 512,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "prism-ridge",
+   "opp": "turtle",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6304,
+   "stats": {
+    "decisions": 788,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 192,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "duskvale",
+   "opp": "turtle",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6400,
+   "stats": {
+    "decisions": 800,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 503,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "duskvale",
+   "opp": "sw_rush_turtle",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3360,
+   "stats": {
+    "decisions": 420,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 310,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "duskvale",
+   "opp": "sw_rush_turtle",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3322,
+   "stats": {
+    "decisions": 416,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 202,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "duskvale",
+   "opp": "sw_fake_brush",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3483,
+   "stats": {
+    "decisions": 436,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 88,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "duskvale",
+   "opp": "turtle",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6783,
+   "stats": {
+    "decisions": 848,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 527,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "prism-ridge",
+   "opp": "hidden",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3173,
+   "stats": {
+    "decisions": 397,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 239,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "duskvale",
+   "opp": "sw_rush_turtle",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3574,
+   "stats": {
+    "decisions": 447,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 399,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "duskvale",
+   "opp": "hidden",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3125,
+   "stats": {
+    "decisions": 391,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 356,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "duskvale",
+   "opp": "hidden",
+   "side": "blue",
+   "result": "win",
+   "winType": "control",
+   "ticks": 2715,
+   "stats": {
+    "decisions": 340,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 231,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "duskvale",
+   "opp": "sw_rush_turtle",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3553,
+   "stats": {
+    "decisions": 445,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 210,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "duskvale",
+   "opp": "hidden",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3436,
+   "stats": {
+    "decisions": 430,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 193,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "duskvale",
+   "opp": "hidden",
+   "side": "blue",
+   "result": "win",
+   "winType": "control",
+   "ticks": 3568,
+   "stats": {
+    "decisions": 446,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 338,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "duskvale",
+   "opp": "sw_fake_brush",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3635,
+   "stats": {
+    "decisions": 455,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 277,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "prism-ridge",
+   "opp": "sw_rush_turtle",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3289,
+   "stats": {
+    "decisions": 412,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 338,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "duskvale",
+   "opp": "hidden",
+   "side": "blue",
+   "result": "win",
+   "winType": "control",
+   "ticks": 3248,
+   "stats": {
+    "decisions": 406,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 269,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "prism-ridge",
+   "opp": "hidden",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3302,
+   "stats": {
+    "decisions": 413,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 325,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "duskvale",
+   "opp": "hidden",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3401,
+   "stats": {
+    "decisions": 426,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 214,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "duskvale",
+   "opp": "sw_rush_turtle",
+   "side": "blue",
+   "result": "win",
+   "winType": "control",
+   "ticks": 3714,
+   "stats": {
+    "decisions": 465,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 490,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "prism-ridge",
+   "opp": "sw_macro_bruiser",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3709,
+   "stats": {
+    "decisions": 464,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 349,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "duskvale",
+   "opp": "sw_fake_brush",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3530,
+   "stats": {
+    "decisions": 442,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 321,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "prism-ridge",
+   "opp": "hidden",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3355,
+   "stats": {
+    "decisions": 420,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 163,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "prism-ridge",
+   "opp": "sw_macro_bruiser",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3700,
+   "stats": {
+    "decisions": 463,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 466,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "duskvale",
+   "opp": "sw_macro_bruiser",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3732,
+   "stats": {
+    "decisions": 467,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 124,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "duskvale",
+   "opp": "sw_rush_turtle",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3915,
+   "stats": {
+    "decisions": 490,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 308,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "prism-ridge",
+   "opp": "hidden",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3423,
+   "stats": {
+    "decisions": 428,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 317,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "prism-ridge",
+   "opp": "hidden",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3775,
+   "stats": {
+    "decisions": 472,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 402,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "duskvale",
+   "opp": "hidden",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3844,
+   "stats": {
+    "decisions": 481,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 312,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "prism-ridge",
+   "opp": "sw_rush_turtle",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3435,
+   "stats": {
+    "decisions": 430,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 413,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "prism-ridge",
+   "opp": "hidden",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3717,
+   "stats": {
+    "decisions": 465,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 334,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "duskvale",
+   "opp": "sw_rush_turtle",
+   "side": "red",
+   "result": "win",
+   "winType": "control",
+   "ticks": 3190,
+   "stats": {
+    "decisions": 399,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 240,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "prism-ridge",
+   "opp": "sw_macro_bruiser",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3883,
+   "stats": {
+    "decisions": 486,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 365,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "prism-ridge",
+   "opp": "hidden",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3254,
+   "stats": {
+    "decisions": 407,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 284,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "duskvale",
+   "opp": "hidden",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3581,
+   "stats": {
+    "decisions": 448,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 391,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "duskvale",
+   "opp": "sw_macro_bruiser",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3672,
+   "stats": {
+    "decisions": 459,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 287,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "prism-ridge",
+   "opp": "hidden",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3694,
+   "stats": {
+    "decisions": 462,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 120,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "duskvale",
+   "opp": "hidden",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3581,
+   "stats": {
+    "decisions": 448,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 287,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "duskvale",
+   "opp": "sw_macro_bruiser",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3806,
+   "stats": {
+    "decisions": 476,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 115,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "prism-ridge",
+   "opp": "sw_rush_turtle",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3578,
+   "stats": {
+    "decisions": 448,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 323,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "prism-ridge",
+   "opp": "sw_rush_turtle",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3510,
+   "stats": {
+    "decisions": 439,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 127,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "duskvale",
+   "opp": "sw_rush_turtle",
+   "side": "blue",
+   "result": "win",
+   "winType": "control",
+   "ticks": 3728,
+   "stats": {
+    "decisions": 466,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 270,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "prism-ridge",
+   "opp": "sw_macro_bruiser",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4151,
+   "stats": {
+    "decisions": 519,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 472,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "prism-ridge",
+   "opp": "sw_macro_bruiser",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4177,
+   "stats": {
+    "decisions": 523,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 492,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "prism-ridge",
+   "opp": "sw_macro_bruiser",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3996,
+   "stats": {
+    "decisions": 500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 348,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "prism-ridge",
+   "opp": "macro",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 7513,
+   "stats": {
+    "decisions": 940,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 934,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "duskvale",
+   "opp": "hidden",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3664,
+   "stats": {
+    "decisions": 458,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 181,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "prism-ridge",
+   "opp": "sw_macro_bruiser",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3820,
+   "stats": {
+    "decisions": 478,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 361,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "prism-ridge",
+   "opp": "sw_rush_turtle",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3522,
+   "stats": {
+    "decisions": 441,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 300,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "prism-ridge",
+   "opp": "turtle",
+   "side": "blue",
+   "result": "loss",
+   "winType": "combat",
+   "ticks": 7614,
+   "stats": {
+    "decisions": 952,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 767,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "prism-ridge",
+   "opp": "sw_rush_turtle",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3425,
+   "stats": {
+    "decisions": 429,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 261,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "duskvale",
+   "opp": "sw_rush_turtle",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3288,
+   "stats": {
+    "decisions": 411,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 241,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "duskvale",
+   "opp": "sw_rush_turtle",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3748,
+   "stats": {
+    "decisions": 469,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 438,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "prism-ridge",
+   "opp": "turtle",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 7689,
+   "stats": {
+    "decisions": 962,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 239,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "prism-ridge",
+   "opp": "hidden",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3818,
+   "stats": {
+    "decisions": 478,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 193,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "duskvale",
+   "opp": "sw_macro_bruiser",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3916,
+   "stats": {
+    "decisions": 490,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 431,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "prism-ridge",
+   "opp": "sw_rush_turtle",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3720,
+   "stats": {
+    "decisions": 465,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 132,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "prism-ridge",
+   "opp": "sw_macro_bruiser",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3880,
+   "stats": {
+    "decisions": 485,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 495,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "prism-ridge",
+   "opp": "hidden",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3800,
+   "stats": {
+    "decisions": 475,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 350,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "prism-ridge",
+   "opp": "sw_rush_turtle",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3898,
+   "stats": {
+    "decisions": 488,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 130,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "duskvale",
+   "opp": "sw_fake_brush",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3848,
+   "stats": {
+    "decisions": 481,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 400,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "duskvale",
+   "opp": "sw_macro_bruiser",
+   "side": "blue",
+   "result": "win",
+   "winType": "control",
+   "ticks": 4210,
+   "stats": {
+    "decisions": 527,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 45,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "prism-ridge",
+   "opp": "sw_rush_turtle",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3613,
+   "stats": {
+    "decisions": 452,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 381,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "prism-ridge",
+   "opp": "turtle",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 7955,
+   "stats": {
+    "decisions": 995,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 658,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "prism-ridge",
+   "opp": "hidden",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4182,
+   "stats": {
+    "decisions": 523,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 111,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "duskvale",
+   "opp": "sw_macro_bruiser",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4485,
+   "stats": {
+    "decisions": 561,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 237,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "duskvale",
+   "opp": "hidden",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3981,
+   "stats": {
+    "decisions": 498,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 371,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "prism-ridge",
+   "opp": "turtle",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 8030,
+   "stats": {
+    "decisions": 1004,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 178,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "prism-ridge",
+   "opp": "sw_macro_bruiser",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4667,
+   "stats": {
+    "decisions": 584,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 61,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "duskvale",
+   "opp": "hidden",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4147,
+   "stats": {
+    "decisions": 519,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 359,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "duskvale",
+   "opp": "sw_turtle_grab",
+   "side": "red",
+   "result": "win",
+   "winType": "control",
+   "ticks": 4129,
+   "stats": {
+    "decisions": 517,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 153,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "prism-ridge",
+   "opp": "hidden",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3821,
+   "stats": {
+    "decisions": 478,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 163,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "prism-ridge",
+   "opp": "sw_fake_brush",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3652,
+   "stats": {
+    "decisions": 457,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 336,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "prism-ridge",
+   "opp": "sw_macro_bruiser",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4485,
+   "stats": {
+    "decisions": 561,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 168,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "duskvale",
+   "opp": "sw_macro_bruiser",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4281,
+   "stats": {
+    "decisions": 536,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 476,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "prism-ridge",
+   "opp": "sw_rush_turtle",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3366,
+   "stats": {
+    "decisions": 421,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 344,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "duskvale",
+   "opp": "sw_macro_bruiser",
+   "side": "red",
+   "result": "win",
+   "winType": "control",
+   "ticks": 4606,
+   "stats": {
+    "decisions": 576,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 292,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "duskvale",
+   "opp": "sw_macro_bruiser",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4345,
+   "stats": {
+    "decisions": 544,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 481,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "duskvale",
+   "opp": "sw_fake_brush",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3859,
+   "stats": {
+    "decisions": 483,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 112,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "prism-ridge",
+   "opp": "sw_macro_bruiser",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4703,
+   "stats": {
+    "decisions": 588,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 477,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "duskvale",
+   "opp": "sw_fake_brush",
+   "side": "blue",
+   "result": "win",
+   "winType": "control",
+   "ticks": 3517,
+   "stats": {
+    "decisions": 440,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 232,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "prism-ridge",
+   "opp": "sw_rush_turtle",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3952,
+   "stats": {
+    "decisions": 494,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 207,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "duskvale",
+   "opp": "sw_fake_brush",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4342,
+   "stats": {
+    "decisions": 543,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 285,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "duskvale",
+   "opp": "sw_rush_turtle",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3802,
+   "stats": {
+    "decisions": 476,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 168,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "prism-ridge",
+   "opp": "sw_rush_turtle",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3683,
+   "stats": {
+    "decisions": 461,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 156,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "duskvale",
+   "opp": "sw_fake_brush",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4971,
+   "stats": {
+    "decisions": 622,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 86,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "duskvale",
+   "opp": "sw_fake_brush",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3873,
+   "stats": {
+    "decisions": 485,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 223,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "duskvale",
+   "opp": "sw_turtle_grab",
+   "side": "blue",
+   "result": "win",
+   "winType": "control",
+   "ticks": 5053,
+   "stats": {
+    "decisions": 632,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 499,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "duskvale",
+   "opp": "sw_turtle_grab",
+   "side": "red",
+   "result": "win",
+   "winType": "control",
+   "ticks": 5076,
+   "stats": {
+    "decisions": 635,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 445,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "prism-ridge",
+   "opp": "sw_fake_brush",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4332,
+   "stats": {
+    "decisions": 542,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 459,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "duskvale",
+   "opp": "sw_macro_bruiser",
+   "side": "blue",
+   "result": "win",
+   "winType": "control",
+   "ticks": 5241,
+   "stats": {
+    "decisions": 656,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 78,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "duskvale",
+   "opp": "sw_macro_bruiser",
+   "side": "blue",
+   "result": "win",
+   "winType": "control",
+   "ticks": 5099,
+   "stats": {
+    "decisions": 638,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 472,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "duskvale",
+   "opp": "sw_macro_bruiser",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5394,
+   "stats": {
+    "decisions": 675,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 284,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "duskvale",
+   "opp": "sw_rush_turtle",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3263,
+   "stats": {
+    "decisions": 408,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 124,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "duskvale",
+   "opp": "sw_turtle_grab",
+   "side": "red",
+   "result": "win",
+   "winType": "control",
+   "ticks": 4546,
+   "stats": {
+    "decisions": 569,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 145,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "prism-ridge",
+   "opp": "sw_macro_bruiser",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5734,
+   "stats": {
+    "decisions": 717,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 272,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "duskvale",
+   "opp": "sw_fake_brush",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3796,
+   "stats": {
+    "decisions": 475,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 316,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "duskvale",
+   "opp": "sw_turtle_grab",
+   "side": "blue",
+   "result": "win",
+   "winType": "control",
+   "ticks": 5914,
+   "stats": {
+    "decisions": 740,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 503,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "prism-ridge",
+   "opp": "sw_fake_brush",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3807,
+   "stats": {
+    "decisions": 476,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 188,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "prism-ridge",
+   "opp": "sw_fake_brush",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3881,
+   "stats": {
+    "decisions": 486,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 233,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "prism-ridge",
+   "opp": "sw_fake_brush",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3475,
+   "stats": {
+    "decisions": 435,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 279,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "prism-ridge",
+   "opp": "sw_fake_brush",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3746,
+   "stats": {
+    "decisions": 469,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 392,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "prism-ridge",
+   "opp": "sw_fake_brush",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3769,
+   "stats": {
+    "decisions": 472,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 356,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "prism-ridge",
+   "opp": "sw_turtle_grab",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6236,
+   "stats": {
+    "decisions": 780,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 643,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "duskvale",
+   "opp": "sw_fake_brush",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4031,
+   "stats": {
+    "decisions": 504,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 366,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "duskvale",
+   "opp": "sw_turtle_grab",
+   "side": "blue",
+   "result": "win",
+   "winType": "control",
+   "ticks": 5382,
+   "stats": {
+    "decisions": 673,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 695,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 847826553,
+   "map": "prism-ridge",
+   "opp": "sw_turtle_grab",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6567,
+   "stats": {
+    "decisions": 821,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 107,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "duskvale",
+   "opp": "sw_turtle_grab",
+   "side": "red",
+   "result": "win",
+   "winType": "control",
+   "ticks": 6516,
+   "stats": {
+    "decisions": 815,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 423,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "duskvale",
+   "opp": "sw_fake_brush",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3923,
+   "stats": {
+    "decisions": 491,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 210,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "duskvale",
+   "opp": "sw_turtle_grab",
+   "side": "blue",
+   "result": "win",
+   "winType": "control",
+   "ticks": 6267,
+   "stats": {
+    "decisions": 784,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 195,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "prism-ridge",
+   "opp": "sw_turtle_grab",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 7026,
+   "stats": {
+    "decisions": 879,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 139,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "duskvale",
+   "opp": "sw_turtle_grab",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 7694,
+   "stats": {
+    "decisions": 962,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 876,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "prism-ridge",
+   "opp": "sw_fake_brush",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3781,
+   "stats": {
+    "decisions": 473,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 340,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 542542307,
+   "map": "prism-ridge",
+   "opp": "sw_turtle_grab",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 7118,
+   "stats": {
+    "decisions": 890,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 479,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "prism-ridge",
+   "opp": "sw_turtle_grab",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 7609,
+   "stats": {
+    "decisions": 952,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 91,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "prism-ridge",
+   "opp": "sw_turtle_grab",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 7708,
+   "stats": {
+    "decisions": 964,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 250,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "prism-ridge",
+   "opp": "sw_fake_brush",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3623,
+   "stats": {
+    "decisions": 453,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 181,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "prism-ridge",
+   "opp": "sw_fake_brush",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4258,
+   "stats": {
+    "decisions": 533,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 328,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "prism-ridge",
+   "opp": "sw_turtle_grab",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 7734,
+   "stats": {
+    "decisions": 967,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 62,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "prism-ridge",
+   "opp": "sw_fake_brush",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3985,
+   "stats": {
+    "decisions": 499,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 436,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "prism-ridge",
+   "opp": "turtle",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 1044,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "duskvale",
+   "opp": "sw_turtle_grab",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 7430,
+   "stats": {
+    "decisions": 929,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 766,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "duskvale",
+   "opp": "sw_turtle_grab",
+   "side": "blue",
+   "result": "win",
+   "winType": "control",
+   "ticks": 7558,
+   "stats": {
+    "decisions": 945,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 239,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 226241612,
+   "map": "prism-ridge",
+   "opp": "sw_turtle_grab",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 8039,
+   "stats": {
+    "decisions": 1005,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 607,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 220612255,
+   "map": "prism-ridge",
+   "opp": "sw_turtle_grab",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 8021,
+   "stats": {
+    "decisions": 1003,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 806,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "prism-ridge",
+   "opp": "sw_turtle_grab",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 8621,
+   "stats": {
+    "decisions": 1078,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 643,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "duskvale",
+   "opp": "sw_turtle_grab",
+   "side": "red",
+   "result": "win",
+   "winType": "control",
+   "ticks": 9732,
+   "stats": {
+    "decisions": 1217,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 875,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "prism-ridge",
+   "opp": "sw_turtle_grab",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 11616,
+   "stats": {
+    "decisions": 1452,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 819,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 410711175,
+   "map": "prism-ridge",
+   "opp": "sw_fake_brush",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 3487,
+   "stats": {
+    "decisions": 436,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 370,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  },
+  {
+   "seed": 879367049,
+   "map": "prism-ridge",
+   "opp": "sw_turtle_grab",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 11030,
+   "stats": {
+    "decisions": 1379,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 517,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   }
+  }
+ ]
+}
