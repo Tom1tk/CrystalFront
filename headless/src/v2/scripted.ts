@@ -17,7 +17,7 @@ import type { MatchState } from "../../../server/src/match/types.js";
 import { toOwnFrame } from "./frame.js";
 import type { SeatState } from "./actions.js";
 import {
-  act, BUILDINGS, ECON_ASSIGN0, ECON_BUILD0, ECON_REPAIR, ECON_TRAIN0, GRID_CELL_H, GRID_CELL_W, GRID_CELLS, GRID_COLS, GROUPS, NAMED_SITES, ORDERS, TARGET_NONE, TRAIN_UNITS, WORKER_COUNTS,
+  act, BUILDINGS, ECON_ASSIGN0, ECON_BUILD0, ECON_REPAIR, ECON_TRAIN0, GRID_CELL_H, GRID_CELL_W, GRID_CELLS, GRID_COLS, GROUPS, NAMED_SITES, ORDERS, TARGET_GRID0, TARGET_NONE, TRAIN_UNITS, WORKER_COUNTS,
   type V2Action, type V2Masks,
 } from "./actions.js";
 import { ENTITY_FEATURES, GLOBAL_NAMES, NODE_FEATURES, type ObsV2 } from "./observation.js";
@@ -68,8 +68,6 @@ interface BuildStep {
   /** Start only after this tick / with this many army units. */
   tick?: number;
   army?: number;
-  /** Build beside the army (the legal site nearest its middle unit) once that unit is on the enemy half; `sites` is unused. */
-  forward?: boolean;
 }
 
 export interface Template {
@@ -90,6 +88,14 @@ export interface Template {
   mass?: boolean;
   /** From this tick on, rebuild the economy to these targets (rushes that did not end the game). */
   late?: { tick: number; workers: number; contested: number };
+  /**
+   * Forward outposts, `n` of them, built by one worker sent forward as the scout (needs a barracks).
+   * `escort`: the push heads for the enemy choke and holds while the worker walks with the army and
+   * builds them beside it on the enemy half, then goes on. `backdoor`: from `tick` on the worker goes round a map edge and builds
+   * them beside the enemy crystal; skirmishers are then trained there first and attack on their own,
+   * while the template's own push is played by the gunners.
+   */
+  post?: { mode: "escort" | "backdoor"; n: number; tick?: number };
 }
 
 const BASE = [0, 1, 2, 3], FORWARD = [4, 5, 6, 7, 8, 9, 1, 2, 3], POCKETS = [1, 2, 3, 0], CENTRE = [7, 8, 9, 4, 5, 6];
@@ -222,21 +228,42 @@ export const TEMPLATES: Record<string, Template> = {
     ],
     mix: { skirmisher: 4, medic: 1 }, push: { tick: 0, size: 24, regroup: 12, targets: ["enemy_base"] }, stage: "base", retreat: 0.4,
   },
-  // The swarm with forward outposts: reinforcements appear beside the army instead of walking from home.
+  // The swarm with escorted forward outposts: reinforcements appear beside the army instead of walking from home.
   skirm_forward: {
-    z: 21, label: "skirmisher + medic swarm with forward outposts", workers: 8, contested: 2, headroom: 3,
+    z: 21, label: "skirmisher + medic swarm, escorts a worker forward to build outposts", workers: 8, contested: 2, headroom: 3,
     builds: [
       { b: "barracks", n: 1, sites: BASE }, { b: "barracks", n: 2, sites: BASE }, { b: "foundry", n: 1, sites: BASE, army: 4 },
-      { b: "barracks", n: 3, sites: BASE, army: 8 }, { b: "outpost", n: 2, sites: [], forward: true },
+      { b: "barracks", n: 3, sites: BASE, army: 8 },
     ],
     mix: { skirmisher: 4, medic: 1 }, push: { tick: 0, size: 18, regroup: 10, targets: ["enemy_base"] }, stage: "base", retreat: 0.4,
+    post: { mode: "escort", n: 2 },
   },
-  // Outposts at home in place of a barracks: cheaper and quicker to put up, for an earlier rush.
+  // Outposts at home beside the one barracks they need: cheaper and quicker than a second barracks (the control is rush_heavy).
   rush_outpost: {
-    z: 22, label: "skirmisher rush from outposts", workers: 4, contested: 0, headroom: 1,
-    builds: [{ b: "outpost", n: 1, sites: BASE }, { b: "outpost", n: 2, sites: BASE }],
-    mix: { skirmisher: 1 }, push: { tick: 300, size: 3, regroup: 0, targets: ["enemy_base", "enemy_safe"] }, stage: "base", retreat: 0,
+    z: 22, label: "skirmisher rush from a barracks and home outposts", workers: 4, contested: 0, headroom: 2,
+    builds: [{ b: "barracks", n: 1, sites: BASE }, { b: "outpost", n: 2, sites: BASE }],
+    mix: { skirmisher: 1 }, push: { tick: 300, size: 2, regroup: 0, targets: ["enemy_base"] }, stage: "base", retreat: 0,
     late: { tick: 3000, workers: 7, contested: 2 },
+  },
+  // The turtle with a second prong: one worker sneaks round the map edge and builds outposts beside the enemy crystal.
+  backdoor: {
+    z: 23, label: "turrets and gunners at home, outposts behind the enemy crystal", workers: 7, contested: 2, headroom: 2,
+    builds: [
+      { b: "barracks", n: 1, sites: BASE }, { b: "supply_depot", n: 1, sites: POCKETS }, { b: "turret", n: 2, sites: FORWARD },
+      { b: "barracks", n: 2, sites: BASE, army: 6 },
+    ],
+    mix: { gunner: 1 }, push: { tick: 0, size: 8, regroup: 4, targets: ["control"] }, stage: "own_nodes", retreat: 0,
+    post: { mode: "backdoor", n: 3, tick: 600 },
+  },
+  // The turtle's late attack: a large gunner army escorts a worker forward, then fights beside its own outposts.
+  turtle_siege: {
+    z: 24, label: "turrets and gunners, late escorted outposts at the enemy's door", workers: 7, contested: 2, headroom: 3,
+    builds: [
+      { b: "supply_depot", n: 1, sites: POCKETS }, { b: "turret", n: 1, sites: FORWARD }, { b: "barracks", n: 1, sites: BASE },
+      { b: "turret", n: 3, sites: FORWARD }, { b: "barracks", n: 2, sites: BASE, army: 6 },
+    ],
+    mix: { gunner: 3, skirmisher: 1 }, push: { tick: 3000, size: 14, regroup: 6, targets: ["enemy_base"] }, stage: "own_nodes", retreat: 0.3, mass: true,
+    post: { mode: "escort", n: 3 },
   },
   // Massed gunners: phalanx without the foundry and bulwarks (the control for it, and the strongest scripted army).
   gunline: {
@@ -278,6 +305,8 @@ export const SCRIPTED: Record<string, BotDef> = {
   gunline: { templates: ["gunline"] },
   outrider: { templates: ["skirm_forward"] },
   rush_post: { templates: ["rush_outpost"] },
+  backdoor: { templates: ["backdoor"] },
+  siege: { templates: ["turtle_siege"] },
 };
 export const SWITCH_WINDOW: [number, number] = [1500, 4000];
 
@@ -299,6 +328,7 @@ const N = Object.fromEntries(NODE_FEATURES.map((n, i) => [n, i])) as Record<stri
 const COMBAT: Unit[] = ["skirmisher", "gunner", "bruiser", "medic", "bulwark"];
 
 const GROUP_ALL = GROUPS.indexOf("all_combat"), GROUP_MEDICS = GROUPS.indexOf("medics"), GROUP_UNIT = GROUPS.indexOf("unit");
+const GROUP_SKIRMISHERS = GROUPS.indexOf("skirmishers"), GROUP_GUNNERS = GROUPS.indexOf("gunners");
 const O_AM = ORDERS.indexOf("attack_move"), O_MOVE = ORDERS.indexOf("move"), O_RETREAT = ORDERS.indexOf("retreat");
 const O_GUARD = ORDERS.indexOf("guard"), O_FOCUS = ORDERS.indexOf("focus"), O_HEAL = ORDERS.indexOf("heal"), O_COVER = ORDERS.indexOf("cover");
 /** Micro (v3): enemies and wounded allies within this distance (px) of the army centre count. */
@@ -312,7 +342,7 @@ const FOCUS_DECISIONS = 3;
 const MICRO_GAP = 4;
 /** Focus enemies below this HP fraction; heal allies below this; pull back own units below this when enemies are close. */
 const FOCUS_HP = 0.6, HEAL_HP = 0.7, PULL_HP = 0.25;
-const T_OWN_BASE = 0, T_OWN_POCKET0 = 1, T_OWN_CHOKE0 = 4, T_CENTRE0 = 7, T_NODE0 = 10, T_ENEMY_BASE = 26, T_ENEMY_SAFE0 = 33;
+const T_OWN_BASE = 0, T_OWN_POCKET0 = 1, T_OWN_CHOKE0 = 4, T_CENTRE0 = 7, T_NODE0 = 10, T_ENEMY_BASE = 26, T_ENEMY_CHOKE0 = 30, T_ENEMY_SAFE0 = 33;
 const NODE_ROW_CONTESTED0 = 8, NODE_ROW_ENEMY_SAFE0 = 4;
 const SLOT_CONTESTED0 = 4;
 /** Re-issue an unchanged army order after this many decisions. */
@@ -322,6 +352,18 @@ const CONTROL_PATIENCE = 1500;
 /** Enemy bulwarks stopping more than this share of own shots (recent peak) turn half of new production to melee. */
 const SHIELD_REACT = 0.2;
 const SHIELD_DECAY = 0.98;
+/** Forward outposts: the worker counts as with the army, or at the backdoor spot, within this distance (px). */
+const POST_NEAR = 200;
+/** An escort hold lasts at most this many ticks; then the push goes on without the outposts. */
+const ESCORT_PATIENCE = 1800;
+/** Decisions between orders to the forward worker; forward workers a bot spends per game. */
+const POST_WORKER_GAP = 4, POST_WORKERS = 3;
+/** Backdoor outposts go this far (px) from the enemy crystal, toward the map edge the worker came along. */
+const BACKDOOR_OFFSET = 320;
+/** Backdoor skirmishers wait at their outposts until this many stand there, then attack; below the second number they gather again. */
+const BACKDOOR_MASS = 8, BACKDOOR_REGROUP = 3;
+/** With escorted outposts standing and full, a skirmisher is trained at home only with this many skirmishers' worth of resources in hand. */
+const FRONT_SPILL = 3;
 
 interface View {
   tick: number;
@@ -358,6 +400,17 @@ export class ScriptedV2Bot {
   private lastMicro: Record<"pull" | "focus" | "heal" | "shield", number> = { pull: -99, focus: -99, heal: -99, shield: -99 };
   /** Recent peak of the share of own shots stopped by enemy bulwarks (decays per decision). */
   private shielded = 0;
+  /** Forward outposts: tick the escort hold began (−1: none), whether this push is done with it, workers sent,
+   *  last decision with a worker order, the backdoor route's map edge (0 top, 1 bottom) and leg, and whether an outpost is being saved for. */
+  private postHold = -1;
+  private postDone = false;
+  private postSent = 0;
+  private lastPostOrder = -99;
+  private edge = 0;
+  private leg = 0;
+  private postSaving = false;
+  private lastSkirmOrder = -99;
+  private striking = false;
 
   constructor(name: string, seed: number, private ctx: BotContext, zWanted = 0) {
     const def = SCRIPTED[name];
@@ -380,6 +433,7 @@ export class ScriptedV2Bot {
     // Per-episode jitter of the first phase; the switch phase gets its own draws.
     this.pushTick = 0; this.pushSize = 0; this.target = "enemy_base";
     this.jitter(this.t, rng);
+    if (this.t.post?.mode === "backdoor") this.edge = rng.random() < 0.5 ? 0 : 1;
     this.rng = rng;
   }
   private rng: Rng;
@@ -406,7 +460,7 @@ export class ScriptedV2Bot {
     this.shielded = Math.max(obs.globals[G.shots_blocked], this.shielded * SHIELD_DECAY);
     const econ = this.econ(obs, v, m);
     let army: Partial<V2Action> = this.armyOrder(obs, v, m);
-    if (!army.group) army = this.micro(obs, v, m) ?? army;
+    if (!army.group) army = this.postOrder(obs, v, m) ?? this.micro(obs, v, m) ?? army;
     this.decisions++;
     return act({ econ, site: econ >= ECON_BUILD0 && econ < ECON_ASSIGN0 ? this.site : 0, econPtr: this.econPtr, ...army });
   }
@@ -428,7 +482,8 @@ export class ScriptedV2Bot {
     for (const e of obs.entities) {
       if (e[F.own]) {
         if (e[F.type_crystal]) crystal = { x: e[F.x], y: e[F.y] };
-        else if (COMBAT.some((u) => e[F[`type_${u}`]])) army.push(e);
+        // Backdoor skirmishers fight on their own beside the enemy crystal: they are not part of the army the template leads.
+        else if (COMBAT.some((u) => e[F[`type_${u}`]]) && !(this.t.post?.mode === "backdoor" && e[F.type_skirmisher])) army.push(e);
       } else if (COMBAT.some((u) => e[F[`type_${u}`]])) enemyCombat.push(e);
     }
     const threat = enemyCombat.some((e) => this.dist({ x: e[F.x], y: e[F.y] }, crystal) < THREAT_RADIUS);
@@ -497,13 +552,13 @@ export class ScriptedV2Bot {
       const d = this.buildAction(m, "supply_depot", POCKETS);
       if (d) return d;
     }
-    let saving = 0;
+    // Forward outposts come first once their worker is in place.
+    const post = this.postBuild(obs, v, m);
+    if (post) return post;
+    let saving = this.postSaving ? BUILDING_DEFS.outpost.cost : 0;
     const step = t.builds.find((s) => v.buildings[s.b] < s.n);
-    // A forward step waits (without saving for it) until the army's middle unit is on the enemy half.
-    const near = step?.forward && v.army.length > 0 ? this.middle(v) : null;
-    const ready = step && (!step.forward || (near !== null && near.x > 0.5));
-    if (step && ready && v.tick >= (step.tick ?? 0) && armySize >= (step.army ?? 0)) {
-      const a = near ? this.buildNear(m, step.b, near) : this.buildAction(m, step.b, step.sites);
+    if (!saving && step && v.tick >= (step.tick ?? 0) && armySize >= (step.army ?? 0)) {
+      const a = this.buildAction(m, step.b, step.sites);
       if (a) return a;
       if (v.resources < BUILDING_DEFS[step.b].cost) saving = BUILDING_DEFS[step.b].cost;
     }
@@ -512,7 +567,15 @@ export class ScriptedV2Bot {
       const w = train("worker");
       if (w) return w;
     }
-    if (!saving) {
+    // Backdoor: every skirmisher an outpost can take comes before the home army.
+    if (!saving && t.post?.mode === "backdoor" && this.outpostFree(obs)) {
+      const a = train("skirmisher");
+      if (a) return a;
+      if (v.resources < UNIT_DEFS.skirmisher.cost) saving = UNIT_DEFS.skirmisher.cost;
+    }
+    // Backdoor: while the worker is on its last leg nothing is trained at home, so the outposts open with a full purse.
+    const banking = t.post?.mode === "backdoor" && this.leg === 1 && obs.globals[G.own_outpost_done] === 0 && !!this.forwardWorker(obs);
+    if (!saving && !banking) {
       // Most-needed unit first; save for it when it is unaffordable, try the next when its producers are busy.
       const weights = (Object.entries(t.mix) as Array<[Unit, number]>).filter(([u]) => this.canProduce(obs, u));
       if (this.shielded > SHIELD_REACT) {
@@ -524,7 +587,10 @@ export class ScriptedV2Bot {
       }
       const total = weights.reduce((s, [, w]) => s + w, 0);
       const order = weights.map(([u, w]) => ({ u, d: (w / total) * (armySize + 1) - v.units[u] })).sort((a, b) => b.d - a.d);
+      // With escorted outposts standing, skirmishers are trained there first: at home only when the outposts are full and resources pile up.
+      const frontFirst = t.post?.mode === "escort" && obs.globals[G.own_outpost_done] > 0 && !this.outpostFree(obs) && v.resources < FRONT_SPILL * UNIT_DEFS.skirmisher.cost;
       for (const { u } of order) {
+        if (u === "skirmisher" && frontFirst) continue;
         const a = train(u);
         if (a) return a;
         if (v.resources < UNIT_DEFS[u].cost) break;
@@ -564,7 +630,7 @@ export class ScriptedV2Bot {
 
   private armyOrder(obs: ObsV2, v: View, m: V2Masks): { group: number; order: number; target: number } {
     const none = { group: 0, order: 0, target: TARGET_NONE };
-    if (v.army.length === 0 || !m.group[GROUP_ALL]) { this.pushing = false; return none; }
+    if (v.army.length === 0 || !m.group[this.main]) { this.endPush(); return none; }
     const size = this.t.mass ? this.massed(v) : v.army.length;
     if (!this.pushing && size >= this.pushSize && v.tick >= this.pushTick) {
       this.pushing = true; this.viaDone = false; this.ctrlAt = v.tick;
@@ -576,18 +642,26 @@ export class ScriptedV2Bot {
       if (p > this.ctrlBest) { this.ctrlBest = p; this.ctrlAt = v.tick; }
       else if (v.tick - this.ctrlAt > CONTROL_PATIENCE) this.target = "enemy_base";
     }
-    if (this.pushing && size < this.t.push.regroup) this.pushing = false;
+    if (this.pushing && size < this.t.push.regroup) this.endPush();
 
     let order = O_AM, target: number;
     if (v.threat) {
       target = T_OWN_BASE;
     } else if (this.pushing) {
       const hp = v.army.reduce((s, e) => s + e[F.hp], 0) / v.army.length;
-      if (this.t.retreat > 0 && hp < this.t.retreat && m.order[GROUP_ALL][O_RETREAT]) {
-        this.pushing = false;
+      if (this.t.retreat > 0 && hp < this.t.retreat && m.order[this.main][O_RETREAT]) {
+        this.endPush();
         return this.issue(m, O_RETREAT, TARGET_NONE, true);
       }
       target = this.pushTarget(obs, v);
+      // Escort: hold at the forward point until the outposts stand (or patience, the barracks or the workers run out).
+      if (this.t.post?.mode === "escort" && !this.postDone) {
+        if (this.postHold < 0) this.postHold = v.tick;
+        const done = Math.round(obs.globals[G.own_outpost_done] * 5) >= this.t.post.n;
+        const lost = obs.globals[G.own_barracks_done] === 0 || (this.postSent >= POST_WORKERS && !this.forwardWorker(obs));
+        if (done || lost || v.tick - this.postHold > ESCORT_PATIENCE) this.postDone = true;
+        else { order = O_GUARD; target = this.forwardPoint(); }
+      }
       if (this.t.push.via === "brush" && !this.viaDone) {
         const via = this.brushVia();
         const c = this.centroid(v.army);
@@ -607,9 +681,137 @@ export class ScriptedV2Bot {
     const key = `${order}:${target}`;
     if (!force && key === this.lastOrder && this.decisions - this.lastOrderAt < ORDER_REFRESH) return { group: 0, order: 0, target: TARGET_NONE };
     if (!force && this.decisions < this.focusUntil) return { group: 0, order: 0, target: TARGET_NONE };
-    if (!m.order[GROUP_ALL][order] || !m.target[order][target]) return { group: 0, order: 0, target: TARGET_NONE };
+    if (!m.order[this.main][order] || !m.target[order][target]) return { group: 0, order: 0, target: TARGET_NONE };
     this.lastOrder = key; this.lastOrderAt = this.decisions;
-    return { group: GROUP_ALL, order, target };
+    return { group: this.main, order, target };
+  }
+
+  /** The group the template's own army orders go to: everything, or the gunners when skirmishers fight on their own (backdoor). */
+  private get main(): number { return this.t.post?.mode === "backdoor" ? GROUP_GUNNERS : GROUP_ALL; }
+
+  private endPush(): void { this.pushing = false; this.postHold = -1; this.postDone = false; }
+
+  // ---- forward outposts ----
+
+  /** The worker sent forward (the scout), if it is alive. */
+  private forwardWorker(obs: ObsV2): { e: number[]; i: number } | null {
+    const i = obs.entities.findIndex((e) => e[F.own] && e[F.type_worker] && e[F.scout]);
+    return i < 0 ? null : { e: obs.entities[i], i };
+  }
+
+  /** Where an escorted push holds: the enemy choke, else the centre, else the enemy base. */
+  private forwardPoint(): number {
+    return [T_ENEMY_CHOKE0, T_CENTRE0].find((t) => this.valid(t)) ?? T_ENEMY_BASE;
+  }
+
+  /** Backdoor: beside the enemy crystal, toward the map edge the worker came along (own frame, normalised). */
+  private backdoorSpot(): Pt {
+    const e = this.norm(this.ctx.targets[T_ENEMY_BASE]), dy = BACKDOOR_OFFSET / this.ctx.H;
+    return { x: e.x, y: Math.min(0.95, Math.max(0.05, e.y + (this.edge ? dy : -dy))) };
+  }
+
+  /** Where the forward worker should be now, or null if none is wanted. */
+  private postGoal(obs: ObsV2, v: View): Pt | null {
+    const p = this.t.post;
+    if (!p || obs.globals[G.own_barracks_done] === 0) return null;
+    if (p.mode === "escort") return this.postHold >= 0 && !this.postDone && v.army.length ? this.middle(v) : null;
+    if (v.tick < (p.tick ?? 0)) return null;
+    return this.leg === 0 ? { x: 0.5, y: this.edge ? 0.96 : 0.04 } : this.backdoorSpot();
+  }
+
+  /** The legal move target (grid cell) nearest `p`; −1 if none. */
+  private cellNear(m: V2Masks, p: Pt): number {
+    let best = -1, bd = Infinity;
+    for (let g = 0; g < GRID_CELLS; g++) {
+      if (!m.target[O_MOVE][TARGET_GRID0 + g]) continue;
+      const c = { x: ((g % GRID_COLS) * GRID_CELL_W + GRID_CELL_W / 2) / this.ctx.W, y: (Math.floor(g / GRID_COLS) * GRID_CELL_H + GRID_CELL_H / 2) / this.ctx.H };
+      const d = Math.round(this.dist(c, p));
+      if (d < bd) { bd = d; best = g; }
+    }
+    return best < 0 ? -1 : TARGET_GRID0 + best;
+  }
+
+  /** Orders of a forward-outpost bot on decisions without a main army order: the worker's walk, and the backdoor skirmishers' attack. */
+  private postOrder(obs: ObsV2, v: View, m: V2Masks): Partial<V2Action> | null {
+    const p = this.t.post;
+    if (!p) return null;
+    if (p.mode === "backdoor" && m.group[GROUP_SKIRMISHERS]) {
+      // The skirmishers gather at their outposts and attack the crystal as one body.
+      const n = obs.entities.filter((e) => e[F.own] && e[F.type_skirmisher]).length;
+      const was = this.striking;
+      if (n >= BACKDOOR_MASS) this.striking = true; else if (n < BACKDOOR_REGROUP) this.striking = false;
+      const order = this.striking ? O_AM : O_GUARD, target = this.striking ? T_ENEMY_BASE : this.cellNear(m, this.backdoorSpot());
+      if (was !== this.striking || this.decisions - this.lastSkirmOrder >= ORDER_REFRESH) {
+        // The strike goes for the crystal itself when it is in sight (nothing on the way distracts it).
+        const crystal = this.striking && m.order[GROUP_SKIRMISHERS][O_FOCUS] ? obs.entities.findIndex((e, i) => e[F.enemy] && e[F.type_crystal] && m.ptr[O_FOCUS][i]) : -1;
+        if (crystal >= 0) { this.lastSkirmOrder = this.decisions; return { group: GROUP_SKIRMISHERS, order: O_FOCUS, ptr: crystal }; }
+        if (target >= 0 && m.order[GROUP_SKIRMISHERS][order] && m.target[order][target]) {
+          this.lastSkirmOrder = this.decisions;
+          return { group: GROUP_SKIRMISHERS, order, target };
+        }
+      }
+    }
+    if (!m.group[GROUP_UNIT] || this.decisions - this.lastPostOrder < POST_WORKER_GAP) return null;
+    let goal = this.postGoal(obs, v);
+    if (!goal) return null;
+    const at = (e: number[]): Pt => ({ x: e[F.x], y: e[F.y] });
+    let w = this.forwardWorker(obs);
+    if (!w) {
+      // Send a new worker: the one nearest the goal that is not building.
+      if (this.postSent >= POST_WORKERS) return null;
+      this.leg = 0;
+      goal = this.postGoal(obs, v) ?? goal;
+      const free = obs.entities.map((e, i) => ({ e, i })).filter(({ e, i }) => e[F.own] && e[F.type_worker] && !e[F.building] && m.unit[O_MOVE][i]);
+      w = free.reduce<{ e: number[]; i: number } | null>((b, x) => (!b || this.dist(at(x.e), goal!) < this.dist(at(b.e), goal!) ? x : b), null);
+      if (!w) return null;
+      this.postSent++;
+    } else if (w.e[F.building] || !m.unit[O_MOVE][w.i]) {
+      return null;
+    } else if (this.dist(at(w.e), goal) <= POST_NEAR / 2) {
+      // Arrived: the backdoor route goes on to its second leg; otherwise the worker waits here.
+      if (p.mode !== "backdoor" || this.leg === 1) return null;
+      this.leg = 1;
+      goal = this.backdoorSpot();
+    }
+    const target = this.cellNear(m, goal);
+    if (target < 0) return null;
+    this.lastPostOrder = this.decisions;
+    return { group: GROUP_UNIT, order: O_MOVE, unit: w.i, target };
+  }
+
+  /** Build the next forward outpost beside its worker once it is in place; sets `postSaving` when only the price is missing. */
+  private postBuild(obs: ObsV2, v: View, m: V2Masks): number {
+    const p = this.t.post;
+    this.postSaving = false;
+    if (!p || v.buildings.outpost >= p.n || obs.globals[G.own_barracks_done] === 0) return 0;
+    // One at a time: the worker builds the next when it is free again.
+    const w = this.forwardWorker(obs);
+    if (!w || w.e[F.building]) return 0;
+    const at = { x: w.e[F.x], y: w.e[F.y] };
+    if (p.mode === "escort") {
+      if (this.postHold < 0 || this.postDone || !v.army.length) return 0;
+      // Wherever the army has got to on the enemy half (it may be stopped short of its forward point).
+      const mid = this.middle(v);
+      if (mid.x < 0.5 || this.dist(at, mid) > POST_NEAR) return 0;
+    } else if (this.leg === 0 || this.dist(at, this.backdoorSpot()) > POST_NEAR) {
+      return 0;
+    }
+    const a = this.buildNear(m, "outpost", at);
+    if (!a && v.resources < BUILDING_DEFS.outpost.cost) this.postSaving = true;
+    // The worker gets no walking order in the decision that sends it to build (the order would replace the build).
+    if (a) this.lastPostOrder = this.decisions;
+    return a;
+  }
+
+  /** A finished own outpost would take the next skirmisher: its queue has room and is no longer than any barracks queue. */
+  private outpostFree(obs: ObsV2): boolean {
+    let post = Infinity, barracks = Infinity;
+    for (const e of obs.entities) {
+      if (!e[F.own] || e[F.built] < 1) continue;
+      if (e[F.type_outpost]) post = Math.min(post, e[F.queue]);
+      else if (e[F.type_barracks]) barracks = Math.min(barracks, e[F.queue]);
+    }
+    return post < 1 && post <= barracks;
   }
 
   // ---- micro (v3), used on decisions without a main army order ----
@@ -651,13 +853,13 @@ export class ScriptedV2Bot {
       if (u) { this.lastMicro.pull = this.decisions; return { group: GROUP_UNIT, order: O_RETREAT, unit: u.i }; }
     }
     // 2. Focus the weakest enemy combat unit near the army.
-    if (v.army.length >= 2 && due("focus") && m.order[GROUP_ALL][O_FOCUS]) {
+    if (v.army.length >= 2 && due("focus") && m.order[this.main][O_FOCUS]) {
       const t = lowest(enemies.filter(({ e, i }) => e[F.hp] < FOCUS_HP && m.ptr[O_FOCUS][i] && this.dist(at(e), c) < MICRO_RADIUS));
       if (t) {
         this.lastMicro.focus = this.decisions;
         this.focusUntil = this.decisions + FOCUS_DECISIONS;
         this.lastOrder = ""; // the main order goes out again when the focus ends
-        return { group: GROUP_ALL, order: O_FOCUS, ptr: t.i };
+        return { group: this.main, order: O_FOCUS, ptr: t.i };
       }
     }
     // 3. Medics follow the most hurt ally near the army (they auto-heal in range anyway).

@@ -3294,9 +3294,20 @@ console.log("\n--- G-13: unit control ---");
     const x = midX + 300, y = 300;
     const build = (b: string) => engine.processCommand(match.id, "pb", { type: "build", buildingType: b, targetX: x, targetY: y, workerIds: [worker.id] } as any);
     engine.tick(match.id);
+    const home = [...match.entities.values()].find((e) => e.type === "crystal" && e.ownerId === "pb")!;
+    const barracksCount = () => [...match.entities.values()].filter((e) => e.buildingType === "barracks" && e.ownerId === "pb").length;
+    const addBarracks = () => { engine.debugSpawn(match.id, "pb", "building", home.x + 140, home.y, "barracks"); return [...match.entities.values()].find((e) => e.buildingType === "barracks" && e.ownerId === "pb")!; };
+    const scout = spawn("pb", "skirmisher", x, y + 60, true);
+    scout.autoAttackEnabled = false;
+    engine.tick(match.id);
+    const early = build("outpost");
+    assert(barracksCount() === 0 && !early.success && early.message === "Requires a Barracks", `Outpost: not placed before a barracks is finished (${early.message ?? "accepted"})`);
+    let barracks = addBarracks();
+    scout.x = home.x; scout.y = home.y + 100;
+    engine.tick(match.id);
     const fog = build("outpost");
     assert(!fog.success && fog.message === "Not in sight", `Outpost: not placed on ground the player cannot see (${fog.message ?? "accepted"})`);
-    spawn("pb", "skirmisher", x, y + 60, true).autoAttackEnabled = false;
+    scout.x = x; scout.y = y + 60;
     engine.tick(match.id);
     const zone = build("barracks");
     assert(!zone.success && zone.message === "Outside your build zone", `Outpost: a barracks still cannot go on the enemy half (${zone.message ?? "accepted"})`);
@@ -3316,6 +3327,20 @@ console.log("\n--- G-13: unit control ---");
       const n = [...match.entities.values()].filter((e) => e.type === "skirmisher" && e.ownerId === "pb").length;
       for (let i = 0; i < want + 1; i++) engine.tick(match.id);
       assertEqual([...match.entities.values()].filter((e) => e.type === "skirmisher" && e.ownerId === "pb").length, n + 1, "Outpost: the skirmisher appears at the outpost");
+      // Without a barracks the outpost stops: its queue stands still and takes nothing new.
+      const train = () => engine.processCommand(match.id, "pb", { type: "train_unit", entityId: o.id, unitType: "skirmisher" });
+      train();
+      for (let i = 0; i < 10; i++) engine.tick(match.id);
+      const left = o.productionQueue[0]!.remainingTicks;
+      match.entities.delete(barracks.id);
+      for (let i = 0; i < 20; i++) engine.tick(match.id);
+      assertEqual(o.productionQueue[0]?.remainingTicks, left, "Outpost: its queue stands still while the owner has no barracks");
+      const refused = train();
+      assert(!refused.success && o.productionQueue.length === 1, `Outpost: takes no new unit without a barracks (${refused.message ?? "accepted"})`);
+      barracks = addBarracks();
+      for (let i = 0; i < 20; i++) engine.tick(match.id);
+      assertEqual(o.productionQueue[0]?.remainingTicks, left - 20, "Outpost: training resumes with a new barracks");
+      assert(train().success, "Outpost: takes new units again with a new barracks");
     }
   }
 }
@@ -3739,7 +3764,7 @@ function v2ObservationTests(): void {
 
 function v2ActionTests(): void {
   console.log("\n--- Action space v3 (G-10 T5, G-13 Phase B) ---");
-  assertEqual(V2.ACTION_SPACE_VERSION, 6, "action space version 6");
+  assertEqual(V2.ACTION_SPACE_VERSION, 7, "action space version 7");
   assertEqual([V2.ECON_SIZE, V2.BUILD_SITES, V2.ECON_PTR_KINDS.length, V2.PTR_SIZE], [63, 760, 3, 200], "economy: 63 kinds, 760 build sites (10 named + 750 grid), 3 pointer kinds over 200 rows");
   assertEqual([V2.GROUPS.length, V2.ORDERS.length, V2.TARGET_SIZE], [11, 12, 804], "army: 11 groups x 12 orders x 804 targets (37 anchors + 16 memory + 750 grid + none)");
   assertEqual(OBS.MAX_ENTITIES, V2.PTR_SIZE, "pointer heads index the observation's entity rows");
@@ -3961,6 +3986,10 @@ function v2ActionTests(): void {
       }
       return out;
     };
+    assert(!m.econ[V2.ECON_BUILD0 + bi] && m.econ[V2.ECON_BUILD0 + bar], "outpost: no build action before a barracks is finished");
+    engine.debugSpawn(match.id, "v2-blue", "building", st.targets[0].x + 140, st.targets[0].y, "barracks");
+    const barracks = [...match.entities.values()].find((e) => e.buildingType === "barracks")!;
+    m = V2.computeMasks(match, st);
     assert(m.econ[V2.ECON_BUILD0 + bi] && farSites(bi).length === 0, "outpost: no build sites on the enemy half while it is out of sight");
     const choke = V2.ANCHOR_TARGETS.slice(0, 8).reduce((n, [, c]) => n + c, 0);
     assert(st.targetValid[choke], "outpost test: the map has an enemy choke anchor");
@@ -3969,18 +3998,29 @@ function v2ActionTests(): void {
     m = V2.computeMasks(match, st);
     const far = farSites(bi);
     assert(far.length > 0 && farSites(bar).length === 0, `outpost: enemy-half sites in sight are legal for the outpost only (${far.length})`);
+    // A worker sent forward through the unit pointer becomes the scout, and builds the outpost where it stands.
+    const workers = [...match.entities.values()].filter((e) => e.type === "worker" && e.ownerId === "v2-blue");
+    OBS.observe(match, st, oss[0]);
+    const sentRow = st.rows.indexOf(workers[1].id);
+    const sent = V2.applyV2(engine, match, st, V2.act({ group: V2.GROUPS.indexOf("unit"), order: V2.ORDERS.indexOf("move"), unit: sentRow, target: choke }));
+    assert(sent.armyEffective && st.scoutId === workers[1].id, "outpost: a worker moved through the unit pointer becomes the scout");
+    workers[1].x = st.targets[choke].x + 30; workers[1].y = st.targets[choke].y;
     const built = V2.applyV2(engine, match, st, V2.act({ econ: V2.ECON_BUILD0 + bi, site: far[0] }));
     const post = [...match.entities.values()].find((e) => e.buildingType === "outpost");
     assert(built.econEffective && !!post && post.x > W / 2, "outpost: the build action places it on the enemy half");
+    assert(!!post && workers[1].buildTargetId === post.id, "outpost: the nearest free worker builds it, the scout included");
     if (post) {
       post.constructionProgress = 100; post.health = post.maxHealth;
-      engine.debugSpawn(match.id, "v2-blue", "building", st.targets[0].x + 140, st.targets[0].y, "barracks");
-      const barracks = [...match.entities.values()].find((e) => e.buildingType === "barracks")!;
       const tr = V2.applyV2(engine, match, st, V2.act({ econ: V2.ECON_TRAIN0 + V2.TRAIN_UNITS.indexOf("skirmisher") }));
       assert(tr.econEffective && post.productionQueue.length === 1 && barracks.productionQueue.length === 0, "outpost: with equal queues a skirmisher is trained at the outpost, not the barracks");
       const o = OBS.observe(match, st, oss[0]);
       const row = o.entities[st.rows.indexOf(post.id)];
       assert(row[OBS.ENTITY_FEATURES.indexOf("type_outpost")] === 1 && o.globals[OBS.GLOBAL_NAMES.indexOf("own_outpost_done")] === 0.2, "observation: outpost entity type and own_outpost_done");
+      post.productionQueue.length = 0;
+      match.entities.delete(barracks.id);
+      m = V2.computeMasks(match, st);
+      assert(!m.econ[V2.ECON_TRAIN0 + V2.TRAIN_UNITS.indexOf("skirmisher")] && !m.econ[V2.ECON_BUILD0 + bi], "outpost: without a barracks it neither trains nor can another be built");
+      assert(m.econPtr[1][st.rows.indexOf(post.id)], "outpost: it takes a rally point like other producers");
     }
   }
 }
@@ -4258,6 +4298,30 @@ function v2ScriptedTests(): void {
     let res: R = r.handle({ type: "reset_all", max_ticks: 4000, critic: false, slots: [{ seed: 7, map: "shardfall", blue: "bot:phalanx", red: "bot:idle" }] });
     while (!(res.slots[0].done || res.slots[0].truncated)) res = r.handle({ type: "step", actions: [{}] });
     assert(zs.has(19) && shields > 0, `phalanx (z 19) trains bulwarks (${shields} at once)`);
+  }
+
+  {
+    // Forward-outpost bots: the escort builds its outposts beside its army on the enemy half; the backdoor
+    // worker builds them beside the enemy crystal and the skirmishers trained there win the game.
+    for (const [bot, z, near] of [["outrider", 21, Infinity], ["siege", 24, Infinity], ["backdoor", 23, 450]] as const) {
+      const posts = new Map<string, { x: number; d: number; done: boolean }>();
+      let trained = 0, W = 0;
+      const r = new VecRunnerV2({ onTick: (_s, m) => {
+        W = m.config.mapWidth;
+        const crystal = [...m.entities.values()].find((e) => e.type === "crystal" && e.ownerId === V2_PIDS[1]);
+        for (const e of m.entities.values()) {
+          if (e.buildingType !== "outpost" || e.ownerId !== V2_PIDS[0]) continue;
+          posts.set(e.id, { x: e.x, d: crystal ? Math.hypot(e.x - crystal.x, e.y - crystal.y) : 0, done: e.constructionProgress >= 100 });
+          if (e.productionQueue[0]?.remainingTicks === 1) trained++;
+        }
+      } });
+      let res: R = r.handle({ type: "reset_all", max_ticks: 7000, critic: false, slots: [{ seed: 7, map: "shardfall", blue: `bot:${bot}`, red: "bot:idle" }] });
+      while (!(res.slots[0].done || res.slots[0].truncated)) res = r.handle({ type: "step", actions: [{}] });
+      const done = [...posts.values()].filter((p) => p.done);
+      assert(zs.has(z) && done.length > 0 && done.every((p) => p.x > W / 2 && p.d <= near) && trained > 0,
+        `${bot} (z ${z}) builds outposts ${near === Infinity ? "on the enemy half" : `within ${near} px of the enemy crystal`} and trains there (${done.length} outposts, ${trained} skirmishers)`);
+      if (bot === "backdoor") assert(res.slots[0].info.winner === "blue", `backdoor: its skirmishers beat an undefended base (${res.slots[0].info.winner ?? "no winner"}, tick ${res.slots[0].info.ticks})`);
+    }
   }
 
   const play = (slots: R[], cap: number): R[] => {

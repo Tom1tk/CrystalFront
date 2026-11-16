@@ -1,5 +1,5 @@
 """
-Sizes and layout of observation v2 (schema 5) / action space v6 (headless/src/v2/observation.ts,
+Sizes and layout of observation v2 (schema 5) / action space v7 (headless/src/v2/observation.ts,
 headless/src/v2/actions.ts). `check_sizes` compares them with a live observation.
 """
 

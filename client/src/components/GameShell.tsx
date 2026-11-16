@@ -872,12 +872,17 @@ export default function GameShell({
     // G-13: costs come from the shared defs.
     const uc = (t: string) => UNIT_DEFS[t].cost, bc = (t: string) => BUILDING_DEFS[t].cost;
     if (hasWorkers) {
+      // An outpost needs a finished barracks (the server rejects it otherwise).
+      const outpostNeeds = BUILDING_DEFS.outpost.requires;
+      const outpostOk = !outpostNeeds || !!matchState?.entities.some(
+        (e) => e.type === "building" && e.buildingType === outpostNeeds && e.ownerId === safePlayer.id && (e.constructionProgress ?? 0) >= 100
+      );
       return [
         { key: "q", action: "build_supply_depot", label: `Supply Depot (${bc("supply_depot")})`, icon: "📦" },
         { key: "w", action: "build_barracks", label: `Barracks (${bc("barracks")})`, icon: "🏰" },
         { key: "e", action: "build_foundry", label: `Foundry (${bc("foundry")})`, icon: "🏭" },
         { key: "r", action: "build_turret", label: `Turret (${bc("turret")})`, icon: "🔫" },
-        { key: "a", action: "build_outpost", label: `Outpost (${bc("outpost")})`, icon: "⛺" },
+        { key: "a", action: "build_outpost", label: outpostOk ? `Outpost (${bc("outpost")})` : `Outpost (needs Barracks)`, icon: "⛺" },
         { key: "s", action: "none", label: "", icon: "" },
         { key: "d", action: "none", label: "", icon: "" },
         { key: "f", action: "none", label: "", icon: "" },
@@ -2591,7 +2596,11 @@ export default function GameShell({
       const inPlayerHalf = isBlue ? hoverPos.x < midX : hoverPos.x > midX;
       const notInCenter = isBlue ? hoverPos.x <= midX - centerExclusion : hoverPos.x >= midX + centerExclusion;
       // Outposts may go on either half (the server also requires the spot to be in sight).
-      const valid = !!BUILDING_DEFS[selectedBuildingType].anywhere || (inPlayerHalf && notInCenter);
+      const needs = BUILDING_DEFS[selectedBuildingType].requires;
+      const hasNeeded = !needs || !!matchState?.entities.some(
+        (e) => e.type === "building" && e.buildingType === needs && e.ownerId === safePlayer.id && (e.constructionProgress ?? 0) >= 100
+      );
+      const valid = hasNeeded && (!!BUILDING_DEFS[selectedBuildingType].anywhere || (inPlayerHalf && notInCenter));
       const previewColor = valid ? "rgba(68,204,68,0.5)" : "rgba(204,68,68,0.5)";
       const borderColor = valid ? "rgba(68,204,68,0.8)" : "rgba(204,68,68,0.8)";
 

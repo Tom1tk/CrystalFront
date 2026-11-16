@@ -18,7 +18,7 @@
 import type { MatchEntity, MatchState } from "../../../server/src/match/types.js";
 import type { MatchEngine } from "../../../server/src/match/matchEngine.js";
 import { BUILDING_DEFS, UNIT_DEFS } from "@crystalfront/shared";
-import { siteInSight, validateBuildSite } from "../../../server/src/match/buildingValidation.js";
+import { requirementMet, siteInSight, validateBuildSite } from "../../../server/src/match/buildingValidation.js";
 import { anchorsConnected, footprintOf, type Rect } from "../../../server/src/match/engine/navGrid.js";
 import { anchorsFor } from "../../../server/src/match/maps.js";
 import { ANCHOR_MAX, padSlots, seatAnchors, type Pt } from "../../../server/src/match/engine/anchors.js";
@@ -28,8 +28,8 @@ import { isObstacleCode, rectTouches, terrainAt, T_BRUSH } from "../../../server
 import { PLACEMENT } from "@crystalfront/shared";
 
 export const DECISION_TICKS = 8;
-/** Action space version (wire format and head layout). */
-export const ACTION_SPACE_VERSION = 6;
+/** Action space version (wire format, head layout and what an action does). */
+export const ACTION_SPACE_VERSION = 7;
 
 /** Own-frame grid (also the observation grid). 5000×900 → 50×15; smaller maps leave cells invalid. */
 export const GRID_CELL_W = 100;
@@ -265,6 +265,7 @@ function producerFor(match: MatchState, playerId: string, unit: string): MatchEn
   for (const e of match.entities.values()) {
     if (e.type !== "building" || e.ownerId !== playerId || e.constructionProgress < 100) continue;
     if (!e.buildingType || !BUILDING_DEFS[e.buildingType]?.produces?.includes(unit)) continue;
+    if (!requirementMet(match, playerId, e.buildingType)) continue;
     const q = e.productionQueue?.length ?? 0;
     if (q >= PRODUCER_QUEUE_MAX) continue;
     // Shortest queue first; among equals the faster producer (an outpost before a barracks).
@@ -280,6 +281,21 @@ function builder(match: MatchState, s: SeatState): MatchEntity | null {
   for (const e of match.entities.values()) {
     if (e.type !== "worker" || e.ownerId !== s.playerId || e.buildTargetId || e.id === s.scoutId) continue;
     if (!best || (isIdleWorker(match, e) && !isIdleWorker(match, best))) best = e;
+  }
+  return best;
+}
+
+/**
+ * Builder of an `anywhere` building (an outpost): the free worker nearest the site, the scout
+ * included, so a worker walked forward as the scout builds where it stands (ties by id).
+ * Without a site: whether any such worker exists.
+ */
+function forwardBuilder(match: MatchState, s: SeatState, at?: Pt): MatchEntity | null {
+  let best: MatchEntity | null = null, bd = Infinity;
+  for (const e of match.entities.values()) {
+    if (e.type !== "worker" || e.ownerId !== s.playerId || e.buildTargetId) continue;
+    const d = at ? (e.x - at.x) ** 2 + (e.y - at.y) ** 2 : 0;
+    if (!best || d < bd || (d === bd && e.id < best.id)) { best = e; bd = d; }
   }
   return best;
 }
@@ -504,7 +520,7 @@ export interface V2Masks {
   ptr: boolean[][];         // [O][PTR_SIZE]
 }
 
-const PRODUCERS = new Set(["barracks", "foundry"]);
+const PRODUCERS = new Set(["barracks", "foundry", "outpost"]);
 const isProducer = (e: MatchEntity) => e.type === "crystal" || (e.type === "building" && PRODUCERS.has(e.buildingType ?? "") && e.constructionProgress >= 100);
 
 export function computeMasks(match: MatchState, s: SeatState): V2Masks {
@@ -523,11 +539,12 @@ export function computeMasks(match: MatchState, s: SeatState): V2Masks {
   econ[0] = true;
   TRAIN_UNITS.forEach((u, i) => { econ[ECON_TRAIN0 + i] = !!producerFor(match, s.playerId, u); });
   const eco = match.economy[seatIdx(match, s.playerId)];
-  const hasBuilder = !!builder(match, s);
+  const hasBuilder = !!builder(match, s), hasForwardBuilder = !!forwardBuilder(match, s);
   const site = BUILDINGS.map(() => new Array<boolean>(BUILD_SITES).fill(false));
   const pc = placeCtx(match);
   BUILDINGS.forEach((b, bi) => {
-    if (!eco || !hasBuilder || eco.resources < BUILDING_DEFS[b].cost) return;
+    if (!eco || !(BUILDING_DEFS[b].anywhere ? hasForwardBuilder : hasBuilder) || eco.resources < BUILDING_DEFS[b].cost) return;
+    if (!requirementMet(match, s.playerId, b)) return;
     for (let k = 0; k < NAMED_SITES; k++) site[bi][k] = !!siteFor(match, s, b, k, pc);
     for (let g = 0; g < GRID_CELLS; g++) site[bi][NAMED_SITES + g] = gridSiteOk(match, s, pc, bi, g);
     econ[ECON_BUILD0 + bi] = site[bi].some(Boolean);
@@ -655,8 +672,9 @@ function econCommands(match: MatchState, s: SeatState, a: EconAction, act: V2Act
         : [{ type: "train_unit", buildingId: p.id, entityId: p.id, unitType: a.unit }];
     }
     case "build": {
-      const w = builder(match, s);
-      const pos = w ? siteFor(match, s, a.building, act.site) : null;
+      if (!requirementMet(match, s.playerId, a.building)) return [];
+      const pos = siteFor(match, s, a.building, act.site);
+      const w = pos && (BUILDING_DEFS[a.building].anywhere ? forwardBuilder(match, s, pos) : builder(match, s));
       if (!w || !pos) return [];
       return [{ type: "build", buildingType: a.building, targetX: pos.x, targetY: pos.y, workerIds: [w.id], entityId: w.id }];
     }
@@ -686,7 +704,10 @@ function armyCommands(match: MatchState, s: SeatState, g: Group, o: Order, a: V2
   let members: MatchEntity[];
   if (g === "unit") { const e = unitAt(match, s, a.unit); members = e ? [e] : []; }
   else members = groupMembers(match, s, g);
-  if (g === "scout" && members[0]) s.scoutId = members[0].id;
+  // The scout is the seat's one detached unit (off the worker autopilot and the army groups' builder
+  // and repair duty): the scout group's pick, or a worker sent somewhere through the unit pointer.
+  const sent = o === "move" || o === "attack_move" || o === "guard";
+  if ((g === "scout" || (g === "unit" && sent && members[0]?.type === "worker")) && members[0]) s.scoutId = members[0].id;
   const crystal = ownCrystal(match, s.playerId);
   const doers = members.filter((e) => memberAccepts(match, s, g, o, e, crystal));
   const ids = doers.map((e) => e.id);

@@ -1,0 +1,52 @@
+# Outpost training-speed sweeps, 2026-11-16 (row's score v column, both sides, 10 maps; (Nt) = timeouts; a timeout scores half)
+
+## Four outpost bots, 40 games per pairing (backdoor before the crystal focus order)
+960 games, 683s, outpost train mult 0.75
+                  swarm    gunline    phalanx      macro     turtle      rush3
+outrider       43% (2t)   45% (0t)   60% (0t)   95% (4t)   15% (0t)   90% (4t)
+siege          65% (0t)  28% (10t)   30% (4t)  85% (12t)   65% (8t)   98% (2t)
+backdoor       28% (2t)  23% (14t)  33% (26t)  48% (30t)  28% (18t)  100% (0t)
+rush_post      20% (4t)    0% (0t)   10% (0t)  40% (28t)    8% (6t)   55% (4t)
+960 games, 682s, outpost train mult 0.5
+                  swarm    gunline    phalanx      macro     turtle      rush3
+outrider       53% (2t)   45% (0t)   55% (0t)   95% (4t)   10% (0t)   90% (4t)
+siege          65% (0t)  23% (10t)   25% (0t)  85% (12t)   65% (8t)   98% (2t)
+backdoor       33% (2t)  28% (18t)  33% (22t)  55% (32t)  15% (12t)   98% (2t)
+rush_post      10% (8t)    0% (0t)    5% (4t)  35% (28t)    5% (4t)   50% (4t)
+960 games, 670s, outpost train mult 0.33
+                  swarm    gunline    phalanx      macro     turtle      rush3
+outrider       43% (2t)   45% (0t)   60% (0t)   95% (4t)   15% (0t)   90% (4t)
+siege          65% (0t)  28% (10t)   28% (2t)  85% (12t)   60% (8t)   98% (2t)
+backdoor       28% (2t)  20% (16t)  28% (18t)  50% (32t)  23% (14t)  100% (0t)
+rush_post       8% (2t)    0% (0t)   13% (2t)  33% (26t)   10% (4t)   50% (4t)
+
+## Control: 'hold' = outrider with the outpost build switched off; 0.75x (run before the escort build fixes: only the hold row is used)
+1200 games, 803s, outpost train mult 0.75
+                  swarm    gunline    phalanx      macro     turtle      rush3
+outrider       55% (0t)   45% (0t)   60% (0t)   95% (4t)   15% (0t)   90% (4t)
+hold           50% (0t)   45% (0t)   58% (2t)   95% (4t)   15% (0t)   90% (4t)
+siege          60% (0t)  23% (14t)   20% (4t)  85% (12t)  63% (10t)   98% (2t)
+backdoor       23% (2t)  26% (15t)  30% (20t)  50% (32t)  25% (16t)   88% (2t)
+rush_post      20% (4t)    0% (0t)   10% (0t)  40% (28t)    8% (6t)   55% (4t)
+
+## Backdoor with the crystal focus order, 40 games per pairing
+240 games, 268s, outpost train mult 0.75
+                  swarm    gunline    phalanx      macro     turtle      rush3
+backdoor       50% (0t)  23% (14t)  35% (16t)  55% (32t)  38% (14t)   95% (0t)
+240 games, 258s, outpost train mult 0.33
+                  swarm    gunline    phalanx      macro     turtle      rush3
+backdoor       75% (0t)  25% (12t)  50% (20t)  59% (21t)  35% (16t)   90% (0t)
+
+## Backdoor with the crystal focus order, 80 games per pairing
+400 games, 437s, outpost train mult 0.75
+                  swarm    phalanx      macro    gunline      heavy
+backdoor       50% (0t)  44% (38t)  61% (47t)  28% (31t)  51% (18t)
+400 games, 424s, outpost train mult 0.5
+                  swarm    phalanx      macro    gunline      heavy
+backdoor       40% (4t)  40% (36t)  60% (44t)  28% (36t)  61% (10t)
+400 games, 424s, outpost train mult 0.33
+                  swarm    phalanx      macro    gunline      heavy
+backdoor       61% (2t)  43% (33t)  51% (35t)  24% (22t)  44% (14t)
+400 games, 404s, outpost train mult 0.25
+                  swarm    phalanx      macro    gunline      heavy
+backdoor       68% (4t)  33% (25t)  59% (46t)  24% (18t)  47% (11t)

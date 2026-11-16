@@ -558,3 +558,64 @@ Built per `docs/BOT_CONTROL_PLAN.md` §2 (R-2 deviation signed off by the user).
 - 15 new tests (984/984 custom, 85/85 vitest); client type-checks; golden hashes unchanged.
 - For the user: (1) the placement rule above; (2) whether the outpost should need something first (today a player can open with an outpost at tick 0, since it costs the 50 starting resources); (3) whether to change it given that scripted bots get nothing from it forward, or leave it for the retrain to find a use. Levers if wanted: faster training, a shorter worker trip (e.g. any unit can place it), or cheaper skirmishers there.
 - Next: the banner unit (as a unit; suggested aura about 80 px, +15% attack speed, not stacking), then retrain from scratch with swarm, phalanx, gunline, outrider and rush_post in the pool.
+
+### 2026-11-16 — Outpost round 2: barracks rule, escort and backdoor bots, training speed (v0.8.23-ML, action space 7)
+- User's answers (2026-11-16) to the four open points of the outpost step:
+  1. Placement stays "anywhere you can see": "i like the idea of sneaking a worker all the way to the enemy crystal then building a mass of scavengers and winning that way, a 'backdoor' strategy".
+  2. Prerequisite: "should require a barracks having been built. If a barracks is destroyed when an outpost is built and not destroyed, it becomes unable to train units".
+  3. Balance: "I like faster training as our main lever"; asked for scripted bots that escort a worker forward and defend it while it builds ("unleash from close up once done"), the backdoor, and a late escort for "turtle players that have amassed an army". Expected: "Turrets or any guarding army will counter this, but it may beat a careless straight line rush."
+  4. Banner unit: "doesn't really solve a problem yet and would be a 'build no matter what' unit. Let's leave it documented as designed but no plans to implement right now".
+- **Barracks rule (engine).** `BuildingDef.requires` (outpost: `"barracks"`). Without a finished barracks an outpost cannot be placed ("Requires a Barracks") and takes no unit ("Needs a barracks"), and a queue already running stands still until its owner has a finished barracks again. Reading taken: any finished barracks counts, and rebuilding one switches the outposts back on. An outpost under construction is still finished by its worker. ENGINE_VERSION stays 16: no saved replay contains an outpost, and games without outposts are bit-identical (golden hashes unchanged).
+- **Client.** The worker card shows "Outpost (needs Barracks)" until a barracks is finished and the placement preview is red. Not looked at in a browser.
+- **Bot interface (action space 7; same sizes, observation schema still 5).**
+  - `build outpost` is masked off without a finished barracks; `train skirmisher` skips outposts then.
+  - An outpost is built by the free worker nearest the site, the scout included. Other buildings keep "any free non-scout worker".
+  - `move`, `attack_move` or `guard` given to a worker through the `unit` group makes it the seat's scout, which takes it off the worker autopilot. So a bot or the agent can walk a worker somewhere, keep it there, and have it build an outpost on the spot. Before this the only way to park a worker was the `scout` group, which picks a skirmisher whenever one is free.
+  - Outposts take rally points and queue cancels (left out of the producer list in v0.8.22).
+  - Not added: no action resumes a building whose builder died (true of every building; it shows up more with outposts at the front). The bots place a new one instead.
+- **Scripted bots.** The old "build beside the army during the push" step is gone (`BuildStep.forward`). Templates now have `post`:
+  - `escort`: when the push starts, a worker is sent to walk with the army's middle unit; the army heads for the enemy choke under a guard order; once the middle unit is on the enemy half and the worker is beside it the outposts are built one after another (about 50 ticks each instead of about 760 with a worker walking from home); the push goes on when they stand, or after 1,800 ticks. With outposts standing, skirmishers are trained there first.
+  - `backdoor`: from tick 600 one worker walks along the top or bottom map edge (seeded) to a spot 320 px beside the enemy crystal and builds three outposts. Nothing is trained at home on its last leg, so the outposts open with resources in hand. Skirmishers are trained there first, gather to 8, then attack the crystal itself (a focus order). The gunners at home play the turtle's game.
+  - Bots: `outrider` (z 21, now the swarm with an escort), `rush_post` (z 22, now a barracks plus two home outposts; its control is `rush3`), `backdoor` (z 23, turtle build), `siege` (z 24, turtle build, 14 gunners from tick 3,000 escort a worker and build three outposts). 20 bots.
+  - Two bugs found by tracing and fixed before measuring: the walk order to the worker replaced its build order in the same decision (outposts placed, never built), and the escort waited for the army to reach the choke (in 5 of 8 sampled games it was stopped short and never built).
+- **Does the escort pay?** Control `hold` = the same bot with the build switched off (it holds the same way, then pushes). 40 games per pairing, outpost training 0.75×:
+
+  | v | swarm | gunline | phalanx | macro | turtle | rush3 |
+  |---|---|---|---|---|---|---|
+  | `outrider` | 43% | 45% | 60% | 95% | 15% | 90% |
+  | `hold` (no outposts) | 50% | 45% | 58% | 95% | 15% | 90% |
+  | `swarm` | – | 20% | 60% | 95% | 5% | – |
+
+  The gain over `swarm` against gunners (45% v 20%) comes from gathering at the enemy choke before attacking, not from the outposts. The outposts themselves add nothing measurable.
+- **Training speed sweep** (the user's lever; `docs/archive/raw-2026-11/balance/outpost_speed_sweep.txt`). 40 games per pairing, speeds 0.75× / 0.5× / 0.33×, averaged over swarm, gunline, phalanx, macro, turtle, rush3: `outrider` 58 / 58 / 58%, `siege` 62 / 60 / 61%, `rush_post` 22 / 18 / 19%, `backdoor` (before the crystal focus) 43 / 44 / 42%. No effect. These bots spend their income as it arrives, so they are limited by income, not by how fast a building trains.
+- **Backdoor with a direct attack on the crystal.** The strike was first an attack-move, which stops for everything on the way: 28% v `swarm`. With a focus order on the crystal: 50%. A crystal has 1,000 health and 8 skirmishers do about 10 a tick, so a strike that arrives wins in about 100 ticks. Sweep with the focus order, 80 games per pairing:
+
+  | speed | swarm | phalanx | macro | gunline | heavy | mean |
+  |---|---|---|---|---|---|---|
+  | 0.75× | 50% | 44% | 61% | 28% | 51% | 47% |
+  | 0.5× | 40% | 40% | 60% | 28% | 61% | 46% |
+  | 0.33× | 61% | 43% | 51% | 24% | 44% | 45% |
+  | 0.25× | 68% | 33% | 59% | 24% | 47% | 46% |
+
+  One cell is about ±5.5 points. Only the `swarm` column rises at the fastest two settings, and it dips at 0.5×; the mean does not move. `swarm` is the opponent that marches its whole army out of its base, which is the "careless straight line rush" case the user described.
+- **Speed chosen: 0.5× (a skirmisher in 50 ticks, was 75).** The scripted games cannot choose a value: nothing between 0.75× and 0.25× changes the results on average. 0.5× is a modest step in the direction the user asked for and keeps the outpost's numbers at 50 / 50 / 50 / 50. Where speed should matter is a player who arrives with resources saved and wants them on the field at once, which none of these bots does well.
+- **Risk noted for the user.** At home an outpost is now a 50-resource building that trains skirmishers twice as fast as a 75-resource barracks; only its 50 health and the one barracks it needs hold it back. `rush_post` (barracks + two home outposts) against `rush3` (two barracks) is level (55 / 50 / 50% across the sweep), so bots do not show a problem, but a player with spare resources and too few barracks could use home outposts as cheap production. One way to close that, if wanted: the speed bonus only on the enemy half of the map.
+- **Matrix at the shipped settings** (`docs/archive/raw-2026-11/balance/outpost2_matrix.{txt,json}`; 11 bots, 10 maps, 2 seeds per side, 2,420 games, 40 per pairing so one cell is about ±8 points):
+
+  | v | swarm | phalanx | gunline | macro | turtle | sw_turtle_grab | rush3 |
+  |---|---|---|---|---|---|---|---|
+  | `outrider` | 38% | 75% | 50% | 55% | 25% | 30% | 85% |
+  | `swarm` (its base build) | – | 80% | 23% | 55% | 0% | 10% | 88% |
+  | `siege` | 85% | 51% | 38% | 90% | 53% | 38% | 90% |
+  | `backdoor` | 30% | 45% | 13% | 57% | 35% | 40% | 95% |
+  | `turtle` (their base build) | 100% | 28% | 18% | 83% | – | 28% | 98% |
+  | `rush_post` | 18% | 3% | 0% | 20% | 15% | 10% | 65% |
+
+  - `siege` is the strongest of the new bots: it beats `backdoor` 70% and `outrider` 60%, and does better than `turtle` against phalanx, gunline and macro, at the price of 85% instead of 100% against `swarm`. How much of that is the outposts and how much the late 14-gunner push was not separated.
+  - `backdoor` gives up the turtle's hold on `swarm` (30% here, 40–50% in the sweeps on other seeds) for a second way to win; `gunline`, which sits at its own choke and comes home at once, beats it 88%.
+  - `rush_post` beats the two-barracks rush 65% and loses to everything else.
+  - G-8 checks: dominance PASS, mirrors PASS, timeouts 19% FAIL (<15%; was 17%: the two new turtle-based bots add long games).
+- botCheck (1,000 games, 20 bots): no exceptions, 0 ineffective actions, deterministic. As blue, W/L/T of 50: siege 44/3/3, turtle 41/5/4, gunline 39/6/5, outrider 38/10/2, macro 38/7/5, sw_turtle_grab 34/12/4, swarm 32/14/4, backdoor 26/12/12, phalanx 22/18/10, rush_post 18/24/8.
+- Checks: 998/998 custom tests and 85/85 vitest (14 new: barracks rule in the engine and masks, forward builder, worker-to-scout, the three bots building and training at their outposts, backdoor beating an undefended base); client type-checks; golden hashes unchanged; Python env test and 2-update PPO and imitation smoke runs against the four outpost bots pass.
+- **Banner unit: designed, not planned** (user, 2026-11-16). The design on file: an unarmed unit that gives allies within about 80 px +15% attack speed, not stacking. Reason for shelving: it solves no problem yet and would be built in every army.
+- Next: retrain from scratch with swarm, phalanx, gunline, outrider, siege, backdoor and rush_post in the pool (imitation first, then PPO), once the user has confirmed the outpost speed.

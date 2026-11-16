@@ -29,6 +29,7 @@ import { contestedNodesFor, mapSymmetry, terrainFor } from "./maps.js";
 import { createNavGrid, rebuildNavGrid, addStructure, removeStructure } from "./engine/navGrid.js";
 import {
   validateBuildSite,
+  requirementMet,
   findCrystalByColor,
   type PlacementResult,
 } from "./buildingValidation.js";
@@ -623,6 +624,9 @@ if (command.type === "gather") {
       const buildingDef = building.buildingType ? BUILDING_DEFS[building.buildingType] : null;
       if (!buildingDef?.produces?.includes(unitType)) {
         return { success: false, message: "Building cannot produce this unit" };
+      }
+      if (!requirementMet(match, playerId, building.buildingType!)) {
+        return { success: false, message: `Needs a ${buildingDef.requires}` };
       }
 
       const playerIdx = match.players.findIndex((p) => p?.playerId === playerId);
@@ -1330,7 +1334,9 @@ if (command.type === "gather") {
         }
       }
 
-      if (entity.constructionProgress >= 100 && entity.productionQueue.length > 0) {
+      // A building that requires another (an outpost: a barracks) trains only while its owner has one.
+      if (entity.constructionProgress >= 100 && entity.productionQueue.length > 0 &&
+          requirementMet(match, entity.ownerId ?? "", entity.buildingType ?? "")) {
         const item = entity.productionQueue[0];
         if (item) {
           item.remainingTicks -= 1;

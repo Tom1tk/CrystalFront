@@ -126,6 +126,10 @@ export function validateBuildSite(
   y: number
 ): PlacementResult {
   const def = BUILDING_DEFS[buildingType];
+  if (!requirementMet(match, playerId, buildingType)) {
+    const need = def.requires!.replace(/_/g, " ");
+    return { valid: false, reason: `Requires a ${need[0].toUpperCase()}${need.slice(1)}` };
+  }
   const playerColor = match.players.find((p) => p?.playerId === playerId)?.color ?? "blue";
   const playerCrystals = Array.from(match.entities.values()).filter(
     (e) => e.type === "crystal" && e.ownerId === playerId
@@ -154,6 +158,16 @@ export function validateBuildSite(
     return { valid: false, reason: "Would seal off a crystal" };
   }
   return { valid: true };
+}
+
+/** The player has a finished building of the type `buildingType` requires (true if it requires none). */
+export function requirementMet(match: MatchState, playerId: string, buildingType: string): boolean {
+  const need = BUILDING_DEFS[buildingType]?.requires;
+  if (!need) return true;
+  for (const e of match.entities.values()) {
+    if (e.type === "building" && e.ownerId === playerId && e.buildingType === need && e.constructionProgress >= 100) return true;
+  }
+  return false;
 }
 
 /** The player currently sees the point (true before the first visibility pass). */

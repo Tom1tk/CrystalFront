@@ -57,7 +57,7 @@ RUNNER_JS = REPO_ROOT / "headless/dist/v2/vecRunner.js"
 # Must match OBS_SCHEMA_VERSION in headless/src/v2/observation.ts and
 # ACTION_SPACE_VERSION in headless/src/v2/actions.ts.
 OBS_SCHEMA_VERSION = 5
-ACTION_SPACE_VERSION = 6
+ACTION_SPACE_VERSION = 7
 SIDES = ("blue", "red")
 PY_ONLY_KEYS = ("learner",)
 

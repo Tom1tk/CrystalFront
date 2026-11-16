@@ -134,6 +134,7 @@ export interface BuildingDef {
   produces?: string[];
   trainTimeMult?: number;  // units trained here take this share of their normal build time
   anywhere?: boolean;      // not tied to the owner's half of the map: any ground the owner can currently see
+  requires?: string;       // needs a finished building of this type: to be placed, to queue units and for its queue to advance
   damage?: number;
   range?: number;
   attackCooldown?: number;
@@ -192,8 +193,9 @@ export const BUILDING_DEFS: Record<string, BuildingDef> = {
     height: 32,
     color: "#66bb99",
     produces: ["skirmisher"],
-    trainTimeMult: 0.75,
+    trainTimeMult: 0.5,
     anywhere: true,
+    requires: "barracks",
     visionRange: 150,
   },
 };

@@ -281,6 +281,12 @@ Put v2 in new files (`headless/src/v2/…`) so v1 keeps working until the switch
 - *Observation:* 61 globals (`own_outpost_done`, `own_outpost_building`, `seen_outpost`, `seen_outpost_age` added in their groups, so later globals shift), 36 entity features (`type_outpost` after `type_turret`), 15 memory features (`type_outpost`).
 - `training/v2/spaces.py`: `N_GLOBALS 61`, `ENTITY_F 36`, `MEMORY_F 15`, `ECON 63`, `N_BUILDINGS 5`, `ECON_ASSIGN0 12`, `ECON_REPAIR 60`, `ECON_RALLY 61`; `training/env/vec_env_v2.py` asserts schema 5 / action space 6.
 
+**Action space v7 (outpost needs a barracks, forward worker; v0.8.23-ML).** Same sizes and layout as v6; what some actions do changed. Observation schema stays 5.
+- *Barracks rule:* `build outpost` is masked off until the seat has a finished barracks (engine: "Requires a Barracks"). An outpost with no finished barracks behind it is not a producer: `train skirmisher` skips it, and the engine freezes its queue until a barracks stands again.
+- *Who builds an outpost:* the free worker nearest the site, the scout included (other buildings: any free non-scout worker, idle first). So a worker walked forward builds where it stands.
+- *Detaching a worker:* `move`, `attack_move` or `guard` given to a worker through the `unit` group makes it the seat's scout (entity feature `scout`): the worker autopilot, `assign`, `repair` and ordinary builds leave it alone. There is still one scout per seat; naming another unit releases the previous one. Nothing else releases a scout worker.
+- *Rally and cancel* pointers now accept outposts (they were left out in v6).
+
 **Observation (R-1).** All in own frame, all deterministic.
 | Block | Content |
 |---|---|
