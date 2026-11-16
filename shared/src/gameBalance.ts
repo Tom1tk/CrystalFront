@@ -132,7 +132,8 @@ export interface BuildingDef {
   color: string;
   supplyProvided?: number;
   produces?: string[];
-  trainTimeMult?: number;  // units trained here take this share of their normal build time
+  /** On its owner's enemy half of the map (nearer an enemy crystal than the owner's own) it is built in this time and trains units in this share of their normal time. */
+  forward?: { buildTime: number; trainTimeMult: number };
   anywhere?: boolean;      // not tied to the owner's half of the map: any ground the owner can currently see
   requires?: string;       // needs a finished building of this type: to be placed, to queue units and for its queue to advance
   damage?: number;
@@ -187,13 +188,13 @@ export const BUILDING_DEFS: Record<string, BuildingDef> = {
   // Forward outpost (user, 2026-11-15): cheap, quick to put up and very fragile; trains skirmishers only, faster than a barracks.
   outpost: {
     cost: 50,
-    buildTime: 50,
+    buildTime: 150,
     health: 50,
     width: 32,
     height: 32,
     color: "#66bb99",
     produces: ["skirmisher"],
-    trainTimeMult: 0.5,
+    forward: { buildTime: 50, trainTimeMult: 0.25 },
     anywhere: true,
     requires: "barracks",
     visionRange: 150,

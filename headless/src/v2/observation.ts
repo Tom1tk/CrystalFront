@@ -36,7 +36,7 @@ const COMBAT = ["skirmisher", "gunner", "bruiser", "medic", "bulwark"] as const;
 const COMBAT_SET = new Set<string>(COMBAT);
 /** Entity type vocabulary (one-hot order). */
 export const ENTITY_TYPES = ["crystal", "worker", "skirmisher", "gunner", "bruiser", "medic", "bulwark", "barracks", "foundry", "supply_depot", "turret", "outpost"] as const;
-const MEMORY_TYPES = ["crystal", "barracks", "foundry", "supply_depot", "turret", "outpost"] as const;
+export const MEMORY_TYPES = ["crystal", "barracks", "foundry", "supply_depot", "turret", "outpost"] as const;
 
 function typeOf(e: MatchEntity): string | null {
   if (e.type === "building") return e.buildingType ?? null;

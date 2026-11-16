@@ -29,6 +29,7 @@ import { contestedNodesFor, mapSymmetry, terrainFor } from "./maps.js";
 import { createNavGrid, rebuildNavGrid, addStructure, removeStructure } from "./engine/navGrid.js";
 import {
   validateBuildSite,
+  forwardTerms,
   requirementMet,
   findCrystalByColor,
   type PlacementResult,
@@ -649,7 +650,7 @@ if (command.type === "gather") {
 
       // Deduct resources immediately on queue
       economy.resources -= unitDef.cost;
-      const trainTime = Math.round(unitDef.buildTime * (buildingDef.trainTimeMult ?? 1));
+      const trainTime = Math.round(unitDef.buildTime * (forwardTerms(match, building)?.trainTimeMult ?? 1));
 
       building.productionQueue.push({
         unitType,
@@ -1312,7 +1313,7 @@ if (command.type === "gather") {
           }
 
           if (workersInRange > 0) {
-            const progressPerTick = (workersInRange / def.buildTime) * 100;
+            const progressPerTick = (workersInRange / (forwardTerms(match, entity)?.buildTime ?? def.buildTime)) * 100;
             entity.constructionProgress = Math.min(100, entity.constructionProgress + progressPerTick);
 
             if (entity.constructionProgress >= 100) {

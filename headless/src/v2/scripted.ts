@@ -13,14 +13,16 @@ import { BUILDING_DEFS, UNIT_DEFS } from "@crystalfront/shared";
 import { Rng } from "../../../server/src/match/engine/rng.js";
 import type { Pt } from "../../../server/src/match/engine/anchors.js";
 import { T_BRUSH, terrainAt } from "../../../server/src/match/engine/terrain.js";
-import type { MatchState } from "../../../server/src/match/types.js";
-import { toOwnFrame } from "./frame.js";
+import { getVisionRange, onHighGround } from "../../../server/src/match/engine/utils.js";
+import { losSet, visionCellOf, visionGridOf } from "../../../server/src/match/engine/visibility.js";
+import type { MatchEntity, MatchState } from "../../../server/src/match/types.js";
+import { fromOwnFrame, toOwnFrame } from "./frame.js";
 import type { SeatState } from "./actions.js";
 import {
-  act, BUILDINGS, ECON_ASSIGN0, ECON_BUILD0, ECON_REPAIR, ECON_TRAIN0, GRID_CELL_H, GRID_CELL_W, GRID_CELLS, GRID_COLS, GROUPS, NAMED_SITES, ORDERS, TARGET_GRID0, TARGET_NONE, TRAIN_UNITS, WORKER_COUNTS,
+  act, BUILDINGS, ECON_ASSIGN0, ECON_BUILD0, ECON_REPAIR, ECON_TRAIN0, GRID_CELL_H, GRID_CELL_W, GRID_CELLS, GRID_COLS, GRID_ROWS, GROUPS, NAMED_SITES, ORDERS, TARGET_GRID0, TARGET_NONE, TRAIN_UNITS, WORKER_COUNTS,
   type V2Action, type V2Masks,
 } from "./actions.js";
-import { ENTITY_FEATURES, GLOBAL_NAMES, NODE_FEATURES, type ObsV2 } from "./observation.js";
+import { ENTITY_FEATURES, ENTITY_TYPES, GLOBAL_NAMES, MEMORY_FEATURES, MEMORY_TYPES, NODE_FEATURES, type ObsV2 } from "./observation.js";
 
 /** Static, public map facts a scripted bot may use (own frame). */
 export interface BotContext {
@@ -33,6 +35,13 @@ export interface BotContext {
   targetValid: boolean[];
   /** Anchor targets standing in brush. */
   brush: boolean[];
+  /** Grid cells (the action grid, row-major) whose walk point is in brush: a unit standing there is hidden from anyone outside the patch. */
+  brushCell: boolean[];
+  /**
+   * The grid cells a watcher of this kind ("crystal", a unit type or a building type) at `p` (own frame, px) sees, by the
+   * game's line-of-sight rules. A cell counts as seen if any part of it is. Brush is left out (see `brushCell`).
+   */
+  sight(p: Pt, kind: string): readonly number[];
 }
 
 /** Anchors with brush within this radius (px) count as brush (anchors themselves sit on open ground). */
@@ -51,7 +60,39 @@ export function botContext(match: MatchState, s: SeatState, cap: number): BotCon
     }
     return false;
   });
-  return { W, H, cap, targets: s.targets.map((p) => toOwnFrame(s.frame, p)), targetValid: [...s.targetValid], brush };
+  const brushCell = s.grid.map((p) => !!p && terrainAt(t, p.x, p.y) === T_BRUSH);
+  // Vision cell (world) → the grid cells (own frame) it overlaps.
+  const vg = visionGridOf(t);
+  const cellsOf: number[][] = [];
+  for (let r = 0; r < vg.rows; r++) {
+    for (let c = 0; c < vg.cols; c++) {
+      const a = toOwnFrame(s.frame, { x: c * vg.cellSize - vg.offsetX, y: r * vg.cellSize - vg.offsetY });
+      const b = toOwnFrame(s.frame, { x: (c + 1) * vg.cellSize - vg.offsetX, y: (r + 1) * vg.cellSize - vg.offsetY });
+      const x0 = Math.max(0, Math.min(a.x, b.x)), x1 = Math.min(W, Math.max(a.x, b.x));
+      const y0 = Math.max(0, Math.min(a.y, b.y)), y1 = Math.min(H, Math.max(a.y, b.y));
+      const out: number[] = [];
+      for (let gr = Math.floor(y0 / GRID_CELL_H); gr * GRID_CELL_H < y1; gr++) {
+        for (let gc = Math.floor(x0 / GRID_CELL_W); gc * GRID_CELL_W < x1; gc++) out.push(gr * GRID_COLS + gc);
+      }
+      cellsOf.push(out);
+    }
+  }
+  const seen = new Map<string, number[]>();
+  const sight = (p: Pt, kind: string): readonly number[] => {
+    const w = fromOwnFrame(s.frame, p);
+    const e = (kind === "crystal" ? { type: "crystal" } : BUILDING_DEFS[kind] ? { type: "building", buildingType: kind } : { type: kind }) as MatchEntity;
+    e.x = w.x; e.y = w.y;
+    const src = visionCellOf(vg, w.x, w.y), range = getVisionRange(e, t), high = onHighGround(e, t);
+    const key = `${src}:${range}:${high ? 1 : 0}`;
+    let out = seen.get(key);
+    if (!out) {
+      const set = new Set<number>();
+      for (const v of losSet(vg, src, range, high)) for (const g of cellsOf[v]) set.add(g);
+      seen.set(key, (out = [...set]));
+    }
+    return out;
+  };
+  return { W, H, cap, targets: s.targets.map((p) => toOwnFrame(s.frame, p)), targetValid: [...s.targetValid], brush, brushCell, sight };
 }
 
 type Unit = typeof TRAIN_UNITS[number];
@@ -325,6 +366,7 @@ export function scriptedZs(): Map<number, string> {
 const G = Object.fromEntries(GLOBAL_NAMES.map((n, i) => [n, i])) as Record<string, number>;
 const F = Object.fromEntries(ENTITY_FEATURES.map((n, i) => [n, i])) as Record<string, number>;
 const N = Object.fromEntries(NODE_FEATURES.map((n, i) => [n, i])) as Record<string, number>;
+const M = Object.fromEntries(MEMORY_FEATURES.map((n, i) => [n, i])) as Record<string, number>;
 const COMBAT: Unit[] = ["skirmisher", "gunner", "bruiser", "medic", "bulwark"];
 
 const GROUP_ALL = GROUPS.indexOf("all_combat"), GROUP_MEDICS = GROUPS.indexOf("medics"), GROUP_UNIT = GROUPS.indexOf("unit");
@@ -342,7 +384,7 @@ const FOCUS_DECISIONS = 3;
 const MICRO_GAP = 4;
 /** Focus enemies below this HP fraction; heal allies below this; pull back own units below this when enemies are close. */
 const FOCUS_HP = 0.6, HEAL_HP = 0.7, PULL_HP = 0.25;
-const T_OWN_BASE = 0, T_OWN_POCKET0 = 1, T_OWN_CHOKE0 = 4, T_CENTRE0 = 7, T_NODE0 = 10, T_ENEMY_BASE = 26, T_ENEMY_CHOKE0 = 30, T_ENEMY_SAFE0 = 33;
+const T_OWN_BASE = 0, T_OWN_POCKET0 = 1, T_OWN_CHOKE0 = 4, T_CENTRE0 = 7, T_NODE0 = 10, T_ENEMY_BASE = 26, T_ENEMY_POCKET0 = 27, T_ENEMY_CHOKE0 = 30, T_ENEMY_SAFE0 = 33;
 const NODE_ROW_CONTESTED0 = 8, NODE_ROW_ENEMY_SAFE0 = 4;
 const SLOT_CONTESTED0 = 4;
 /** Re-issue an unchanged army order after this many decisions. */
@@ -358,8 +400,14 @@ const POST_NEAR = 200;
 const ESCORT_PATIENCE = 1800;
 /** Decisions between orders to the forward worker; forward workers a bot spends per game. */
 const POST_WORKER_GAP = 4, POST_WORKERS = 3;
-/** Backdoor outposts go this far (px) from the enemy crystal, toward the map edge the worker came along. */
+/** Backdoor outposts go this far (px) from the enemy crystal when no hidden ground is found, toward the bot's side of the map. */
 const BACKDOOR_OFFSET = 320;
+/** Backdoor outposts go on ground the enemy is not known to see, between these distances (px) from its crystal. */
+const BACKDOOR_MIN = 250, BACKDOOR_MAX = 900;
+/** Backdoor skirmishers wait in brush when there is some within this distance (px) of their outposts. */
+const BACKDOOR_BRUSH = 300;
+/** Hiding: walking onto a grid cell a known enemy watcher sees costs this many times its length; a cell the enemy is likely to see, this many. */
+const SEEN_COST = 25, LIKELY_COST = 4;
 /** Backdoor skirmishers wait at their outposts until this many stand there, then attack; below the second number they gather again. */
 const BACKDOOR_MASS = 8, BACKDOOR_REGROUP = 3;
 /** With escorted outposts standing and full, a skirmisher is trained at home only with this many skirmishers' worth of resources in hand. */
@@ -401,13 +449,14 @@ export class ScriptedV2Bot {
   /** Recent peak of the share of own shots stopped by enemy bulwarks (decays per decision). */
   private shielded = 0;
   /** Forward outposts: tick the escort hold began (−1: none), whether this push is done with it, workers sent,
-   *  last decision with a worker order, the backdoor route's map edge (0 top, 1 bottom) and leg, and whether an outpost is being saved for. */
+   *  last decision with a worker order, the backdoor's side of the map (0 top, 1 bottom) and the grid cell its outposts go at (−1: not chosen),
+   *  and whether an outpost is being saved for. */
   private postHold = -1;
   private postDone = false;
   private postSent = 0;
   private lastPostOrder = -99;
   private edge = 0;
-  private leg = 0;
+  private spot = -1;
   private postSaving = false;
   private lastSkirmOrder = -99;
   private striking = false;
@@ -460,7 +509,12 @@ export class ScriptedV2Bot {
     this.shielded = Math.max(obs.globals[G.shots_blocked], this.shielded * SHIELD_DECAY);
     const econ = this.econ(obs, v, m);
     let army: Partial<V2Action> = this.armyOrder(obs, v, m);
-    if (!army.group) army = this.postOrder(obs, v, m) ?? this.micro(obs, v, m) ?? army;
+    if (this.t.post?.mode === "backdoor") {
+      // The backdoor's worker and skirmishers come before the home army's order (which is then issued on the next decision).
+      const post = this.postOrder(obs, v, m);
+      if (post) { if (army.group) this.lastOrder = ""; army = post; }
+      else if (!army.group) army = this.micro(obs, v, m) ?? army;
+    } else if (!army.group) army = this.postOrder(obs, v, m) ?? this.micro(obs, v, m) ?? army;
     this.decisions++;
     return act({ econ, site: econ >= ECON_BUILD0 && econ < ECON_ASSIGN0 ? this.site : 0, econPtr: this.econPtr, ...army });
   }
@@ -512,15 +566,15 @@ export class ScriptedV2Bot {
     this.site = site;
     return ECON_BUILD0 + bi;
   }
-  /** Build `b` at the legal grid site nearest `near` (own frame, normalised). Sets `this.site`. */
-  private buildNear(m: V2Masks, b: Building, near: Pt): number {
+  /** Build `b` at the legal grid site nearest `near` (own frame, normalised); `extra` adds px to a cell's distance. Sets `this.site`. */
+  private buildNear(m: V2Masks, b: Building, near: Pt, extra?: (g: number) => number): number {
     const bi = BUILDINGS.indexOf(b);
     if (!m.econ[ECON_BUILD0 + bi]) return 0;
     let best = -1, bd = Infinity;
     for (let g = 0; g < GRID_CELLS; g++) {
       if (!m.site[bi][NAMED_SITES + g]) continue;
       const c = { x: ((g % GRID_COLS) * GRID_CELL_W + GRID_CELL_W / 2) / this.ctx.W, y: (Math.floor(g / GRID_COLS) * GRID_CELL_H + GRID_CELL_H / 2) / this.ctx.H };
-      const d = Math.round(this.dist(c, near));
+      const d = Math.round(this.dist(c, near)) + (extra?.(g) ?? 0);
       if (d < bd) { bd = d; best = g; }
     }
     if (best < 0) return 0;
@@ -573,8 +627,8 @@ export class ScriptedV2Bot {
       if (a) return a;
       if (v.resources < UNIT_DEFS.skirmisher.cost) saving = UNIT_DEFS.skirmisher.cost;
     }
-    // Backdoor: while the worker is on its last leg nothing is trained at home, so the outposts open with a full purse.
-    const banking = t.post?.mode === "backdoor" && this.leg === 1 && obs.globals[G.own_outpost_done] === 0 && !!this.forwardWorker(obs);
+    // Backdoor: once the worker is on the enemy half nothing is trained at home, so the outposts open with a full purse.
+    const banking = t.post?.mode === "backdoor" && obs.globals[G.own_outpost_done] === 0 && (this.forwardWorker(obs)?.e[F.x] ?? 0) >= 0.5;
     if (!saving && !banking) {
       // Most-needed unit first; save for it when it is unaffordable, try the next when its producers are busy.
       const weights = (Object.entries(t.mix) as Array<[Unit, number]>).filter(([u]) => this.canProduce(obs, u));
@@ -691,8 +745,6 @@ export class ScriptedV2Bot {
 
   private endPush(): void { this.pushing = false; this.postHold = -1; this.postDone = false; }
 
-  // ---- forward outposts ----
-
   /** The worker sent forward (the scout), if it is alive. */
   private forwardWorker(obs: ObsV2): { e: number[]; i: number } | null {
     const i = obs.entities.findIndex((e) => e[F.own] && e[F.type_worker] && e[F.scout]);
@@ -704,19 +756,179 @@ export class ScriptedV2Bot {
     return [T_ENEMY_CHOKE0, T_CENTRE0].find((t) => this.valid(t)) ?? T_ENEMY_BASE;
   }
 
-  /** Backdoor: beside the enemy crystal, toward the map edge the worker came along (own frame, normalised). */
-  private backdoorSpot(): Pt {
-    const e = this.norm(this.ctx.targets[T_ENEMY_BASE]), dy = BACKDOOR_OFFSET / this.ctx.H;
-    return { x: e.x, y: Math.min(0.95, Math.max(0.05, e.y + (this.edge ? dy : -dy))) };
+  // ---- hiding (backdoor) ----
+
+  /** Centre of a grid cell (own frame, normalised), and the grid cell of a point. */
+  private cellAt(g: number): Pt {
+    return { x: ((g % GRID_COLS) * GRID_CELL_W + GRID_CELL_W / 2) / this.ctx.W, y: (Math.floor(g / GRID_COLS) * GRID_CELL_H + GRID_CELL_H / 2) / this.ctx.H };
+  }
+  private cellOf(p: Pt): number {
+    const c = Math.min(GRID_COLS - 1, Math.max(0, Math.floor(p.x * this.ctx.W / GRID_CELL_W)));
+    const r = Math.min(GRID_ROWS - 1, Math.max(0, Math.floor(p.y * this.ctx.H / GRID_CELL_H)));
+    return r * GRID_COLS + c;
   }
 
-  /** Where the forward worker should be now, or null if none is wanted. */
+  /**
+   * What the enemy can see, per grid cell, as far as the bot can tell: 2 where a watcher it knows of looks (the enemy crystal,
+   * the workers at the enemy's own nodes and at nodes it holds, enemy buildings it remembers, enemy units in its sight now),
+   * 1 where the enemy is likely to be looking (its pockets and chokes, the centre of the map), 0 elsewhere. Once per decision.
+   */
+  private watched(obs: ObsV2): Uint8Array {
+    if (this.watchAt === this.decisions) return this.watch;
+    const w = this.watch.fill(0), px = (x: number, y: number): Pt => ({ x: x * this.ctx.W, y: y * this.ctx.H });
+    const mark = (p: Pt, kind: string, level: number) => { for (const g of this.ctx.sight(p, kind)) if (w[g] < level) w[g] = level; };
+    const anchors = (t0: number, kind: string, level: number) => { for (let i = 0; i < 4 && (t0 === T_ENEMY_SAFE0 || i < 3); i++) if (this.valid(t0 + i)) mark(this.ctx.targets[t0 + i], kind, level); };
+    mark(this.ctx.targets[T_ENEMY_BASE], "crystal", 2);
+    anchors(T_ENEMY_SAFE0, "worker", 2);
+    for (let k = 1; k < obs.memory.length; k++) {
+      const r = obs.memory[k];
+      const type = r[M.valid] && !r[M.destroyed] ? MEMORY_TYPES.find((t) => r[M[`type_${t}`]]) : undefined;
+      if (type) mark(px(r[M.x], r[M.y]), type, 2);
+    }
+    for (const e of obs.entities) {
+      const type = e[F.enemy] ? ENTITY_TYPES.find((t) => e[F[`type_${t}`]]) : undefined;
+      if (type) mark(px(e[F.x], e[F.y]), type, 2);
+    }
+    // Nodes the enemy holds or was seen working have its workers at them.
+    for (const n of obs.nodes) if (n[N.valid] && (n[N.held_enemy] || n[N.enemy_workers])) mark(px(n[N.x], n[N.y]), "worker", 2);
+    anchors(T_ENEMY_POCKET0, "barracks", 1);
+    anchors(T_ENEMY_CHOKE0, "gunner", 1);
+    anchors(T_CENTRE0, "gunner", 1);
+    this.watchAt = this.decisions;
+    return w;
+  }
+  private watch = new Uint8Array(GRID_CELLS);
+  private watchAt = -1;
+  /** The cell the backdoor worker was last sent to and where it stood then; cells it could not walk to. */
+  private walkTo = -1;
+  private walkFrom: Pt = { x: 0, y: 0 };
+  private noGo = new Set<number>();
+
+  /** Cheapest walk over the grid from cell `from` to every cell, watched ground being dear: the cost per cell and the cell each is reached from. */
+  private routes(m: V2Masks, w: Uint8Array, from: number): { cost: Float64Array; prev: Int32Array } {
+    const cost = new Float64Array(GRID_CELLS).fill(Infinity), prev = new Int32Array(GRID_CELLS).fill(-1), done = new Uint8Array(GRID_CELLS);
+    const weight = [1, LIKELY_COST, SEEN_COST];
+    cost[from] = 0;
+    for (;;) {
+      let g = -1;
+      for (let i = 0; i < GRID_CELLS; i++) if (!done[i] && cost[i] < Infinity && (g < 0 || cost[i] < cost[g])) g = i;
+      if (g < 0) break;
+      done[g] = 1;
+      const c = g % GRID_COLS, r = (g - c) / GRID_COLS;
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          const nc = c + dc, nr = r + dr, n = nr * GRID_COLS + nc;
+          if ((!dr && !dc) || nc < 0 || nr < 0 || nc >= GRID_COLS || nr >= GRID_ROWS || done[n] || !m.target[O_MOVE][TARGET_GRID0 + n] || this.noGo.has(n)) continue;
+          const d = cost[g] + Math.hypot(dc * GRID_CELL_W, dr * GRID_CELL_H) * weight[w[n]];
+          if (d < cost[n]) { cost[n] = d; prev[n] = g; }
+        }
+      }
+    }
+    return { cost, prev };
+  }
+
+  /**
+   * Backdoor: choose the cell the outposts go at. The reachable open ground nearest the enemy crystal that the enemy is not
+   * known to see, on the bot's side of the map when there is a choice. A spot still unseen is kept; one that an enemy watcher
+   * now sees is given up while no outpost stands there.
+   */
+  private pickSpot(v: View, m: V2Masks, w: Uint8Array, cost: Float64Array): void {
+    if (this.spot >= 0 && (v.buildings.outpost > 0 || (w[this.spot] < 2 && cost[this.spot] < Infinity))) return;
+    const base = this.norm(this.ctx.targets[T_ENEMY_BASE]), side = this.edge ? 1 : 0;
+    let best = -1, bs = Infinity;
+    for (let g = 0; g < GRID_CELLS; g++) {
+      if (cost[g] === Infinity || this.ctx.brushCell[g]) continue;
+      const at = this.cellAt(g), d = this.dist(at, base);
+      if (d < BACKDOOR_MIN || d > BACKDOOR_MAX) continue;
+      // Watched neighbours leave less room for three outposts and their skirmishers.
+      let near = 0;
+      const c = g % GRID_COLS, r = (g - c) / GRID_COLS;
+      for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+        const nc = c + dc, nr = r + dr;
+        if (nc >= 0 && nr >= 0 && nc < GRID_COLS && nr < GRID_ROWS && w[nr * GRID_COLS + nc] === 2) near++;
+      }
+      const score = Math.round(d + [0, 400, 3000][w[g]] + 60 * near + 0.3 * Math.abs(at.y - side) * this.ctx.H);
+      if (score < bs) { bs = score; best = g; }
+    }
+    if (best < 0) {
+      // Nowhere in range: beside the crystal on the bot's side, as near as a walkable cell allows.
+      const dy = BACKDOOR_OFFSET / this.ctx.H;
+      const t = this.cellNear(m, { x: base.x, y: Math.min(0.95, Math.max(0.05, base.y + (this.edge ? dy : -dy))) });
+      best = t < 0 ? -1 : t - TARGET_GRID0;
+    }
+    this.spot = best;
+  }
+
+  /** No point of the straight walk from `a` to `b` is on ground more watched than `level`. */
+  private clearWalk(w: Uint8Array, a: Pt, b: Pt, level: number): boolean {
+    const n = Math.max(1, Math.ceil(this.dist(a, b) / 25));
+    for (let i = 1; i <= n; i++) {
+      if (w[this.cellOf({ x: a.x + (b.x - a.x) * i / n, y: a.y + (b.y - a.y) * i / n })] > level) return false;
+    }
+    return true;
+  }
+
+  /** The next cell to walk to on the route to `to`: the farthest one the unit at `at` reaches in a straight line without crossing ground more watched than the route itself. */
+  private routeStep(w: Uint8Array, prev: Int32Array, at: Pt, to: number): number {
+    const path: number[] = [];
+    for (let g = to; g >= 0 && prev[g] >= 0; g = prev[g]) path.push(g);
+    path.reverse();
+    if (!path.length) return to;
+    let best = path[0], worst = 0;
+    for (const g of path) {
+      worst = Math.max(worst, w[g]);
+      if (!this.clearWalk(w, at, this.cellAt(g), worst)) break;
+      best = g;
+    }
+    return best;
+  }
+
+  /** Backdoor: where the skirmishers wait. Brush near the outposts if there is some (they cannot be seen in it), else the outposts' own cell. */
+  private gatherCell(m: V2Masks): number {
+    if (this.spot < 0) return -1;
+    const at = this.cellAt(this.spot);
+    let best = this.spot, bd = Infinity;
+    for (let g = 0; g < GRID_CELLS; g++) {
+      if (!this.ctx.brushCell[g] || !m.target[O_GUARD][TARGET_GRID0 + g]) continue;
+      const d = Math.round(this.dist(at, this.cellAt(g)));
+      if (d <= BACKDOOR_BRUSH && d < bd) { bd = d; best = g; }
+    }
+    return TARGET_GRID0 + best;
+  }
+
+  /** Backdoor: the worker's next walking order. It goes to the hidden spot by the least watched way, and looks again on every order. */
+  private backdoorWalk(obs: ObsV2, v: View, m: V2Masks): Partial<V2Action> | null {
+    if (obs.globals[G.own_barracks_done] === 0 || v.tick < (this.t.post?.tick ?? 0)) return null;
+    let w = this.forwardWorker(obs);
+    if (!w) {
+      // Send a new worker: the foremost one that is not building.
+      if (this.postSent >= POST_WORKERS) return null;
+      const free = obs.entities.map((e, i) => ({ e, i })).filter(({ e, i }) => e[F.own] && e[F.type_worker] && !e[F.building] && m.unit[O_MOVE][i]);
+      w = free.reduce<{ e: number[]; i: number } | null>((b, x) => (!b || x.e[F.x] > b.e[F.x] ? x : b), null);
+      if (!w) return null;
+      this.postSent++;
+    } else if (w.e[F.building] || !m.unit[O_MOVE][w.i]) {
+      return null;
+    }
+    const at = { x: w.e[F.x], y: w.e[F.y] }, watch = this.watched(obs);
+    // A cell the worker was sent to and did not move toward cannot be walked to from here: leave it out of the routes.
+    if (this.walkTo >= 0 && this.dist(at, this.walkFrom) < 5) this.noGo.add(this.walkTo);
+    const { cost, prev } = this.routes(m, watch, this.cellOf(at));
+    this.pickSpot(v, m, watch, cost);
+    if (this.spot < 0 || this.dist(at, this.cellAt(this.spot)) <= POST_NEAR / 2) { this.walkTo = -1; return null; }
+    const step = this.routeStep(watch, prev, at, this.spot), target = TARGET_GRID0 + step;
+    if (!m.target[O_MOVE][target]) return null;
+    this.walkTo = step; this.walkFrom = at;
+    this.lastPostOrder = this.decisions;
+    return { group: GROUP_UNIT, order: O_MOVE, unit: w.i, target };
+  }
+
+  // ---- forward outposts ----
+
+  /** Escort: where the forward worker should be now, or null if none is wanted. */
   private postGoal(obs: ObsV2, v: View): Pt | null {
-    const p = this.t.post;
-    if (!p || obs.globals[G.own_barracks_done] === 0) return null;
-    if (p.mode === "escort") return this.postHold >= 0 && !this.postDone && v.army.length ? this.middle(v) : null;
-    if (v.tick < (p.tick ?? 0)) return null;
-    return this.leg === 0 ? { x: 0.5, y: this.edge ? 0.96 : 0.04 } : this.backdoorSpot();
+    if (obs.globals[G.own_barracks_done] === 0) return null;
+    return this.postHold >= 0 && !this.postDone && v.army.length ? this.middle(v) : null;
   }
 
   /** The legal move target (grid cell) nearest `p`; −1 if none. */
@@ -740,7 +952,7 @@ export class ScriptedV2Bot {
       const n = obs.entities.filter((e) => e[F.own] && e[F.type_skirmisher]).length;
       const was = this.striking;
       if (n >= BACKDOOR_MASS) this.striking = true; else if (n < BACKDOOR_REGROUP) this.striking = false;
-      const order = this.striking ? O_AM : O_GUARD, target = this.striking ? T_ENEMY_BASE : this.cellNear(m, this.backdoorSpot());
+      const order = this.striking ? O_AM : O_GUARD, target = this.striking ? T_ENEMY_BASE : this.gatherCell(m);
       if (was !== this.striking || this.decisions - this.lastSkirmOrder >= ORDER_REFRESH) {
         // The strike goes for the crystal itself when it is in sight (nothing on the way distracts it).
         const crystal = this.striking && m.order[GROUP_SKIRMISHERS][O_FOCUS] ? obs.entities.findIndex((e, i) => e[F.enemy] && e[F.type_crystal] && m.ptr[O_FOCUS][i]) : -1;
@@ -752,15 +964,14 @@ export class ScriptedV2Bot {
       }
     }
     if (!m.group[GROUP_UNIT] || this.decisions - this.lastPostOrder < POST_WORKER_GAP) return null;
-    let goal = this.postGoal(obs, v);
+    if (p.mode === "backdoor") return this.backdoorWalk(obs, v, m);
+    const goal = this.postGoal(obs, v);
     if (!goal) return null;
     const at = (e: number[]): Pt => ({ x: e[F.x], y: e[F.y] });
     let w = this.forwardWorker(obs);
     if (!w) {
       // Send a new worker: the one nearest the goal that is not building.
       if (this.postSent >= POST_WORKERS) return null;
-      this.leg = 0;
-      goal = this.postGoal(obs, v) ?? goal;
       const free = obs.entities.map((e, i) => ({ e, i })).filter(({ e, i }) => e[F.own] && e[F.type_worker] && !e[F.building] && m.unit[O_MOVE][i]);
       w = free.reduce<{ e: number[]; i: number } | null>((b, x) => (!b || this.dist(at(x.e), goal!) < this.dist(at(b.e), goal!) ? x : b), null);
       if (!w) return null;
@@ -768,10 +979,7 @@ export class ScriptedV2Bot {
     } else if (w.e[F.building] || !m.unit[O_MOVE][w.i]) {
       return null;
     } else if (this.dist(at(w.e), goal) <= POST_NEAR / 2) {
-      // Arrived: the backdoor route goes on to its second leg; otherwise the worker waits here.
-      if (p.mode !== "backdoor" || this.leg === 1) return null;
-      this.leg = 1;
-      goal = this.backdoorSpot();
+      return null; // with the army: it waits here
     }
     const target = this.cellNear(m, goal);
     if (target < 0) return null;
@@ -793,10 +1001,12 @@ export class ScriptedV2Bot {
       // Wherever the army has got to on the enemy half (it may be stopped short of its forward point).
       const mid = this.middle(v);
       if (mid.x < 0.5 || this.dist(at, mid) > POST_NEAR) return 0;
-    } else if (this.leg === 0 || this.dist(at, this.backdoorSpot()) > POST_NEAR) {
+    } else if (this.spot < 0 || this.dist(at, this.cellAt(this.spot)) > POST_NEAR / 2) {
       return 0;
     }
-    const a = this.buildNear(m, "outpost", at);
+    // The backdoor keeps its outposts on ground the enemy does not watch, if there is any near the worker.
+    const watch = p.mode === "backdoor" ? this.watched(obs) : null;
+    const a = this.buildNear(m, "outpost", at, watch ? (g) => [0, 100, 400][watch[g]] : undefined);
     if (!a && v.resources < BUILDING_DEFS.outpost.cost) this.postSaving = true;
     // The worker gets no walking order in the decision that sends it to build (the order would replace the build).
     if (a) this.lastPostOrder = this.decisions;

@@ -24,7 +24,7 @@ import { actionStateOf, headingOf, staticMapOf } from "../server/src/match/engin
 import { isCellBlocked, rebuildNavGrid, anchorsConnected, floodConnected, footprintOf, type Rect as NavRect } from "../server/src/match/engine/navGrid.js";
 import { buildTerrain, terrainAt, isObstacleCode, T_ROCK, T_WATER, T_OPEN, T_HIGH, T_CLIFF, T_ROUGH } from "../server/src/match/engine/terrain.js";
 import { getRange, getVisionRange } from "../server/src/match/engine/utils.js";
-import { computeVisibility, encodeVision } from "../server/src/match/engine/visibility.js";
+import { computeVisibility, encodeVision, isVisibleTo } from "../server/src/match/engine/visibility.js";
 import { generateMap, validateMap } from "../server/src/match/mapgen.js";
 import { registerMap, poolMaps, isKnownMap, terrainFor, mapIds, anchorsFor } from "../server/src/match/maps.js";
 import { ANCHOR_MAX, imagePt, seatAnchors, type Pt } from "../server/src/match/engine/anchors.js";
@@ -3285,10 +3285,10 @@ console.log("\n--- G-13: unit control ---");
     for (let i = 0; i < 150; i++) engine.tick(match.id);
     assert(s.x > k.x + BULWARK.coverDist - 15 && d(s, k) < BULWARK.coverDist + 15, `Cover: the shield takes its place in front once the unit stops (${(s.x - k.x).toFixed(0)} px ahead)`);
   }
-  // Outpost: cheap forward building, placed anywhere in sight, trains skirmishers only and faster.
+  // Outpost: cheap forward building, placed anywhere in sight, trains skirmishers only; on the enemy half it goes up and trains faster.
   {
     const { engine, match, spawn, midX } = setup();
-    const O = BUILDING_DEFS.outpost;
+    const O = BUILDING_DEFS.outpost, FWD = O.forward!;
     match.economy[0]!.resources = 1000;
     const worker = [...match.entities.values()].find((e) => e.type === "worker" && e.ownerId === "pb")!;
     const x = midX + 300, y = 300;
@@ -3319,11 +3319,11 @@ console.log("\n--- G-13: unit control ---");
       worker.x = x - 30; worker.y = y; worker.moveTarget = undefined;
       let ticks = 0;
       while (o.constructionProgress < 100 && ticks < 200) { engine.tick(match.id); ticks++; }
-      assert(ticks >= O.buildTime && ticks <= O.buildTime + 3 && o.health === O.health, `Outpost: one worker builds it in ${O.buildTime} ticks to ${O.health} health (${ticks} ticks, ${o.health})`);
+      assert(ticks >= FWD.buildTime && ticks <= FWD.buildTime + 3 && o.health === O.health, `Outpost: on the enemy half one worker builds it in ${FWD.buildTime} ticks to ${O.health} health (${ticks} ticks, ${o.health})`);
       assert(!engine.processCommand(match.id, "pb", { type: "train_unit", entityId: o.id, unitType: "gunner" }).success, "Outpost: cannot train gunners");
       assert(engine.processCommand(match.id, "pb", { type: "train_unit", entityId: o.id, unitType: "skirmisher" }).success, "Outpost: trains skirmishers");
-      const want = Math.round(UNIT_DEFS.skirmisher.buildTime * O.trainTimeMult!);
-      assertEqual(o.productionQueue[0]?.buildTime, want, `Outpost: a skirmisher takes ${want} ticks (${UNIT_DEFS.skirmisher.buildTime} at a barracks)`);
+      const want = Math.round(UNIT_DEFS.skirmisher.buildTime * FWD.trainTimeMult);
+      assertEqual(o.productionQueue[0]?.buildTime, want, `Outpost: on the enemy half a skirmisher takes ${want} ticks (${UNIT_DEFS.skirmisher.buildTime} at a barracks)`);
       const n = [...match.entities.values()].filter((e) => e.type === "skirmisher" && e.ownerId === "pb").length;
       for (let i = 0; i < want + 1; i++) engine.tick(match.id);
       assertEqual([...match.entities.values()].filter((e) => e.type === "skirmisher" && e.ownerId === "pb").length, n + 1, "Outpost: the skirmisher appears at the outpost");
@@ -3338,9 +3338,31 @@ console.log("\n--- G-13: unit control ---");
       const refused = train();
       assert(!refused.success && o.productionQueue.length === 1, `Outpost: takes no new unit without a barracks (${refused.message ?? "accepted"})`);
       barracks = addBarracks();
-      for (let i = 0; i < 20; i++) engine.tick(match.id);
-      assertEqual(o.productionQueue[0]?.remainingTicks, left - 20, "Outpost: training resumes with a new barracks");
+      for (let i = 0; i < 5; i++) engine.tick(match.id);
+      assertEqual(o.productionQueue[0]?.remainingTicks, left - 5, "Outpost: training resumes with a new barracks");
       assert(train().success, "Outpost: takes new units again with a new barracks");
+    }
+  }
+  // On its owner's own half an outpost has no head start: built and training at a barracks's pace.
+  {
+    const { engine, match, midX } = setup();
+    const O = BUILDING_DEFS.outpost;
+    match.economy[0]!.resources = 1000;
+    const worker = [...match.entities.values()].find((e) => e.type === "worker" && e.ownerId === "pb")!;
+    const home = [...match.entities.values()].find((e) => e.type === "crystal" && e.ownerId === "pb")!;
+    engine.debugSpawn(match.id, "pb", "building", home.x + 140, home.y, "barracks");
+    const x = Math.min(midX - 60, home.x + 320), y = home.y;
+    worker.x = x - 30; worker.y = y; worker.moveTarget = undefined;
+    engine.tick(match.id);
+    const res = engine.processCommand(match.id, "pb", { type: "build", buildingType: "outpost", targetX: x, targetY: y, workerIds: [worker.id] } as any);
+    const o = [...match.entities.values()].find((e) => e.buildingType === "outpost");
+    assert(res.success && !!o, `Outpost: can be placed on the own half (${res.message ?? ""})`);
+    if (o) {
+      let ticks = 0;
+      while (o.constructionProgress < 100 && ticks < 400) { engine.tick(match.id); ticks++; }
+      assert(ticks >= O.buildTime && ticks <= O.buildTime + 3 && O.buildTime === BUILDING_DEFS.barracks.buildTime, `Outpost: on the own half it takes a barracks's ${BUILDING_DEFS.barracks.buildTime} ticks to build (${ticks})`);
+      engine.processCommand(match.id, "pb", { type: "train_unit", entityId: o.id, unitType: "skirmisher" });
+      assertEqual(o.productionQueue[0]?.buildTime, UNIT_DEFS.skirmisher.buildTime, "Outpost: on the own half a skirmisher takes its normal time");
     }
   }
 }
@@ -4302,12 +4324,13 @@ function v2ScriptedTests(): void {
 
   {
     // Forward-outpost bots: the escort builds its outposts beside its army on the enemy half; the backdoor
-    // worker builds them beside the enemy crystal and the skirmishers trained there win the game.
-    for (const [bot, z, near] of [["outrider", 21, Infinity], ["siege", 24, Infinity], ["backdoor", 23, 450]] as const) {
+    // worker builds them near the enemy crystal on ground the enemy cannot see, and the skirmishers trained there win the game.
+    for (const [bot, z, near] of [["outrider", 21, Infinity], ["siege", 24, Infinity], ["backdoor", 23, 1100]] as const) {
       const posts = new Map<string, { x: number; d: number; done: boolean }>();
-      let trained = 0, W = 0;
+      let trained = 0, W = 0, seen = 0;
       const r = new VecRunnerV2({ onTick: (_s, m) => {
         W = m.config.mapWidth;
+        for (const e of m.entities.values()) if (e.buildingType === "outpost" && e.ownerId === V2_PIDS[0] && !posts.has(e.id) && isVisibleTo(m, V2_PIDS[1], e)) seen++;
         const crystal = [...m.entities.values()].find((e) => e.type === "crystal" && e.ownerId === V2_PIDS[1]);
         for (const e of m.entities.values()) {
           if (e.buildingType !== "outpost" || e.ownerId !== V2_PIDS[0]) continue;
@@ -4320,6 +4343,7 @@ function v2ScriptedTests(): void {
       const done = [...posts.values()].filter((p) => p.done);
       assert(zs.has(z) && done.length > 0 && done.every((p) => p.x > W / 2 && p.d <= near) && trained > 0,
         `${bot} (z ${z}) builds outposts ${near === Infinity ? "on the enemy half" : `within ${near} px of the enemy crystal`} and trains there (${done.length} outposts, ${trained} skirmishers)`);
+      if (bot === "backdoor") assert(seen === 0, `backdoor: no outpost is in the enemy's sight when it is placed (${seen} were)`);
       if (bot === "backdoor") assert(res.slots[0].info.winner === "blue", `backdoor: its skirmishers beat an undefended base (${res.slots[0].info.winner ?? "no winner"}, tick ${res.slots[0].info.ticks})`);
     }
   }

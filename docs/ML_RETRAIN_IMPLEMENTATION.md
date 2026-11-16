@@ -287,6 +287,8 @@ Put v2 in new files (`headless/src/v2/…`) so v1 keeps working until the switch
 - *Detaching a worker:* `move`, `attack_move` or `guard` given to a worker through the `unit` group makes it the seat's scout (entity feature `scout`): the worker autopilot, `assign`, `repair` and ordinary builds leave it alone. There is still one scout per seat; naming another unit releases the previous one. Nothing else releases a scout worker.
 - *Rally and cancel* pointers now accept outposts (they were left out in v6).
 
+**Outpost on the enemy half only (v0.8.24-ML).** No change to the action space (7) or observation schema (5). `BuildingDef.forward` replaces `trainTimeMult`: an outpost nearer the enemy crystal than its owner's (on every pool map: past the vertical centre line) is built in 50 ticks and trains units in 0.25 of their time (skirmisher 25 ticks); on the owner's half it takes 150 ticks and trains at normal speed. `train skirmisher` still prefers the faster producer among equal queues, which now means an outpost on the enemy half. Nothing in the observation says which half an outpost is on beyond its `x`. Scripted bots additionally get `BotContext.sight(p, kind)` (the grid cells a watcher at `p` sees, by the engine's line-of-sight rules) and `BotContext.brushCell`; the policy does not get these.
+
 **Observation (R-1).** All in own frame, all deterministic.
 | Block | Content |
 |---|---|

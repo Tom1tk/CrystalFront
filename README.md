@@ -565,7 +565,7 @@ sudo systemctl restart crystalfront-rts
 - **RTS Gameplay**:
   - Six unit types (worker, skirmisher, gunner, bruiser, medic, bulwark) and five buildings (barracks, foundry, supply depot, turret, outpost)
   - The bulwark is an unarmed shield: ranged shots that cross its front hit it instead of their target; melee ignores it. Right-click a friendly unit with a bulwark selected and it covers that unit: it stands between the unit and the enemy and follows it, and the unit walks at the bulwark's speed while it is close
-  - The outpost is a cheap, fragile forward building (50 health) that trains skirmishers only, faster than a barracks. It can go on either half of the map, on any ground you can currently see (worker card: A). It needs a finished barracks: without one it cannot be placed, and an outpost whose owner has lost every barracks stops training until one is rebuilt
+  - The outpost is a cheap, fragile building (50 resources, 50 health) that trains skirmishers only. It can go on either half of the map, on any ground you can currently see (worker card: A), and it needs a finished barracks: without one it cannot be placed and its training queue stands still. On the enemy half of the map it is built in 50 ticks (a barracks takes 150) and trains a skirmisher in 25 ticks (a barracks takes 100); on your own half it is no faster than a barracks. The placement preview says which half the spot is on.
   - Worker-based building, with several workers able to build together
   - Resource gathering with range limits
   - Unit movement, selection, attack-move and rally points

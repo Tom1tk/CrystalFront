@@ -170,6 +170,23 @@ export function requirementMet(match: MatchState, playerId: string, buildingType
   return false;
 }
 
+/** The point is on the player's enemy half of the map: nearer an enemy crystal than any crystal of their own. */
+export function onEnemyHalf(match: MatchState, playerId: string, x: number, y: number): boolean {
+  let own = Infinity, enemy = Infinity;
+  for (const e of match.entities.values()) {
+    if (e.type !== "crystal") continue;
+    const d = (e.x - x) * (e.x - x) + (e.y - y) * (e.y - y);
+    if (e.ownerId === playerId) own = Math.min(own, d); else enemy = Math.min(enemy, d);
+  }
+  return enemy < own;
+}
+
+/** The `forward` terms of a building that has them and stands on its owner's enemy half; undefined otherwise. */
+export function forwardTerms(match: MatchState, e: MatchEntity): { buildTime: number; trainTimeMult: number } | undefined {
+  const f = BUILDING_DEFS[e.buildingType ?? ""]?.forward;
+  return f && onEnemyHalf(match, e.ownerId ?? "", e.x, e.y) ? f : undefined;
+}
+
 /** The player currently sees the point (true before the first visibility pass). */
 export function siteInSight(match: MatchState, playerId: string, x: number, y: number): boolean {
   const vis = match.visibilityData?.get(playerId);

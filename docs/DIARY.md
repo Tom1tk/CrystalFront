@@ -619,3 +619,45 @@ Built per `docs/BOT_CONTROL_PLAN.md` §2 (R-2 deviation signed off by the user).
 - Checks: 998/998 custom tests and 85/85 vitest (14 new: barracks rule in the engine and masks, forward builder, worker-to-scout, the three bots building and training at their outposts, backdoor beating an undefended base); client type-checks; golden hashes unchanged; Python env test and 2-update PPO and imitation smoke runs against the four outpost bots pass.
 - **Banner unit: designed, not planned** (user, 2026-11-16). The design on file: an unarmed unit that gives allies within about 80 px +15% attack speed, not stacking. Reason for shelving: it solves no problem yet and would be built in every army.
 - Next: retrain from scratch with swarm, phalanx, gunline, outrider, siege, backdoor and rush_post in the pool (imitation first, then PPO), once the user has confirmed the outpost speed.
+
+### 2026-11-16 (later) — Outpost fast only on the enemy half; a backdoor that hides (v0.8.24-ML)
+- User's answers (2026-11-16) to the v0.8.23 report:
+  1. Hiding: "does this bot carefully place it's units outside of range of view of it's opponents? i'd love to have a bot or two that properly exhibits 'hiding' behaviour".
+  2. Speed: "Maybe faster to 25".
+  3. Home outposts: "let's do it that way, all differences between barracks (placing speed, training speed etc) only kick in in enemy half".
+  4. "eyeball my suggestions and see if we should implement, if so then matrix, then retrain".
+- **Enemy-half rule (engine).** `BuildingDef.forward = { buildTime, trainTimeMult }` replaces `trainTimeMult`. An outpost on its owner's enemy half (nearer an enemy crystal than the owner's own; on every pool map the crystals are at x = 100 and x = 4,900, y = 450, so this is the vertical centre line) is built in 50 ticks and trains a skirmisher in 25 (0.25×). On the owner's own half it takes 150 ticks, a barracks's time, and trains at normal speed. Reading taken of "all differences": the two speed advantages. Cost (50), health (50) and skirmishers-only are the same on both halves; a cost that depends on where the building is put was left out as harder to show on the card. Open with the user. ENGINE_VERSION stays 16 (no saved replay has an outpost; golden hashes unchanged).
+- **Client.** The placement preview of an outpost says "Enemy half: fast to build, fast training" or "Own half: no faster than a Barracks". Not looked at in a browser.
+- **Was the backdoor hiding? No.** Measured before the change, 100 games (5 opponents × 10 maps × 2 seeds, backdoor as blue; window = from the worker crossing the centre line to the first skirmisher within 250 px of the enemy crystal): the worker was in the enemy's sight before its first outpost in 100 of 100 games, something of the backdoor was in sight 56% of the window, and its skirmishers were out of sight 2% of the time. The spot was a fixed 320 px beside the enemy crystal, 95 px outside the crystal's own sight and inside that of the workers at the enemy's nodes.
+- **Hiding (scripted bots only; the policy gets nothing new).** `BotContext.sight(p, kind)`: the action-grid cells a watcher of a given kind at a point sees, from the engine's own line-of-sight sets (rock and high ground block, as in the game). `BotContext.brushCell`: cells where a unit stands in brush. From these and its own fogged observation the backdoor keeps a map of watched ground: level 2 for the enemy crystal, the workers at the enemy's own nodes and at nodes it holds, enemy buildings it remembers and enemy units in sight now; level 1 for likely places (enemy pockets and chokes, the centre).
+  - *Spot:* the reachable open ground nearest the enemy crystal (250–900 px) that is not watched, on the bot's seeded side when there is a choice; given up if a watcher turns up before the first outpost.
+  - *Route:* cheapest path over the grid with watched ground costing 25× (likely: 4×), re-planned on every order (32 ticks), walked in the longest straight pieces that stay off watched ground.
+  - *Outposts:* on unwatched cells near the worker when there are any.
+  - *Skirmishers:* wait in brush within 300 px of the outposts if there is some, else at the outposts; strike at 8 as before.
+  - Two bugs found on the way: the turtle build's home army order flips between two own-half nodes every decision, which left the worker without orders for 2,500 ticks on cinder-flats (the backdoor's worker and skirmisher orders now go first; the flip itself is left alone and noted); a cell the worker cannot walk to is dropped from the routes.
+- **Result, same 100 games:**
+
+  | | wins | worker seen before 1st outpost | in sight, share of window | skirmishers out of sight |
+  |---|---|---|---|---|
+  | before (fixed spot, map-edge route) | 42% | 100 / 100 | 56% | 2% |
+  | hiding | 78% | 78 / 100 | 27% | 49% |
+
+  By opponent, wins before → after: swarm 62 → 70%, phalanx 28 → 92%, gunline 20 → 60%, macro 58 → 88%, heavy 42 → 82%. The worker is still seen in most games at some point on the way: first by an enemy worker in 40 games (nodes on the enemy half that the bot has not seen worked yet) and by a gunner in 24 (300 px sight against the worker's own, so it is seen before it sees). Treating every enemy-half node and choke as watched was tried and was worse: no free route was left, 53 of 100 games placed an outpost and wins fell to 54%. Reverted.
+- **Matrix at these settings** (`docs/archive/raw-2026-11/balance/outpost3_matrix.{txt,json}`; 11 bots, 10 maps, 2 seeds per side, 2,420 games, 40 per pairing, one cell about ±8 points):
+
+  | v | outrider | siege | backdoor | rush_post | swarm | phalanx | gunline | macro | turtle | sw_turtle_grab | rush3 |
+  |---|---|---|---|---|---|---|---|---|---|---|---|
+  | `backdoor` | 60% | 60% | – | 83% | 55% | 100% | 85% | 80% | 78% | 75% | 90% |
+  | `backdoor`, v0.8.23 | 55% | 30% | – | 88% | 30% | 45% | 13% | 57% | 35% | 40% | 95% |
+  | `outrider` | – | 35% | 40% | 88% | 45% | 75% | 55% | 53% | 35% | 30% | 85% |
+  | `siege` | 65% | – | 40% | 95% | 80% | 46% | 38% | 93% | 48% | 35% | 90% |
+  | `rush_post` | 13% | 5% | 18% | – | 3% | 15% | 0% | 25% | 3% | 13% | 50% |
+
+  - **The hiding backdoor is now the strongest scripted bot.** It scores 55% or more against every other bot (lowest: `swarm` 55%, `outrider` and `siege` 60%). The G-8 dominance check (no bot above 70% against every other) still passes, narrowly in spirit. With the same 25-tick training and no hiding it won 42% of the 100 measured games, so the hiding is what changed it; no scripted opponent scouts its own base surroundings or keeps anything at its crystal. Whether a human or the trained agent stops it by looking is the open question. Flagged to the user as a balance checkpoint.
+  - `rush_post` (a barracks plus two outposts at home) against `rush3` is 50% and it loses to everything else: home outposts no longer pay, as intended.
+  - `outrider` and `siege` are within noise of v0.8.23 (their outposts are on the enemy half, where 25 ticks instead of 50 changes nothing measurable, as the speed sweeps said).
+  - G-8: dominance PASS, mirrors PASS, timeouts 16% FAIL (<15%; was 19%).
+- botCheck (1,000 games, 20 bots): no exceptions, 0 ineffective actions, deterministic. As blue, W/L/T of 50: siege 44/3/3, backdoor 42/4/4 (was 26/12/12), turtle 41/5/4, macro 38/7/5, outrider 37/13/0, sw_turtle_grab 34/12/4, swarm 31/17/2, gunline 30/15/5, rush_post 22/23/5, phalanx 20/25/5.
+- Checks: 1,002 custom tests and 85 vitest (new: an outpost on the own half takes a barracks's build time and trains at normal speed; no backdoor outpost is in the enemy's sight when placed); client type-checks; golden hashes unchanged; PPO and imitation smoke runs pass.
+- Noted, not changed: the turtle build's waiting army gets a new guard order every decision (its staging node alternates between two own-half nodes).
+- Next: retrain from scratch, imitation first (`m2-imitate`, all 20 scripted bots as teachers), then PPO from it.

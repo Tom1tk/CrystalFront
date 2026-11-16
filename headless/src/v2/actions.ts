@@ -18,7 +18,7 @@
 import type { MatchEntity, MatchState } from "../../../server/src/match/types.js";
 import type { MatchEngine } from "../../../server/src/match/matchEngine.js";
 import { BUILDING_DEFS, UNIT_DEFS } from "@crystalfront/shared";
-import { requirementMet, siteInSight, validateBuildSite } from "../../../server/src/match/buildingValidation.js";
+import { forwardTerms, requirementMet, siteInSight, validateBuildSite } from "../../../server/src/match/buildingValidation.js";
 import { anchorsConnected, footprintOf, type Rect } from "../../../server/src/match/engine/navGrid.js";
 import { anchorsFor } from "../../../server/src/match/maps.js";
 import { ANCHOR_MAX, padSlots, seatAnchors, type Pt } from "../../../server/src/match/engine/anchors.js";
@@ -268,9 +268,9 @@ function producerFor(match: MatchState, playerId: string, unit: string): MatchEn
     if (!requirementMet(match, playerId, e.buildingType)) continue;
     const q = e.productionQueue?.length ?? 0;
     if (q >= PRODUCER_QUEUE_MAX) continue;
-    // Shortest queue first; among equals the faster producer (an outpost before a barracks).
+    // Shortest queue first; among equals the faster producer (an outpost on the enemy half before a barracks).
     const bq = best?.productionQueue?.length ?? 0;
-    const speed = (x: MatchEntity) => BUILDING_DEFS[x.buildingType!].trainTimeMult ?? 1;
+    const speed = (x: MatchEntity) => forwardTerms(match, x)?.trainTimeMult ?? 1;
     if (!best || q < bq || (q === bq && speed(e) < speed(best))) best = e;
   }
   return best;

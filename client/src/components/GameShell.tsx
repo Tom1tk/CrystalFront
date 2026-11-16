@@ -2614,6 +2614,16 @@ export default function GameShell({
       const color = BUILDING_COLORS[selectedBuildingType];
       ctx.fillStyle = valid ? `${color}66` : "rgba(204,68,68,0.3)";
       ctx.fillRect(hoverPos.x - halfW, hoverPos.y - halfH, halfW * 2, halfH * 2);
+      // A building with forward terms (the outpost) is fast only on the enemy half: say which the spot is.
+      const fwd = BUILDING_DEFS[selectedBuildingType].forward;
+      if (fwd && valid) {
+        const forward = isBlue ? hoverPos.x > midX : hoverPos.x < midX;
+        ctx.font = "12px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillStyle = forward ? "rgba(140,255,140,0.95)" : "rgba(255,210,120,0.95)";
+        ctx.fillText(forward ? "Enemy half: fast to build, fast training" : "Own half: no faster than a Barracks", hoverPos.x, hoverPos.y - halfH - 10);
+        ctx.textAlign = "start";
+      }
     }
 
     ctx.restore();

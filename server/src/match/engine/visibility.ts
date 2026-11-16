@@ -106,7 +106,7 @@ function axisCells(v: number, size: number, n: number, out: number[]): number {
 const xs = [0, 0], ys = [0, 0];
 
 /** The cells lit by a source in cell `src` with vision `range` (px). Cached per grid. */
-function losSet(g: VisionGrid, src: number, range: number, high: boolean): Int32Array {
+export function losSet(g: VisionGrid, src: number, range: number, high: boolean): Int32Array {
   const key = src * 2 + (high ? 1 : 0);
   let byRange = g.los.get(key);
   if (!byRange) g.los.set(key, (byRange = new Map()));
