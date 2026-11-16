@@ -661,3 +661,4 @@ Built per `docs/BOT_CONTROL_PLAN.md` §2 (R-2 deviation signed off by the user).
 - Checks: 1,002 custom tests and 85 vitest (new: an outpost on the own half takes a barracks's build time and trains at normal speed; no backdoor outpost is in the enemy's sight when placed); client type-checks; golden hashes unchanged; PPO and imitation smoke runs pass.
 - Noted, not changed: the turtle build's waiting army gets a new guard order every decision (its staging node alternates between two own-half nodes).
 - Next: retrain from scratch, imitation first (`m2-imitate`, all 20 scripted bots as teachers), then PPO from it.
+- Run `m2-imitate` started (b17e76e, v0.8.24-ML): behaviour cloning from all 20 scripted bots on the 8 training maps, 10 M decisions, lr 3e-4 → 3e-5, 2 epochs × 16 minibatches, seed 1; about 330 decisions/s. Gate as for `m1-imitate`: the imitation policy alone wins ≥40% (lower bound) against the pool.
