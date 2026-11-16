@@ -662,3 +662,4 @@ Built per `docs/BOT_CONTROL_PLAN.md` §2 (R-2 deviation signed off by the user).
 - Noted, not changed: the turtle build's waiting army gets a new guard order every decision (its staging node alternates between two own-half nodes).
 - Next: retrain from scratch, imitation first (`m2-imitate`, all 20 scripted bots as teachers), then PPO from it.
 - Run `m2-imitate` started (b17e76e, v0.8.24-ML): behaviour cloning from all 20 scripted bots on the 8 training maps, 10 M decisions, lr 3e-4 → 3e-5, 2 epochs × 16 minibatches, seed 1; about 330 decisions/s. Gate as for `m1-imitate`: the imitation policy alone wins ≥40% (lower bound) against the pool.
+- `m2-imitate` crashed 6 minutes in, at the first finished episodes: the per-unit production counter in `training/v2/train.py` had 5 slots and there are 6 trainable units since the bulwark (the 2-update smoke runs end before any episode does). Fixed (v0.8.25-ML), run restarted from zero with the same settings.

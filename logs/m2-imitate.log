@@ -1,3 +1,5 @@
 params: 3.15 M, device cuda
-update 1 decisions 36864 | 376 dec/s (env 56%) update 8.0s | loss 1.9922 pg 1.9670 kl 22.3135 | episodes 0 win nan
-update 2 decisions 73728 | 327 dec/s (env 60%) update 9.1s | loss 2.5246 pg 2.4920 kl 13.1883 | episodes 0 win nan
+update 1 decisions 36864 | 377 dec/s (env 56%) update 8.2s | loss 1.9922 pg 1.9670 kl 22.3188 | episodes 0 win nan
+update 2 decisions 73728 | 327 dec/s (env 60%) update 9.1s | loss 2.5286 pg 2.4941 kl 13.3315 | episodes 0 win nan
+update 3 decisions 110592 | 316 dec/s (env 59%) update 10.9s | loss 2.5284 pg 2.4519 kl 2.3015 | episodes 16 win 0.50
+update 4 decisions 147456 | 305 dec/s (env 60%) update 11.6s | loss 1.9881 pg 1.8733 kl 0.4574 | episodes 40 win 0.50

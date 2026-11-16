@@ -144,7 +144,7 @@ def main() -> None:
     want = "teach" if a.imitate else "learner"
     assert B == n_slots * (2 if a.imitate else 1) and all(s.role == want for s in cur), f"unexpected streams for this mode (want {want})"
     ep_steps = np.zeros(B, dtype=np.int64)
-    ep_train = np.zeros((B, 5), dtype=np.int64)
+    ep_train = np.zeros((B, 6), dtype=np.int64)
     ep_ret = np.zeros((B, 3))
 
     recent = deque(maxlen=200)
@@ -215,7 +215,7 @@ def main() -> None:
                     ep_ret[j] += rew[t, j]
                     ep_steps[j] += 1
                     e = int(store["act"][-1]["econ"][j])
-                    if 1 <= e <= 5:
+                    if 1 <= e <= 6:  # train worker … bulwark
                         ep_train[j, e - 1] += 1
                     if tr.done or tr.truncated:
                         ended[t, j] = True
