@@ -120,7 +120,7 @@ interface EnrichedMetadata {
 }
 
 const UNIT_TYPES = ["skirmisher", "gunner", "bruiser", "medic", "bulwark", "worker"];
-const BUILDING_TYPES = ["barracks", "foundry", "supply_depot", "turret"];
+const BUILDING_TYPES = ["barracks", "foundry", "supply_depot", "turret", "outpost"];
 
 const FLAG_FAST_TICKS    = 600;   // games ending before this get "fast" flag
 const FLAG_LOPSIDED_MIN  = 6;     // unit-count disparity >= this gets "lopsided"

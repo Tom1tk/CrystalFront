@@ -575,6 +575,11 @@ export class World3D {
       const b = stack("towerBottom", w * 1.25, 0);
       const gun = stack("turretGun", w * 0.75, b.userData.height);
       o.gun = gun;
+    } else if (e.buildingType === "outpost") {
+      // A bare tent with a flag: no platform, to read as temporary.
+      stack("tent", w * 0.9, 0);
+      const f = stack("flag", w * 0.4, 0);
+      f.position.set(w * 0.45, 0, w * 0.4);
     }
     root.add(this.ring(team, e.radius * (e.type === "crystal" ? 1.25 : 1.05)));
     return o;

@@ -1,25 +1,25 @@
 """
-Sizes and layout of observation v2 (schema 4) / action space v5 (headless/src/v2/observation.ts,
+Sizes and layout of observation v2 (schema 5) / action space v6 (headless/src/v2/observation.ts,
 headless/src/v2/actions.ts). `check_sizes` compares them with a live observation.
 """
 
 # Observation
-N_GLOBALS = 57
-ENTITY_F = 35
+N_GLOBALS = 61
+ENTITY_F = 36
 N_NODES, NODE_F = 20, 13
-N_MEMORY, MEMORY_F = 16, 14
+N_MEMORY, MEMORY_F = 16, 15
 GRID_DYN_C, GRID_STATIC_C, GRID_ROWS, GRID_COLS = 5, 5, 15, 50
 GRID_CELLS = GRID_ROWS * GRID_COLS
 N_Z = 32                       # strategy token embedding size (z < N_Z)
 
 # Actions
-ECON = 62
-N_BUILDINGS, BUILD_SITES = 4, 760
+ECON = 63
+N_BUILDINGS, BUILD_SITES = 5, 760
 PTR = 200
 ECON_PTR_KINDS = 3
 TARGETS = 804
 N_GROUPS, N_ORDERS = 11, 12
-ECON_BUILD0, ECON_ASSIGN0, ECON_REPAIR, ECON_RALLY = 7, 11, 59, 60
+ECON_BUILD0, ECON_ASSIGN0, ECON_REPAIR, ECON_RALLY = 7, 12, 60, 61
 GROUP_UNIT = 10
 TARGET_NONE = 803
 TARGET_GRID0 = 53              # 37 anchors + 16 memory slots, then the 750 grid cells

@@ -84,11 +84,12 @@ const BUILDING_COLORS: Record<BuildingType, string> = {
   foundry: "#ff5cf3",
   supply_depot: "#7cffb0",
   turret: "#ffb86b",
+  outpost: "#66bb99",
 };
 
 const ENTITY_NAMES: Record<string, string> = {
   worker: "Worker", skirmisher: "Skirmisher", gunner: "Gunner", bruiser: "Bruiser", medic: "Medic", bulwark: "Bulwark",
-  barracks: "Barracks", foundry: "Foundry", supply_depot: "Supply Depot", turret: "Turret",
+  barracks: "Barracks", foundry: "Foundry", supply_depot: "Supply Depot", turret: "Turret", outpost: "Outpost",
 };
 
 
@@ -97,6 +98,7 @@ const BUILDING_UNIT_MAP: Record<BuildingType, string[]> = {
   foundry: ["bruiser", "medic", "bulwark"],
   supply_depot: [],
   turret: [],
+  outpost: ["skirmisher"],
 };
 
 const BUILDING_SIZES: Record<BuildingType, { w: number; h: number }> = {
@@ -104,6 +106,7 @@ const BUILDING_SIZES: Record<BuildingType, { w: number; h: number }> = {
   foundry: { w: 44, h: 44 },
   supply_depot: { w: 36, h: 36 },
   turret: { w: 30, h: 30 },
+  outpost: { w: 32, h: 32 },
 };
 
 const UNIT_COSTS: Record<string, { cost: number; supplyCost: number }> = {
@@ -570,6 +573,20 @@ function drawDepot(ctx: CanvasRenderingContext2D, x: number, y: number, isMyTeam
   ctx.restore();
 }
 
+function drawOutpost(ctx: CanvasRenderingContext2D, x: number, y: number, isMyTeam: boolean) {
+  const c = silColors(isMyTeam);
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = c.fill; ctx.strokeStyle = c.stroke; ctx.lineWidth = 2; ctx.globalAlpha = 0.9;
+  // tent: a triangle on a low base, with a pennant
+  ctx.beginPath(); ctx.moveTo(-16, 14); ctx.lineTo(0, -12); ctx.lineTo(16, 14); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = c.ink; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, 14); ctx.lineTo(0, 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(0, -18); ctx.lineTo(7, -15); ctx.lineTo(0, -13); ctx.stroke();
+  ctx.restore();
+}
+
 function drawTurret(ctx: CanvasRenderingContext2D, x: number, y: number, isMyTeam: boolean, angle: number) {
   const c = silColors(isMyTeam);
   ctx.save();
@@ -795,6 +812,7 @@ export default function GameShell({
     | "build_barracks"
     | "build_foundry"
     | "build_turret"
+    | "build_outpost"
     | "toggle_auto_attack"
     | "attack_move"
     | "guard"
@@ -832,6 +850,9 @@ export default function GameShell({
     const barracksSelected = selectedEntities.some(
       (e) => e.type === "building" && e.buildingType === "barracks" && e.ownerId === safePlayer.id
     );
+    const skirmisherProducer = barracksSelected || selectedEntities.some(
+      (e) => e.type === "building" && e.buildingType === "outpost" && e.ownerId === safePlayer.id
+    );
     const foundrySelected = selectedEntities.some(
       (e) => e.type === "building" && e.buildingType === "foundry" && e.ownerId === safePlayer.id
     );
@@ -845,7 +866,7 @@ export default function GameShell({
     // Workers → building hotkeys (QWER), non-worker units → combat hotkeys (ASDF)
     // Rally point (F) available when any production building is selected
     const hasProductionBuilding = selectedEntities.some(
-      (e) => e.type === "building" && (e.buildingType === "barracks" || e.buildingType === "foundry") && e.ownerId === safePlayer.id
+      (e) => e.type === "building" && (e.buildingType === "barracks" || e.buildingType === "foundry" || e.buildingType === "outpost") && e.ownerId === safePlayer.id
     );
 
     // G-13: costs come from the shared defs.
@@ -856,7 +877,7 @@ export default function GameShell({
         { key: "w", action: "build_barracks", label: `Barracks (${bc("barracks")})`, icon: "🏰" },
         { key: "e", action: "build_foundry", label: `Foundry (${bc("foundry")})`, icon: "🏭" },
         { key: "r", action: "build_turret", label: `Turret (${bc("turret")})`, icon: "🔫" },
-        { key: "a", action: "none", label: "", icon: "" },
+        { key: "a", action: "build_outpost", label: `Outpost (${bc("outpost")})`, icon: "⛺" },
         { key: "s", action: "none", label: "", icon: "" },
         { key: "d", action: "none", label: "", icon: "" },
         { key: "f", action: "none", label: "", icon: "" },
@@ -864,7 +885,7 @@ export default function GameShell({
     }
 
     return [
-      { key: "q", action: crystalSelected ? "train_worker" : barracksSelected ? "train_skirmisher" : "none", label: crystalSelected ? `Worker (${uc("worker")})` : barracksSelected ? `Skirmisher (${uc("skirmisher")})` : "", icon: crystalSelected ? "👷" : barracksSelected ? "⚔️" : "" },
+      { key: "q", action: crystalSelected ? "train_worker" : skirmisherProducer ? "train_skirmisher" : "none", label: crystalSelected ? `Worker (${uc("worker")})` : skirmisherProducer ? `Skirmisher (${uc("skirmisher")})` : "", icon: crystalSelected ? "👷" : skirmisherProducer ? "⚔️" : "" },
       barracksSelected
         ? { key: "w", action: "train_gunner", label: `Gunner (${uc("gunner")})`, icon: "🔫" }
         : { key: "w", action: foundrySelected ? "train_bulwark" : "none", label: foundrySelected ? `Bulwark (${uc("bulwark")})` : "", icon: foundrySelected ? "🧱" : "" },
@@ -1516,7 +1537,8 @@ export default function GameShell({
             if (unitType === "skirmisher" || unitType === "gunner") {
               building = selectedIds
                 .map((id) => entities.find((ent) => ent.id === id))
-                .find((ent): ent is MatchEntity => ent != null && ent.type === "building" && ent.buildingType === "barracks" && ent.ownerId === safePlayer.id);
+                .find((ent): ent is MatchEntity => ent != null && ent.type === "building" && ent.ownerId === safePlayer.id
+                  && (ent.buildingType === "barracks" || (unitType === "skirmisher" && ent.buildingType === "outpost")));
             } else {
               building = selectedIds
                 .map((id) => entities.find((ent) => ent.id === id))
@@ -1535,7 +1557,8 @@ export default function GameShell({
           case "build_supply_depot":
           case "build_barracks":
           case "build_foundry":
-          case "build_turret": {
+          case "build_turret":
+          case "build_outpost": {
             // Enter build mode — identical to bottom bar buttons
             const buildingType = hotkey.action.replace("build_", "") as BuildingType;
             handleBuildClick(buildingType);
@@ -2207,6 +2230,8 @@ export default function GameShell({
           drawDepot(ctx, entity.x, entity.y, localIsMyTeam);
         } else if (entity.buildingType === "turret") {
           drawTurret(ctx, entity.x, entity.y, localIsMyTeam, localIsMyTeam ? 90 : 270);
+        } else if (entity.buildingType === "outpost") {
+          drawOutpost(ctx, entity.x, entity.y, localIsMyTeam);
         }
 
         // Selected glow — slow breathing pulse
@@ -2565,7 +2590,8 @@ export default function GameShell({
       const isBlue = safePlayer.color === "blue";
       const inPlayerHalf = isBlue ? hoverPos.x < midX : hoverPos.x > midX;
       const notInCenter = isBlue ? hoverPos.x <= midX - centerExclusion : hoverPos.x >= midX + centerExclusion;
-      const valid = inPlayerHalf && notInCenter;
+      // Outposts may go on either half (the server also requires the spot to be in sight).
+      const valid = !!BUILDING_DEFS[selectedBuildingType].anywhere || (inPlayerHalf && notInCenter);
       const previewColor = valid ? "rgba(68,204,68,0.5)" : "rgba(204,68,68,0.5)";
       const borderColor = valid ? "rgba(68,204,68,0.8)" : "rgba(204,68,68,0.8)";
 
@@ -2768,7 +2794,7 @@ export default function GameShell({
           {(["worker", "skirmisher", "gunner", "bruiser", "medic", "bulwark"] as const).map((t) => (
             <button key={t} type="button" className="g-btn small" onClick={() => { setDebugSpawnMode(t); setSettingsOpen(false); }}>+ {ENTITY_NAMES[t]}</button>
           ))}
-          {(["barracks", "foundry", "supply_depot", "turret"] as const).map((b) => (
+          {(["barracks", "foundry", "supply_depot", "turret", "outpost"] as const).map((b) => (
             <button key={b} type="button" className="g-btn small" onClick={() => { setDebugSpawnMode(`building:${b}`); setSettingsOpen(false); }}>+ {ENTITY_NAMES[b]}</button>
           ))}
         </div>

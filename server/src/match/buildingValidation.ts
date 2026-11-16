@@ -1,6 +1,7 @@
 import type { MatchEntity, MatchState, BuildingType, ResourceNode, PlayerSlot } from "./types.js";
 import { rectTouches, isObstacleCode, T_BRUSH } from "./engine/terrain.js";
 import { anchorsConnected, footprintOf, type Rect } from "./engine/navGrid.js";
+import { visionCellOf, visionGridOf } from "./engine/visibility.js";
 import type { BuildingDef as BuildingDefinition } from "@crystalfront/shared";
 import type { EntityId } from "@crystalfront/shared";
 import type { BuildZone, LaneCorridor } from "./map.js";
@@ -36,20 +37,22 @@ export function validatePlacement(
   const by2 = y + halfH;
   const midX = mapWidth / 2;
 
-  // Check player half: blue = left half, red = right half
-  if (playerColor === "blue") {
-    if (bx2 > midX) {
-      return { valid: false, reason: "Outside your build zone" };
+  // Check player half: blue = left half, red = right half (not for `anywhere` buildings)
+  if (!buildingDef.anywhere) {
+    if (playerColor === "blue") {
+      if (bx2 > midX) {
+        return { valid: false, reason: "Outside your build zone" };
+      }
+    } else {
+      if (bx1 < midX) {
+        return { valid: false, reason: "Outside your build zone" };
+      }
     }
-  } else {
-    if (bx1 < midX) {
-      return { valid: false, reason: "Outside your build zone" };
-    }
-  }
 
-  // Check center exclusion zone
-  if (bx2 > midX - CENTER_EXCLUSION_HALF_WIDTH && bx1 < midX + CENTER_EXCLUSION_HALF_WIDTH) {
-    return { valid: false, reason: "Too close to center" };
+    // Check center exclusion zone
+    if (bx2 > midX - CENTER_EXCLUSION_HALF_WIDTH && bx1 < midX + CENTER_EXCLUSION_HALF_WIDTH) {
+      return { valid: false, reason: "Too close to center" };
+    }
   }
 
   // Check map bounds
@@ -133,6 +136,11 @@ export function validateBuildSite(
   );
   if (!placement.valid) return placement;
 
+  // `anywhere` buildings go only on ground the player can see right now (no build sites in the fog).
+  if (def.anywhere && !siteInSight(match, playerId, x, y)) {
+    return { valid: false, reason: "Not in sight" };
+  }
+
   if (rectTouches(match.terrain, x - def.width / 2, y - def.height / 2, x + def.width / 2, y + def.height / 2,
       (c) => isObstacleCode(c) || c === T_BRUSH)) {
     return { valid: false, reason: "Blocked by terrain" };
@@ -146,6 +154,12 @@ export function validateBuildSite(
     return { valid: false, reason: "Would seal off a crystal" };
   }
   return { valid: true };
+}
+
+/** The player currently sees the point (true before the first visibility pass). */
+export function siteInSight(match: MatchState, playerId: string, x: number, y: number): boolean {
+  const vis = match.visibilityData?.get(playerId);
+  return !vis || vis.cells[visionCellOf(visionGridOf(match.terrain), x, y)] === 1;
 }
 
 export function findCrystalByColor(

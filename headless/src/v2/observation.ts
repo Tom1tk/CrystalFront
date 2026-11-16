@@ -25,7 +25,7 @@ import { TRAIN_MAX_TICKS } from "../episode.js";
 import { fromOwnFrame, toOwnFrame } from "./frame.js";
 import { BUILDINGS, DECISION_TICKS, GRID_CELL_H, GRID_CELL_W, MEMORY_SLOTS, N_ANCHOR_TARGETS, PRODUCER_QUEUE_MAX, PTR_SIZE, TRAIN_UNITS, type SeatState } from "./actions.js";
 
-export const OBS_SCHEMA_VERSION = 4;
+export const OBS_SCHEMA_VERSION = 5;
 
 /** 4-decimal rounding; also turns −0 into 0. */
 const q = (v: number) => Math.round(v * 1e4) / 1e4 + 0;
@@ -35,8 +35,8 @@ const AGE_SCALE = 1000;
 const COMBAT = ["skirmisher", "gunner", "bruiser", "medic", "bulwark"] as const;
 const COMBAT_SET = new Set<string>(COMBAT);
 /** Entity type vocabulary (one-hot order). */
-export const ENTITY_TYPES = ["crystal", "worker", "skirmisher", "gunner", "bruiser", "medic", "bulwark", "barracks", "foundry", "supply_depot", "turret"] as const;
-const MEMORY_TYPES = ["crystal", "barracks", "foundry", "supply_depot", "turret"] as const;
+export const ENTITY_TYPES = ["crystal", "worker", "skirmisher", "gunner", "bruiser", "medic", "bulwark", "barracks", "foundry", "supply_depot", "turret", "outpost"] as const;
+const MEMORY_TYPES = ["crystal", "barracks", "foundry", "supply_depot", "turret", "outpost"] as const;
 
 function typeOf(e: MatchEntity): string | null {
   if (e.type === "building") return e.buildingType ?? null;

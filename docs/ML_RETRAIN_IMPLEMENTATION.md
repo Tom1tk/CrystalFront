@@ -274,6 +274,13 @@ Put v2 in new files (`headless/src/v2/…`) so v1 keeps working until the switch
 - *Observation:* entity rows have 35 features: `covering` (this bulwark has a cover target) and `covered` (a bulwark is covering this unit) appended.
 - `training/v2/spaces.py`: `ENTITY_F 35`, `N_ORDERS 12`, `PTR_ORDERS (6, 7, 11)`; `training/env/vec_env_v2.py` asserts schema 4 / action space 5.
 
+**Action space v6 and observation schema 5 (outpost, v0.8.22-ML).** Supersedes the sizes above where they differ.
+- *Buildings:* 5: `outpost` appended (`BUILDINGS` index 4). Economy head 63 kinds: build ×5 at 7–11, assign from 12, repair 60, rally 61, cancel 62. The build-site mask is `[5][760]`.
+- The outpost is not tied to the seat's half of the map: any site passes the zone rules, but only while the seat sees it (engine rule "Not in sight"), so its site mask changes with vision every decision. All other placement rules are unchanged.
+- `train skirmisher` picks the producer with the shortest queue and, among equals, the faster one, so a free outpost is used before a free barracks.
+- *Observation:* 61 globals (`own_outpost_done`, `own_outpost_building`, `seen_outpost`, `seen_outpost_age` added in their groups, so later globals shift), 36 entity features (`type_outpost` after `type_turret`), 15 memory features (`type_outpost`).
+- `training/v2/spaces.py`: `N_GLOBALS 61`, `ENTITY_F 36`, `MEMORY_F 15`, `ECON 63`, `N_BUILDINGS 5`, `ECON_ASSIGN0 12`, `ECON_REPAIR 60`, `ECON_RALLY 61`; `training/env/vec_env_v2.py` asserts schema 5 / action space 6.
+
 **Observation (R-1).** All in own frame, all deterministic.
 | Block | Content |
 |---|---|

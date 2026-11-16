@@ -46,7 +46,7 @@ export interface ResourceNode {
   controller?: 0 | 1 | null;
 }
 
-export type BuildingType = "barracks" | "foundry" | "supply_depot" | "turret";
+export type BuildingType = "barracks" | "foundry" | "supply_depot" | "turret" | "outpost";
 
 export type UnitType = "worker" | "skirmisher" | "gunner" | "bruiser" | "medic" | "bulwark";
 

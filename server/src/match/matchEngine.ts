@@ -645,13 +645,14 @@ if (command.type === "gather") {
 
       // Deduct resources immediately on queue
       economy.resources -= unitDef.cost;
+      const trainTime = Math.round(unitDef.buildTime * (buildingDef.trainTimeMult ?? 1));
 
       building.productionQueue.push({
         unitType,
         cost: unitDef.cost,
         supplyCost: unitDef.supplyCost,
-        buildTime: unitDef.buildTime,
-        remainingTicks: unitDef.buildTime,
+        buildTime: trainTime,
+        remainingTicks: trainTime,
       });
 
       return ok();

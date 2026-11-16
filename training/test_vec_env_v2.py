@@ -32,9 +32,8 @@ def legal(m):
     return [i for i, v in enumerate(m) if v]
 
 
-# Action space v3 layout (headless/src/v2/actions.ts).
-ECON_BUILD0, ECON_ASSIGN0, ECON_REPAIR = 6, 10, 58
-GROUP_UNIT = 10
+# Action space layout (headless/src/v2/actions.ts), from the one place the learner reads it.
+from training.v2.spaces import ECON_BUILD0, ECON_ASSIGN0, ECON_REPAIR, GROUP_UNIT  # noqa: E402
 
 
 def random_action(rng: random.Random, masks: dict) -> dict:

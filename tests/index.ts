@@ -30,7 +30,7 @@ import { registerMap, poolMaps, isKnownMap, terrainFor, mapIds, anchorsFor } fro
 import { ANCHOR_MAX, imagePt, seatAnchors, type Pt } from "../server/src/match/engine/anchors.js";
 import { validateBuildSite } from "../server/src/match/buildingValidation.js";
 import { cellOf, flowField } from "../server/src/match/engine/pathfinding.js";
-import { BUILDING_DEFS } from "../shared/src/gameBalance.js";
+import { BUILDING_DEFS, UNIT_DEFS } from "../shared/src/gameBalance.js";
 import { POOL_MAPS } from "../server/src/match/pool/index.js";
 import { readFileSync as _readFileSync, readdirSync as _readdirSync } from "node:fs";
 import { loadGolden, runCase } from "../headless/src/goldenHashes.js";
@@ -3285,6 +3285,39 @@ console.log("\n--- G-13: unit control ---");
     for (let i = 0; i < 150; i++) engine.tick(match.id);
     assert(s.x > k.x + BULWARK.coverDist - 15 && d(s, k) < BULWARK.coverDist + 15, `Cover: the shield takes its place in front once the unit stops (${(s.x - k.x).toFixed(0)} px ahead)`);
   }
+  // Outpost: cheap forward building, placed anywhere in sight, trains skirmishers only and faster.
+  {
+    const { engine, match, spawn, midX } = setup();
+    const O = BUILDING_DEFS.outpost;
+    match.economy[0]!.resources = 1000;
+    const worker = [...match.entities.values()].find((e) => e.type === "worker" && e.ownerId === "pb")!;
+    const x = midX + 300, y = 300;
+    const build = (b: string) => engine.processCommand(match.id, "pb", { type: "build", buildingType: b, targetX: x, targetY: y, workerIds: [worker.id] } as any);
+    engine.tick(match.id);
+    const fog = build("outpost");
+    assert(!fog.success && fog.message === "Not in sight", `Outpost: not placed on ground the player cannot see (${fog.message ?? "accepted"})`);
+    spawn("pb", "skirmisher", x, y + 60, true).autoAttackEnabled = false;
+    engine.tick(match.id);
+    const zone = build("barracks");
+    assert(!zone.success && zone.message === "Outside your build zone", `Outpost: a barracks still cannot go on the enemy half (${zone.message ?? "accepted"})`);
+    const before = match.economy[0]!.resources;
+    const res = build("outpost");
+    const o = [...match.entities.values()].find((e) => e.buildingType === "outpost");
+    assert(res.success && !!o && before - match.economy[0]!.resources === O.cost, `Outpost: placed on the enemy half in sight for ${O.cost} (${res.message ?? ""})`);
+    if (o) {
+      worker.x = x - 30; worker.y = y; worker.moveTarget = undefined;
+      let ticks = 0;
+      while (o.constructionProgress < 100 && ticks < 200) { engine.tick(match.id); ticks++; }
+      assert(ticks >= O.buildTime && ticks <= O.buildTime + 3 && o.health === O.health, `Outpost: one worker builds it in ${O.buildTime} ticks to ${O.health} health (${ticks} ticks, ${o.health})`);
+      assert(!engine.processCommand(match.id, "pb", { type: "train_unit", entityId: o.id, unitType: "gunner" }).success, "Outpost: cannot train gunners");
+      assert(engine.processCommand(match.id, "pb", { type: "train_unit", entityId: o.id, unitType: "skirmisher" }).success, "Outpost: trains skirmishers");
+      const want = Math.round(UNIT_DEFS.skirmisher.buildTime * O.trainTimeMult!);
+      assertEqual(o.productionQueue[0]?.buildTime, want, `Outpost: a skirmisher takes ${want} ticks (${UNIT_DEFS.skirmisher.buildTime} at a barracks)`);
+      const n = [...match.entities.values()].filter((e) => e.type === "skirmisher" && e.ownerId === "pb").length;
+      for (let i = 0; i < want + 1; i++) engine.tick(match.id);
+      assertEqual([...match.entities.values()].filter((e) => e.type === "skirmisher" && e.ownerId === "pb").length, n + 1, "Outpost: the skirmisher appears at the outpost");
+    }
+  }
 }
 
 // ---- G-1 / G-9d: Determinism ----
@@ -3706,8 +3739,8 @@ function v2ObservationTests(): void {
 
 function v2ActionTests(): void {
   console.log("\n--- Action space v3 (G-10 T5, G-13 Phase B) ---");
-  assertEqual(V2.ACTION_SPACE_VERSION, 5, "action space version 5");
-  assertEqual([V2.ECON_SIZE, V2.BUILD_SITES, V2.ECON_PTR_KINDS.length, V2.PTR_SIZE], [62, 760, 3, 200], "economy: 62 kinds, 760 build sites (10 named + 750 grid), 3 pointer kinds over 200 rows");
+  assertEqual(V2.ACTION_SPACE_VERSION, 6, "action space version 6");
+  assertEqual([V2.ECON_SIZE, V2.BUILD_SITES, V2.ECON_PTR_KINDS.length, V2.PTR_SIZE], [63, 760, 3, 200], "economy: 63 kinds, 760 build sites (10 named + 750 grid), 3 pointer kinds over 200 rows");
   assertEqual([V2.GROUPS.length, V2.ORDERS.length, V2.TARGET_SIZE], [11, 12, 804], "army: 11 groups x 12 orders x 804 targets (37 anchors + 16 memory + 750 grid + none)");
   assertEqual(OBS.MAX_ENTITIES, V2.PTR_SIZE, "pointer heads index the observation's entity rows");
   let roundTrip = true;
@@ -3910,6 +3943,45 @@ function v2ActionTests(): void {
     assert(f(shield.id, "covering") === 1 && f(gun.id, "covered") === 1 && f(gun.id, "covering") === 0, "observation marks the covering bulwark and the covered unit");
     V2.applyV2(engine, match, st, V2.act({ group: gBul, order: oAm, target: enemyBase }));
     assert(!shield.coverTargetId && !!shield.moveOrder, "an order to the bulwarks group replaces the cover");
+  }
+
+  {
+    // Outpost: build sites follow sight on either half; skirmishers train at the outpost first.
+    const { engine, match, seats, oss } = newMatch("glimmerfen", 11);
+    const st = seats[0], W = match.config.mapWidth;
+    match.economy[0]!.resources = 1000;
+    const bi = V2.BUILDINGS.indexOf("outpost"), bar = V2.BUILDINGS.indexOf("barracks");
+    engine.tick(match.id);
+    let m = V2.computeMasks(match, st);
+    const farSites = (b: number) => {
+      const out: number[] = [];
+      for (let g = 0; g < V2.GRID_CELLS; g++) {
+        const site = V2.NAMED_SITES + g;
+        if (m.site[b][site] && V2.siteFor(match, st, V2.BUILDINGS[b], site)!.x > W / 2) out.push(site);
+      }
+      return out;
+    };
+    assert(m.econ[V2.ECON_BUILD0 + bi] && farSites(bi).length === 0, "outpost: no build sites on the enemy half while it is out of sight");
+    const choke = V2.ANCHOR_TARGETS.slice(0, 8).reduce((n, [, c]) => n + c, 0);
+    assert(st.targetValid[choke], "outpost test: the map has an enemy choke anchor");
+    engine.debugSpawn(match.id, "v2-blue", "skirmisher", st.targets[choke].x, st.targets[choke].y);
+    engine.tick(match.id);
+    m = V2.computeMasks(match, st);
+    const far = farSites(bi);
+    assert(far.length > 0 && farSites(bar).length === 0, `outpost: enemy-half sites in sight are legal for the outpost only (${far.length})`);
+    const built = V2.applyV2(engine, match, st, V2.act({ econ: V2.ECON_BUILD0 + bi, site: far[0] }));
+    const post = [...match.entities.values()].find((e) => e.buildingType === "outpost");
+    assert(built.econEffective && !!post && post.x > W / 2, "outpost: the build action places it on the enemy half");
+    if (post) {
+      post.constructionProgress = 100; post.health = post.maxHealth;
+      engine.debugSpawn(match.id, "v2-blue", "building", st.targets[0].x + 140, st.targets[0].y, "barracks");
+      const barracks = [...match.entities.values()].find((e) => e.buildingType === "barracks")!;
+      const tr = V2.applyV2(engine, match, st, V2.act({ econ: V2.ECON_TRAIN0 + V2.TRAIN_UNITS.indexOf("skirmisher") }));
+      assert(tr.econEffective && post.productionQueue.length === 1 && barracks.productionQueue.length === 0, "outpost: with equal queues a skirmisher is trained at the outpost, not the barracks");
+      const o = OBS.observe(match, st, oss[0]);
+      const row = o.entities[st.rows.indexOf(post.id)];
+      assert(row[OBS.ENTITY_FEATURES.indexOf("type_outpost")] === 1 && o.globals[OBS.GLOBAL_NAMES.indexOf("own_outpost_done")] === 0.2, "observation: outpost entity type and own_outpost_done");
+    }
   }
 }
 

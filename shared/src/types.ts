@@ -44,7 +44,7 @@ export type EntityType =
   | "medic"
   | "bulwark";
 
-export type BuildingType = "barracks" | "foundry" | "supply_depot" | "turret";
+export type BuildingType = "barracks" | "foundry" | "supply_depot" | "turret" | "outpost";
 
 export type UnitType = "worker" | "skirmisher" | "gunner" | "bruiser" | "medic" | "bulwark";
 

@@ -18,7 +18,7 @@
 import type { MatchEntity, MatchState } from "../../../server/src/match/types.js";
 import type { MatchEngine } from "../../../server/src/match/matchEngine.js";
 import { BUILDING_DEFS, UNIT_DEFS } from "@crystalfront/shared";
-import { validateBuildSite } from "../../../server/src/match/buildingValidation.js";
+import { siteInSight, validateBuildSite } from "../../../server/src/match/buildingValidation.js";
 import { anchorsConnected, footprintOf, type Rect } from "../../../server/src/match/engine/navGrid.js";
 import { anchorsFor } from "../../../server/src/match/maps.js";
 import { ANCHOR_MAX, padSlots, seatAnchors, type Pt } from "../../../server/src/match/engine/anchors.js";
@@ -29,7 +29,7 @@ import { PLACEMENT } from "@crystalfront/shared";
 
 export const DECISION_TICKS = 8;
 /** Action space version (wire format and head layout). */
-export const ACTION_SPACE_VERSION = 5;
+export const ACTION_SPACE_VERSION = 6;
 
 /** Own-frame grid (also the observation grid). 5000×900 → 50×15; smaller maps leave cells invalid. */
 export const GRID_CELL_W = 100;
@@ -42,7 +42,7 @@ export const PTR_SIZE = 200;
 
 // ---- Economy head ----
 export const TRAIN_UNITS = ["worker", "skirmisher", "gunner", "bruiser", "medic", "bulwark"] as const;
-export const BUILDINGS = ["barracks", "foundry", "supply_depot", "turret"] as const;
+export const BUILDINGS = ["barracks", "foundry", "supply_depot", "turret", "outpost"] as const;
 /** Build sites, own frame: own base, own pockets, own chokes, centre anchors. */
 export const NAMED_SITES = 1 + ANCHOR_MAX.pockets + ANCHOR_MAX.chokes + ANCHOR_MAX.centre; // 10
 /** Build site head: named sites, then grid cells (cell centre). */
@@ -58,11 +58,11 @@ export const WORKER_COUNTS = [1, 2, 4] as const;
 
 export const ECON_TRAIN0 = 1;
 export const ECON_BUILD0 = ECON_TRAIN0 + TRAIN_UNITS.length;                  // 7  (+ building; site head)
-export const ECON_ASSIGN0 = ECON_BUILD0 + BUILDINGS.length;                   // 11
-export const ECON_REPAIR = ECON_ASSIGN0 + NODE_SLOTS * WORKER_COUNTS.length;  // 59 (econ pointer: own building)
-export const ECON_RALLY = ECON_REPAIR + 1;                                    // 60 (econ pointer: producer; econ target)
-export const ECON_CANCEL = ECON_RALLY + 1;                                    // 61 (econ pointer: producer with a queue)
-export const ECON_SIZE = ECON_CANCEL + 1;                                     // 62
+export const ECON_ASSIGN0 = ECON_BUILD0 + BUILDINGS.length;                   // 12
+export const ECON_REPAIR = ECON_ASSIGN0 + NODE_SLOTS * WORKER_COUNTS.length;  // 60 (econ pointer: own building)
+export const ECON_RALLY = ECON_REPAIR + 1;                                    // 61 (econ pointer: producer; econ target)
+export const ECON_CANCEL = ECON_RALLY + 1;                                    // 62 (econ pointer: producer with a queue)
+export const ECON_SIZE = ECON_CANCEL + 1;                                     // 63
 /** Econ pointer mask rows: repair, rally, cancel. */
 export const ECON_PTR_KINDS = ["repair", "rally", "cancel"] as const;
 
@@ -267,7 +267,10 @@ function producerFor(match: MatchState, playerId: string, unit: string): MatchEn
     if (!e.buildingType || !BUILDING_DEFS[e.buildingType]?.produces?.includes(unit)) continue;
     const q = e.productionQueue?.length ?? 0;
     if (q >= PRODUCER_QUEUE_MAX) continue;
-    if (!best || q < (best.productionQueue?.length ?? 0)) best = e;
+    // Shortest queue first; among equals the faster producer (an outpost before a barracks).
+    const bq = best?.productionQueue?.length ?? 0;
+    const speed = (x: MatchEntity) => BUILDING_DEFS[x.buildingType!].trainTimeMult ?? 1;
+    if (!best || q < bq || (q === bq && speed(e) < speed(best))) best = e;
   }
   return best;
 }
@@ -307,8 +310,10 @@ function staticSiteOk(match: MatchState, playerId: string, b: typeof BUILDINGS[n
   const halfW = def.width / 2, halfH = def.height / 2;
   const x1 = p.x - halfW, x2 = p.x + halfW, y1 = p.y - halfH, y2 = p.y + halfH, midX = W / 2;
   const blue = (match.players.find((q) => q?.playerId === playerId)?.color ?? "blue") === "blue";
-  if (blue ? x2 > midX : x1 < midX) return false;
-  if (x2 > midX - PLACEMENT.centerExclusionHalfWidth && x1 < midX + PLACEMENT.centerExclusionHalfWidth) return false;
+  if (!def.anywhere) {
+    if (blue ? x2 > midX : x1 < midX) return false;
+    if (x2 > midX - PLACEMENT.centerExclusionHalfWidth && x1 < midX + PLACEMENT.centerExclusionHalfWidth) return false;
+  }
   if (x1 < 0 || x2 > W || y1 < 0 || y2 > H) return false;
   for (const n of match.resourceNodes) {
     const dx = p.x - n.x, dy = p.y - n.y;
@@ -350,6 +355,11 @@ function dynamicSiteOk(pc: PlaceCtx, b: typeof BUILDINGS[number], x: number, y: 
   return true;
 }
 
+/** validateBuildSite's sight rule: `anywhere` buildings go only on ground the seat sees now. */
+function sightOk(match: MatchState, s: SeatState, b: typeof BUILDINGS[number], x: number, y: number): boolean {
+  return !BUILDING_DEFS[b].anywhere || siteInSight(match, s.playerId, x, y);
+}
+
 /** The no-seal rule (validateBuildSite's last check). */
 function sealOk(match: MatchState, pc: PlaceCtx, b: typeof BUILDINGS[number], x: number, y: number): boolean {
   return anchorsConnected(match.nav, pc.crystalRects, footprintOf({ type: "building", x, y, radius: 0, buildingType: b }) ?? undefined);
@@ -359,7 +369,7 @@ function sealOk(match: MatchState, pc: PlaceCtx, b: typeof BUILDINGS[number], x:
 function gridSiteOk(match: MatchState, s: SeatState, pc: PlaceCtx, bi: number, g: number): boolean {
   if (!s.gridSites[bi][g]) return false;
   const b = BUILDINGS[bi], p = gridCentre(s, g);
-  if (!dynamicSiteOk(pc, b, p.x, p.y)) return false;
+  if (!dynamicSiteOk(pc, b, p.x, p.y) || !sightOk(match, s, b, p.x, p.y)) return false;
   const c = s.sealCache;
   if (c.nav !== match.nav || c.version !== match.nav.version) { c.nav = match.nav; c.version = match.nav.version; c.ok.clear(); }
   const k = bi * GRID_CELLS + g;
@@ -397,7 +407,7 @@ export function siteFor(match: MatchState, s: SeatState, building: typeof BUILDI
   for (const [dx, dy] of SITE_OFFSETS) {
     const o = offsetToWorld(s.frame, dx, dy);
     const x = c.x + o.x, y = c.y + o.y;
-    if (staticSiteOk(match, s.playerId, building, { x, y }) && dynamicSiteOk(pc, building, x, y) && sealOk(match, pc, building, x, y)) return { x, y };
+    if (staticSiteOk(match, s.playerId, building, { x, y }) && dynamicSiteOk(pc, building, x, y) && sightOk(match, s, building, x, y) && sealOk(match, pc, building, x, y)) return { x, y };
   }
   return null;
 }

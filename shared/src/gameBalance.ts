@@ -132,6 +132,8 @@ export interface BuildingDef {
   color: string;
   supplyProvided?: number;
   produces?: string[];
+  trainTimeMult?: number;  // units trained here take this share of their normal build time
+  anywhere?: boolean;      // not tied to the owner's half of the map: any ground the owner can currently see
   damage?: number;
   range?: number;
   attackCooldown?: number;
@@ -181,9 +183,22 @@ export const BUILDING_DEFS: Record<string, BuildingDef> = {
     attackCooldown: 6,  // was 12 → 8 → 6; dps 1.5 → 2.25 → 3.0; defence needs to hold
     visionRange: 225,
   },
+  // Forward outpost (user, 2026-11-15): cheap, quick to put up and very fragile; trains skirmishers only, faster than a barracks.
+  outpost: {
+    cost: 50,
+    buildTime: 50,
+    health: 50,
+    width: 32,
+    height: 32,
+    color: "#66bb99",
+    produces: ["skirmisher"],
+    trainTimeMult: 0.75,
+    anywhere: true,
+    visionRange: 150,
+  },
 };
 
-export const BUILDING_ORDER: string[] = ["barracks", "foundry", "supply_depot", "turret"];
+export const BUILDING_ORDER: string[] = ["barracks", "foundry", "supply_depot", "turret", "outpost"];
 
 // ====================================================================
 //  ECONOMY

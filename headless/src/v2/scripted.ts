@@ -17,7 +17,7 @@ import type { MatchState } from "../../../server/src/match/types.js";
 import { toOwnFrame } from "./frame.js";
 import type { SeatState } from "./actions.js";
 import {
-  act, BUILDINGS, ECON_ASSIGN0, ECON_BUILD0, ECON_REPAIR, ECON_TRAIN0, GROUPS, ORDERS, TARGET_NONE, TRAIN_UNITS, WORKER_COUNTS,
+  act, BUILDINGS, ECON_ASSIGN0, ECON_BUILD0, ECON_REPAIR, ECON_TRAIN0, GRID_CELL_H, GRID_CELL_W, GRID_CELLS, GRID_COLS, GROUPS, NAMED_SITES, ORDERS, TARGET_NONE, TRAIN_UNITS, WORKER_COUNTS,
   type V2Action, type V2Masks,
 } from "./actions.js";
 import { ENTITY_FEATURES, GLOBAL_NAMES, NODE_FEATURES, type ObsV2 } from "./observation.js";
@@ -68,6 +68,8 @@ interface BuildStep {
   /** Start only after this tick / with this many army units. */
   tick?: number;
   army?: number;
+  /** Build beside the army (the legal site nearest its middle unit) once that unit is on the enemy half; `sites` is unused. */
+  forward?: boolean;
 }
 
 export interface Template {
@@ -220,6 +222,22 @@ export const TEMPLATES: Record<string, Template> = {
     ],
     mix: { skirmisher: 4, medic: 1 }, push: { tick: 0, size: 24, regroup: 12, targets: ["enemy_base"] }, stage: "base", retreat: 0.4,
   },
+  // The swarm with forward outposts: reinforcements appear beside the army instead of walking from home.
+  skirm_forward: {
+    z: 21, label: "skirmisher + medic swarm with forward outposts", workers: 8, contested: 2, headroom: 3,
+    builds: [
+      { b: "barracks", n: 1, sites: BASE }, { b: "barracks", n: 2, sites: BASE }, { b: "foundry", n: 1, sites: BASE, army: 4 },
+      { b: "barracks", n: 3, sites: BASE, army: 8 }, { b: "outpost", n: 2, sites: [], forward: true },
+    ],
+    mix: { skirmisher: 4, medic: 1 }, push: { tick: 0, size: 18, regroup: 10, targets: ["enemy_base"] }, stage: "base", retreat: 0.4,
+  },
+  // Outposts at home in place of a barracks: cheaper and quicker to put up, for an earlier rush.
+  rush_outpost: {
+    z: 22, label: "skirmisher rush from outposts", workers: 4, contested: 0, headroom: 1,
+    builds: [{ b: "outpost", n: 1, sites: BASE }, { b: "outpost", n: 2, sites: BASE }],
+    mix: { skirmisher: 1 }, push: { tick: 300, size: 3, regroup: 0, targets: ["enemy_base", "enemy_safe"] }, stage: "base", retreat: 0,
+    late: { tick: 3000, workers: 7, contested: 2 },
+  },
   // Massed gunners: phalanx without the foundry and bulwarks (the control for it, and the strongest scripted army).
   gunline: {
     z: 20, label: "economy, then massed gunners", workers: 7, contested: 2, headroom: 3,
@@ -258,6 +276,8 @@ export const SCRIPTED: Record<string, BotDef> = {
   swarm_tide: { templates: ["skirm_tide"] },
   phalanx: { templates: ["phalanx"] },
   gunline: { templates: ["gunline"] },
+  outrider: { templates: ["skirm_forward"] },
+  rush_post: { templates: ["rush_outpost"] },
 };
 export const SWITCH_WINDOW: [number, number] = [1500, 4000];
 
@@ -437,6 +457,21 @@ export class ScriptedV2Bot {
     this.site = site;
     return ECON_BUILD0 + bi;
   }
+  /** Build `b` at the legal grid site nearest `near` (own frame, normalised). Sets `this.site`. */
+  private buildNear(m: V2Masks, b: Building, near: Pt): number {
+    const bi = BUILDINGS.indexOf(b);
+    if (!m.econ[ECON_BUILD0 + bi]) return 0;
+    let best = -1, bd = Infinity;
+    for (let g = 0; g < GRID_CELLS; g++) {
+      if (!m.site[bi][NAMED_SITES + g]) continue;
+      const c = { x: ((g % GRID_COLS) * GRID_CELL_W + GRID_CELL_W / 2) / this.ctx.W, y: (Math.floor(g / GRID_COLS) * GRID_CELL_H + GRID_CELL_H / 2) / this.ctx.H };
+      const d = Math.round(this.dist(c, near));
+      if (d < bd) { bd = d; best = g; }
+    }
+    if (best < 0) return 0;
+    this.site = NAMED_SITES + best;
+    return ECON_BUILD0 + bi;
+  }
   /** Build site chosen by the last buildAction this decision. */
   private site = 0;
   /** Econ pointer row (repair target) chosen this decision. */
@@ -446,7 +481,7 @@ export class ScriptedV2Bot {
     const t = this.t;
     const train = (u: Unit) => (m.econ[ECON_TRAIN0 + TRAIN_UNITS.indexOf(u)] ? ECON_TRAIN0 + TRAIN_UNITS.indexOf(u) : 0);
     const armySize = COMBAT.reduce((s, u) => s + v.units[u], 0);
-    const producers = v.buildings.barracks + v.buildings.foundry;
+    const producers = v.buildings.barracks + v.buildings.foundry + v.buildings.outpost;
 
     // Repair the most damaged own turret below REPAIR_BELOW health, if a worker can be sent.
     if (m.econ[ECON_REPAIR]) {
@@ -464,8 +499,11 @@ export class ScriptedV2Bot {
     }
     let saving = 0;
     const step = t.builds.find((s) => v.buildings[s.b] < s.n);
-    if (step && v.tick >= (step.tick ?? 0) && armySize >= (step.army ?? 0)) {
-      const a = this.buildAction(m, step.b, step.sites);
+    // A forward step waits (without saving for it) until the army's middle unit is on the enemy half.
+    const near = step?.forward && v.army.length > 0 ? this.middle(v) : null;
+    const ready = step && (!step.forward || (near !== null && near.x > 0.5));
+    if (step && ready && v.tick >= (step.tick ?? 0) && armySize >= (step.army ?? 0)) {
+      const a = near ? this.buildNear(m, step.b, near) : this.buildAction(m, step.b, step.sites);
       if (a) return a;
       if (v.resources < BUILDING_DEFS[step.b].cost) saving = BUILDING_DEFS[step.b].cost;
     }
@@ -633,11 +671,16 @@ export class ScriptedV2Bot {
 
   /** Army units within MASS_RADIUS of the army's middle unit (by distance to the enemy base): the main body. */
   private massed(v: View): number {
+    const mid = this.middle(v);
+    return v.army.filter((e) => this.dist({ x: e[F.x], y: e[F.y] }, mid) < MASS_RADIUS).length;
+  }
+
+  /** Position of the army's middle unit, ranked by distance to the enemy base (own frame, normalised). */
+  private middle(v: View): Pt {
     const goal = this.norm(this.ctx.targets[T_ENEMY_BASE]);
     const at = (e: number[]): Pt => ({ x: e[F.x], y: e[F.y] });
     const byProgress = v.army.map((e) => ({ e, d: Math.round(this.dist(at(e), goal)) })).sort((a, b) => a.d - b.d);
-    const mid = byProgress[Math.floor(byProgress.length / 2)].e;
-    return v.army.filter((e) => this.dist(at(e), at(mid)) < MASS_RADIUS).length;
+    return at(byProgress[Math.floor(byProgress.length / 2)].e);
   }
 
   private norm(p: Pt): Pt { return { x: p.x / this.ctx.W, y: p.y / this.ctx.H }; }

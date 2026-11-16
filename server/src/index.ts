@@ -821,7 +821,7 @@ wss.on("connection", (ws) => {
           targetX: cmd.targetX,
           targetY: cmd.targetY,
           targetEntityId: cmd.targetEntityId,
-          buildingType: cmd.buildingType as "barracks" | "foundry" | "supply_depot" | "turret" | undefined,
+          buildingType: cmd.buildingType as "barracks" | "foundry" | "supply_depot" | "turret" | "outpost" | undefined,
           workerIds: cmd.workerIds,
           buildingId: cmd.buildingId,
           unitType: cmd.unitType,
@@ -965,7 +965,7 @@ wss.on("connection", (ws) => {
           spawnPayload.entityType as "worker" | "skirmisher" | "gunner" | "bruiser" | "medic" | "bulwark" | "building",
           spawnPayload.x,
           spawnPayload.y,
-          spawnPayload.buildingType as "barracks" | "foundry" | "supply_depot" | "turret" | undefined
+          spawnPayload.buildingType as "barracks" | "foundry" | "supply_depot" | "turret" | "outpost" | undefined
         );
 
         if (!result.success) {
