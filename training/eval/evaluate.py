@@ -54,6 +54,7 @@ def parse() -> argparse.Namespace:
     ap.add_argument("--greedy", action="store_true", help="argmax actions instead of sampling")
     ap.add_argument("--torch-seed", type=int, default=0)
     ap.add_argument("--out", default="", help="JSON results path")
+    ap.add_argument("--save-replays", action="store_true", help="write every game to replays/ (watchable in the game's replay viewer)")
     return ap.parse_args()
 
 
@@ -78,7 +79,7 @@ def main() -> None:
     def cfg(g: dict) -> dict:
         opp = f"bot:{g['opp']}"
         return {"seed": g["seed"], "map": g["map"], "blue": me if g["side"] == "blue" else opp,
-                "red": opp if g["side"] == "blue" else me}
+                "red": opp if g["side"] == "blue" else me, "save_replay": a.save_replays}
 
     # Slot i plays games i, i + n, i + 2n, ...; the next game is configured while
     # the current one runs, so it starts as soon as the current one ends.
@@ -91,6 +92,8 @@ def main() -> None:
     for i in range(n):
         if len(queue[i]) > 1:
             env.configure(i, **cfg(queue[i][1]))
+        elif a.save_replays:
+            env.configure(i, save_replay=False)
     results, t0 = [], time.time()
     while len(results) < len(games):
         if is_bot:
@@ -114,10 +117,12 @@ def main() -> None:
             w = info["winner"]
             results.append({**g, "result": "win" if w == g["side"] else "draw" if w is None else "loss",
                             "winType": info.get("winType"), "ticks": info["ticks"],
-                            "stats": info.get("stats", {}).get(g["side"])})
+                            "stats": info.get("stats", {}).get(g["side"]), "replayId": info.get("replayId")})
             pos[i] += 1
             if pos[i] + 1 < len(queue[i]):
                 env.configure(i, **cfg(queue[i][pos[i] + 1]))
+            elif a.save_replays:
+                env.configure(i, save_replay=False)  # the slot plays filler games until the rest finish
             if len(results) % 100 == 0:
                 print(f"  {len(results)}/{len(games)} games, {time.time() - t0:.0f}s", flush=True)
         for i in res.new_episodes:
