@@ -24,18 +24,26 @@ the next episode's first observation. The stream layout can change only at
 an episode boundary (after `configure` changed a slot's seats), which is why
 transitions and current observations are returned separately.
 
+packed=True (training speed) asks the runner for base64 float32 observations and
+bit-packed masks: obs become numpy arrays under the same keys, critic a float32
+array [own globals | enemy globals], masks a uint8 array that
+`training.v2.batch.stack_masks` unpacks; `layout` holds the runner's shapes.
+
 Rewards are raw components {win, shaped: {res, army, dmg, ctrl}}; weights and
 schedules are applied by the trainer (ML_RETRAIN_PLAN §7.4).
 """
 
 from __future__ import annotations
 
+import base64
 import json
 import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+import numpy as np
 
 try:
     import orjson
@@ -162,6 +170,7 @@ class VecEnvV2:
         decision_interval: int = 8,
         max_ticks: int = 12000,
         critic: bool = True,
+        packed: bool = False,
     ) -> None:
         if not slots:
             raise ValueError("need at least one slot")
@@ -169,6 +178,8 @@ class VecEnvV2:
         self.decision_interval = decision_interval
         self.max_ticks = max_ticks
         self.critic = critic
+        self.packed = packed
+        self.layout: dict | None = None
         self.cfg = [dict(s) for s in slots]
         # Slot i lives in process owner[i] at local index local[i] (contiguous blocks).
         per = -(-len(slots) // self.n_procs)
@@ -206,7 +217,7 @@ class VecEnvV2:
         for p in range(self.n_procs):
             self._procs[p].send({
                 "type": "reset_all", "decision_interval": self.decision_interval,
-                "max_ticks": self.max_ticks, "critic": self.critic,
+                "max_ticks": self.max_ticks, "critic": self.critic, "packed": self.packed,
                 "slots": [self._wire_cfg(c) for i, c in enumerate(self.cfg) if self.owner[i] == p],
             })
         per_slot: list[dict] = []
@@ -217,6 +228,10 @@ class VecEnvV2:
             if msg.get("actionSpaceVersion") != ACTION_SPACE_VERSION:
                 raise RuntimeError(f"actionSpaceVersion {msg.get('actionSpaceVersion')} != {ACTION_SPACE_VERSION} (update vec_env_v2.py)")
             per_slot.extend(msg["slots"])
+            if self.packed and self.layout is None:
+                self.layout = msg.get("layout")
+        if self.packed and self.layout is None:
+            raise RuntimeError("packed mode needs at least one policy or teach seat (the runner reports the layout from one)")
         for i, s in enumerate(per_slot):
             self.static[i], self.episode[i] = s["static"], s["episode"]
         return self._current([s["seats"] for s in per_slot])
@@ -243,9 +258,31 @@ class VecEnvV2:
             for side in SIDES:
                 if side in seats:
                     s = seats[side]
+                    if self.packed:
+                        s = self._unpack(s)
                     cur.append(Stream(i, side, roles[side], s["obs"], s["masks"], s.get("critic"), s["oppLabels"], s["teacher"]))
         self.streams = [(s.slot, s.side, s.role) for s in cur]
         return cur
+
+    def _unpack(self, s: dict) -> dict:
+        """Packed seat entry → numpy obs / critic and uint8 masks (layout from `ready`)."""
+        L = self.layout
+        o = s["obs"]
+        f = np.frombuffer(base64.b64decode(o["f"]), dtype=np.float32)
+        out = {**s}
+        k = 0
+        obs: dict[str, Any] = {"z": o["z"]}
+        for key, shape in (("globals", (L["globals"],)), ("nodes", tuple(L["nodes"])), ("memory", tuple(L["memory"])), ("grid", (L["grid"],))):
+            n = int(np.prod(shape))
+            obs[key] = f[k:k + n].reshape(shape)
+            k += n
+        obs["entities"] = f[k:].reshape(o["n"], L["entityF"])
+        out["obs"] = obs
+        if "masks" in s:
+            out["masks"] = np.frombuffer(base64.b64decode(s["masks"]), dtype=np.uint8)
+        if s.get("critic") is not None:
+            out["critic"] = np.frombuffer(base64.b64decode(s["critic"]), dtype=np.float32)
+        return out
 
     def step(self, actions: list[dict | None]) -> StepOut:
         """`actions[j]` is the wire action {"econ": [kind, site, econPtr, econTarget], "army": [group, order, unit, target, ptr]} for stream j (None for teach streams)."""
@@ -267,6 +304,8 @@ class VecEnvV2:
         for slot, side, role in self.streams:
             r = results[slot]
             term = r["terminal"][side] if r["terminal"] else None
+            if term is not None and self.packed:
+                term = self._unpack(term)
             transitions.append(Transition(slot, side, role, r["rewards"][side], r["done"], r["truncated"], term, r["info"]))
         new_eps = {}
         for i, r in enumerate(results):

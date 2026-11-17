@@ -216,9 +216,9 @@ def main() -> None:
     cur_opp = [d.pop("opp") for d in draws]           # opponent of each slot's current episode
     pending_opp: list[str | None] = [None] * n_slots  # ... of its next episode (configured, not started)
     frozen = Frozen([o[5:] for o in slots.opps if o.startswith("ckpt:")], n_slots, dev)
-    env = VecEnvV2(draws, n_procs=a.procs, max_ticks=a.max_ticks)
+    env = VecEnvV2(draws, n_procs=a.procs, max_ticks=a.max_ticks, packed=True)
     cur = env.reset()
-    S.check_sizes(cur[0].obs, cur[0].masks)
+    S.check_layout(env.layout)
     statics = [static_grid(s) for s in env.static]
     want = "teach" if a.imitate else "learner"
     lrn = [j for j, s in enumerate(cur) if s.role == want]

@@ -90,7 +90,7 @@ def main() -> None:
     n = min(len(games), a.procs * a.slots)
     queue = [games[i::n] for i in range(n)]
     pos = [0] * n
-    env = VecEnvV2([cfg(q[0]) for q in queue], n_procs=a.procs, max_ticks=a.max_ticks, critic=False)
+    env = VecEnvV2([cfg(q[0]) for q in queue], n_procs=a.procs, max_ticks=a.max_ticks, critic=False, packed=True)
     cur = env.reset()
     statics = [static_grid(s) for s in env.static]
     frozen = Frozen(ckpts, n, dev)

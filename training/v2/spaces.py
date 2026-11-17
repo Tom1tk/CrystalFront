@@ -66,3 +66,22 @@ def check_sizes(obs: dict, masks: dict) -> None:
         bad["entities"] = (len(obs["entities"][0]), ENTITY_F)
     if bad:
         raise RuntimeError(f"observation/action layout changed (got, expected): {bad} — update training/v2/spaces.py")
+
+
+def check_layout(layout: dict) -> None:
+    """Packed mode: the same check against the shapes the runner reports in `ready`."""
+    sh = lambda v: v[0] if len(v) == 1 else tuple(v)
+    got = {"globals": layout["globals"], "nodes": tuple(layout["nodes"]), "memory": tuple(layout["memory"]), "grid": layout["grid"],
+           "entities": layout["entityF"], **{k: sh(v) for k, v in layout["masks"]}}
+    want = {
+        "globals": N_GLOBALS, "nodes": (N_NODES, NODE_F), "memory": (N_MEMORY, MEMORY_F), "grid": GRID_DYN_C * GRID_CELLS,
+        "entities": ENTITY_F,
+        "econ": ECON, "site": (N_BUILDINGS, BUILD_SITES), "econPtr": (ECON_PTR_KINDS, PTR), "econTarget": TARGETS,
+        "group": N_GROUPS, "order": (N_GROUPS, N_ORDERS), "unit": (N_ORDERS, PTR), "target": (N_ORDERS, TARGETS),
+        "ptr": (N_ORDERS, PTR),
+    }
+    bad = {k: (got.get(k), want[k]) for k in want if got.get(k) != want[k]}
+    if [k for k, _ in layout["masks"]] != ["econ", "site", "econPtr", "econTarget", "group", "order", "unit", "target", "ptr"]:
+        bad["mask order"] = [k for k, _ in layout["masks"]]
+    if bad:
+        raise RuntimeError(f"packed layout changed (got, expected): {bad} — update training/v2/spaces.py")

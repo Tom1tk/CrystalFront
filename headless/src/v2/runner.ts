@@ -4,7 +4,7 @@
 // drive it without a pipe; `vecRunner.ts` wires it to stdin/stdout.
 //
 // Python → Node (newline-delimited JSON)
-//   { type: "reset_all", decision_interval?: 8, max_ticks?: 12000, critic?: true,
+//   { type: "reset_all", decision_interval?: 8, max_ticks?: 12000, critic?: true, packed?: false,
 //     slots: [ { seed, map, blue, red, z?: {blue, red}, scenario?: null, save_replay?: false } ] }
 //       blue/red: "policy" | "bot:<name>" | "teach:<name>"
 //   { type: "step", actions: [ { blue?: {econ: [kind, site, econPtr, econTarget], army: [group, order, unit, target, ptr]}, red?: … } ] }
@@ -29,6 +29,12 @@
 // { obs, critic, oppLabels } per policy/teach seat and the slot is autoreset:
 // `seats` is then the new episode's first decision, and `static` / `episode`
 // describe it. Slot settings persist across autoresets.
+//
+// packed (training speed): every obs is { z, n, f } where f is base64 float32
+// [globals | nodes | memory | grid | n entity rows]; masks are one base64
+// bit string (MSB first) of MASK_KEYS in order, each flattened row-major; critic
+// is base64 float32 [own globals | enemy globals] (all the trainer uses). `ready`
+// then carries `layout` (the shapes) for Python to check.
 import { MatchEngine } from "../../../server/src/match/matchEngine.js";
 import { DEFAULT_CONFIG, type MatchState, type PlayerSlot } from "../../../server/src/match/types.js";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -79,6 +85,43 @@ export function strSeed(s: string): number {
 }
 
 const bit = (b: boolean[]) => b.map((v) => (v ? 1 : 0));
+
+const b64 = (a: Float32Array | Uint8Array) => Buffer.from(a.buffer, a.byteOffset, a.byteLength).toString("base64");
+export const MASK_KEYS = ["econ", "site", "econPtr", "econTarget", "group", "order", "unit", "target", "ptr"] as const;
+
+export function packObs(o: OBS.ObsV2) {
+  const n = o.entities.length;
+  const parts = [o.globals, ...o.nodes, ...o.memory, o.grid, ...o.entities];
+  const f = new Float32Array(parts.reduce((s, p) => s + p.length, 0));
+  let k = 0;
+  for (const p of parts) { f.set(p, k); k += p.length; }
+  return { z: o.z, n, f: b64(f) };
+}
+
+export function packMasks(m: V2.V2Masks): string {
+  const rows: boolean[][] = [];
+  for (const key of MASK_KEYS) {
+    const v = m[key] as boolean[] | boolean[][];
+    if (Array.isArray(v[0])) rows.push(...(v as boolean[][])); else rows.push(v as boolean[]);
+  }
+  const total = rows.reduce((s, r) => s + r.length, 0);
+  const out = new Uint8Array((total + 7) >> 3);
+  let i = 0;
+  for (const r of rows) for (const v of r) { if (v) out[i >> 3] |= 0x80 >> (i & 7); i++; }
+  return b64(out);
+}
+
+const packCritic = (c: OBS.CriticV2) => b64(Float32Array.from([...c.self.globals, ...c.enemy.globals]));
+
+/** Shapes Python checks before trusting packed messages. */
+function layout(o: OBS.ObsV2, m: V2.V2Masks) {
+  const shape = (v: boolean[] | boolean[][]) => (Array.isArray(v[0]) ? [v.length, (v[0] as boolean[]).length] : [v.length]);
+  return {
+    globals: o.globals.length, nodes: [o.nodes.length, o.nodes[0].length], memory: [o.memory.length, o.memory[0].length],
+    grid: o.grid.length, entityF: OBS.ENTITY_F,
+    masks: MASK_KEYS.map((k) => [k, shape(m[k] as boolean[] | boolean[][])]),
+  };
+}
 export function encodeMasks(m: V2.V2Masks) {
   return {
     econ: bit(m.econ), site: m.site.map(bit), econPtr: m.econPtr.map(bit), econTarget: bit(m.econTarget),
@@ -120,7 +163,7 @@ export interface V2Replay {
   v2: { obsSchemaVersion: number; actionSpaceVersion: number; k: number; cap: number; z: [number, number]; actions: Array<{ tick: number; blue: WireAction; red: WireAction }> };
 }
 
-interface Globals { k: number; cap: number; critic: boolean }
+interface Globals { k: number; cap: number; critic: boolean; packed: boolean }
 
 class Slot {
   cfg: SlotConfig;
@@ -138,6 +181,8 @@ class Slot {
   bots!: [V2Bot | null, V2Bot | null];
   /** This decision's masks and bot/teacher choices. */
   masks = [] as unknown as [V2.V2Masks, V2.V2Masks];
+  /** packed mode: shapes of the first observed seat (reported once, in `ready`). */
+  layout: ReturnType<typeof layout> | null = null;
   chosen: [V2.V2Action | null, V2.V2Action | null] = [null, null];
   snap!: RewardSnapshot;
   actions: V2Replay["v2"]["actions"] = [];
@@ -204,9 +249,11 @@ class Slot {
       this.masks[i] = V2.computeMasks(match, this.seats[i]);
       this.chosen[i] = this.bots[i] ? this.botDecide(i, obs) : null;
       if (this.specs[i].kind === "bot") continue;
+      if (this.g.packed && !this.layout) this.layout = layout(obs, this.masks[i]);
       out[SIDES[i]] = {
-        obs, masks: encodeMasks(this.masks[i]),
-        ...(critic ? { critic: critic[i] } : {}),
+        obs: this.g.packed ? packObs(obs) : obs,
+        masks: this.g.packed ? packMasks(this.masks[i]) : encodeMasks(this.masks[i]),
+        ...(critic ? { critic: this.g.packed ? packCritic(critic[i]) : critic[i] } : {}),
         oppLabels: OBS.oppLabels(match, this.seats[i]),
         teacher: this.specs[i].kind === "teach" ? toWire(this.chosen[i]!) : null,
       };
@@ -293,9 +340,10 @@ class Slot {
     const terminal: Record<string, unknown> = {};
     const critic = this.g.critic ? this.critic() : null;
     for (const i of this.learnerSides()) {
+      const obs = OBS.observe(match, this.seats[i], this.oss[i], { z: this.zSeat[i], cap: this.g.cap });
       terminal[SIDES[i]] = {
-        obs: OBS.observe(match, this.seats[i], this.oss[i], { z: this.zSeat[i], cap: this.g.cap }),
-        ...(critic ? { critic: critic[i] } : {}),
+        obs: this.g.packed ? packObs(obs) : obs,
+        ...(critic ? { critic: this.g.packed ? packCritic(critic[i]) : critic[i] } : {}),
         oppLabels: OBS.oppLabels(match, this.seats[i]),
       };
     }
@@ -341,7 +389,7 @@ function slotConfig(raw: Record<string, unknown>, i: number): SlotConfig {
 
 export class VecRunnerV2 {
   private slots: Slot[] = [];
-  private g: Globals = { k: V2.DECISION_TICKS, cap: TRAIN_MAX_TICKS, critic: true };
+  private g: Globals = { k: V2.DECISION_TICKS, cap: TRAIN_MAX_TICKS, critic: true, packed: false };
   constructor(private opts: RunnerOptions = {}) {}
 
   /** The live match of a slot (tests). */
@@ -355,6 +403,7 @@ export class VecRunnerV2 {
             k: Number(msg.decision_interval ?? V2.DECISION_TICKS),
             cap: Number(msg.max_ticks ?? TRAIN_MAX_TICKS),
             critic: msg.critic === undefined ? true : Boolean(msg.critic),
+            packed: Boolean(msg.packed),
           };
           if (!(this.g.k >= 1)) throw new Error("decision_interval must be ≥ 1");
           const raw = (msg.slots ?? []) as Record<string, unknown>[];
@@ -363,7 +412,8 @@ export class VecRunnerV2 {
             const seats = s.start();
             return { seats, static: OBS.staticGrid(s.match), episode: s.episodeInfo() };
           });
-          return { type: "ready", schemaVersion: OBS.OBS_SCHEMA_VERSION, actionSpaceVersion: V2.ACTION_SPACE_VERSION, slots: out };
+          const lay = this.slots.find((s) => s.layout)?.layout;
+          return { type: "ready", schemaVersion: OBS.OBS_SCHEMA_VERSION, actionSpaceVersion: V2.ACTION_SPACE_VERSION, slots: out, ...(lay ? { layout: lay } : {}) };
         }
         case "step": {
           const actions = (msg.actions ?? []) as Record<string, unknown>[];

@@ -5,7 +5,8 @@ G-10 M0 T7 tests for training/env/vec_env_v2.py (needs `npm run build:headless`)
 1. Autoreset persistence: three autoresets keep map, seats and z; `configure`
    applies at the next episode boundary (changing the stream layout).
 2. Stream bookkeeping: roles, zero-sum rewards for policy-vs-policy, teacher labels.
-3. Throughput: random legal policy through Python, decisions/s and IPC share.
+3. Packed mode: identical batched obs, masks, critic and terminal obs to JSON mode.
+4. Throughput: random legal policy through Python, decisions/s and IPC share.
 
     python3 training/test_vec_env_v2.py [--procs 4] [--slots 8] [--steps 200]
 """
@@ -97,6 +98,49 @@ def test_autoreset() -> None:
         env.close()
 
 
+def test_packed_parity() -> None:
+    print("packed mode matches JSON mode")
+    import numpy as np
+    from training.v2 import spaces as S
+    from training.v2.batch import stack_masks, stack_obs, static_grid
+    slots = [
+        {"seed": 21, "map": "shardfall", "blue": "policy", "red": "bot:random", "z": {"blue": 2}},
+        {"seed": 22, "map": "ironreed", "blue": "policy", "red": "policy", "learner": ["red"]},
+        {"seed": 23, "map": "glimmerfen", "blue": "teach:macro", "red": "bot:rush1"},
+    ]
+    envs = [VecEnvV2(slots, n_procs=2, max_ticks=600), VecEnvV2(slots, n_procs=2, max_ticks=600, packed=True)]
+    try:
+        cur = [e.reset() for e in envs]
+        S.check_layout(envs[1].layout)
+        rng = random.Random(3)
+        same, terms = True, 0
+
+        def batch(env, c):
+            st = [static_grid(env.static[x.slot]) for x in c]
+            return {**stack_obs([x.obs for x in c], st, [x.critic for x in c]), **stack_masks([x.masks for x in c])}
+
+        for _ in range(90):
+            a, b = batch(envs[0], cur[0]), batch(envs[1], cur[1])
+            same &= a.keys() == b.keys() and all(np.array_equal(a[k], b[k]) for k in a)
+            same &= [x.opp_labels for x in cur[0]] == [x.opp_labels for x in cur[1]] and [x.teacher for x in cur[0]] == [x.teacher for x in cur[1]]
+            acts = act_all(rng, cur[0])
+            outs = [e.step(acts) for e in envs]
+            for ta, tb in zip(outs[0].transitions, outs[1].transitions):
+                same &= ta.reward == tb.reward and ta.done == tb.done and ta.truncated == tb.truncated
+                if ta.terminal:
+                    terms += 1
+                    st = [static_grid(envs[0].static[ta.slot])]
+                    oa = stack_obs([ta.terminal["obs"]], st, [ta.terminal.get("critic")])
+                    ob = stack_obs([tb.terminal["obs"]], st, [tb.terminal.get("critic")])
+                    same &= all(np.array_equal(oa[k], ob[k]) for k in oa)
+            cur = [o.current for o in outs]
+        check(same, "obs, masks, critic, labels, rewards identical for 90 steps")
+        check(terms >= 3, f"terminal obs compared ({terms})")
+    finally:
+        for e in envs:
+            e.close()
+
+
 def test_throughput(procs: int, slots: int, steps: int) -> None:
     print(f"throughput: {procs} procs × {slots} slots, policy vs bot:random, {steps} steps")
     rng = random.Random(2)
@@ -128,6 +172,7 @@ def main() -> None:
     ap.add_argument("--steps", type=int, default=100)
     args = ap.parse_args()
     test_autoreset()
+    test_packed_parity()
     test_throughput(args.procs, args.slots, args.steps)
     if FAILED:
         print(f"{len(FAILED)} FAILED")

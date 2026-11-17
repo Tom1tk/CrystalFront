@@ -34,7 +34,9 @@ def stack_obs(obs_list: list[dict], statics: list[np.ndarray], critics: list[dic
     grid = np.concatenate([dyn, np.stack(statics)], axis=1)
     critic = np.zeros((b, 2 * S.N_GLOBALS), dtype=np.float32)
     for i, c in enumerate(critics):
-        if c is not None:
+        if isinstance(c, np.ndarray):  # packed: [own globals | enemy globals]
+            critic[i] = c
+        elif c is not None:
             critic[i, :S.N_GLOBALS] = c["self"]["globals"]
             critic[i, S.N_GLOBALS:] = c["enemy"]["globals"]
     return {
@@ -50,8 +52,25 @@ def stack_obs(obs_list: list[dict], statics: list[np.ndarray], critics: list[dic
 MASK_KEYS = ("econ", "site", "econPtr", "econTarget", "group", "order", "unit", "target", "ptr")
 
 
-def stack_masks(mask_list: list[dict]) -> dict[str, np.ndarray]:
-    return {k: np.asarray([m[k] for m in mask_list], dtype=bool) for k in MASK_KEYS}
+MASK_SHAPES = {
+    "econ": (S.ECON,), "site": (S.N_BUILDINGS, S.BUILD_SITES), "econPtr": (S.ECON_PTR_KINDS, S.PTR), "econTarget": (S.TARGETS,),
+    "group": (S.N_GROUPS,), "order": (S.N_GROUPS, S.N_ORDERS), "unit": (S.N_ORDERS, S.PTR), "target": (S.N_ORDERS, S.TARGETS),
+    "ptr": (S.N_ORDERS, S.PTR),
+}
+
+
+def stack_masks(mask_list: list) -> dict[str, np.ndarray]:
+    """Per-stream masks: dicts of lists (JSON mode) or packed uint8 bit strings (packed mode)."""
+    if not isinstance(mask_list[0], np.ndarray):
+        return {k: np.asarray([m[k] for m in mask_list], dtype=bool) for k in MASK_KEYS}
+    bits = np.unpackbits(np.stack(mask_list), axis=1).view(bool)
+    out, k = {}, 0
+    for key in MASK_KEYS:
+        shape = MASK_SHAPES[key]
+        n = int(np.prod(shape))
+        out[key] = bits[:, k:k + n].reshape(len(mask_list), *shape)
+        k += n
+    return out
 
 
 def pad_entities(chunks: list[np.ndarray]) -> np.ndarray:
