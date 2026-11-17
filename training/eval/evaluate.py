@@ -10,6 +10,7 @@ file, so every evaluation of every checkpoint plays the same games.
     python3 -m training.eval.evaluate --checkpoint checkpoints/v2/<run>/final.pt \
         --opponents idle,rush1 --maps train --seeds 13 --out docs/eval/<name>.json
     python3 -m training.eval.evaluate --checkpoint bot:macro --opponents idle   # oracle
+    python3 -m training.eval.evaluate --checkpoint <exploiter>.pt --opponents ckpt:<agent>.pt   # exploitability
 """
 from __future__ import annotations
 
@@ -26,7 +27,8 @@ import torch
 from training.env.vec_env_v2 import VecEnvV2
 from training.v2 import spaces as S
 from training.v2.batch import stack_masks, stack_obs, static_grid
-from training.v2.model import Agent, wire_actions
+from training.v2.model import Agent, load_weights, wire_actions
+from training.v2.train import Frozen, opp_tag
 
 HERE = Path(__file__).resolve().parent
 SEED_FILE = HERE / "seeds" / "eval-v1.txt"
@@ -45,7 +47,7 @@ def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
 def parse() -> argparse.Namespace:
     ap = argparse.ArgumentParser()
     ap.add_argument("--checkpoint", required=True, help="path to a v2 checkpoint, or bot:<name>")
-    ap.add_argument("--opponents", default="idle")
+    ap.add_argument("--opponents", default="idle", help="comma-separated scripted bots and/or ckpt:<checkpoint path>")
     ap.add_argument("--maps", default="train", help="'train', 'heldout' or a comma-separated list")
     ap.add_argument("--seeds", type=int, default=13, help="first N seeds of the seed file (games per map per seat)")
     ap.add_argument("--procs", type=int, default=18)
@@ -73,13 +75,15 @@ def main() -> None:
     if not is_bot:
         torch.manual_seed(a.torch_seed)
         agent = Agent().to(dev)
-        agent.load_state_dict(torch.load(a.checkpoint, map_location=dev)["model"])
+        load_weights(agent, torch.load(a.checkpoint, map_location=dev)["model"])
         agent.eval()
+    ckpts = [o[5:] for o in a.opponents.split(",") if o.startswith("ckpt:")]
+    assert not (is_bot and ckpts), "a scripted bot cannot be evaluated against checkpoints"
 
     def cfg(g: dict) -> dict:
-        opp = f"bot:{g['opp']}"
+        opp = "policy" if g["opp"].startswith("ckpt:") else f"bot:{g['opp']}"
         return {"seed": g["seed"], "map": g["map"], "blue": me if g["side"] == "blue" else opp,
-                "red": opp if g["side"] == "blue" else me, "save_replay": a.save_replays}
+                "red": opp if g["side"] == "blue" else me, "save_replay": a.save_replays, "learner": [g["side"]]}
 
     # Slot i plays games i, i + n, i + 2n, ...; the next game is configured while
     # the current one runs, so it starts as soon as the current one ends.
@@ -89,6 +93,10 @@ def main() -> None:
     env = VecEnvV2([cfg(q[0]) for q in queue], n_procs=a.procs, max_ticks=a.max_ticks, critic=False)
     cur = env.reset()
     statics = [static_grid(s) for s in env.static]
+    frozen = Frozen(ckpts, n, dev)
+    cur_game = [q[0] for q in queue]  # the game each slot is playing (filler games repeat the last one)
+    if not is_bot:
+        hs, cs = agent.zero_state(n, dev)
     for i in range(n):
         if len(queue[i]) > 1:
             env.configure(i, **cfg(queue[i][1]))
@@ -96,20 +104,27 @@ def main() -> None:
             env.configure(i, save_replay=False)
     results, t0 = [], time.time()
     while len(results) < len(games):
-        if is_bot:
-            acts = [None] * len(cur)
-        else:
-            obs = stack_obs([s.obs for s in cur], [statics[s.slot] for s in cur], [None] * len(cur))
-            masks = stack_masks([s.masks for s in cur])
+        acts = [None] * len(cur)
+        if not is_bot:
+            mine = [(j, s) for j, s in enumerate(cur) if s.role == "learner"]
+            ms = [s for _, s in mine]
+            sl = torch.as_tensor([s.slot for s in ms], device=dev)
+            obs = stack_obs([s.obs for s in ms], [statics[s.slot] for s in ms], [None] * len(ms))
+            masks = stack_masks([s.masks for s in ms])
             with torch.no_grad():
                 ot = {k: torch.as_tensor(v, device=dev) for k, v in obs.items()}
-                h, E, valid = agent.trunk(ot)
+                h, E, valid, (hs[sl], cs[sl]), _ = agent.trunk(ot, (hs[sl], cs[sl]))
                 out, _, _, _ = agent.policy(h, E, valid, masks={k: torch.as_tensor(v, device=dev) for k, v in masks.items()}, greedy=a.greedy)
-            acts = wire_actions(out)
+            for (j, _), w in zip(mine, wire_actions(out)):
+                acts[j] = w
+            fz = [(j, s) for j, s in enumerate(cur) if s.role == "frozen"]
+            if fz:
+                for j, w in frozen.act(fz, statics, [g["opp"][5:] if g["opp"].startswith("ckpt:") else None for g in cur_game]).items():
+                    acts[j] = w
         res = env.step(acts)
         for tr in res.transitions:
             i = tr.slot
-            if not (tr.done or tr.truncated) or pos[i] >= len(queue[i]):
+            if tr.role == "frozen" or not (tr.done or tr.truncated) or pos[i] >= len(queue[i]):
                 continue  # still playing, or a filler episode after this slot's queue ran out
             g, info = queue[i][pos[i]], tr.info
             ep = info["episode"]
@@ -127,6 +142,10 @@ def main() -> None:
                 print(f"  {len(results)}/{len(games)} games, {time.time() - t0:.0f}s", flush=True)
         for i in res.new_episodes:
             statics[i] = static_grid(env.static[i])
+            cur_game[i] = queue[i][min(pos[i], len(queue[i]) - 1)]
+            frozen.reset(i)
+            if not is_bot:
+                hs[i], cs[i] = 0, 0
         cur = res.current
     env.close()
     report(a, results, time.time() - t0)
@@ -154,7 +173,7 @@ def report(a: argparse.Namespace, results: list[dict], secs: float) -> None:
         s["sides"] = {sd: summarise([r for r in rs if r["side"] == sd]) for sd in ("blue", "red")}
         out["opponents"][o] = s
         lo, hi = s["win_ci"]
-        print(f"{o:18s} {s['n']:4d}  {s['win'] / s['n']:5.2f} [{lo:.2f}, {hi:.2f}]  {s['loss'] / s['n']:5.2f}  "
+        print(f"{opp_tag(o):18s} {s['n']:4d}  {s['win'] / s['n']:5.2f} [{lo:.2f}, {hi:.2f}]  {s['loss'] / s['n']:5.2f}  "
               f"{s['draw'] / s['n']:5.2f}  {s['ticks']:5.0f}  {s['sides']['blue']['win'] / max(1, s['sides']['blue']['n']):.2f}/"
               f"{s['sides']['red']['win'] / max(1, s['sides']['red']['n']):.2f}")
     if a.out:

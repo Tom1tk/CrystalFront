@@ -1,10 +1,16 @@
 """
-v2 learner network (ML_RETRAIN_IMPLEMENTATION.md §7.1), M1 step 1: feed-forward core.
+v2 learner network (ML_RETRAIN_IMPLEMENTATION.md §7.1).
 
     entity set → transformer (per-entity embeddings feed the pointer heads) ┐
     memory, nodes → MLP                                                      │
-    grid (dynamic + static channels) → 3-layer CNN → linear                  ├→ concat → MLP → h
+    grid (dynamic + static channels) → 3-layer CNN → linear                  ├→ concat → MLP → x
     globals + z → MLP (z via embedding)                                      ┘
+    x → LSTM cell → h = x + mem_out(lstm)          (memory across decisions)
+    h → opponent model (enemy unit / building counts, army location)
+    h → h + opp_in(opponent-model probabilities, detached) → policy and value heads
+
+mem_out and opp_in start at zero, so a feed-forward checkpoint loads into this
+network and plays exactly as before until training moves them (`load_weights`).
     heads: econ kind → site | econ pointer | econ target
            group → order → unit pointer → point target | entity pointer
            (each masked and conditioned on the previous choices)
@@ -16,6 +22,8 @@ contributes nothing to the log-probability or entropy.
 from __future__ import annotations
 
 import math
+
+import numpy as np
 
 import torch
 import torch.nn as nn
@@ -83,6 +91,15 @@ class Agent(nn.Module):
         self.unit_proj = nn.Linear(d_ent, d_h)
         self.target = nn.Linear(d_h, S.TARGETS)
         self.ptr_q = nn.Linear(d_h, d_ent)
+        # Memory and opponent model (residual, zero at init)
+        self.lstm = nn.LSTMCell(d_h, d_h)
+        self.mem_out = nn.Linear(d_h, d_h)
+        self.n_opp = (S.OPP_UNITS + S.OPP_BUILDINGS) * S.OPP_BINS + S.N_ANCHORS + 1
+        self.opp = nn.Linear(d_h, self.n_opp)
+        self.opp_in = nn.Linear(self.n_opp, d_h)
+        for m in (self.mem_out, self.opp_in):
+            nn.init.zeros_(m.weight)
+            nn.init.zeros_(m.bias)
         # Critic
         self.critic = nn.Sequential(nn.Linear(2 * S.N_GLOBALS, 128), nn.ReLU())
         self.value = nn.Sequential(nn.Linear(d_h + 128, 256), nn.ReLU(), nn.Linear(256, 3))
@@ -100,8 +117,51 @@ class Agent(nn.Module):
 
     # ── trunk ────────────────────────────────────────────────────────────────
 
-    def trunk(self, o: dict[str, torch.Tensor]):
-        """Returns h (B, d_h), per-entity embeddings E (B, N, d_ent) and the entity validity mask (B, N)."""
+    def zero_state(self, b: int, dev) -> tuple[torch.Tensor, torch.Tensor]:
+        d = self.lstm.hidden_size
+        return torch.zeros(b, d, device=dev), torch.zeros(b, d, device=dev)
+
+    def trunk(self, o: dict[str, torch.Tensor], state):
+        """One decision. `state` = (h, c), each (B, d_h). Returns h (B, d_h), E (B, N, d_ent), valid (B, N), new state, opponent-model logits."""
+        x, E, valid = self.encode(o)
+        hs, cs = self.lstm(x, state)
+        h, opp = self._heads_in(x + self.mem_out(hs))
+        return h, E, valid, (hs, cs), opp
+
+    def trunk_seq(self, o: dict[str, torch.Tensor], state, first: torch.Tensor, L: int):
+        """Training: o holds L×n decisions laid out time-major ((t, seq) → t * n + seq); `state` is each
+        sequence's state before its first step and `first` (L * n,) marks episode starts (state reset)."""
+        x, E, valid = self.encode(o)
+        n = x.shape[0] // L
+        xs, keep = x.view(L, n, -1), (~first).float().view(L, n, 1)
+        hs, cs = state
+        out = []
+        for t in range(L):
+            hs, cs = self.lstm(xs[t], (hs * keep[t], cs * keep[t]))
+            out.append(hs)
+        h, opp = self._heads_in(x + self.mem_out(torch.stack(out).view(L * n, -1)))
+        return h, E, valid, opp
+
+    def _heads_in(self, h):
+        opp = self.opp(h)
+        return h + self.opp_in(self.opp_probs(opp).detach()), opp
+
+    def opp_probs(self, opp: torch.Tensor) -> torch.Tensor:
+        """Logits → per-group softmax probabilities (same layout)."""
+        nb = (S.OPP_UNITS + S.OPP_BUILDINGS) * S.OPP_BINS
+        counts = F.softmax(opp[:, :nb].view(-1, S.OPP_UNITS + S.OPP_BUILDINGS, S.OPP_BINS), -1).flatten(1)
+        return torch.cat([counts, F.softmax(opp[:, nb:], -1)], -1)
+
+    def opp_loss(self, opp: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+        """Cross-entropy per prediction, averaged. labels (B, OPP_UNITS + OPP_BUILDINGS + 1): bin per count, then anchor."""
+        k = S.OPP_UNITS + S.OPP_BUILDINGS
+        nb = k * S.OPP_BINS
+        lc = F.cross_entropy(opp[:, :nb].reshape(-1, S.OPP_BINS), labels[:, :k].reshape(-1))
+        la = F.cross_entropy(opp[:, nb:], labels[:, k])
+        return (lc * k + la) / (k + 1)
+
+    def encode(self, o: dict[str, torch.Tensor]):
+        """Per-decision encoder (before memory): x (B, d_h), E (B, N, d_ent), valid (B, N)."""
         ent = o["ent"]
         b, n = ent.shape[0], ent.shape[1]
         valid = torch.arange(n, device=ent.device).unsqueeze(0) < o["ent_n"].unsqueeze(1)
@@ -215,3 +275,28 @@ def wire_actions(out: dict[str, torch.Tensor]) -> list[dict]:
             "army": [int(v["group"][i]), int(v["order"][i]), f("unit"), f("target", S.TARGET_NONE), f("ptr")],
         })
     return res
+
+
+NEW_PARAMS = ("lstm.", "mem_out.", "opp.", "opp_in.")
+
+
+def load_weights(agent: Agent, sd: dict) -> None:
+    """Load a checkpoint's model weights. A feed-forward checkpoint (before memory and the
+    opponent model) may lack only the new modules, which keep their zero-output init."""
+    missing, unexpected = agent.load_state_dict(sd, strict=False)
+    bad = [k for k in missing if not k.startswith(NEW_PARAMS)] + list(unexpected)
+    if bad:
+        raise RuntimeError(f"checkpoint does not match the model: {bad[:5]}")
+
+
+def bin_counts(x: np.ndarray) -> np.ndarray:
+    """Counts → bins 0, 1, 2, 3-4, 5-8, 9+."""
+    return np.digitize(x, [1, 2, 3, 5, 9])
+
+
+def opp_targets(labels: list[dict]) -> np.ndarray:
+    """Runner oppLabels → (B, OPP_UNITS + OPP_BUILDINGS + 1) int64 class targets."""
+    u = np.asarray([l["units"] for l in labels])
+    b = np.asarray([l["buildings"] for l in labels])
+    a = np.asarray([l["armyAnchor"] for l in labels])[:, None]
+    return np.concatenate([bin_counts(u), bin_counts(b), a], 1).astype(np.int64)

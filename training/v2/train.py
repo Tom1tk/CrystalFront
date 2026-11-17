@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """
-v2 PPO trainer (G-10 M1 step 1: feed-forward PPO against scripted opponents).
+v2 PPO trainer (G-10 M1: recurrent PPO against scripted bots and frozen checkpoints).
 
-One learner seat per slot, the other seat a scripted bot. Each slot draws a new
-training map, seed, side and opponent when its episode ends (applied by the
-runner one episode later). Three value heads (win, shaped, aux) with their own
-γ/λ; advantages normalised per head and mixed (ML_RETRAIN_IMPLEMENTATION.md §7.2).
+One learner seat per slot. The other seat is a scripted bot (`idle`) or a frozen
+checkpoint (`ckpt:<path>`, played by that network in Python). Each slot draws a
+new training map, seed, side and opponent when its episode ends (applied by the
+runner one episode later); with --pfsp, opponents the learner loses to are drawn
+more often. Three value heads (win, shaped, aux) with their own γ/λ; advantages
+normalised per head and mixed (ML_RETRAIN_IMPLEMENTATION.md §7.2). The network
+is recurrent: rollouts carry an LSTM state per stream and updates replay
+--seq-decision sequences from their stored start states. An opponent-model head
+is trained on the enemy's true counts (supervised, --opp-coef).
 
     python3 -m training.v2.train --run smoke --opponents idle --minutes 5
 """
@@ -25,7 +30,7 @@ from torch.utils.tensorboard import SummaryWriter
 from training.env.vec_env_v2 import VecEnvV2
 from training.v2 import spaces as S
 from training.v2.batch import pad_entities, stack_masks, stack_obs, static_grid
-from training.v2.model import HEADS, Agent, teacher_actions, wire_actions
+from training.v2.model import HEADS, Agent, load_weights, opp_targets, teacher_actions, wire_actions
 
 REPO = Path(__file__).resolve().parents[2]
 VALUE_HEADS = ("win", "shaped", "aux")
@@ -39,9 +44,13 @@ def parse() -> argparse.Namespace:
     ap.add_argument("--rollout", type=int, default=128)
     ap.add_argument("--minutes", type=float, default=5.0, help="wall-clock budget (0 = none)")
     ap.add_argument("--decisions", type=int, default=0, help="decision budget; schedules then run on decisions, not time (resume continues the count)")
+    ap.add_argument("--stop-decisions", type=int, default=0, help="stop at this many total decisions, while the schedules still run over --decisions (league cycles resume a run in pieces)")
     ap.add_argument("--stop-win-rate", type=float, default=0.0, help="stop when the last 200 episodes reach this win rate (a trigger for a fixed-seed evaluation, not a result)")
     ap.add_argument("--updates", type=int, default=0, help="stop after this many updates (0 = time budget only)")
-    ap.add_argument("--opponents", default="idle", help="comma-separated scripted bots")
+    ap.add_argument("--opponents", default="idle", help="comma-separated scripted bots and/or ckpt:<checkpoint path> (frozen networks)")
+    ap.add_argument("--pfsp", action="store_true", help="draw opponents by (1 - recent win rate)^2, floored at 0.1 (AlphaStar's prioritised sampling)")
+    ap.add_argument("--seq", type=int, default=32, help="LSTM training sequence length in decisions (divides --rollout)")
+    ap.add_argument("--opp-coef", type=float, default=0.5, help="weight of the opponent-model loss")
     ap.add_argument("--maps", default=",".join(S.TRAIN_MAPS))
     ap.add_argument("--max-ticks", type=int, default=12000)
     ap.add_argument("--seed", type=int, default=1)
@@ -81,21 +90,87 @@ def to_t(o: dict[str, np.ndarray], dev) -> dict[str, torch.Tensor]:
     return {k: torch.as_tensor(v, device=dev) for k, v in o.items()}
 
 
+def opp_tag(o: str) -> str:
+    """Short opponent name for logs: bot name, or <run>/<file> for a checkpoint."""
+    if o.startswith("ckpt:"):
+        p = Path(o[5:])
+        return f"{p.parent.name}/{p.stem}"
+    return o
+
+
 class Slots:
-    """Per-slot episode config draws."""
+    """Per-slot episode config draws. With `pfsp`, opponents are weighted by (1 - p)^2 (floor 0.1),
+    p = the learner's win rate over its last 50 games against them (0.5 until 10 games)."""
 
     def __init__(self, a: argparse.Namespace, rng: random.Random):
         self.maps, self.opps, self.rng = a.maps.split(","), a.opponents.split(","), rng
-        self.imitate = a.imitate
+        self.imitate, self.pfsp = a.imitate, a.pfsp
+        self.hist = {o: deque(maxlen=50) for o in self.opps}
+        assert not (self.imitate and any(o.startswith("ckpt:") for o in self.opps)), "imitation needs scripted teachers"
+
+    def record(self, opp: str, won: bool) -> None:
+        if opp in self.hist:
+            self.hist[opp].append(float(won))
+
+    def win_rate(self, o: str) -> float:
+        h = self.hist[o]
+        return float(np.mean(h)) if len(h) >= 10 else 0.5
+
+    def weights(self) -> list[float]:
+        return [max((1 - self.win_rate(o)) ** 2, 0.1) for o in self.opps]
 
     def draw(self) -> dict:
+        """Returns the slot config, plus the Python-side key `opp` (the opponent's name in --opponents)."""
         if self.imitate:  # scripted v scripted, both seats teaching
             return {"seed": self.rng.randrange(1 << 30), "map": self.rng.choice(self.maps),
-                    "blue": f"teach:{self.rng.choice(self.opps)}", "red": f"teach:{self.rng.choice(self.opps)}"}
-        learner_blue = self.rng.random() < 0.5
-        opp = f"bot:{self.rng.choice(self.opps)}"
-        return {"seed": self.rng.randrange(1 << 30), "map": self.rng.choice(self.maps),
-                "blue": "policy" if learner_blue else opp, "red": opp if learner_blue else "policy"}
+                    "blue": f"teach:{self.rng.choice(self.opps)}", "red": f"teach:{self.rng.choice(self.opps)}", "opp": "teach"}
+        learner = "blue" if self.rng.random() < 0.5 else "red"
+        o = self.rng.choices(self.opps, weights=self.weights())[0] if self.pfsp else self.rng.choice(self.opps)
+        cfg = {"seed": self.rng.randrange(1 << 30), "map": self.rng.choice(self.maps), "opp": o}
+        if o.startswith("ckpt:"):  # both seats are networks; only the learner's seat trains
+            cfg.update(blue="policy", red="policy", learner=[learner])
+        else:
+            other = "red" if learner == "blue" else "blue"
+            cfg.update({learner: "policy", other: f"bot:{o}", "learner": [learner]})
+        return cfg
+
+
+class Frozen:
+    """Frozen checkpoint opponents: one network per path, LSTM state per slot."""
+
+    def __init__(self, paths: list[str], n_slots: int, dev):
+        self.dev, self.nets = dev, {}
+        for p in paths:
+            net = Agent().to(dev)
+            load_weights(net, torch.load(p, map_location=dev)["model"])
+            net.eval()
+            self.nets[p] = net
+        d = Agent().lstm.hidden_size
+        self.h = torch.zeros(n_slots, d, device=dev)
+        self.c = torch.zeros(n_slots, d, device=dev)
+
+    def reset(self, slot: int) -> None:
+        self.h[slot] = 0
+        self.c[slot] = 0
+
+    @torch.no_grad()
+    def act(self, streams, statics, path_of_slot) -> dict[int, dict]:
+        """streams: list of (stream index, Stream) for frozen seats → {stream index: wire action}."""
+        acts = {}
+        by = defaultdict(list)
+        for j, s in streams:
+            by[path_of_slot[s.slot]].append((j, s))
+        for path, group in by.items():
+            net = self.nets[path]
+            ss = [s for _, s in group]
+            sl = torch.as_tensor([s.slot for s in ss], device=self.dev)
+            obs = stack_obs([s.obs for s in ss], [statics[s.slot] for s in ss], [None] * len(ss))
+            h, E, valid, (hs, cs), _ = net.trunk(to_t(obs, self.dev), (self.h[sl], self.c[sl]))
+            out, _, _, _ = net.policy(h, E, valid, masks=to_t(stack_masks([s.masks for s in ss]), self.dev))
+            self.h[sl], self.c[sl] = hs, cs
+            for (j, _), w in zip(group, wire_actions(out)):
+                acts[j] = w
+        return acts
 
 
 def main() -> None:
@@ -107,6 +182,7 @@ def main() -> None:
     gamma, lam = floats(a.gamma), floats(a.lam)
     mix0, mix1 = floats(a.mix_start), floats(a.mix_end)
     shaped_w = floats(a.shaped_w)
+    assert a.rollout % a.seq == 0, "--seq must divide --rollout"
 
     run_dir = REPO / "runs" / a.run
     ck_dir = REPO / "checkpoints" / "v2" / a.run
@@ -119,7 +195,7 @@ def main() -> None:
     update0, decisions0 = 0, 0
     ref = None
     if a.init:
-        agent.load_state_dict(torch.load(a.init, map_location=dev)["model"])
+        load_weights(agent, torch.load(a.init, map_location=dev)["model"])
         if a.kl_coef > 0:
             ref = Agent().to(dev)
             ref.load_state_dict(agent.state_dict())
@@ -136,16 +212,28 @@ def main() -> None:
 
     slots = Slots(a, rng)
     n_slots = a.procs * a.slots
-    env = VecEnvV2([slots.draw() for _ in range(n_slots)], n_procs=a.procs, max_ticks=a.max_ticks)
+    draws = [slots.draw() for _ in range(n_slots)]
+    cur_opp = [d.pop("opp") for d in draws]           # opponent of each slot's current episode
+    pending_opp: list[str | None] = [None] * n_slots  # ... of its next episode (configured, not started)
+    frozen = Frozen([o[5:] for o in slots.opps if o.startswith("ckpt:")], n_slots, dev)
+    env = VecEnvV2(draws, n_procs=a.procs, max_ticks=a.max_ticks)
     cur = env.reset()
     S.check_sizes(cur[0].obs, cur[0].masks)
     statics = [static_grid(s) for s in env.static]
-    B = len(cur)
     want = "teach" if a.imitate else "learner"
-    assert B == n_slots * (2 if a.imitate else 1) and all(s.role == want for s in cur), f"unexpected streams for this mode (want {want})"
+    lrn = [j for j, s in enumerate(cur) if s.role == want]
+    B = len(lrn)
+    assert B == n_slots * (2 if a.imitate else 1), f"unexpected streams for this mode (want {want})"
+    row_key = [(cur[j].slot, a.imitate and cur[j].side) for j in lrn]  # buffer row b ↔ slot (and side when imitating)
+    b_of_slot = defaultdict(list)  # learner buffer rows of each slot (stable: one per slot, or two when imitating)
+    for b, j in enumerate(lrn):
+        b_of_slot[cur[j].slot].append(b)
     ep_steps = np.zeros(B, dtype=np.int64)
     ep_train = np.zeros((B, 6), dtype=np.int64)
     ep_ret = np.zeros((B, 3))
+    hc = agent.zero_state(B, dev)
+    hc_ref = agent.zero_state(B, dev)
+    first = np.ones(B, dtype=bool)  # the next observation starts an episode
 
     recent = deque(maxlen=200)
     t_start = time.time()
@@ -154,7 +242,8 @@ def main() -> None:
     budget_s = a.minutes * 60
     while True:
         elapsed = time.time() - t_start
-        if (a.minutes and elapsed >= budget_s) or (a.updates and update - update0 >= a.updates) or (a.decisions and total_decisions >= a.decisions):
+        if (a.minutes and elapsed >= budget_s) or (a.updates and update - update0 >= a.updates) or (a.decisions and total_decisions >= a.decisions) \
+                or (a.stop_decisions and total_decisions >= a.stop_decisions):
             break
         if a.stop_win_rate and len(recent) == recent.maxlen and np.mean([e["win"] for e in recent]) >= a.stop_win_rate:
             print(f"stop: last {len(recent)} episodes at or above {a.stop_win_rate} wins", flush=True)
@@ -172,31 +261,48 @@ def main() -> None:
         kl_coef = a.kl_coef * max(0.0, 1.0 - frac / a.kl_anneal) if ref is not None else 0.0
 
         # ── rollout ──────────────────────────────────────────────────────────
-        T = a.rollout
+        T, L = a.rollout, a.seq
         if not (a.overfit and update > update0):  # overfit probe: train on the first rollout only
             store = defaultdict(list)
             rew = np.zeros((T, B, 3), dtype=np.float32)
             ended = np.zeros((T, B), dtype=bool)
+            firsts = np.zeros((T, B), dtype=bool)
             boot = np.zeros((T, B, 3), dtype=np.float32)
             t_roll = time.time()
             t_env = 0.0
             agent.eval()
             for t in range(T):
-                obs = stack_obs([s.obs for s in cur], [statics[s.slot] for s in cur], [s.critic for s in cur])
-                masks = stack_masks([s.masks for s in cur])
+                ls = [cur[j] for j in lrn]
+                obs = stack_obs([s.obs for s in ls], [statics[s.slot] for s in ls], [s.critic for s in ls])
+                masks = stack_masks([s.masks for s in ls])
                 if a.imitate:  # teachers carry their template's z; evaluation plays z = 0, so half the samples see 0
                     obs["z"][np.random.rand(B) < 0.5] = 0
+                firsts[t] = first
+                keep = torch.as_tensor(~first, device=dev).float().unsqueeze(1)
+                hc = (hc[0] * keep, hc[1] * keep)
+                hc_ref = (hc_ref[0] * keep, hc_ref[1] * keep)
+                if t % L == 0:
+                    store["h0"].append(hc[0].cpu().numpy())
+                    store["c0"].append(hc[1].cpu().numpy())
                 with torch.no_grad():
                     ot = to_t(obs, dev)
-                    h, E, valid = agent.trunk(ot)
-                    given = teacher_actions([s.teacher for s in cur], dev) if a.imitate else None
+                    h, E, valid, hc, _ = agent.trunk(ot, hc)
+                    given = teacher_actions([s.teacher for s in ls], dev) if a.imitate else None
                     out, rows, lp, _ = agent.policy(h, E, valid, masks=to_t(masks, dev), given=given)
                     v = agent.values(h, ot["critic"])
                     if ref is not None:
-                        hr, Er, vr = ref.trunk(ot)
+                        hr, Er, vr, hc_ref, _ = ref.trunk(ot, hc_ref)
                         store["ref_lp"].append(ref.policy(hr, Er, vr, rows=rows, given=out)[2].cpu().numpy())
-                acts = [None] * B if a.imitate else wire_actions(out)
+                acts = [None] * len(cur)
+                if not a.imitate:
+                    for j, w in zip(lrn, wire_actions(out)):
+                        acts[j] = w
+                    fz = [(j, s) for j, s in enumerate(cur) if s.role == "frozen"]
+                    if fz:
+                        for j, w in frozen.act(fz, statics, [o[5:] if o.startswith("ckpt:") else None for o in cur_opp]).items():
+                            acts[j] = w
                 store["obs"].append({k: (x.astype(np.float16) if k in ("grid", "ent") else x) for k, x in obs.items()})
+                store["opp"].append(opp_targets([s.opp_labels for s in ls]))
                 store["rows"].append({k: r.cpu().numpy() for k, r in rows.items()})
                 store["act"].append({k: out[k].cpu().numpy() for k in HEADS})
                 store["lp"].append(lp.cpu().numpy())
@@ -207,7 +313,8 @@ def main() -> None:
                 total_decisions += B
 
                 term_idx = []
-                for j, tr in enumerate(res.transitions):
+                trs = [res.transitions[j] for j in lrn]
+                for j, tr in enumerate(trs):
                     r = tr.reward
                     minutes = ep_steps[j] * S.DECISION_TICKS / S.TICKS_PER_MINUTE
                     sh = np.asarray([r["shaped"][k] for k in S.SHAPED_KEYS], dtype=np.float32)
@@ -223,30 +330,45 @@ def main() -> None:
                             term_idx.append(j)
                         info = tr.info
                         won = info["winner"] == tr.side
+                        opp = cur_opp[tr.slot] if not a.imitate else info["episode"]["red" if tr.side == "blue" else "blue"]
+                        slots.record(opp, won)
                         recent.append({"win": won, "loss": info["winner"] not in (None, tr.side), "trunc": tr.truncated,
-                                       "winType": info.get("winType"), "ticks": info["ticks"],
-                                       "opp": info["episode"]["red" if tr.side == "blue" else "blue"],
+                                       "winType": info.get("winType"), "ticks": info["ticks"], "opp": opp_tag(opp),
                                        "map": info["episode"]["map"], "side": tr.side, "ret": ep_ret[j].copy(),
                                        "train": ep_train[j].copy()})
                         ep_steps[j] = 0
                         ep_train[j] = 0
                         ep_ret[j] = 0
-                if term_idx:  # truncation: bootstrap from the final observation (old episode's static grid)
-                    tobs = stack_obs([res.transitions[j].terminal["obs"] for j in term_idx],
-                                     [statics[res.transitions[j].slot] for j in term_idx],
-                                     [res.transitions[j].terminal.get("critic") for j in term_idx])
+                if term_idx:  # truncation: bootstrap from the final observation (old episode's static grid and memory)
+                    tobs = stack_obs([trs[j].terminal["obs"] for j in term_idx],
+                                     [statics[trs[j].slot] for j in term_idx],
+                                     [trs[j].terminal.get("critic") for j in term_idx])
+                    ti = torch.as_tensor(term_idx, device=dev)
                     with torch.no_grad():
                         ot = to_t(tobs, dev)
-                        hb, _, _ = agent.trunk(ot)
+                        hb, _, _, _, _ = agent.trunk(ot, (hc[0][ti], hc[1][ti]))
                         boot[t, term_idx] = agent.values(hb, ot["critic"]).cpu().numpy()
+                first[:] = False
                 for i in res.new_episodes:
                     statics[i] = static_grid(env.static[i])
-                    env.configure(i, **slots.draw())
+                    for b in b_of_slot[i]:
+                        first[b] = True
+                    frozen.reset(i)
+                    if pending_opp[i] is not None:
+                        cur_opp[i] = pending_opp[i]
+                    d = slots.draw()
+                    pending_opp[i] = d.pop("opp")
+                    env.configure(i, **d)
                 cur = res.current
+                lrn = [j for j, s in enumerate(cur) if s.role == want]
+                assert [(cur[j].slot, a.imitate and cur[j].side) for j in lrn] == row_key, "learner stream layout changed"
             with torch.no_grad():
-                obs = stack_obs([s.obs for s in cur], [statics[s.slot] for s in cur], [s.critic for s in cur])
+                ls = [cur[j] for j in lrn]
+                obs = stack_obs([s.obs for s in ls], [statics[s.slot] for s in ls], [s.critic for s in ls])
                 ot = to_t(obs, dev)
-                last_v = agent.values(agent.trunk(ot)[0], ot["critic"]).cpu().numpy()
+                keep = torch.as_tensor(~first, device=dev).float().unsqueeze(1)
+                hl, _, _, _, _ = agent.trunk(ot, (hc[0] * keep, hc[1] * keep))
+                last_v = agent.values(hl, ot["critic"]).cpu().numpy()
             roll_s = time.time() - t_roll
 
             # ── GAE per value head ───────────────────────────────────────────────
@@ -262,7 +384,7 @@ def main() -> None:
                 adv[t] = last
             ret = adv + vals
 
-            # ── flatten ──────────────────────────────────────────────────────────
+            # ── flatten (time-major: row t * B + b) ──────────────────────────────
             N = T * B
             flat = {}
             for k in store["obs"][0]:
@@ -274,28 +396,35 @@ def main() -> None:
             f_act = {k: np.concatenate([x[k] for x in store["act"]]) for k in HEADS}
             f_lp = np.concatenate(store["lp"])
             f_ref = np.concatenate(store["ref_lp"]) if ref is not None else None
+            f_opp = np.concatenate(store["opp"])
+            f_first = firsts.reshape(N)
+            h0, c0 = np.stack(store["h0"]), np.stack(store["c0"])  # (T / L, B, d)
             f_adv = adv.reshape(N, 3)
             f_ret = ret.reshape(N, 3)
             f_v = vals.reshape(N, 3)
             nadv = (f_adv - f_adv.mean(0)) / (f_adv.std(0) + 1e-8)
             mixed = (nadv * mix).sum(1)
 
-        # ── PPO update ───────────────────────────────────────────────────────
+        # ── PPO update over sequences (chunk c, stream b) ────────────────────
         agent.train()
         t_upd = time.time()
         logs = defaultdict(list)
-        mb = N // a.minibatches
+        n_seq = (T // L) * B
+        mb = n_seq // a.minibatches
         for _ in range(a.epochs):
-            perm = np.random.permutation(N)
+            perm = np.random.permutation(n_seq)
             for m in range(a.minibatches):
-                idx = perm[m * mb:(m + 1) * mb]
+                sq = perm[m * mb:(m + 1) * mb]
+                ch, bb = sq // B, sq % B
+                idx = (((ch * L)[None, :] + np.arange(L)[:, None]) * B + bb[None, :]).reshape(-1)  # time-major
                 o = {k: torch.as_tensor(flat[k][idx], device=dev) for k in flat}
                 o["grid"], o["ent"] = o["grid"].float(), o["ent"].float()
                 n_used = int(o["ent_n"].max().clamp(min=1))
                 o["ent"] = o["ent"][:, :n_used]
                 rows_t = {k: torch.as_tensor(f_rows[k][idx], device=dev) for k in f_rows}
                 act_t = {k: torch.as_tensor(f_act[k][idx], device=dev) for k in HEADS}
-                h, E, valid = agent.trunk(o)
+                st = (torch.as_tensor(h0[ch, bb], device=dev), torch.as_tensor(c0[ch, bb], device=dev))
+                h, E, valid, opp_logits = agent.trunk_seq(o, st, torch.as_tensor(f_first[idx], device=dev), L)
                 head_lp = {}
                 po, _, lp, ent = agent.policy(h, E, valid, rows=rows_t, given=act_t, head_lp=head_lp)
                 v = agent.values(h, o["critic"])
@@ -311,7 +440,8 @@ def main() -> None:
                 vc = V0 + (v - V0).clamp(-a.clip, a.clip)
                 vl = torch.max((v - R) ** 2, (vc - R) ** 2).mean(0)  # per head
                 ent_total = sum(e.mean() for e in ent.values())
-                loss = pg + a.vf * vl.sum() - (0.0 if a.imitate else ent_coef) * ent_total
+                ol = agent.opp_loss(opp_logits, torch.as_tensor(f_opp[idx], device=dev))
+                loss = pg + a.vf * vl.sum() - (0.0 if a.imitate else ent_coef) * ent_total + a.opp_coef * ol
                 if ref is not None:  # k3 estimator of KL(policy || reference) on the taken actions
                     logr = (torch.as_tensor(f_ref[idx], device=dev) - lp).clamp(max=20.0)
                     kl_ref = (logr.exp() - 1 - logr).mean()
@@ -325,6 +455,7 @@ def main() -> None:
                     raise RuntimeError(f"non-finite loss at update {update}")
                 with torch.no_grad():
                     logs["loss/policy"].append(pg.item())
+                    logs["loss/opp_model"].append(ol.item())
                     for i, k in enumerate(VALUE_HEADS):
                         logs[f"loss/value_{k}"].append(vl[i].item())
                     logs["loss/total"].append(loss.item())
@@ -377,6 +508,9 @@ def main() -> None:
                 by_opp[e["opp"]].append(e["win"])
             for o_, ws in by_opp.items():
                 writer.add_scalar(f"win_rate/{o_.replace(':', '_')}", np.mean(ws), step)
+            if a.pfsp:
+                for o_, w_ in zip(slots.opps, slots.weights()):
+                    writer.add_scalar(f"pfsp/weight_{opp_tag(o_).replace(':', '_')}", w_, step)
         wr = np.mean([e["win"] for e in recent]) if recent else float("nan")
         print(f"update {update} decisions {total_decisions} | {T * B / roll_s:.0f} dec/s (env {t_env / roll_s:.0%}) "
               f"update {upd_s:.1f}s | loss {np.mean(logs['loss/total']):.4f} pg {np.mean(logs['loss/policy']):.4f} "

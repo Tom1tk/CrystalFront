@@ -32,8 +32,11 @@ PTR_ORDERS = (6, 7, 11)        # focus, heal, cover
 HELD_OUT_MAPS = ("prism-ridge", "duskvale")
 TRAIN_MAPS = ("shardfall", "basalt-run", "twin-spires", "hollow-crown", "glimmerfen", "saltmarsh", "ironreed", "cinder-flats")
 
-# Opponent-model labels (observation.ts oppLabels)
-OPP_UNITS, OPP_BUILDINGS = 6, 4
+# Opponent-model labels (observation.ts oppLabels): counts binned 0, 1, 2, 3-4, 5-8, 9+;
+# army location as the nearest of the 37 anchor targets, or 37 = none seen.
+OPP_UNITS, OPP_BUILDINGS = 6, 5
+OPP_BINS = 6
+N_ANCHORS = 37
 
 # Reward components (headless/src/v2/rewards.ts)
 SHAPED_KEYS = ("res", "army", "dmg", "ctrl")
