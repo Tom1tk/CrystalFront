@@ -1,0 +1,125 @@
+100/8000
+200/8000
+300/8000
+400/8000
+500/8000
+600/8000
+700/8000
+800/8000
+900/8000
+1000/8000
+1100/8000
+1200/8000
+1300/8000
+1400/8000
+1500/8000
+1600/8000
+1700/8000
+1800/8000
+1900/8000
+2000/8000
+2100/8000
+2200/8000
+2300/8000
+2400/8000
+2500/8000
+2600/8000
+2700/8000
+2800/8000
+2900/8000
+3000/8000
+3100/8000
+3200/8000
+3300/8000
+3400/8000
+3500/8000
+3600/8000
+3700/8000
+3800/8000
+3900/8000
+4000/8000
+4100/8000
+4200/8000
+4300/8000
+4400/8000
+4500/8000
+4600/8000
+4700/8000
+4800/8000
+4900/8000
+5000/8000
+5100/8000
+5200/8000
+5300/8000
+5400/8000
+5500/8000
+5600/8000
+5700/8000
+5800/8000
+5900/8000
+6000/8000
+6100/8000
+6200/8000
+6300/8000
+6400/8000
+6500/8000
+6600/8000
+6700/8000
+6800/8000
+6900/8000
+7000/8000
+7100/8000
+7200/8000
+7300/8000
+7400/8000
+7500/8000
+7600/8000
+7700/8000
+7800/8000
+7900/8000
+8000/8000
+8000 matches, 10 maps, 2 seeds per side, 5072s
+
+Strategy matrix (row's score vs column, both sides, all maps):
+                              rush1            rush2            rush3           turtle            macro            heavy           hidden   sw_rush_turtle sw_macro_bruiser    sw_fake_brush   sw_turtle_grab            swarm       swarm_mass       swarm_tide          phalanx          gunline         outrider        rush_post         backdoor            siege
+rush1                             -              75%              13%               3%              20%               0%              59%              30%               0%              51%              10%               0%               0%              10%               8%               5%               0%               5%               0%               5%
+rush2                           25%                -               8%               5%              18%               0%              30%               0%               3%              30%              10%               3%               9%              10%               3%               5%               0%              10%               5%               5%
+rush3                           88%              93%                -              18%              35%               0%              68%              33%              13%              95%              15%              13%              20%              15%              45%               5%              15%              50%              23%              13%
+turtle                          98%              95%              83%                -              85%              95%             100%              78%             100%              98%              23%              40%              68%              57%              60%              15%              35%              98%              13%              43%
+macro                           80%              83%              65%              15%                -              53%              80%              60%              65%              80%              15%              30%              53%              15%              55%               5%              28%              73%               8%               5%
+heavy                          100%             100%             100%               5%              48%                -              95%              93%              68%             100%              10%              25%              93%              45%               8%               3%              30%             100%              10%               5%
+hidden                          41%              70%              33%               0%              20%               5%                -              20%              13%              73%              10%               0%               3%               0%               5%               3%               0%              25%               3%               0%
+sw_rush_turtle                  70%             100%              68%              23%              40%               8%              80%                -              70%              83%              13%               0%              15%               0%              38%              18%               0%              80%               0%               5%
+sw_macro_bruiser               100%              98%              88%               0%              35%              33%              88%              30%                -              93%              14%               5%              23%               0%              15%               0%              10%              83%              20%               1%
+sw_fake_brush                   49%              70%               5%               3%              20%               0%              28%              18%               8%                -              24%               0%               0%               0%              18%               0%               0%              13%              20%               8%
+sw_turtle_grab                  90%              90%              85%              78%              85%              90%              90%              88%              86%              76%                -              38%              73%              35%              80%              57%              25%              84%              10%              73%
+swarm                          100%              98%              88%              60%              70%              75%             100%             100%              95%             100%              63%                -             100%              70%             100%              90%              55%              98%              35%              70%
+swarm_mass                     100%              91%              80%              33%              48%               8%              98%              85%              78%             100%              28%               0%                -               6%              98%              75%              30%              85%              53%              33%
+swarm_tide                      90%              90%              85%              43%              85%              55%             100%             100%             100%             100%              65%              30%              94%                -             100%              85%              30%              83%              70%              63%
+phalanx                         93%              98%              55%              40%              45%              93%              95%              63%              85%              83%              20%               0%               3%               0%                -              35%               0%              70%               0%              25%
+gunline                         95%              95%              95%              85%              95%              98%              98%              83%             100%             100%              43%              10%              25%              15%              65%                -              13%              95%               8%              50%
+outrider                       100%             100%              85%              65%              73%              70%             100%             100%              90%             100%              75%              45%              70%              70%             100%              88%                -              88%              50%              93%
+rush_post                       95%              90%              50%               3%              28%               0%              75%              20%              18%              88%              16%               3%              15%              18%              30%               5%              13%                -              23%              15%
+backdoor                       100%              95%              78%              88%              93%              90%              98%             100%              80%              80%              90%              65%              48%              30%             100%              93%              50%              78%                -              60%
+siege                           95%              95%              88%              57%              95%              95%             100%              95%              99%              93%              28%              30%              68%              38%              75%              50%               8%              85%              40%                -
+
+Mirror matches, blue score per map (all bots):
+  shardfall      0.49   (v2:rush1 0.50  v2:rush2 0.50  v2:rush3 0.50  v2:turtle 0.50  v2:macro 0.25  v2:heavy 0.50  v2:hidden 0.50  v2:sw_rush_turtle 0.50  v2:sw_macro_bruiser 0.50  v2:sw_fake_brush 0.50  v2:sw_turtle_grab 0.50  v2:swarm 0.50  v2:swarm_mass 0.50  v2:swarm_tide 0.75  v2:phalanx 0.50  v2:gunline 0.50  v2:outrider 0.50  v2:rush_post 0.25  v2:backdoor 0.50  v2:siege 0.50)
+  basalt-run     0.49   (v2:rush1 0.50  v2:rush2 0.50  v2:rush3 0.50  v2:turtle 0.50  v2:macro 0.50  v2:heavy 0.50  v2:hidden 0.50  v2:sw_rush_turtle 0.50  v2:sw_macro_bruiser 0.50  v2:sw_fake_brush 0.50  v2:sw_turtle_grab 0.50  v2:swarm 0.50  v2:swarm_mass 0.50  v2:swarm_tide 0.50  v2:phalanx 0.50  v2:gunline 0.50  v2:outrider 0.50  v2:rush_post 0.50  v2:backdoor 0.25  v2:siege 0.50)
+  twin-spires    0.49   (v2:rush1 0.50  v2:rush2 0.50  v2:rush3 0.50  v2:turtle 0.50  v2:macro 0.50  v2:heavy 0.50  v2:hidden 0.50  v2:sw_rush_turtle 0.50  v2:sw_macro_bruiser 0.50  v2:sw_fake_brush 0.50  v2:sw_turtle_grab 0.50  v2:swarm 0.50  v2:swarm_mass 0.50  v2:swarm_tide 0.25  v2:phalanx 0.50  v2:gunline 0.50  v2:outrider 0.50  v2:rush_post 0.50  v2:backdoor 0.50  v2:siege 0.50)
+  hollow-crown   0.49   (v2:rush1 0.50  v2:rush2 0.50  v2:rush3 0.50  v2:turtle 0.50  v2:macro 0.50  v2:heavy 0.50  v2:hidden 0.50  v2:sw_rush_turtle 0.50  v2:sw_macro_bruiser 0.50  v2:sw_fake_brush 0.50  v2:sw_turtle_grab 0.50  v2:swarm 0.50  v2:swarm_mass 0.50  v2:swarm_tide 0.50  v2:phalanx 0.50  v2:gunline 0.50  v2:outrider 0.50  v2:rush_post 0.50  v2:backdoor 0.25  v2:siege 0.50)
+  prism-ridge    0.50   (v2:rush1 0.50  v2:rush2 0.50  v2:rush3 0.50  v2:turtle 0.50  v2:macro 0.50  v2:heavy 0.50  v2:hidden 0.50  v2:sw_rush_turtle 0.50  v2:sw_macro_bruiser 0.50  v2:sw_fake_brush 0.50  v2:sw_turtle_grab 0.50  v2:swarm 0.50  v2:swarm_mass 0.50  v2:swarm_tide 0.50  v2:phalanx 0.50  v2:gunline 0.50  v2:outrider 0.50  v2:rush_post 0.50  v2:backdoor 0.50  v2:siege 0.50)
+  glimmerfen     0.50   (v2:rush1 0.50  v2:rush2 0.50  v2:rush3 0.50  v2:turtle 0.50  v2:macro 0.50  v2:heavy 0.50  v2:hidden 1.00  v2:sw_rush_turtle 0.50  v2:sw_macro_bruiser 0.50  v2:sw_fake_brush 0.00  v2:sw_turtle_grab 0.50  v2:swarm 0.50  v2:swarm_mass 0.50  v2:swarm_tide 0.50  v2:phalanx 0.50  v2:gunline 0.50  v2:outrider 0.50  v2:rush_post 0.50  v2:backdoor 0.50  v2:siege 0.50)
+  saltmarsh      0.50   (v2:rush1 0.50  v2:rush2 0.50  v2:rush3 0.50  v2:turtle 0.50  v2:macro 0.50  v2:heavy 0.50  v2:hidden 0.50  v2:sw_rush_turtle 0.50  v2:sw_macro_bruiser 0.50  v2:sw_fake_brush 0.50  v2:sw_turtle_grab 0.50  v2:swarm 0.50  v2:swarm_mass 0.50  v2:swarm_tide 0.50  v2:phalanx 0.50  v2:gunline 0.50  v2:outrider 0.50  v2:rush_post 0.50  v2:backdoor 0.50  v2:siege 0.50)
+  ironreed       0.50   (v2:rush1 0.50  v2:rush2 0.50  v2:rush3 0.50  v2:turtle 0.50  v2:macro 0.50  v2:heavy 0.50  v2:hidden 0.50  v2:sw_rush_turtle 0.50  v2:sw_macro_bruiser 0.50  v2:sw_fake_brush 0.50  v2:sw_turtle_grab 0.50  v2:swarm 0.50  v2:swarm_mass 0.50  v2:swarm_tide 0.50  v2:phalanx 0.50  v2:gunline 0.50  v2:outrider 0.50  v2:rush_post 0.50  v2:backdoor 0.50  v2:siege 0.50)
+  duskvale       0.50   (v2:rush1 0.50  v2:rush2 0.50  v2:rush3 0.50  v2:turtle 0.50  v2:macro 0.50  v2:heavy 0.50  v2:hidden 0.50  v2:sw_rush_turtle 0.50  v2:sw_macro_bruiser 0.50  v2:sw_fake_brush 0.50  v2:sw_turtle_grab 0.50  v2:swarm 0.50  v2:swarm_mass 0.50  v2:swarm_tide 0.50  v2:phalanx 0.50  v2:gunline 0.50  v2:outrider 0.50  v2:rush_post 0.50  v2:backdoor 0.50  v2:siege 0.50)
+  cinder-flats   0.50   (v2:rush1 0.50  v2:rush2 0.50  v2:rush3 0.50  v2:turtle 0.50  v2:macro 0.50  v2:heavy 0.50  v2:hidden 0.50  v2:sw_rush_turtle 0.50  v2:sw_macro_bruiser 0.50  v2:sw_fake_brush 0.50  v2:sw_turtle_grab 0.50  v2:swarm 0.50  v2:swarm_mass 0.50  v2:swarm_tide 0.50  v2:phalanx 0.50  v2:gunline 0.50  v2:outrider 0.50  v2:rush_post 0.50  v2:backdoor 0.50  v2:siege 0.50)
+
+Win types: combat 6419 (80%), timeout 990 (12%), control 591 (7%)
+Average length of decided games: 5440 ticks
+Timeouts per pairing: v2:rush1-v2:rush1 20/20, v2:rush1-v2:rush2 0/20, v2:rush1-v2:rush3 3/20, v2:rush1-v2:turtle 1/20, v2:rush1-v2:macro 8/20, v2:rush1-v2:heavy 0/20, v2:rush1-v2:hidden 2/20, v2:rush1-v2:sw_rush_turtle 2/20, v2:rush1-v2:sw_macro_bruiser 0/20, v2:rush1-v2:sw_fake_brush 11/20, v2:rush1-v2:sw_turtle_grab 0/20, v2:rush1-v2:swarm 0/20, v2:rush1-v2:swarm_mass 0/20, v2:rush1-v2:swarm_tide 2/20, v2:rush1-v2:phalanx 3/20, v2:rush1-v2:gunline 2/20, v2:rush1-v2:outrider 0/20, v2:rush1-v2:rush_post 0/20, v2:rush1-v2:backdoor 0/20, v2:rush1-v2:siege 2/20, v2:rush2-v2:rush1 0/20, v2:rush2-v2:rush2 20/20, v2:rush2-v2:rush3 3/20, v2:rush2-v2:turtle 2/20, v2:rush2-v2:macro 7/20, v2:rush2-v2:heavy 0/20, v2:rush2-v2:hidden 6/20, v2:rush2-v2:sw_rush_turtle 0/20, v2:rush2-v2:sw_macro_bruiser 1/20, v2:rush2-v2:sw_fake_brush 2/20, v2:rush2-v2:sw_turtle_grab 0/20, v2:rush2-v2:swarm 1/20, v2:rush2-v2:swarm_mass 1/20, v2:rush2-v2:swarm_tide 2/20, v2:rush2-v2:phalanx 1/20, v2:rush2-v2:gunline 2/20, v2:rush2-v2:outrider 0/20, v2:rush2-v2:rush_post 4/20, v2:rush2-v2:backdoor 0/20, v2:rush2-v2:siege 2/20, v2:rush3-v2:rush1 3/20, v2:rush3-v2:rush2 3/20, v2:rush3-v2:rush3 20/20, v2:rush3-v2:turtle 3/20, v2:rush3-v2:macro 8/20, v2:rush3-v2:heavy 0/20, v2:rush3-v2:hidden 3/20, v2:rush3-v2:sw_rush_turtle 1/20, v2:rush3-v2:sw_macro_bruiser 1/20, v2:rush3-v2:sw_fake_brush 2/20, v2:rush3-v2:sw_turtle_grab 2/20, v2:rush3-v2:swarm 1/20, v2:rush3-v2:swarm_mass 3/20, v2:rush3-v2:swarm_tide 4/20, v2:rush3-v2:phalanx 6/20, v2:rush3-v2:gunline 0/20, v2:rush3-v2:outrider 2/20, v2:rush3-v2:rush_post 4/20, v2:rush3-v2:backdoor 1/20, v2:rush3-v2:siege 1/20, v2:turtle-v2:rush1 1/20, v2:turtle-v2:rush2 2/20, v2:turtle-v2:rush3 3/20, v2:turtle-v2:turtle 20/20, v2:turtle-v2:macro 4/20, v2:turtle-v2:heavy 0/20, v2:turtle-v2:hidden 0/20, v2:turtle-v2:sw_rush_turtle 3/20, v2:turtle-v2:sw_macro_bruiser 0/20, v2:turtle-v2:sw_fake_brush 1/20, v2:turtle-v2:sw_turtle_grab 5/20, v2:turtle-v2:swarm 0/20, v2:turtle-v2:swarm_mass 5/20, v2:turtle-v2:swarm_tide 1/20, v2:turtle-v2:phalanx 2/20, v2:turtle-v2:gunline 2/20, v2:turtle-v2:outrider 0/20, v2:turtle-v2:rush_post 1/20, v2:turtle-v2:backdoor 1/20, v2:turtle-v2:siege 3/20, v2:macro-v2:rush1 8/20, v2:macro-v2:rush2 7/20, v2:macro-v2:rush3 8/20, v2:macro-v2:turtle 4/20, v2:macro-v2:macro 19/20, v2:macro-v2:heavy 3/20, v2:macro-v2:hidden 6/20, v2:macro-v2:sw_rush_turtle 8/20, v2:macro-v2:sw_macro_bruiser 6/20, v2:macro-v2:sw_fake_brush 6/20, v2:macro-v2:sw_turtle_grab 0/20, v2:macro-v2:swarm 2/20, v2:macro-v2:swarm_mass 3/20, v2:macro-v2:swarm_tide 0/20, v2:macro-v2:phalanx 6/20, v2:macro-v2:gunline 2/20, v2:macro-v2:outrider 1/20, v2:macro-v2:rush_post 7/20, v2:macro-v2:backdoor 1/20, v2:macro-v2:siege 2/20, v2:heavy-v2:rush1 0/20, v2:heavy-v2:rush2 0/20, v2:heavy-v2:rush3 0/20, v2:heavy-v2:turtle 0/20, v2:heavy-v2:macro 3/20, v2:heavy-v2:heavy 20/20, v2:heavy-v2:hidden 0/20, v2:heavy-v2:sw_rush_turtle 1/20, v2:heavy-v2:sw_macro_bruiser 1/20, v2:heavy-v2:sw_fake_brush 0/20, v2:heavy-v2:sw_turtle_grab 0/20, v2:heavy-v2:swarm 0/20, v2:heavy-v2:swarm_mass 1/20, v2:heavy-v2:swarm_tide 0/20, v2:heavy-v2:phalanx 1/20, v2:heavy-v2:gunline 1/20, v2:heavy-v2:outrider 0/20, v2:heavy-v2:rush_post 0/20, v2:heavy-v2:backdoor 0/20, v2:heavy-v2:siege 0/20, v2:hidden-v2:rush1 3/20, v2:hidden-v2:rush2 6/20, v2:hidden-v2:rush3 3/20, v2:hidden-v2:turtle 0/20, v2:hidden-v2:macro 6/20, v2:hidden-v2:heavy 0/20, v2:hidden-v2:hidden 18/20, v2:hidden-v2:sw_rush_turtle 2/20, v2:hidden-v2:sw_macro_bruiser 3/20, v2:hidden-v2:sw_fake_brush 1/20, v2:hidden-v2:sw_turtle_grab 0/20, v2:hidden-v2:swarm 0/20, v2:hidden-v2:swarm_mass 1/20, v2:hidden-v2:swarm_tide 0/20, v2:hidden-v2:phalanx 0/20, v2:hidden-v2:gunline 1/20, v2:hidden-v2:outrider 0/20, v2:hidden-v2:rush_post 4/20, v2:hidden-v2:backdoor 1/20, v2:hidden-v2:siege 0/20, v2:sw_rush_turtle-v2:rush1 2/20, v2:sw_rush_turtle-v2:rush2 0/20, v2:sw_rush_turtle-v2:rush3 1/20, v2:sw_rush_turtle-v2:turtle 3/20, v2:sw_rush_turtle-v2:macro 8/20, v2:sw_rush_turtle-v2:heavy 1/20, v2:sw_rush_turtle-v2:hidden 2/20, v2:sw_rush_turtle-v2:sw_rush_turtle 20/20, v2:sw_rush_turtle-v2:sw_macro_bruiser 2/20, v2:sw_rush_turtle-v2:sw_fake_brush 3/20, v2:sw_rush_turtle-v2:sw_turtle_grab 1/20, v2:sw_rush_turtle-v2:swarm 0/20, v2:sw_rush_turtle-v2:swarm_mass 4/20, v2:sw_rush_turtle-v2:swarm_tide 0/20, v2:sw_rush_turtle-v2:phalanx 5/20, v2:sw_rush_turtle-v2:gunline 3/20, v2:sw_rush_turtle-v2:outrider 0/20, v2:sw_rush_turtle-v2:rush_post 0/20, v2:sw_rush_turtle-v2:backdoor 0/20, v2:sw_rush_turtle-v2:siege 2/20, v2:sw_macro_bruiser-v2:rush1 0/20, v2:sw_macro_bruiser-v2:rush2 1/20, v2:sw_macro_bruiser-v2:rush3 1/20, v2:sw_macro_bruiser-v2:turtle 0/20, v2:sw_macro_bruiser-v2:macro 6/20, v2:sw_macro_bruiser-v2:heavy 1/20, v2:sw_macro_bruiser-v2:hidden 3/20, v2:sw_macro_bruiser-v2:sw_rush_turtle 2/20, v2:sw_macro_bruiser-v2:sw_macro_bruiser 20/20, v2:sw_macro_bruiser-v2:sw_fake_brush 3/20, v2:sw_macro_bruiser-v2:sw_turtle_grab 2/20, v2:sw_macro_bruiser-v2:swarm 0/20, v2:sw_macro_bruiser-v2:swarm_mass 3/20, v2:sw_macro_bruiser-v2:swarm_tide 0/20, v2:sw_macro_bruiser-v2:phalanx 2/20, v2:sw_macro_bruiser-v2:gunline 0/20, v2:sw_macro_bruiser-v2:outrider 0/20, v2:sw_macro_bruiser-v2:rush_post 1/20, v2:sw_macro_bruiser-v2:backdoor 0/20, v2:sw_macro_bruiser-v2:siege 1/20, v2:sw_fake_brush-v2:rush1 12/20, v2:sw_fake_brush-v2:rush2 2/20, v2:sw_fake_brush-v2:rush3 2/20, v2:sw_fake_brush-v2:turtle 1/20, v2:sw_fake_brush-v2:macro 6/20, v2:sw_fake_brush-v2:heavy 0/20, v2:sw_fake_brush-v2:hidden 1/20, v2:sw_fake_brush-v2:sw_rush_turtle 3/20, v2:sw_fake_brush-v2:sw_macro_bruiser 3/20, v2:sw_fake_brush-v2:sw_fake_brush 18/20, v2:sw_fake_brush-v2:sw_turtle_grab 2/20, v2:sw_fake_brush-v2:swarm 0/20, v2:sw_fake_brush-v2:swarm_mass 0/20, v2:sw_fake_brush-v2:swarm_tide 0/20, v2:sw_fake_brush-v2:phalanx 1/20, v2:sw_fake_brush-v2:gunline 0/20, v2:sw_fake_brush-v2:outrider 0/20, v2:sw_fake_brush-v2:rush_post 3/20, v2:sw_fake_brush-v2:backdoor 0/20, v2:sw_fake_brush-v2:siege 1/20, v2:sw_turtle_grab-v2:rush1 0/20, v2:sw_turtle_grab-v2:rush2 0/20, v2:sw_turtle_grab-v2:rush3 2/20, v2:sw_turtle_grab-v2:turtle 5/20, v2:sw_turtle_grab-v2:macro 0/20, v2:sw_turtle_grab-v2:heavy 0/20, v2:sw_turtle_grab-v2:hidden 0/20, v2:sw_turtle_grab-v2:sw_rush_turtle 1/20, v2:sw_turtle_grab-v2:sw_macro_bruiser 1/20, v2:sw_turtle_grab-v2:sw_fake_brush 1/20, v2:sw_turtle_grab-v2:sw_turtle_grab 20/20, v2:sw_turtle_grab-v2:swarm 1/20, v2:sw_turtle_grab-v2:swarm_mass 1/20, v2:sw_turtle_grab-v2:swarm_tide 0/20, v2:sw_turtle_grab-v2:phalanx 2/20, v2:sw_turtle_grab-v2:gunline 1/20, v2:sw_turtle_grab-v2:outrider 0/20, v2:sw_turtle_grab-v2:rush_post 3/20, v2:sw_turtle_grab-v2:backdoor 0/20, v2:sw_turtle_grab-v2:siege 3/20, v2:swarm-v2:rush1 0/20, v2:swarm-v2:rush2 1/20, v2:swarm-v2:rush3 1/20, v2:swarm-v2:turtle 0/20, v2:swarm-v2:macro 2/20, v2:swarm-v2:heavy 0/20, v2:swarm-v2:hidden 0/20, v2:swarm-v2:sw_rush_turtle 0/20, v2:swarm-v2:sw_macro_bruiser 0/20, v2:swarm-v2:sw_fake_brush 0/20, v2:swarm-v2:sw_turtle_grab 1/20, v2:swarm-v2:swarm 20/20, v2:swarm-v2:swarm_mass 0/20, v2:swarm-v2:swarm_tide 0/20, v2:swarm-v2:phalanx 0/20, v2:swarm-v2:gunline 2/20, v2:swarm-v2:outrider 0/20, v2:swarm-v2:rush_post 1/20, v2:swarm-v2:backdoor 0/20, v2:swarm-v2:siege 0/20, v2:swarm_mass-v2:rush1 0/20, v2:swarm_mass-v2:rush2 2/20, v2:swarm_mass-v2:rush3 3/20, v2:swarm_mass-v2:turtle 5/20, v2:swarm_mass-v2:macro 3/20, v2:swarm_mass-v2:heavy 1/20, v2:swarm_mass-v2:hidden 1/20, v2:swarm_mass-v2:sw_rush_turtle 4/20, v2:swarm_mass-v2:sw_macro_bruiser 3/20, v2:swarm_mass-v2:sw_fake_brush 0/20, v2:swarm_mass-v2:sw_turtle_grab 1/20, v2:swarm_mass-v2:swarm 0/20, v2:swarm_mass-v2:swarm_mass 20/20, v2:swarm_mass-v2:swarm_tide 1/20, v2:swarm_mass-v2:phalanx 1/20, v2:swarm_mass-v2:gunline 2/20, v2:swarm_mass-v2:outrider 0/20, v2:swarm_mass-v2:rush_post 2/20, v2:swarm_mass-v2:backdoor 0/20, v2:swarm_mass-v2:siege 3/20, v2:swarm_tide-v2:rush1 2/20, v2:swarm_tide-v2:rush2 2/20, v2:swarm_tide-v2:rush3 4/20, v2:swarm_tide-v2:turtle 1/20, v2:swarm_tide-v2:macro 0/20, v2:swarm_tide-v2:heavy 0/20, v2:swarm_tide-v2:hidden 0/20, v2:swarm_tide-v2:sw_rush_turtle 0/20, v2:swarm_tide-v2:sw_macro_bruiser 0/20, v2:swarm_tide-v2:sw_fake_brush 0/20, v2:swarm_tide-v2:sw_turtle_grab 0/20, v2:swarm_tide-v2:swarm 0/20, v2:swarm_tide-v2:swarm_mass 0/20, v2:swarm_tide-v2:swarm_tide 18/20, v2:swarm_tide-v2:phalanx 0/20, v2:swarm_tide-v2:gunline 0/20, v2:swarm_tide-v2:outrider 0/20, v2:swarm_tide-v2:rush_post 5/20, v2:swarm_tide-v2:backdoor 2/20, v2:swarm_tide-v2:siege 1/20, v2:phalanx-v2:rush1 3/20, v2:phalanx-v2:rush2 1/20, v2:phalanx-v2:rush3 6/20, v2:phalanx-v2:turtle 2/20, v2:phalanx-v2:macro 6/20, v2:phalanx-v2:heavy 1/20, v2:phalanx-v2:hidden 0/20, v2:phalanx-v2:sw_rush_turtle 5/20, v2:phalanx-v2:sw_macro_bruiser 2/20, v2:phalanx-v2:sw_fake_brush 1/20, v2:phalanx-v2:sw_turtle_grab 2/20, v2:phalanx-v2:swarm 0/20, v2:phalanx-v2:swarm_mass 1/20, v2:phalanx-v2:swarm_tide 0/20, v2:phalanx-v2:phalanx 20/20, v2:phalanx-v2:gunline 2/20, v2:phalanx-v2:outrider 0/20, v2:phalanx-v2:rush_post 2/20, v2:phalanx-v2:backdoor 0/20, v2:phalanx-v2:siege 2/20, v2:gunline-v2:rush1 2/20, v2:gunline-v2:rush2 2/20, v2:gunline-v2:rush3 0/20, v2:gunline-v2:turtle 2/20, v2:gunline-v2:macro 2/20, v2:gunline-v2:heavy 1/20, v2:gunline-v2:hidden 1/20, v2:gunline-v2:sw_rush_turtle 3/20, v2:gunline-v2:sw_macro_bruiser 0/20, v2:gunline-v2:sw_fake_brush 0/20, v2:gunline-v2:sw_turtle_grab 1/20, v2:gunline-v2:swarm 2/20, v2:gunline-v2:swarm_mass 2/20, v2:gunline-v2:swarm_tide 0/20, v2:gunline-v2:phalanx 2/20, v2:gunline-v2:gunline 20/20, v2:gunline-v2:outrider 1/20, v2:gunline-v2:rush_post 2/20, v2:gunline-v2:backdoor 1/20, v2:gunline-v2:siege 8/20, v2:outrider-v2:rush1 0/20, v2:outrider-v2:rush2 0/20, v2:outrider-v2:rush3 2/20, v2:outrider-v2:turtle 0/20, v2:outrider-v2:macro 1/20, v2:outrider-v2:heavy 0/20, v2:outrider-v2:hidden 0/20, v2:outrider-v2:sw_rush_turtle 0/20, v2:outrider-v2:sw_macro_bruiser 0/20, v2:outrider-v2:sw_fake_brush 0/20, v2:outrider-v2:sw_turtle_grab 0/20, v2:outrider-v2:swarm 0/20, v2:outrider-v2:swarm_mass 0/20, v2:outrider-v2:swarm_tide 0/20, v2:outrider-v2:phalanx 0/20, v2:outrider-v2:gunline 1/20, v2:outrider-v2:outrider 20/20, v2:outrider-v2:rush_post 1/20, v2:outrider-v2:backdoor 0/20, v2:outrider-v2:siege 1/20, v2:rush_post-v2:rush1 0/20, v2:rush_post-v2:rush2 4/20, v2:rush_post-v2:rush3 4/20, v2:rush_post-v2:turtle 1/20, v2:rush_post-v2:macro 7/20, v2:rush_post-v2:heavy 0/20, v2:rush_post-v2:hidden 4/20, v2:rush_post-v2:sw_rush_turtle 0/20, v2:rush_post-v2:sw_macro_bruiser 1/20, v2:rush_post-v2:sw_fake_brush 3/20, v2:rush_post-v2:sw_turtle_grab 2/20, v2:rush_post-v2:swarm 1/20, v2:rush_post-v2:swarm_mass 2/20, v2:rush_post-v2:swarm_tide 5/20, v2:rush_post-v2:phalanx 2/20, v2:rush_post-v2:gunline 2/20, v2:rush_post-v2:outrider 1/20, v2:rush_post-v2:rush_post 19/20, v2:rush_post-v2:backdoor 1/20, v2:rush_post-v2:siege 2/20, v2:backdoor-v2:rush1 0/20, v2:backdoor-v2:rush2 0/20, v2:backdoor-v2:rush3 1/20, v2:backdoor-v2:turtle 1/20, v2:backdoor-v2:macro 1/20, v2:backdoor-v2:heavy 0/20, v2:backdoor-v2:hidden 1/20, v2:backdoor-v2:sw_rush_turtle 0/20, v2:backdoor-v2:sw_macro_bruiser 0/20, v2:backdoor-v2:sw_fake_brush 0/20, v2:backdoor-v2:sw_turtle_grab 0/20, v2:backdoor-v2:swarm 0/20, v2:backdoor-v2:swarm_mass 0/20, v2:backdoor-v2:swarm_tide 2/20, v2:backdoor-v2:phalanx 0/20, v2:backdoor-v2:gunline 1/20, v2:backdoor-v2:outrider 0/20, v2:backdoor-v2:rush_post 1/20, v2:backdoor-v2:backdoor 12/20, v2:backdoor-v2:siege 0/20, v2:siege-v2:rush1 2/20, v2:siege-v2:rush2 2/20, v2:siege-v2:rush3 1/20, v2:siege-v2:turtle 3/20, v2:siege-v2:macro 2/20, v2:siege-v2:heavy 0/20, v2:siege-v2:hidden 0/20, v2:siege-v2:sw_rush_turtle 2/20, v2:siege-v2:sw_macro_bruiser 0/20, v2:siege-v2:sw_fake_brush 1/20, v2:siege-v2:sw_turtle_grab 3/20, v2:siege-v2:swarm 0/20, v2:siege-v2:swarm_mass 3/20, v2:siege-v2:swarm_tide 1/20, v2:siege-v2:phalanx 2/20, v2:siege-v2:gunline 8/20, v2:siege-v2:outrider 1/20, v2:siege-v2:rush_post 2/20, v2:siege-v2:backdoor 0/20, v2:siege-v2:siege 20/20
+
+G-8 acceptance:
+  [PASS] no strategy wins >70% vs every other
+  [PASS] mirror 50% ± 10% on every map
+  [PASS] timeouts < 15% (12%)
