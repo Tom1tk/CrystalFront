@@ -6,6 +6,13 @@
    "exploiter": "checkpoints/v2/lg1-x1/final.pt",
    "exploiter_win_rate": 0.8125,
    "games": 32
+  },
+  {
+   "cycle": 2,
+   "main": "checkpoints/v2/lg1-main/cycle_2.pt",
+   "exploiter": "checkpoints/v2/lg1-x2/final.pt",
+   "exploiter_win_rate": 0.0625,
+   "games": 32
   }
  ]
 }
