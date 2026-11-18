@@ -742,3 +742,18 @@ League lg1 stopped after cycle 2 on the user's call: the main agent answered its
   At 2 HP/tick swapping a fifth of any army for medics wins by a landslide; at 0.5 medics are a modest edge and the bruiser + gunner mix beats skirmisher + medic (keeps 66–69%). The heal-delay variants (implemented behind a flag for the test, then removed) make medics useless in fights: mid-battle nearly every unit is being hit. User chose 0.5.
 - Golden hashes re-recorded; `tests/index.ts` heal assertion now uses `HEALING.healRatePerTick`.
 
+## 2026-11-18 — Heavy bot: keep together, more gunners, bigger push (v0.8.30-ML)
+
+- Bot code only (`headless/src/v2/scripted.ts`). New opt-in template flag `cohere`: on a push, when the leading quarter of the army is more than 250 px ahead of its middle unit, the army attack-moves to the middle unit's cell until the lead is under 120 px (bruisers at 3.6 px/tick were leaving gunners at 3.0 behind). Set on `heavy` and `heavy_turret`, which also get mix bruiser 3 : gunner 2 : medic 1 (was 3 : medic 2 : gunner 1), 8 workers (was 6), push 16 / regroup 6 (was 10 / 4).
+- Focused runs (heavy v each, both sides, 10 maps × 2 seeds; scratch copy of balance.ts limited to heavy's pairs):
+
+  | heavy v | gunline | swarm | outrider | swarm_tide | macro | phalanx |
+  |---|---|---|---|---|---|---|
+  | before | 3% | 35% | 20% | 40% | 25% | 5% |
+  | cohere | 0% | 75% | 55% | 65% | 53% | 15% |
+  | + mix, 8 workers | 3% | 65% | 73% | 68% | 50% | 28% |
+  | + 2nd foundry (dropped) | 0% | 68% | 55% | 70% | 43% | 20% |
+  | **+ mix, 8 workers, push 16 (shipped)** | 3% | 95% | 73% | 75% | 30% | 35% |
+
+- Gunline still wins. Replay (hollow-crown): armies of similar value (heavy ~15 units, gunline ~20 gunners); heavy keeps trading into gunners holding the choke and gunline snowballs to 50 at 14 min. Matches the fight test: a large pure-gunner army beats an equal-value mix.
+

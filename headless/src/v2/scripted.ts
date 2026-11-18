@@ -127,6 +127,8 @@ export interface Template {
   retreat: number;
   /** Push and regroup sizes count only the main body (units gathered around the army's middle unit), not the whole army. */
   mass?: boolean;
+  /** Keep together on a push: when the leading units get COHERE_FAR ahead of the army's middle unit, the army gathers on it until they are within COHERE_NEAR. */
+  cohere?: boolean;
   /** From this tick on, rebuild the economy to these targets (rushes that did not end the game). */
   late?: { tick: number; workers: number; contested: number };
   /**
@@ -198,20 +200,20 @@ export const TEMPLATES: Record<string, Template> = {
     mix: { skirmisher: 1, gunner: 1 }, push: { tick: 0, size: 8, regroup: 4, targets: ["control", "enemy_nodes"] }, stage: "choke", retreat: 0.3,
   },
   heavy: {
-    z: 9, label: "foundry first, slow unstoppable push", workers: 6, contested: 1, headroom: 3,
+    z: 9, label: "foundry first, slow unstoppable push", workers: 8, contested: 1, headroom: 3,
     builds: [
       { b: "foundry", n: 1, sites: BASE }, { b: "supply_depot", n: 1, sites: POCKETS }, { b: "barracks", n: 1, sites: BASE, army: 3 },
       { b: "supply_depot", n: 2, sites: POCKETS, army: 5 },
     ],
-    mix: { bruiser: 3, medic: 2, gunner: 1 }, push: { tick: 0, size: 10, regroup: 4, targets: ["enemy_base"] }, stage: "base", retreat: 0.35,
+    mix: { bruiser: 3, gunner: 2, medic: 1 }, push: { tick: 0, size: 16, regroup: 6, targets: ["enemy_base"] }, stage: "base", retreat: 0.35, cohere: true,
   },
   heavy_turret: {
-    z: 10, label: "heavy army behind forward turrets", workers: 6, contested: 1, headroom: 3,
+    z: 10, label: "heavy army behind forward turrets", workers: 8, contested: 1, headroom: 3,
     builds: [
       { b: "foundry", n: 1, sites: BASE }, { b: "turret", n: 2, sites: FORWARD }, { b: "supply_depot", n: 1, sites: POCKETS },
       { b: "barracks", n: 1, sites: BASE, army: 4 },
     ],
-    mix: { bruiser: 3, medic: 2, gunner: 1 }, push: { tick: 0, size: 10, regroup: 4, targets: ["enemy_base", "control"] }, stage: "choke", retreat: 0.35,
+    mix: { bruiser: 3, gunner: 2, medic: 1 }, push: { tick: 0, size: 16, regroup: 6, targets: ["enemy_base", "control"] }, stage: "choke", retreat: 0.35, cohere: true,
   },
   hidden: {
     z: 11, label: "mass out of sight, then attack", workers: 6, contested: 0, headroom: 2,
@@ -377,6 +379,8 @@ const O_GUARD = ORDERS.indexOf("guard"), O_FOCUS = ORDERS.indexOf("focus"), O_HE
 const MICRO_RADIUS = 300;
 /** Units this close to the army's middle unit count as its main body (templates with `mass`). */
 const MASS_RADIUS = 400;
+/** `cohere` templates: gather when the leading quarter of the army is this far ahead of its middle unit (px); go on once within COHERE_NEAR. */
+const COHERE_FAR = 250, COHERE_NEAR = 120;
 /** Scripted bots repair own turrets below this health fraction. */
 const REPAIR_BELOW = 0.75;
 /** A focus order holds the main army order back for this many decisions; micro of one kind repeats at most this often. */
@@ -440,6 +444,8 @@ export class ScriptedV2Bot {
   private lastOrderAt = -99;
   private decisions = 0;
   private viaDone = false;
+  /** `cohere`: grid cell the army is gathering on (−1: not gathering). */
+  private gather = -1;
   /** Control push: best own control progress seen and the tick it was reached. */
   private ctrlBest = 0;
   private ctrlAt = 0;
@@ -708,6 +714,12 @@ export class ScriptedV2Bot {
         return this.issue(m, O_RETREAT, TARGET_NONE, true);
       }
       target = this.pushTarget(obs, v);
+      if (this.t.cohere && v.army.length >= 4) {
+        const ahead = this.lead(v);
+        if (this.gather < 0 && ahead > COHERE_FAR) this.gather = this.cellOf(this.middle(v));
+        else if (this.gather >= 0 && ahead < COHERE_NEAR) this.gather = -1;
+        if (this.gather >= 0 && m.target[O_AM][TARGET_GRID0 + this.gather]) target = TARGET_GRID0 + this.gather;
+      }
       // Escort: hold at the forward point until the outposts stand (or patience, the barracks or the workers run out).
       if (this.t.post?.mode === "escort" && !this.postDone) {
         if (this.postHold < 0) this.postHold = v.tick;
@@ -743,7 +755,14 @@ export class ScriptedV2Bot {
   /** The group the template's own army orders go to: everything, or the gunners when skirmishers fight on their own (backdoor). */
   private get main(): number { return this.t.post?.mode === "backdoor" ? GROUP_GUNNERS : GROUP_ALL; }
 
-  private endPush(): void { this.pushing = false; this.postHold = -1; this.postDone = false; }
+  private endPush(): void { this.pushing = false; this.postHold = -1; this.postDone = false; this.gather = -1; }
+
+  /** `cohere`: how far the leading quarter of the army is ahead of its middle unit, towards the enemy base (px). */
+  private lead(v: View): number {
+    const goal = this.norm(this.ctx.targets[T_ENEMY_BASE]);
+    const d = v.army.map((e) => this.dist({ x: e[F.x], y: e[F.y] }, goal)).sort((a, b) => a - b);
+    return d[Math.floor(d.length / 2)] - d[Math.floor(d.length / 4)];
+  }
 
   /** The worker sent forward (the scout), if it is alive. */
   private forwardWorker(obs: ObsV2): { e: number[]; i: number } | null {
