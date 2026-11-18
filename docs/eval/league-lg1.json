@@ -1,0 +1,11 @@
+{
+ "cycles": [
+  {
+   "cycle": 1,
+   "main": "checkpoints/v2/lg1-main/cycle_1.pt",
+   "exploiter": "checkpoints/v2/lg1-x1/final.pt",
+   "exploiter_win_rate": 0.8125,
+   "games": 32
+  }
+ ]
+}
