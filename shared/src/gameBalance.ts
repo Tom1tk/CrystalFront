@@ -407,7 +407,7 @@ export const HEALING = {
 
 // ====================================================================
 //  COUNTER MODIFIERS (Rock-Paper-Scissors)
-//  skirmisher > gunner > bruiser > skirmisher
+//  skirmisher > gunner; bruiser > skirmisher; gunner and bruiser 1.5× each other (range v melee, 2026-11-18)
 // ====================================================================
 
 // was 2.0/0.5 — 4× swing made fights binary and rush dominant; 1.5/0.75 keeps RPS without instawin
