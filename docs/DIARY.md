@@ -726,3 +726,19 @@ League lg1 stopped after cycle 2 on the user's call: the main agent answered its
   2. **v gunline:** first battle at the centre, heavy loses 980 value to 450. Its bruisers deal 308 damage all game (gunner>bruiser 4,330): 6 bruisers, arriving first because they are faster than their own gunners, walk into 18 massed gunners and die before contact.
   3. **v swarm: medics out-heal bruisers.** Battle at x≈60%: bruisers deal 4,032 damage to skirmishers (about 34 skirmishers' worth of health), but only 12 skirmishers die (heavy loses 2,965 value, swarm 720). Medic heal is 2 HP/tick, continuous; a bruiser on a skirmisher deals 12 × 1.5 / 8 = 2.25 HP/tick, so one medic (cost 60) nearly cancels one bruiser (cost 100). After the reload change a gunner deals 0.8 HP/tick (1.2 v bruisers), so one medic out-heals 2.5 gunners. Skirmisher + medic was already the best mix in the fight test (keeps 62–78% v gunners at every size). Not changed: balance checkpoint, raised with the user.
 
+## 2026-11-18 — Medic heal 2 → 0.5 HP/tick (v0.8.29-ML)
+
+- **Fight test** (`npx tsx` scratch copy of fightTest with HEALING overridden; 20% of the budget on medics v the same budget all in one unit; both charging; winner keeps %, + = the medic side):
+
+  | heal | skirm+medic v skirm | bruiser+medic v bruiser | gunner+medic v gunner | skirm+medic v bruisers |
+  |---|---|---|---|---|
+  | 2 (was) | +80 | +88 | +67 | +47 (beats its counter) |
+  | 1 | +48 | +63 | +27 | −51 |
+  | 0.75 | +30 | +50 | +23 | −59 |
+  | **0.5** | **+22** | **+34** | **+17** | **−61** |
+  | 2, no heal within 1 s of a hit | −25 | −27 | +16 | −66 |
+  | 2, no heal within 3–6 s of a hit | −37 | −23 | 0 to +6 | −66 |
+
+  At 2 HP/tick swapping a fifth of any army for medics wins by a landslide; at 0.5 medics are a modest edge and the bruiser + gunner mix beats skirmisher + medic (keeps 66–69%). The heal-delay variants (implemented behind a flag for the test, then removed) make medics useless in fights: mid-battle nearly every unit is being hit. User chose 0.5.
+- Golden hashes re-recorded; `tests/index.ts` heal assertion now uses `HEALING.healRatePerTick`.
+

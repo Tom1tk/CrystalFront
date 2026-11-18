@@ -398,7 +398,7 @@ export const PLACEMENT = {
 export const HEALING = {
   repairHpPerTick: 2,       // HP restored per tick when repairing
   repairCostPerHp: 0.5,     // resources cost per HP repaired
-  healRatePerTick: 2,        // HP restored per tick by medic
+  healRatePerTick: 0.5,      // HP restored per tick by medic (2026-11-18: was 2 — a medic out-healed a bruiser's damage)
   // REVIVAL_PLAN Task 1.3 lever: passive crystal regen when undefended,
   // gives a defense-only bot (e.g. turtle) a slow path back to full HP
   crystalRegenHpPerTick: 0.05, // HP restored per tick when no enemy is near the crystal
