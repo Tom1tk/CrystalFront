@@ -73,7 +73,7 @@ export const UNIT_DEFS: Record<string, UnitDef> = {
     range: 120,
     speed: 3.0,        // G-1: 1.5 → 3.0 px/tick
     color: "#ddaa44",
-    attackCooldown: 15,
+    attackCooldown: 25,  // 2026-11-18: was 15 — slow reload (flintlock volley): a charge lands before mass fire wins
     visionRange: 270,
   },
   bruiser: {
@@ -411,10 +411,11 @@ export const HEALING = {
 // ====================================================================
 
 // was 2.0/0.5 — 4× swing made fights binary and rush dominant; 1.5/0.75 keeps RPS without instawin
+// 2026-11-18: bruiser v gunner 0.75 → 1.5 — gunners shred armour at range, bruisers crush gunners in melee
 export const COUNTER_MODIFIER: Record<string, Record<string, number>> = {
   skirmisher: { gunner: 1.5, bruiser: 0.75, worker: 1.0, medic: 1.0, bulwark: 1.5 },
   gunner:     { bruiser: 1.5, skirmisher: 0.75, worker: 1.0, medic: 1.0 },
-  bruiser:    { skirmisher: 1.5, gunner: 0.75, worker: 1.0, medic: 1.0, bulwark: 1.5 },
+  bruiser:    { skirmisher: 1.5, gunner: 1.5,   worker: 1.0, medic: 1.0, bulwark: 1.5 },
   medic:      { worker: 1.0, skirmisher: 1.0, gunner: 1.0, bruiser: 1.0 },
   worker:     { worker: 1.0, skirmisher: 1.0, gunner: 1.0, bruiser: 1.0, medic: 1.0 },
 };

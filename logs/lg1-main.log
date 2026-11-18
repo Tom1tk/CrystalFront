@@ -547,3 +547,318 @@ update 543 decisions 10008576 | 478 dec/s (env 77%) update 7.5s | loss 0.2404 pg
 done: 271 updates, 4995072 decisions, 13173s
 params: 4.56 M, device cuda
 update 544 decisions 10027008 | 589 dec/s (env 67%) update 5.7s | loss 0.2954 pg 0.0016 kl 0.0034 | episodes 0 win nan
+update 545 decisions 10045440 | 476 dec/s (env 74%) update 4.3s | loss 0.3546 pg 0.0024 kl 0.0041 | episodes 0 win nan
+update 546 decisions 10063872 | 464 dec/s (env 75%) update 5.2s | loss 0.2760 pg 0.0001 kl 0.0044 | episodes 1 win 0.00
+update 547 decisions 10082304 | 440 dec/s (env 75%) update 6.1s | loss 0.2420 pg 0.0001 kl 0.0039 | episodes 10 win 0.90
+update 548 decisions 10100736 | 455 dec/s (env 74%) update 6.3s | loss 0.2326 pg -0.0000 kl 0.0039 | episodes 54 win 0.94
+update 549 decisions 10119168 | 489 dec/s (env 72%) update 6.9s | loss 0.2435 pg -0.0003 kl 0.0058 | episodes 92 win 0.92
+update 550 decisions 10137600 | 481 dec/s (env 73%) update 7.0s | loss 0.2710 pg -0.0010 kl 0.0042 | episodes 108 win 0.93
+update 551 decisions 10156032 | 466 dec/s (env 73%) update 7.6s | loss 0.2696 pg 0.0007 kl 0.0045 | episodes 122 win 0.93
+update 552 decisions 10174464 | 444 dec/s (env 73%) update 8.1s | loss 0.2461 pg -0.0002 kl 0.0067 | episodes 143 win 0.94
+update 553 decisions 10192896 | 437 dec/s (env 73%) update 8.6s | loss 0.2416 pg -0.0014 kl 0.0057 | episodes 180 win 0.94
+update 554 decisions 10211328 | 430 dec/s (env 74%) update 8.8s | loss 0.2615 pg 0.0006 kl 0.0043 | episodes 200 win 0.95
+update 555 decisions 10229760 | 434 dec/s (env 74%) update 8.8s | loss 0.2757 pg -0.0000 kl 0.0049 | episodes 200 win 0.89
+update 556 decisions 10248192 | 485 dec/s (env 72%) update 6.6s | loss 0.2568 pg -0.0005 kl 0.0042 | episodes 200 win 0.89
+update 557 decisions 10266624 | 471 dec/s (env 72%) update 7.4s | loss 0.2543 pg 0.0003 kl 0.0045 | episodes 200 win 0.90
+update 558 decisions 10285056 | 467 dec/s (env 72%) update 7.6s | loss 0.2322 pg -0.0008 kl 0.0051 | episodes 200 win 0.91
+update 559 decisions 10303488 | 436 dec/s (env 74%) update 7.5s | loss 0.2465 pg -0.0012 kl 0.0044 | episodes 200 win 0.91
+update 560 decisions 10321920 | 458 dec/s (env 72%) update 7.6s | loss 0.2845 pg 0.0009 kl 0.0051 | episodes 200 win 0.91
+update 561 decisions 10340352 | 460 dec/s (env 73%) update 7.2s | loss 0.2436 pg 0.0001 kl 0.0040 | episodes 200 win 0.91
+update 562 decisions 10358784 | 448 dec/s (env 73%) update 7.9s | loss 0.2489 pg -0.0002 kl 0.0052 | episodes 200 win 0.90
+update 563 decisions 10377216 | 431 dec/s (env 74%) update 8.7s | loss 0.2292 pg -0.0009 kl 0.0037 | episodes 200 win 0.92
+update 564 decisions 10395648 | 396 dec/s (env 75%) update 9.3s | loss 0.2632 pg 0.0015 kl 0.0051 | episodes 200 win 0.94
+update 565 decisions 10414080 | 382 dec/s (env 76%) update 9.4s | loss 0.2637 pg -0.0003 kl 0.0043 | episodes 200 win 0.93
+update 566 decisions 10432512 | 382 dec/s (env 76%) update 10.1s | loss 0.2517 pg -0.0010 kl 0.0049 | episodes 200 win 0.90
+update 567 decisions 10450944 | 364 dec/s (env 77%) update 9.7s | loss 0.2813 pg -0.0015 kl 0.0044 | episodes 200 win 0.86
+update 568 decisions 10469376 | 409 dec/s (env 74%) update 9.1s | loss 0.2891 pg -0.0009 kl 0.0049 | episodes 200 win 0.84
+update 569 decisions 10487808 | 428 dec/s (env 73%) update 9.0s | loss 0.2468 pg 0.0011 kl 0.0046 | episodes 200 win 0.82
+update 570 decisions 10506240 | 415 dec/s (env 74%) update 8.7s | loss 0.2478 pg -0.0014 kl 0.0035 | episodes 200 win 0.82
+update 571 decisions 10524672 | 391 dec/s (env 75%) update 9.5s | loss 0.2790 pg -0.0015 kl 0.0041 | episodes 200 win 0.82
+node:events:497
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: write EPIPE
+    at WriteWrap.onWriteComplete [as oncomplete] (node:internal/stream_base_commons:87:19)
+Emitted 'error' event on Socket instance at:
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21) {
+  errno: -32,
+  code: 'EPIPE',
+  syscall: 'write'
+}
+node:events:497
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: write EPIPE
+    at WriteWrap.onWriteComplete [as oncomplete] (node:internal/stream_base_commons:87:19)
+Emitted 'error' event on Socket instance at:
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21) {
+  errno: -32,
+  code: 'EPIPE',
+  syscall: 'write'
+}
+node:events:497
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: write EPIPE
+    at WriteWrap.onWriteComplete [as oncomplete] (node:internal/stream_base_commons:87:19)
+Emitted 'error' event on Socket instance at:
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21) {
+  errno: -32,
+  code: 'EPIPE',
+  syscall: 'write'
+}
+node:events:497
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: write EPIPE
+    at WriteWrap.onWriteComplete [as oncomplete] (node:internal/stream_base_commons:87:19)
+Emitted 'error' event on Socket instance at:
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21) {
+  errno: -32,
+  code: 'EPIPE',
+  syscall: 'write'
+}
+node:events:497
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: write EPIPE
+    at WriteWrap.onWriteComplete [as oncomplete] (node:internal/stream_base_commons:87:19)
+Emitted 'error' event on Socket instance at:
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21) {
+  errno: -32,
+  code: 'EPIPE',
+  syscall: 'write'
+}
+node:events:497
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: write EPIPE
+    at WriteWrap.onWriteComplete [as oncomplete] (node:internal/stream_base_commons:87:19)
+Emitted 'error' event on Socket instance at:
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21) {
+  errno: -32,
+  code: 'EPIPE',
+  syscall: 'write'
+}
+node:events:497
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: write EPIPE
+    at WriteWrap.onWriteComplete [as oncomplete] (node:internal/stream_base_commons:87:19)
+Emitted 'error' event on Socket instance at:
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21) {
+  errno: -32,
+  code: 'EPIPE',
+  syscall: 'write'
+}
+
+Node.js v22.22.2
+
+Node.js v22.22.2
+
+Node.js v22.22.2
+
+Node.js v22.22.2
+
+Node.js v22.22.2
+
+Node.js v22.22.2
+
+Node.js v22.22.2
+node:events:497
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: write EPIPE
+    at WriteWrap.onWriteComplete [as oncomplete] (node:internal/stream_base_commons:87:19)
+Emitted 'error' event on Socket instance at:
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21) {
+  errno: -32,
+  code: 'EPIPE',
+  syscall: 'write'
+}
+node:events:497
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: write EPIPE
+    at WriteWrap.onWriteComplete [as oncomplete] (node:internal/stream_base_commons:87:19)
+Emitted 'error' event on Socket instance at:
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21) {
+  errno: -32,
+  code: 'EPIPE',
+  syscall: 'write'
+}
+node:events:497
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: write EPIPE
+    at WriteWrap.onWriteComplete [as oncomplete] (node:internal/stream_base_commons:87:19)
+Emitted 'error' event on Socket instance at:
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21) {
+  errno: -32,
+  code: 'EPIPE',
+  syscall: 'write'
+}
+
+Node.js v22.22.2
+
+Node.js v22.22.2
+
+Node.js v22.22.2
+node:events:497
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: write EPIPE
+    at WriteWrap.onWriteComplete [as oncomplete] (node:internal/stream_base_commons:87:19)
+Emitted 'error' event on Socket instance at:
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21) {
+  errno: -32,
+  code: 'EPIPE',
+  syscall: 'write'
+}
+node:events:497
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: write EPIPE
+    at WriteWrap.onWriteComplete [as oncomplete] (node:internal/stream_base_commons:87:19)
+Emitted 'error' event on Socket instance at:
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21) {
+  errno: -32,
+  code: 'EPIPE',
+  syscall: 'write'
+}
+
+Node.js v22.22.2
+node:events:497
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: write EPIPE
+    at WriteWrap.onWriteComplete [as oncomplete] (node:internal/stream_base_commons:87:19)
+Emitted 'error' event on Socket instance at:
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21) {
+  errno: -32,
+  code: 'EPIPE',
+  syscall: 'write'
+}
+node:events:497
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: write EPIPE
+    at WriteWrap.onWriteComplete [as oncomplete] (node:internal/stream_base_commons:87:19)
+Emitted 'error' event on Socket instance at:
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21) {
+  errno: -32,
+  code: 'EPIPE',
+  syscall: 'write'
+}
+
+Node.js v22.22.2
+
+Node.js v22.22.2
+
+Node.js v22.22.2
+node:events:497
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: write EPIPE
+    at WriteWrap.onWriteComplete [as oncomplete] (node:internal/stream_base_commons:87:19)
+Emitted 'error' event on Socket instance at:
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21) {
+  errno: -32,
+  code: 'EPIPE',
+  syscall: 'write'
+}
+node:events:497
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: write EPIPE
+    at WriteWrap.onWriteComplete [as oncomplete] (node:internal/stream_base_commons:87:19)
+Emitted 'error' event on Socket instance at:
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21) {
+  errno: -32,
+  code: 'EPIPE',
+  syscall: 'write'
+}
+
+Node.js v22.22.2
+
+Node.js v22.22.2
+node:events:497
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: write EPIPE
+    at WriteWrap.onWriteComplete [as oncomplete] (node:internal/stream_base_commons:87:19)
+Emitted 'error' event on Socket instance at:
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21) {
+  errno: -32,
+  code: 'EPIPE',
+  syscall: 'write'
+}
+
+Node.js v22.22.2
+node:events:497
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: write EPIPE
+    at WriteWrap.onWriteComplete [as oncomplete] (node:internal/stream_base_commons:87:19)
+Emitted 'error' event on Socket instance at:
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21) {
+  errno: -32,
+  code: 'EPIPE',
+  syscall: 'write'
+}
+
+Node.js v22.22.2

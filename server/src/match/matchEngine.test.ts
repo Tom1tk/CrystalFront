@@ -60,7 +60,7 @@ describe("Combat System", () => {
       expect(UNIT_DEFS.gunner.health).toBe(80);
       expect(UNIT_DEFS.gunner.damage).toBe(20);
       expect(UNIT_DEFS.gunner.range).toBe(120);
-      expect(UNIT_DEFS.gunner.attackCooldown).toBe(15);
+      expect(UNIT_DEFS.gunner.attackCooldown).toBe(25);
     });
 
     it("bruiser has correct stats", () => {
@@ -106,8 +106,8 @@ describe("Combat System", () => {
       expect(COUNTER_MODIFIER.bruiser.skirmisher).toBe(1.5);
     });
 
-    it("bruiser deals 0.75x damage to gunner", () => {
-      expect(COUNTER_MODIFIER.bruiser.gunner).toBe(0.75);
+    it("bruiser deals 1.5x damage to gunner", () => {
+      expect(COUNTER_MODIFIER.bruiser.gunner).toBe(1.5);
     });
 
     it("medic has no counter bonuses", () => {
