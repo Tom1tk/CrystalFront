@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import shutil
 import subprocess
 from dataclasses import dataclass, field
@@ -61,11 +62,16 @@ except ImportError:  # pragma: no cover
         return (json.dumps(obj) + "\n").encode()
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-RUNNER_JS = REPO_ROOT / "headless/dist/v2/vecRunner.js"
-# Must match OBS_SCHEMA_VERSION in headless/src/v2/observation.ts and
-# ACTION_SPACE_VERSION in headless/src/v2/actions.ts.
-OBS_SCHEMA_VERSION = 5
-ACTION_SPACE_VERSION = 7
+# Must match OBS_SCHEMA_VERSION in headless/src/v2|v3/observation.ts and
+# ACTION_SPACE_VERSION in headless/src/v2|v3/actions.ts (CF_LAYOUT, see training/v2/spaces.py).
+if os.environ.get("CF_LAYOUT", "v2") == "v3":
+    RUNNER_JS = REPO_ROOT / "headless/dist/v3/vecRunner.js"
+    OBS_SCHEMA_VERSION = 7
+    ACTION_SPACE_VERSION = 8
+else:
+    RUNNER_JS = REPO_ROOT / "headless/dist/v2/vecRunner.js"
+    OBS_SCHEMA_VERSION = 5
+    ACTION_SPACE_VERSION = 7
 SIDES = ("blue", "red")
 PY_ONLY_KEYS = ("learner",)
 

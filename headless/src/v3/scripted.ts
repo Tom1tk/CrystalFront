@@ -425,6 +425,8 @@ const SHIELD_REACT = 0.2;
 const SHIELD_DECAY = 0.98;
 /** Forward outposts: the worker counts as with the army, or at the backdoor spot, within this distance (px). */
 const POST_NEAR = 200;
+/** From Surge II on, the most units a push waits for. */
+const SURGE_PUSH = 5;
 /** An escort hold lasts at most this many ticks; then the push goes on without the outposts. */
 const ESCORT_PATIENCE = 1800;
 /** Decisions between orders to the forward worker; forward workers a bot spends per game. */
@@ -473,6 +475,8 @@ export class ScriptedV2Bot {
   private gather = -1;
   /** Control push: best own control progress seen and the tick it was reached. */
   private ctrlBest = 0;
+  /** Surge II push rule applied (beta). */
+  private surged = false;
   private ctrlAt = 0;
   /** Micro: the main army order waits until this decision (after a focus); last decision of each micro kind. */
   private focusUntil = 0;
@@ -754,6 +758,14 @@ export class ScriptedV2Bot {
     const none = { group: 0, order: 0, target: TARGET_NONE };
     if (v.army.length === 0 || !m.group[this.main]) { this.endPush(); return none; }
     const size = this.t.mass ? this.massed(v) : v.army.length;
+    // Surges (beta): from Surge II the clock decides, so every style goes out with what it has,
+    // and a side not ahead on its control bar fights for the nodes (the fuller bar wins at 20:00).
+    if (!this.surged && obs.globals[G.surge_stage] >= 2 / 3 - 1e-6) {
+      this.surged = true;
+      this.pushSize = Math.min(this.pushSize, Math.max(SURGE_PUSH, this.t.push.regroup + 1));
+      this.pushTick = Math.min(this.pushTick, v.tick);
+      if (obs.globals[G.control_progress_own] <= obs.globals[G.control_progress_enemy]) { this.target = "control"; this.ctrlBest = -1; this.ctrlAt = v.tick; }
+    }
     if (!this.pushing && size >= this.pushSize && v.tick >= this.pushTick) {
       this.pushing = true; this.viaDone = false; this.ctrlAt = v.tick;
     }

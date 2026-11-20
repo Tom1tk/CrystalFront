@@ -15,8 +15,8 @@
 // Fogged blocks use only what `visibilityData` shows the seat. The enemy
 // memory, last-seen counts and grid history are per-seat state (`ObsState`),
 // reset per episode, updated once per decision.
-import type { MatchEntity, MatchState } from "../../../server/src/match/types.js";
-import { CONTROL, GUARD, UNIT_DEFS } from "@crystalfront/shared";
+import { isBeta, type MatchEntity, type MatchState } from "../../../server/src/match/types.js";
+import { CONTROL, GUARD, SURGES, UNIT_DEFS, surgeStageAt } from "@crystalfront/shared";
 import { anchorsFor } from "../../../server/src/match/maps.js";
 import { seatAnchors, type Pt } from "../../../server/src/match/engine/anchors.js";
 import { T_BRUSH, T_CLIFF, T_HIGH, T_ROCK, T_ROUGH, T_WATER, terrainAt } from "../../../server/src/match/engine/terrain.js";
@@ -25,7 +25,7 @@ import { TRAIN_MAX_TICKS } from "../episode.js";
 import { fromOwnFrame, toOwnFrame } from "./frame.js";
 import { BUILDINGS, DECISION_TICKS, GRID_CELL_H, GRID_CELL_W, MEMORY_SLOTS, N_ANCHOR_TARGETS, PRODUCER_QUEUE_MAX, PTR_SIZE, TRAIN_UNITS, type SeatState } from "./actions.js";
 
-export const OBS_SCHEMA_VERSION = 6; // 6: Outrider (unit type, train counts), forward-builder flag
+export const OBS_SCHEMA_VERSION = 7; // 6: Outrider (unit type, train counts), forward-builder flag; 7: Surge globals
 
 /** 4-decimal rounding; also turns −0 into 0. */
 const q = (v: number) => Math.round(v * 1e4) / 1e4 + 0;
@@ -60,6 +60,9 @@ export const GLOBAL_NAMES: string[] = [
   // Bulwark feedback over the last decision window: share of own ranged shots that enemy
   // bulwarks stopped, and share of enemy ranged shots that own bulwarks stopped.
   "shots_blocked", "shots_shielded",
+  // Surges (mainline 0.10 §3): current stage / 3, time to the next stage (or to the cap after
+  // Surge III) over 4 min, and time to the 20:00 cap over 20 min. All 0 / constant in 0.9 matches.
+  "surge_stage", "surge_next", "cap_left",
 ];
 
 export const ENTITY_FEATURES: string[] = [
@@ -292,7 +295,15 @@ function globalsRow(match: MatchState, s: SeatState, d: Dims, seen: Seen[], os: 
     armyAge,
     q(s.armyA.size / 20), q(s.armyB.size / 20), +(s.builderId !== null && match.entities.has(s.builderId)),
     ...blockedShots(match, s),
+    ...surgeGlobals(match),
   ];
+}
+
+function surgeGlobals(match: MatchState): [number, number, number] {
+  if (!isBeta(match)) return [0, 1, 1];
+  const stage = surgeStageAt(match.tick);
+  const next = stage < 3 ? SURGES.stageTicks[stage as 0 | 1 | 2] : SURGES.capTicks;
+  return [q(stage / 3), q(cap1(Math.max(0, next - match.tick) / 2400)), q(cap1(Math.max(0, SURGES.capTicks - match.tick) / SURGES.capTicks))];
 }
 
 /** [share of own ranged shots stopped by enemy bulwarks, share of enemy ranged shots stopped by own bulwarks], last DECISION_TICKS. */

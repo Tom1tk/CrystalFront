@@ -229,7 +229,7 @@ def main() -> None:
     for b, j in enumerate(lrn):
         b_of_slot[cur[j].slot].append(b)
     ep_steps = np.zeros(B, dtype=np.int64)
-    ep_train = np.zeros((B, 6), dtype=np.int64)
+    ep_train = np.zeros((B, S.ECON_BUILD0 - 1), dtype=np.int64)
     ep_ret = np.zeros((B, 3))
     hc = agent.zero_state(B, dev)
     hc_ref = agent.zero_state(B, dev)
@@ -322,7 +322,7 @@ def main() -> None:
                     ep_ret[j] += rew[t, j]
                     ep_steps[j] += 1
                     e = int(store["act"][-1]["econ"][j])
-                    if 1 <= e <= 6:  # train worker … bulwark
+                    if 1 <= e < S.ECON_BUILD0:  # train worker … bulwark (… outrider in v3)
                         ep_train[j, e - 1] += 1
                     if tr.done or tr.truncated:
                         ended[t, j] = True
@@ -497,7 +497,7 @@ def main() -> None:
                 writer.add_scalar(f"episode/wintype_{wt}", np.mean([e["winType"] == wt for e in rc]), step)
             for i, k in enumerate(VALUE_HEADS):
                 writer.add_scalar(f"episode/return_{k}", np.mean([e["ret"][i] for e in rc]), step)
-            for i, u in enumerate(("worker", "skirmisher", "gunner", "bruiser", "medic", "bulwark")):
+            for i, u in enumerate(("worker", "skirmisher", "gunner", "bruiser", "medic", "bulwark", "outrider")[:S.ECON_BUILD0 - 1]):
                 writer.add_scalar(f"production/{u}", np.mean([e["train"][i] for e in rc]), step)
             for side in ("blue", "red"):
                 sw = [e["win"] for e in rc if e["side"] == side]

@@ -2,6 +2,7 @@
 Sizes and layout of observation v2 (schema 5) / action space v7 (headless/src/v2/observation.ts,
 headless/src/v2/actions.ts). `check_sizes` compares them with a live observation.
 """
+import os
 
 # Observation
 N_GLOBALS = 61
@@ -27,6 +28,16 @@ NAMED_SITES = 10               # then 750 grid build sites
 POINT_ORDERS = (1, 2, 3)       # attack_move, move, guard
 PTR_ORDERS = (6, 7, 11)        # focus, heal, cover
 
+# Mainline 0.10 (beta ruleset): observation v3 (schema 7) / action space v8 from headless/src/v3,
+# selected with CF_LAYOUT=v3 before anything imports this module. Adds the Outrider (a unit type,
+# a train action, an opponent-model unit) and the Surge globals; see training/v3_surgery.py.
+LAYOUT = os.environ.get("CF_LAYOUT", "v2")
+if LAYOUT not in ("v2", "v3"):
+    raise RuntimeError(f"CF_LAYOUT={LAYOUT!r}: expected v2 or v3")
+if LAYOUT == "v3":
+    N_GLOBALS, ENTITY_F, ECON = 68, 37, 64
+    ECON_BUILD0, ECON_ASSIGN0, ECON_REPAIR, ECON_RALLY = 8, 13, 61, 62
+
 # Maps (server/src/match/pool/manifest.json). The held-out maps must never be
 # used for imitation data, training or hyperparameter selection.
 HELD_OUT_MAPS = ("prism-ridge", "duskvale")
@@ -34,7 +45,7 @@ TRAIN_MAPS = ("shardfall", "basalt-run", "twin-spires", "hollow-crown", "glimmer
 
 # Opponent-model labels (observation.ts oppLabels): counts binned 0, 1, 2, 3-4, 5-8, 9+;
 # army location as the nearest of the 37 anchor targets, or 37 = none seen.
-OPP_UNITS, OPP_BUILDINGS = 6, 5
+OPP_UNITS, OPP_BUILDINGS = (7 if LAYOUT == "v3" else 6), 5
 OPP_BINS = 6
 N_ANCHORS = 37
 
