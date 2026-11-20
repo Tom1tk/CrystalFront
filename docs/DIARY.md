@@ -777,3 +777,11 @@ League lg1 stopped after cycle 2 on the user's call: the main agent answered its
   - Waits before pushing v turtle (5.6 min) and sw_turtle_grab (4.7 min) but pushes at ~2.5–2.7 min v rush3/rush_post/sw_rush_turtle.
   - More turrets v outrider (8.1), swarm (7.2), swarm_tide (6.9), sw_fake_brush (6.5) than v rushes (~3.9). More workers than cycle 1 everywhere (10–15 v 6–10).
   - Still almost no bruisers, medics, bulwarks or foundries: the variety is skirmisher/gunner ratio, timing and turret count.
+
+## 2026-11-20 — lg2 cycle 3 on held-out maps; the slowdown was the host disk
+
+- Held-out maps (prism-ridge, duskvale; 20 bots × 2 maps × 2 seats × 6 seeds = 480 games; `docs/eval/lg2-cycle3-heldout.json`): `lg2-main/cycle_3.pt` overall **0.93** (prism-ridge 0.94, duskvale 0.92) v training maps 0.89 — no overfitting to the training maps. `m4-imitate/final.pt` on the same games: 0.53.
+  - Cycle 3 lowest: backdoor 0.50, swarm_mass 0.79, sw_turtle_grab 0.83, swarm_tide 0.83; 13 of 20 bots ≥ 0.96.
+- Slowdown: at 08:30 GMT the container's cgroup IO pressure was ~80% and direct reads from the host HDD (WD30EFRX, `sdc`) ran at **1.2 MB/s**; by 09:30 pressure ~0 and reads 139 MB/s. Cause outside the container (user: probably a host backup job).
+- Replica of cycle 3 training (same args, resumed from `cycle_3.pt`, 30 updates, healthy disk): **340–410 decisions/s** (env 75–78%, workers ~40% busy) — the rate cycle 3 had before its trough (380 at 9 M). So the 111/s trough was the disk; the drop from cycle 1's ~550/s to ~350/s is the two frozen-checkpoint opponents and longer games.
+- Remaining headroom: workers idle ~60% because the vector env steps in lockstep (each step waits for the slowest of 18 processes). Not changed.
