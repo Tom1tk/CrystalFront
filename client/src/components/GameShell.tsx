@@ -77,7 +77,10 @@ const MINIMAP_HEIGHT = 81; // 450 × (900/5000): map aspect
 /** G-2: screen pixels reserved at the top for the HUD bar; the map is drawn
  *  fit-to-height in the canvas area below, so there is never vertical scrolling. */
 const HUD_TOP = HUD_BAR_HEIGHT;
-const EDGE_SCROLL_THRESHOLD = 50;
+/** Edge-pan zone (CSS px from the left/right edge); panning also continues with the cursor past the window edge. */
+const EDGE_SCROLL_THRESHOLD = 32;
+/** Edge-pan easing time constant (s): the camera ramps up and glides to a stop instead of jerking. */
+const EDGE_PAN_EASE = 0.08;
 
 const BUILDING_COLORS: Record<BuildingType, string> = {
   barracks: "#3aa8c8",
@@ -108,6 +111,37 @@ const BUILDING_SIZES: Record<BuildingType, { w: number; h: number }> = {
   turret: { w: 30, h: 30 },
   outpost: { w: 32, h: 32 },
 };
+
+/** Smallest pick radius on screen (CSS px): every target is at least 36 px across, however small the model. */
+const MIN_PICK_PX = 18;
+
+/**
+ * The entity at a world point, picked forgivingly: each target covers its padded
+ * footprint plus, in 3D, the model rising above it (`liftOf`), and is never smaller
+ * than MIN_PICK_PX on screen. Where targets overlap the nearest wins, units before
+ * buildings, so a unit in front of a building stays clickable.
+ */
+function pickEntity(
+  entities: readonly MatchEntity[], wx: number, wy: number, scale: number,
+  liftOf: (e: MatchEntity) => number, filter?: (e: MatchEntity) => boolean,
+): MatchEntity | undefined {
+  const minR = MIN_PICK_PX / scale;
+  let best: MatchEntity | undefined, bestScore = Infinity;
+  for (const e of entities) {
+    if (filter && !filter(e)) continue;
+    const building = e.type === "building" || e.type === "crystal";
+    const size = e.type === "building" && e.buildingType ? BUILDING_SIZES[e.buildingType] : undefined;
+    const foot = building ? Math.max(e.radius, size ? Math.max(size.w, size.h) / 2 : 22) : e.radius;
+    const r = Math.max(minR, foot * (building ? 1.2 : 1.6));
+    const top = e.y - liftOf(e);
+    const dy = wy > e.y ? wy - e.y : wy < top ? top - wy : 0;
+    const d = Math.hypot(wx - e.x, dy);
+    if (d > r) continue;
+    const score = d / r + (building ? 0.5 : 0);
+    if (score < bestScore) { bestScore = score; best = e; }
+  }
+  return best;
+}
 
 const UNIT_COSTS: Record<string, { cost: number; supplyCost: number }> = {
   skirmisher: { cost: 50, supplyCost: 1 },
@@ -927,6 +961,11 @@ export default function GameShell({
   const [view3d, setView3d] = useState(initialView3d);
   const [showBotRead, setShowBotRead] = useState(botReadEnabled);
   const world3dRef = useRef<World3D | null>(null);
+  /** How far an entity's 3D model rises above its footprint on screen (world px), for picking; 0 in the 2D view. */
+  const liftOf = useCallback((e: MatchEntity) => {
+    const w3 = world3dRef.current?.ready ? world3dRef.current : null;
+    return w3 ? w3.liftOf(e.id) ?? e.radius * 2.5 : 0;
+  }, []);
   // Loading screen: true once the chosen view can draw (2D at once; 3D after its models
   // load, or failed to). Only the first load matters, so F3 mid-match never resets it.
   const [assetsReady, setAssetsReady] = useState(() => !initialView3d());
@@ -972,6 +1011,14 @@ export default function GameShell({
   const oldPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
   const prevTimestampRef = useRef<number>(0);
   const lastTickRef = useRef<number>(-1);
+  /** Cursor for edge panning, canvas-relative, tracked on the window so it survives HUD panels and leaving the window. */
+  const panPointerRef = useRef<{ x: number; y: number } | null>(null);
+  const panVelRef = useRef(0);
+  const lastFrameRef = useRef(performance.now());
+  /** Middle-button drag pan: where the drag started and the camera then. */
+  const middleDragRef = useRef<{ x: number; cam: number } | null>(null);
+  /** Entity under the cursor (hover highlight), recomputed every frame. */
+  const hoverIdRef = useRef<string | null>(null);
   const resourceNodesRef = useRef<ResourceNodeDisplay[]>(resourceNodes);
   const selectedEntityIdRef = useRef<string | null>(selectedEntityId);
   const selectedEntityIdsRef = useRef<Set<string>>(selectedEntityIds);
@@ -1096,16 +1143,44 @@ export default function GameShell({
       const rect = canvas.getBoundingClientRect();
       mousePosRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
     };
+    const onWindowMouseMove = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      panPointerRef.current = { x, y: e.clientY - rect.top };
+      const drag = middleDragRef.current;
+      if (drag) {
+        const ms = matchStateRef.current;
+        const viewW = canvas.clientWidth / scaleRef.current;
+        const mapWidth = ms?.mapWidth ?? 5000;
+        cameraXRef.current = Math.max(0, Math.min(mapWidth - viewW, drag.cam - (x - drag.x) / scaleRef.current));
+      }
+    };
+    // Leaving the window through a side edge keeps panning that way (the cursor is "past
+    // the edge", as in RTS games that hold the cursor in); leaving elsewhere stops it.
+    const onDocLeave = (e: MouseEvent) => {
+      if (e.relatedTarget) return;
+      const p = panPointerRef.current, w = canvas.clientWidth;
+      panPointerRef.current = p && p.x < EDGE_SCROLL_THRESHOLD ? { x: -1, y: p.y }
+        : p && p.x > w - EDGE_SCROLL_THRESHOLD ? { x: w + 1, y: p.y } : null;
+    };
+    const onBlur = () => { panPointerRef.current = null; middleDragRef.current = null; };
 
     // Clear minimap drag on any window-level mouseup (catches releases outside canvas)
-    const onWindowMouseUp = () => {
+    const onWindowMouseUp = (e: MouseEvent) => {
       minimapDraggingRef.current = false;
+      if (e.button === 1) middleDragRef.current = null;
     };
 
     canvas.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mousemove", onWindowMouseMove);
+    document.addEventListener("mouseout", onDocLeave);
+    window.addEventListener("blur", onBlur);
     window.addEventListener("mouseup", onWindowMouseUp);
     return () => {
       canvas.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mousemove", onWindowMouseMove);
+      document.removeEventListener("mouseout", onDocLeave);
+      window.removeEventListener("blur", onBlur);
       window.removeEventListener("mouseup", onWindowMouseUp);
     };
   }, []);
@@ -1196,9 +1271,8 @@ export default function GameShell({
             if (units.length) onGameCommand({ type: "guard", entityIds: units, targetX: worldX, targetY: worldY });
             return;
           }
-          const enemy = (matchState?.entities ?? []).find((ent) =>
-            ent.ownerId !== safePlayer.id && Math.hypot(worldX - ent.x, worldY - ent.y) <= ent.radius
-          );
+          const enemy = pickEntity(matchState?.entities ?? [], worldX, worldY, scaleRef.current, liftOf,
+            (ent) => ent.ownerId !== safePlayer.id);
           if (!enemy) pathShowRef.current = { ids: new Set(ids), until: performance.now() + PATH_SHOW_MS };
           for (const id of ids) {
             const ent = myEntities.find((m) => m.id === id);
@@ -1237,6 +1311,7 @@ export default function GameShell({
           setDebugDraggingNodeId(null);
           return;
         }
+        middleDragRef.current = { x: screenX, cam: cameraXRef.current };
         return;
       }
 
@@ -1254,20 +1329,7 @@ export default function GameShell({
         if (allSelectedIds.size === 0) return;
 
         // Hit detection for target entity
-        let clickedEntity: MatchEntity | undefined;
-        for (const entity of matchState?.entities ?? []) {
-          const dx = worldX - entity.x;
-          const dy = worldY - entity.y;
-          const hitRadius = entity.type === "building"
-            ? (entity.buildingType && BUILDING_SIZES[entity.buildingType]
-              ? Math.max(BUILDING_SIZES[entity.buildingType].w, BUILDING_SIZES[entity.buildingType].h) / 2
-              : 22)
-            : entity.type === "crystal" ? 22 : entity.radius;
-          if (Math.sqrt(dx * dx + dy * dy) <= hitRadius) {
-            clickedEntity = entity;
-            break;
-          }
-        }
+        const clickedEntity = pickEntity(matchState?.entities ?? [], worldX, worldY, scaleRef.current, liftOf);
 
         let clickedNode: ResourceNodeDisplay | null = null;
         for (const node of resourceNodes) {
@@ -1745,7 +1807,9 @@ export default function GameShell({
           for (const entity of matchState?.entities ?? []) {
             if (entity.ownerId !== safePlayer.id) continue;
             if (entity.type === "crystal" || entity.type === "building") continue;
-            if (entity.x >= worldX1 && entity.x <= worldX2 && entity.y >= worldY1 && entity.y <= worldY2) {
+            // Any part of the unit counts: its footprint or, in 3D, the model above it.
+            const r = entity.radius;
+            if (entity.x + r >= worldX1 && entity.x - r <= worldX2 && entity.y + r >= worldY1 && entity.y - liftOf(entity) <= worldY2) {
               boxSelected.add(entity.id);
             }
           }
@@ -1758,20 +1822,7 @@ export default function GameShell({
           const worldX = screenX / scaleRef.current + cameraXRef.current;
           const worldY = (screenY - HUD_TOP) / scaleRef.current;
 
-          let clickedEntity: MatchEntity | undefined;
-          for (const entity of matchState?.entities ?? []) {
-            const entityDx = worldX - entity.x;
-            const entityDy = worldY - entity.y;
-            const hitRadius = entity.type === "building"
-              ? (entity.buildingType && BUILDING_SIZES[entity.buildingType]
-                ? Math.max(BUILDING_SIZES[entity.buildingType].w, BUILDING_SIZES[entity.buildingType].h) / 2
-                : 22)
-              : entity.type === "crystal" ? 22 : entity.radius;
-            if (Math.sqrt(entityDx * entityDx + entityDy * entityDy) <= hitRadius) {
-              clickedEntity = entity;
-              break;
-            }
-          }
+          const clickedEntity = pickEntity(matchState?.entities ?? [], worldX, worldY, scaleRef.current, liftOf);
 
           if (clickedEntity) {
             setSelectedEntityId(clickedEntity.id);
@@ -1828,34 +1879,42 @@ export default function GameShell({
       }
 
       const now = Date.now();
+      const frameNow = performance.now();
+      const dt = Math.min(0.05, (frameNow - lastFrameRef.current) / 1000);
+      lastFrameRef.current = frameNow;
 
       // Edge scrolling + minimap drag
       const edgeCanvas = canvasRef.current;
       if (edgeCanvas) {
+        const screenW = edgeCanvas.clientWidth;
+        const viewW = screenW / scaleRef.current;  // world px visible
+        const mapWidth = ms.mapWidth ?? 5000;
         const pos = mousePosRef.current;
-        if (pos) {
-          const screenW = edgeCanvas.clientWidth;
-          const viewW = screenW / scaleRef.current;  // world px visible
 
-          // Minimap drag: update camera while dragging on minimap (X-axis only)
-          if (minimapDraggingRef.current) {
-            const mmX = screenW - MINIMAP_WIDTH - 10;
-            const xFraction = Math.max(0, Math.min(1, (pos.x - mmX) / MINIMAP_WIDTH));
-            const mapWidth = ms.mapWidth ?? 5000;
-            cameraXRef.current = Math.max(0, Math.min(xFraction * mapWidth - viewW / 2, mapWidth - viewW));
-          }
+        // Minimap drag: update camera while dragging on minimap (X-axis only)
+        if (pos && minimapDraggingRef.current) {
+          const mmX = screenW - MINIMAP_WIDTH - 10;
+          const xFraction = Math.max(0, Math.min(1, (pos.x - mmX) / MINIMAP_WIDTH));
+          cameraXRef.current = Math.max(0, Math.min(xFraction * mapWidth - viewW / 2, mapWidth - viewW));
+        }
 
-          // Edge scrolling — X-axis only (Y is locked, game is side-scrolling)
-          if (!minimapDraggingRef.current) {
-            let dx = 0;
-            const speed = edgePanSpeed();
-            if (pos.x < EDGE_SCROLL_THRESHOLD) dx = -speed;
-            else if (pos.x > screenW - EDGE_SCROLL_THRESHOLD) dx = speed;
-            if (dx !== 0) {
-              const mapWidth = ms.mapWidth ?? 5000;
-              cameraXRef.current = Math.max(0, Math.min(mapWidth - viewW, cameraXRef.current + dx));
-            }
-          }
+        // Edge scrolling — X-axis only (Y is locked, game is side-scrolling). Time-based, so
+        // the same on any refresh rate; faster the nearer the edge (full speed at or past
+        // it), eased in and out.
+        let target = 0;
+        const p = panPointerRef.current;
+        if (p && !minimapDraggingRef.current && !middleDragRef.current) {
+          const max = edgePanSpeed() * 60;
+          const ramp = (d: number) => (d <= 0 ? 1 : 0.35 + 0.65 * (1 - d / EDGE_SCROLL_THRESHOLD));
+          if (p.x < EDGE_SCROLL_THRESHOLD) target = -max * ramp(p.x);
+          else if (p.x > screenW - EDGE_SCROLL_THRESHOLD) target = max * ramp(screenW - 1 - p.x);
+        }
+        panVelRef.current += (target - panVelRef.current) * (1 - Math.exp(-dt / EDGE_PAN_EASE));
+        if (target === 0 && Math.abs(panVelRef.current) < 2) panVelRef.current = 0;
+        if (panVelRef.current !== 0) {
+          const next = Math.max(0, Math.min(mapWidth - viewW, cameraXRef.current + panVelRef.current * dt));
+          if (next === cameraXRef.current) panVelRef.current = 0; // at the map edge
+          cameraXRef.current = next;
         }
       }
 
@@ -1914,15 +1973,18 @@ export default function GameShell({
       if (isNewState) {
         // Shift: current → old, new → current
         // Only keep entries for entities that still exist
+        // Only entities that were in the previous state lerp. One coming back into vision
+        // has a stale last-seen position, and sliding from it read as a teleport; it
+        // appears where it is instead (the 3D view fades it in). Long jumps snap too.
         const entityIds = new Set(entities.map((e: MatchEntity) => e.id));
         const oldMap = new Map<string, { x: number; y: number }>();
-        for (const [id, pos] of prevEntitiesRef.current) {
-          if (entityIds.has(id)) {
-            oldMap.set(id, pos);
-          }
+        for (const e of entities) {
+          const pos = prevEntitiesRef.current.get(e.id);
+          if (pos && Math.hypot(e.x - pos.x, e.y - pos.y) <= 60) oldMap.set(e.id, pos);
         }
         oldPositionsRef.current = oldMap;
 
+        for (const id of prevEntitiesRef.current.keys()) if (!entityIds.has(id)) prevEntitiesRef.current.delete(id);
         entities.forEach((e: MatchEntity) => {
           prevEntitiesRef.current.set(e.id, { x: e.x, y: e.y });
           prevEntityHealthRef.current.set(e.id, e.health);
@@ -1973,6 +2035,13 @@ export default function GameShell({
           oldPositionsRef.current.clear();
         }
       }
+
+      // Hover target, picked like a click (not over the minimap or while box-selecting).
+      const mp = mousePosRef.current;
+      const overMinimap = mp && mp.x >= canvas.clientWidth - MINIMAP_WIDTH - 10 && mp.y >= canvas.clientHeight - MINIMAP_HEIGHT - 10;
+      hoverIdRef.current = mp && !overMinimap && !isDraggingRef.current && mp.y > HUD_TOP
+        ? pickEntity(interpolatedEntities, mp.x / scaleRef.current + cameraXRef.current, (mp.y - HUD_TOP) / scaleRef.current, scaleRef.current, liftOf)?.id ?? null
+        : null;
 
       drawGameScene(
         canvas, ctx, interpolatedEntities, resourceNodesRef.current,
@@ -2027,7 +2096,8 @@ export default function GameShell({
       ctx.clearRect(0, 0, cssW, cssH);
       w3.frame({ cssW, cssH, cameraX, scale, hudTop: HUD_TOP }, entities, resourceNodes, matchState.staticMap, mapWidth, mapHeight,
         (ownerId) => (matchState.players.findIndex((p) => p?.playerId === ownerId) === 0 ? 0 : 1),
-        { tick: matchState.tick, log: matchState.attackLog ?? [] });
+        { tick: matchState.tick, log: matchState.attackLog ?? [] },
+        { hover: hoverIdRef.current, selected: selectedEntityId ? new Set([...selectedEntityIdsRef.current, selectedEntityId]) : selectedEntityIdsRef.current });
     } else {
       ctx.fillStyle = "#05060a";
       ctx.fillRect(0, 0, cssW, cssH);
@@ -2212,6 +2282,15 @@ export default function GameShell({
       const localIsMyTeam = entity.ownerId === safePlayer.id;
       const localIsSelected = entity.id === selectedEntityId;
       const localIsBuilding = entity.type === "building" || entity.type === "crystal";
+
+      // Hover highlight (the 3D view lights the model instead)
+      if (!w3 && entity.id === hoverIdRef.current) {
+        ctx.beginPath();
+        ctx.arc(entity.x, entity.y, (localIsBuilding ? Math.max(entity.radius, 22) : entity.radius) + 6, 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(255,255,255,0.55)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
 
       if (localIsBuilding) {
         const bHealthPct = entity.health / entity.maxHealth;

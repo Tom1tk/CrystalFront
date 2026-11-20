@@ -99,7 +99,24 @@ interface Obj {
   gun?: THREE.Object3D;
   gem?: THREE.Object3D;
   baseScale?: number;
+  /** How far the model rises above its footprint on screen (world px), for picking. */
+  lift: number;
+  /** Fade: 0 → 1 after it appears, back to 0 after it leaves the entity list (fog, death). */
+  alpha: number;
+  gone: boolean;
+  /** Start of the selection flash (performance.now ms). */
+  flashAt: number;
+  /** Per-object material copies while the model glows or fades (shared materials otherwise). */
+  tint?: { mesh: THREE.Mesh; orig: THREE.Material | THREE.Material[]; copy: THREE.Material[] }[];
+  /** Hover / selection ring, created on first use. */
+  mark?: THREE.Mesh;
 }
+
+/** Hover and selection, for the highlight on the models. */
+export interface Marks { hover: string | null; selected: ReadonlySet<string> }
+
+const FADE_S = 0.25;
+const FLASH_MS = 380;
 
 export interface View3D {
   cssW: number;
@@ -135,6 +152,13 @@ function rng(seed: number) {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+/** Height of a model above its origin (world units). */
+function modelHeight(o: THREE.Object3D): number {
+  o.updateMatrixWorld(true);
+  const b = new THREE.Box3().setFromObject(o);
+  return b.isEmpty() ? 0 : Math.max(0, b.max.y);
 }
 
 function hashStr(s: string) {
@@ -518,17 +542,21 @@ export class World3D {
     attach("arm-right", spec.right, false);
     attach("arm-left", spec.left, true);
     const root = new THREE.Group();
+    // Skinned meshes are culled by their bind-pose bounds, which popped units at the screen edges.
+    body.traverse((n) => { n.frustumCulled = false; });
     root.add(body, this.ring(team, e.radius));
     const mixer = new THREE.AnimationMixer(body);
     const actions = new Map(src.animations.map((a) => [a.name, mixer.clipAction(a)]));
-    return { root, kind: e.type, team, mixer, actions, yaw: team === 0 ? Math.PI / 2 : -Math.PI / 2, px: e.x, py: e.y, speed: 0, r: e.radius, body };
+    return { root, kind: e.type, team, mixer, actions, yaw: team === 0 ? Math.PI / 2 : -Math.PI / 2, px: e.x, py: e.y, speed: 0, r: e.radius, body,
+      lift: modelHeight(body) * COS, alpha: 0, gone: false, flashAt: -Infinity };
   }
 
   private makeBuilding(e: MatchEntity, team: 0 | 1): Obj {
     const root = new THREE.Group();
     const body = new THREE.Group();
     root.add(body);
-    const o: Obj = { root, kind: e.buildingType ?? e.type, team, yaw: 0, px: e.x, py: e.y, speed: 0, r: e.radius, body };
+    const o: Obj = { root, kind: e.buildingType ?? e.type, team, yaw: 0, px: e.x, py: e.y, speed: 0, r: e.radius, body,
+      lift: 0, alpha: 0, gone: false, flashAt: -Infinity };
     const w = e.radius * 2;
     const stack = (k: ModelKey, width: number, y: number, v: Variant = team) => {
       const m = this.place(k, width, v);
@@ -582,6 +610,7 @@ export class World3D {
       f.position.set(w * 0.45, 0, w * 0.4);
     }
     root.add(this.ring(team, e.radius * (e.type === "crystal" ? 1.25 : 1.05)));
+    o.lift = modelHeight(body) * COS;
     return o;
   }
 
@@ -627,6 +656,7 @@ export class World3D {
     mapH: number,
     teamOf: (ownerId: string) => 0 | 1,
     combat?: { tick: number; log: AttackEvent[] },
+    marks?: Marks,
   ) {
     if (!this.ready) return;
     const now = performance.now();
@@ -671,6 +701,12 @@ export class World3D {
         this.objs.set(e.id, o);
         this.scene.add(o.root);
       }
+      if (o.gone) {
+        // Back in view (fog flicker): fade back in from where the fade-out had got to.
+        o.gone = false;
+        if (Math.hypot(e.x - o.px, e.y - o.py) > 40) { o.px = e.x; o.py = e.y; o.speed = 0; }
+      }
+      o.alpha = Math.min(1, o.alpha + dt / FADE_S);
       const dx = e.x - o.px, dy = e.y - o.py;
       const inst = Math.hypot(dx, dy) / Math.max(dt, 1e-3);
       o.speed += (inst - o.speed) * Math.min(1, dt * 8);
@@ -707,11 +743,99 @@ export class World3D {
         }
       }
     }
-    for (const [id, o] of this.objs) if (!seen.has(id)) { this.scene.remove(o.root); this.objs.delete(id); }
+    // Entities that left the list (fog, death) fade out where they were last seen.
+    for (const [id, o] of this.objs) {
+      if (seen.has(id)) continue;
+      o.gone = true;
+      o.alpha -= dt / FADE_S;
+      if (o.alpha <= 0) { this.dropTint(o); (o.mark?.material as THREE.Material | undefined)?.dispose(); this.scene.remove(o.root); this.objs.delete(id); continue; }
+      if (o.mixer) o.mixer.update(dt);
+    }
+    this.updateMarks(marks, now);
 
     if (combat) this.spawnCombatFx(combat.tick, combat.log);
     this.updateFx(dt);
     this.render(view);
+  }
+
+  // ─── hover / selection / fade ─────────────────────────────────
+
+  /** Screen lift of an entity's model (world px), or undefined when it has none yet. */
+  liftOf(id: string): number | undefined {
+    const o = this.objs.get(id);
+    return o && !o.gone ? o.lift : undefined;
+  }
+
+  private selected = new Set<string>();
+
+  private updateMarks(marks: Marks | undefined, now: number) {
+    const sel = marks?.selected ?? new Set<string>();
+    for (const id of sel) if (!this.selected.has(id)) { const o = this.objs.get(id); if (o) o.flashAt = now; }
+    this.selected = new Set(sel);
+    for (const [id, o] of this.objs) {
+      const hover = marks?.hover === id && !o.gone;
+      const ft = (now - o.flashAt) / FLASH_MS;
+      const flash = ft >= 0 && ft < 1 ? (1 - ft) * (1 - ft) : 0;
+      // Model glow: a soft lift on hover, a bright flash that settles when selected.
+      this.setTint(o, Math.max(hover ? 0.22 : 0, flash * 0.75), o.alpha);
+      // Ring: white while hovered; on selection it drops in from wide and settles.
+      const showRing = hover || flash > 0;
+      if (!showRing) { if (o.mark) o.mark.visible = false; continue; }
+      if (!o.mark) {
+        const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7, depthWrite: false });
+        o.mark = this.ring(o.team, 1);
+        o.mark.material = mat;
+        o.mark.position.y = 0.5;
+        o.mark.renderOrder = 2;
+        o.root.add(o.mark);
+      }
+      const r = o.r * (o.kind === "crystal" ? 1.45 : UNITS[o.kind] ? 1.35 : 1.2) * (1 + 0.6 * flash);
+      o.mark.scale.set(r, r / SIN, 1);
+      const pulse = 0.55 + 0.15 * Math.sin(now / 180);
+      (o.mark.material as THREE.MeshBasicMaterial).opacity = Math.max(hover ? pulse : 0, flash) * o.alpha;
+      o.mark.visible = true;
+    }
+  }
+
+  /** Glow `k` (0–1, added to emissive) and opacity `alpha` on this object's own material copies. */
+  private setTint(o: Obj, k: number, alpha: number) {
+    if (k <= 0.001 && alpha >= 0.999) { this.dropTint(o); return; }
+    if (!o.tint) {
+      o.tint = [];
+      o.body?.traverse((n) => {
+        const mesh = n as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        const orig = mesh.material;
+        const copy = (Array.isArray(orig) ? orig : [orig]).map((m) => m.clone());
+        mesh.material = Array.isArray(orig) ? copy : copy[0];
+        o.tint!.push({ mesh, orig, copy });
+      });
+      for (const r of o.root.children) {
+        const mesh = r as THREE.Mesh;
+        if (mesh.isMesh && mesh !== o.mark && mesh.geometry === this.ringGeo) {
+          const orig = mesh.material, copy = [(orig as THREE.Material).clone()];
+          mesh.material = copy[0];
+          o.tint.push({ mesh, orig, copy });
+        }
+      }
+    }
+    for (const t of o.tint) {
+      const origs = Array.isArray(t.orig) ? t.orig : [t.orig];
+      t.copy.forEach((m, i) => {
+        const src = origs[i] as THREE.MeshStandardMaterial;
+        const dst = m as THREE.MeshStandardMaterial;
+        if (dst.emissive && src.emissive) dst.emissive.copy(src.emissive).addScalar(k);
+        const fading = alpha < 0.999;
+        if (dst.transparent !== (fading || src.transparent)) { dst.transparent = fading || src.transparent; dst.needsUpdate = true; }
+        dst.opacity = src.opacity * alpha;
+      });
+    }
+  }
+
+  private dropTint(o: Obj) {
+    if (!o.tint) return;
+    for (const t of o.tint) { t.mesh.material = t.orig; for (const m of t.copy) m.dispose(); }
+    o.tint = undefined;
   }
 
   // ─── combat effects ───────────────────────────────────────────

@@ -21,7 +21,7 @@ export function tipsEnabled(): boolean {
   try { return window.localStorage.getItem(TIPS_KEY) !== "0"; } catch { return true; }
 }
 
-/** Edge-pan sensitivity, 0–1 (0 turns edge panning off). The camera moves 12 × this world px per frame at the screen edge; the default 0.5 (6 px) is double the old fixed speed. */
+/** Edge-pan sensitivity, 0–1 (0 turns edge panning off). At the screen edge the camera moves 12 × this world px per 1/60 s (time-based, so the same at any refresh rate); the default 0.5 is 360 px/s. */
 const EDGE_PAN_KEY = "cf.edgePan";
 let edgePan: number = (() => {
   try { const v = window.localStorage.getItem(EDGE_PAN_KEY); return v === null ? 0.5 : Math.max(0, Math.min(1, Number(v) || 0)); } catch { return 0.5; }
@@ -39,7 +39,7 @@ const SHORTCUTS: Array<[string, string]> = [
   ["Ctrl + 1–9", "Assign control group"],
   ["Shift + 1–9", "Add to control group"],
   ["1–9 (twice)", "Select group (twice: centre camera)"],
-  ["Screen edge / minimap", "Move the camera"],
+  ["Screen edge / middle-drag / minimap", "Move the camera"],
   ["F3", "Switch 3D / 2D view"],
   ["Esc", "Cancel the current mode, or open Settings"],
 ];

@@ -1,6 +1,6 @@
 {
   "name": "@crystalfront/headless",
-  "version": "0.9.0-ML",
+  "version": "0.9.1-ML",
   "private": true,
   "type": "module",
   "scripts": {
