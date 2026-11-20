@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import { existsSync } from "node:fs";
 import type { MatchEngine } from "./matchEngine.js";
+import { v09View } from "./neuralAdapter.js";
 
 import { TRAIN_MAX_TICKS } from "../../../headless/src/episode.js";
 import * as V2 from "../../../headless/src/v2/actions.js";
@@ -75,8 +76,10 @@ export class NeuralBotPlayer {
     const seat = this.seat, tick = match.tick;
     this.lastDecision = tick;
     V2.workerAutopilot(this.engine, match, seat);
-    const obs = OBS.observe(match, seat, this.os!, { z: 0, cap: TRAIN_MAX_TICKS });
-    const masks = V2.computeMasks(match, seat);
+    // Beta matches: the bot sees them as 0.9 would show them (neuralAdapter.ts).
+    const view = v09View(match, this.botPlayerId);
+    const obs = OBS.observe(view, seat, this.os!, { z: 0, cap: TRAIN_MAX_TICKS });
+    const masks = V2.computeMasks(view, seat);
     this.pending = true;
     this.policy!.decide(obs, this.staticGrid, masks).then((d) => {
       this.pending = false;

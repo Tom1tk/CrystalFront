@@ -23,6 +23,7 @@ const COS = Math.cos(PITCH);
 /** Plateau height of high-ground cells (world px). */
 const HIGH_Y = 8;
 const TEAM_HEX = [0x7ce8ff, 0xff5cf3];
+const DUST = new THREE.Color(0xb8a58a);
 const BASE = `${import.meta.env.BASE_URL}assets/kenney/`;
 
 const MODELS = {
@@ -31,6 +32,7 @@ const MODELS = {
   gunner: "mini-characters/character-soldier",
   bruiser: "mini-characters/character-knight",
   medic: "mini-characters/character-female-e",
+  outrider: "mini-characters/character-female-b",
   sword: "mini-characters/weapon-sword",
   spear: "mini-characters/weapon-spear",
   shooter: "mini-characters/weapon-shooter",
@@ -79,6 +81,8 @@ const UNITS: Record<string, UnitSpec> = {
   bruiser: { model: "bruiser", height: 4.1, right: "sword", left: "shield" },
   medic: { model: "medic", height: 4.1, right: "defib", greens: true },
   // The knight again, with a large shield on each arm held out in front and no weapon.
+  // Light build: smaller than the line infantry, unarmed, kicks up dust at speed.
+  outrider: { model: "outrider", height: 3.6 },
   bulwark: { model: "bruiser", height: 4.4, right: "shield", left: "shield", held: 1.9 },
 };
 
@@ -632,7 +636,7 @@ export class World3D {
   private animFor(o: Obj, e: MatchEntity): string {
     if (e.actionState === "dying" || e.health <= 0) return "die";
     if (o.kind === "bulwark") return o.speed > 6 ? "walk" : "holding-both";
-    if (o.speed > 6) return o.kind === "skirmisher" ? "sprint" : "walk";
+    if (o.speed > 6) return o.kind === "skirmisher" || o.kind === "outrider" ? "sprint" : "walk";
     const armed = !!UNITS[o.kind]?.right;
     switch (e.actionState) {
       case "attacking":
@@ -726,6 +730,7 @@ export class World3D {
           o.yaw += diff * Math.min(1, dt * 10);
         }
         o.body!.rotation.y = o.yaw;
+        if (o.kind === "outrider" && o.speed > 6 && o.alpha > 0.5 && Math.random() < dt * 14) this.dust(o.root.position);
         this.playAnim(o, this.animFor(o, e));
         o.mixer!.update(dt);
       } else {
@@ -842,6 +847,15 @@ export class World3D {
 
   private particle(p: THREE.Vector3, v: THREE.Vector3, life: number, size: number, color: THREE.Color, grav: number) {
     if (this.fx.length < FX_MAX) this.fx.push({ p, v, life, max: life, size, color, grav });
+  }
+
+  private dust(at: THREE.Vector3) {
+    const p = at.clone();
+    p.x += (Math.random() - 0.5) * 4;
+    p.z += (Math.random() - 0.5) * 4;
+    p.y += 0.5;
+    const v = new THREE.Vector3((Math.random() - 0.5) * 6, 5 + Math.random() * 5, (Math.random() - 0.5) * 6);
+    this.particle(p, v, 0.45 + Math.random() * 0.25, 1.6 + Math.random() * 0.8, DUST, 4);
   }
 
   private sparks(at: THREE.Vector3, n: number, color: THREE.Color, speed: number, size: number) {

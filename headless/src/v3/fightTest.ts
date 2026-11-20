@@ -8,7 +8,7 @@
  *   npx tsx headless/src/v3/fightTest.ts --shield   bulwark (shield unit) prototype cases
  */
 import { MatchEngine } from "../../../server/src/match/matchEngine.js";
-import type { PlayerSlot } from "../../../server/src/match/types.js";
+import { DEFAULT_CONFIG, type PlayerSlot } from "../../../server/src/match/types.js";
 import { UNIT_DEFS, BUILDING_DEFS, BULWARK } from "@crystalfront/shared";
 
 type U = "skirmisher" | "gunner" | "bruiser" | "medic" | "bulwark";
@@ -25,7 +25,7 @@ function fight(a: Army, b: Army, mode: Mode, gap = 500, turrets = 0): { aLeft: n
     { playerId: "pa", username: "A", color: "blue", score: 0 },
     { playerId: "pb", username: "B", color: "red", score: 0 },
   ];
-  const match = engine.createMatch("fight", players);
+  const match = engine.createMatch("fight", players, { ...DEFAULT_CONFIG, ruleset: "beta" });
   engine.startMatch(match.id);
   const cx = match.config.mapWidth / 2, cy = match.config.mapHeight / 2;
   // Blocks 6 units deep, 26 px apart, melee units in front.

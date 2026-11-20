@@ -25,7 +25,7 @@ import { TRAIN_MAX_TICKS } from "../episode.js";
 import { fromOwnFrame, toOwnFrame } from "./frame.js";
 import { BUILDINGS, DECISION_TICKS, GRID_CELL_H, GRID_CELL_W, MEMORY_SLOTS, N_ANCHOR_TARGETS, PRODUCER_QUEUE_MAX, PTR_SIZE, TRAIN_UNITS, type SeatState } from "./actions.js";
 
-export const OBS_SCHEMA_VERSION = 5;
+export const OBS_SCHEMA_VERSION = 6; // 6: Outrider (unit type, train counts), forward-builder flag
 
 /** 4-decimal rounding; also turns −0 into 0. */
 const q = (v: number) => Math.round(v * 1e4) / 1e4 + 0;
@@ -35,7 +35,7 @@ const AGE_SCALE = 1000;
 const COMBAT = ["skirmisher", "gunner", "bruiser", "medic", "bulwark"] as const;
 const COMBAT_SET = new Set<string>(COMBAT);
 /** Entity type vocabulary (one-hot order). */
-export const ENTITY_TYPES = ["crystal", "worker", "skirmisher", "gunner", "bruiser", "medic", "bulwark", "barracks", "foundry", "supply_depot", "turret", "outpost"] as const;
+export const ENTITY_TYPES = ["crystal", "worker", "skirmisher", "gunner", "bruiser", "medic", "bulwark", "barracks", "foundry", "supply_depot", "turret", "outpost", "outrider"] as const;
 export const MEMORY_TYPES = ["crystal", "barracks", "foundry", "supply_depot", "turret", "outpost"] as const;
 
 function typeOf(e: MatchEntity): string | null {
@@ -56,7 +56,7 @@ export const GLOBAL_NAMES: string[] = [
   ...TRAIN_UNITS.flatMap((u) => [`seen_${u}`, `seen_${u}_age`]),
   ...BUILDINGS.flatMap((b) => [`seen_${b}`, `seen_${b}_age`]),
   "enemy_army_age",
-  "army_a", "army_b", "scout",
+  "army_a", "army_b", "builder",
   // Bulwark feedback over the last decision window: share of own ranged shots that enemy
   // bulwarks stopped, and share of enemy ranged shots that own bulwarks stopped.
   "shots_blocked", "shots_shielded",
@@ -66,7 +66,7 @@ export const ENTITY_FEATURES: string[] = [
   "own", "enemy", ...ENTITY_TYPES.map((t) => `type_${t}`), "x", "y", "hp", "max_hp",
   "built", "queue", "queue_progress",
   "gathering", "building", "moving", "attack_moving", "attacking", "idle",
-  "on_high", "on_brush", "on_rough", "army_a", "army_b", "scout", "guarding",
+  "on_high", "on_brush", "on_rough", "army_a", "army_b", "builder", "guarding",
   // Bulwark cover order: this bulwark is covering a unit; this unit has a bulwark covering it.
   "covering", "covered",
 ];
@@ -242,7 +242,7 @@ function entityRow(match: MatchState, s: SeatState, d: Dims, v: Seen, covered: S
     +gathering, +building, +moving, +attackMoving, +attacking,
     +(!isBuilding && !moving && !attackMoving && !attacking && !gathering && !building),
     +(terr === T_HIGH), +(terr === T_BRUSH), +(terr === T_ROUGH),
-    +(v.own && s.armyA.has(e.id)), +(v.own && s.armyB.has(e.id)), +(v.own && s.scoutId === e.id),
+    +(v.own && s.armyA.has(e.id)), +(v.own && s.armyB.has(e.id)), +(v.own && s.builderId === e.id),
     +!!e.guard,
     +!!e.coverTargetId, +covered.has(e.id),
   ];
@@ -290,7 +290,7 @@ function globalsRow(match: MatchState, s: SeatState, d: Dims, seen: Seen[], os: 
     q(cap1(match.tick / cap)),
     ...seenBlock,
     armyAge,
-    q(s.armyA.size / 20), q(s.armyB.size / 20), +(s.scoutId !== null && match.entities.has(s.scoutId)),
+    q(s.armyA.size / 20), q(s.armyB.size / 20), +(s.builderId !== null && match.entities.has(s.builderId)),
     ...blockedShots(match, s),
   ];
 }

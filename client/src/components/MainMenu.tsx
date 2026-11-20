@@ -34,7 +34,7 @@ const NEURAL: Array<{ name: string; label: string; sub: string }> = [
  */
 const BETA_SCRIPTED: Array<{ group: string; bots: Array<{ name: string; label: string; sub: string }> }> = [
   { group: "Rush", bots: [
-    { name: "rush1", label: "Light Rush", sub: "Five skirmishers at about 1:30." },
+    { name: "rush1", label: "Light Rush", sub: "Five skirmishers at about 1:30; raids your workers." },
     { name: "rush2", label: "Rush", sub: "Early skirmisher or gunner pushes." },
     { name: "rush3", label: "Double Rush", sub: "Two barracks, constant skirmishers." },
     { name: "rush_post", label: "Outpost Rush", sub: "Rush with outposts at home." },
@@ -57,6 +57,8 @@ const BETA_SCRIPTED: Array<{ group: string; bots: Array<{ name: string; label: s
     { name: "sw_macro_bruiser", label: "Macro → Bruisers", sub: "Economy, then a bruiser timing." },
     { name: "sw_fake_brush", label: "Fake Expand", sub: "Fakes an expansion, strikes through brush." },
     { name: "sw_turtle_grab", label: "Turtle → Grab", sub: "Turtles, then grabs the nodes." },
+    { name: "sw_read_macro", label: "Scout → Macro", sub: "Scouts you, then answers what it saw." },
+    { name: "sw_read_turtle", label: "Scout → Turtle", sub: "Turtles; grabs the nodes if you look weak." },
   ] },
   { group: "Specialists", bots: [
     { name: "hidden", label: "Hidden", sub: "Masses out of sight, then attacks." },

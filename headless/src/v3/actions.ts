@@ -17,7 +17,7 @@
 // changed anything; scripted play must have an ineffective rate of 0.
 import type { MatchEntity, MatchState } from "../../../server/src/match/types.js";
 import type { MatchEngine } from "../../../server/src/match/matchEngine.js";
-import { BUILDING_DEFS, UNIT_DEFS } from "@crystalfront/shared";
+import { BUILDING_DEFS, UNIT_DEFS, OUTRIDER_LIMIT } from "@crystalfront/shared";
 import { forwardTerms, requirementMet, siteInSight, validateBuildSite } from "../../../server/src/match/buildingValidation.js";
 import { anchorsConnected, footprintOf, type Rect } from "../../../server/src/match/engine/navGrid.js";
 import { anchorsFor } from "../../../server/src/match/maps.js";
@@ -29,7 +29,7 @@ import { PLACEMENT } from "@crystalfront/shared";
 
 export const DECISION_TICKS = 8;
 /** Action space version (wire format, head layout and what an action does). */
-export const ACTION_SPACE_VERSION = 7;
+export const ACTION_SPACE_VERSION = 8; // 8: Outrider (train, `scout` group), forward-builder role
 
 /** Own-frame grid (also the observation grid). 5000×900 → 50×15; smaller maps leave cells invalid. */
 export const GRID_CELL_W = 100;
@@ -41,7 +41,8 @@ export const GRID_CELLS = GRID_COLS * GRID_ROWS; // 750
 export const PTR_SIZE = 200;
 
 // ---- Economy head ----
-export const TRAIN_UNITS = ["worker", "skirmisher", "gunner", "bruiser", "medic", "bulwark"] as const;
+/** "outrider": beta ruleset, one alive or queued, trained at the Crystal (mainline 0.10 plan §2). */
+export const TRAIN_UNITS = ["worker", "skirmisher", "gunner", "bruiser", "medic", "bulwark", "outrider"] as const;
 export const BUILDINGS = ["barracks", "foundry", "supply_depot", "turret", "outpost"] as const;
 /** Build sites, own frame: own base, own pockets, own chokes, centre anchors. */
 export const NAMED_SITES = 1 + ANCHOR_MAX.pockets + ANCHOR_MAX.chokes + ANCHOR_MAX.centre; // 10
@@ -57,12 +58,12 @@ export const NODE_SLOTS = ANCHOR_MAX.safeNodes + ANCHOR_MAX.nodes; // 16
 export const WORKER_COUNTS = [1, 2, 4] as const;
 
 export const ECON_TRAIN0 = 1;
-export const ECON_BUILD0 = ECON_TRAIN0 + TRAIN_UNITS.length;                  // 7  (+ building; site head)
-export const ECON_ASSIGN0 = ECON_BUILD0 + BUILDINGS.length;                   // 12
-export const ECON_REPAIR = ECON_ASSIGN0 + NODE_SLOTS * WORKER_COUNTS.length;  // 60 (econ pointer: own building)
-export const ECON_RALLY = ECON_REPAIR + 1;                                    // 61 (econ pointer: producer; econ target)
-export const ECON_CANCEL = ECON_RALLY + 1;                                    // 62 (econ pointer: producer with a queue)
-export const ECON_SIZE = ECON_CANCEL + 1;                                     // 63
+export const ECON_BUILD0 = ECON_TRAIN0 + TRAIN_UNITS.length;                  // 8  (+ building; site head)
+export const ECON_ASSIGN0 = ECON_BUILD0 + BUILDINGS.length;                   // 13
+export const ECON_REPAIR = ECON_ASSIGN0 + NODE_SLOTS * WORKER_COUNTS.length;  // 61 (econ pointer: own building)
+export const ECON_RALLY = ECON_REPAIR + 1;                                    // 62 (econ pointer: producer; econ target)
+export const ECON_CANCEL = ECON_RALLY + 1;                                    // 63 (econ pointer: producer with a queue)
+export const ECON_SIZE = ECON_CANCEL + 1;                                     // 64
 /** Econ pointer mask rows: repair, rally, cancel. */
 export const ECON_PTR_KINDS = ["repair", "rally", "cancel"] as const;
 
@@ -90,8 +91,7 @@ export const TARGET_NONE = TARGET_GRID0 + GRID_CELLS; // 803
 export const TARGET_SIZE = TARGET_NONE + 1; // 804
 
 const COMBAT = new Set(["skirmisher", "gunner", "bruiser", "medic", "bulwark"]);
-const MOVABLE = new Set(["worker", "skirmisher", "gunner", "bruiser", "medic", "bulwark"]);
-const FAST = new Set(["skirmisher", "medic"]);
+const MOVABLE = new Set(["worker", "skirmisher", "gunner", "bruiser", "medic", "bulwark", "outrider"]);
 /** Producers keep at most this many units queued (a busy producer is not "free"). */
 export const PRODUCER_QUEUE_MAX = 2;
 /** Units within this distance of their crystal count as home for `retreat`. */
@@ -127,7 +127,7 @@ export interface SeatState {
   nodeSlots: (string | null)[];
   armyA: Set<string>;
   armyB: Set<string>;
-  scoutId: string | null;
+  builderId: string | null;
   /** Enemy-memory slot positions (world), filled by observation v2 (T6). */
   memory: (Pt | null)[];
   /** Own-frame grid cells: a walkable world point per cell (null: none). */
@@ -193,7 +193,7 @@ export function createSeatState(match: MatchState, playerId: string): SeatState 
   }
   return {
     playerId, frame, targets, targetValid, sites, siteValid, nodeSlots,
-    armyA: new Set(), armyB: new Set(), scoutId: null,
+    armyA: new Set(), armyB: new Set(), builderId: null,
     memory: new Array(MEMORY_SLOTS).fill(null),
     grid, gridSites, rows: [], sealCache: { nav: null, version: -1, ok: new Map() },
     stats: { decisions: 0, econIneffective: 0, armyIneffective: 0, autopilot: 0, contested: 0 },
@@ -245,7 +245,7 @@ function ownCrystal(match: MatchState, playerId: string): MatchEntity | undefine
 function queuedSupply(match: MatchState, playerId: string): number {
   let s = 0;
   for (const e of match.entities.values()) {
-    if (e.ownerId === playerId && e.type === "building") for (const q of e.productionQueue ?? []) s += q.supplyCost;
+    if (e.ownerId === playerId && (e.type === "building" || e.type === "crystal")) for (const q of e.productionQueue ?? []) s += q.supplyCost;
   }
   return s;
 }
@@ -260,6 +260,12 @@ function producerFor(match: MatchState, playerId: string, unit: string): MatchEn
     return c && eco.resources >= cfg.workerTrainCost && eco.supply + cfg.workerSupplyCost <= eco.maxSupply ? c : null;
   }
   const def = UNIT_DEFS[unit];
+  if (unit === "outrider") {
+    // Beta only; the engine allows one alive or queued per player.
+    if (match.config.ruleset !== "beta" || outriders(match, playerId) >= OUTRIDER_LIMIT) return null;
+    const c = ownCrystal(match, playerId);
+    return c && eco.resources >= def.cost && eco.supply + queuedSupply(match, playerId) + def.supplyCost <= eco.maxSupply ? c : null;
+  }
   if (eco.resources < def.cost || eco.supply + queuedSupply(match, playerId) + def.supplyCost > eco.maxSupply) return null;
   let best: MatchEntity | null = null;
   for (const e of match.entities.values()) {
@@ -276,18 +282,29 @@ function producerFor(match: MatchState, playerId: string, unit: string): MatchEn
   return best;
 }
 
+/** Own Outriders alive or queued at the Crystal. */
+function outriders(match: MatchState, playerId: string): number {
+  let n = 0;
+  for (const e of match.entities.values()) {
+    if (e.ownerId !== playerId) continue;
+    if (e.type === "outrider") n++;
+    else if (e.type === "crystal") n += e.productionQueue.filter((q) => q.unitType === "outrider").length;
+  }
+  return n;
+}
+
 function builder(match: MatchState, s: SeatState): MatchEntity | null {
   let best: MatchEntity | null = null;
   for (const e of match.entities.values()) {
-    if (e.type !== "worker" || e.ownerId !== s.playerId || e.buildTargetId || e.id === s.scoutId) continue;
+    if (e.type !== "worker" || e.ownerId !== s.playerId || e.buildTargetId || e.id === s.builderId) continue;
     if (!best || (isIdleWorker(match, e) && !isIdleWorker(match, best))) best = e;
   }
   return best;
 }
 
 /**
- * Builder of an `anywhere` building (an outpost): the free worker nearest the site, the scout
- * included, so a worker walked forward as the scout builds where it stands (ties by id).
+ * Builder of an `anywhere` building (an outpost): the free worker nearest the site, the forward builder
+ * included, so a worker walked forward as the forward builder builds where it stands (ties by id).
  * Without a site: whether any such worker exists.
  */
 function forwardBuilder(match: MatchState, s: SeatState, at?: Pt): MatchEntity | null {
@@ -300,11 +317,11 @@ function forwardBuilder(match: MatchState, s: SeatState, at?: Pt): MatchEntity |
   return best;
 }
 
-/** Repair: the nearest worker that is not building and not the scout (ties by id). */
+/** Repair: the nearest worker that is not building and not the forward builder (ties by id). */
 function repairer(match: MatchState, s: SeatState, b: MatchEntity): MatchEntity | null {
   let best: MatchEntity | null = null, bd = Infinity;
   for (const e of match.entities.values()) {
-    if (e.type !== "worker" || e.ownerId !== s.playerId || e.buildTargetId || e.repairTargetId || e.id === s.scoutId) continue;
+    if (e.type !== "worker" || e.ownerId !== s.playerId || e.buildTargetId || e.repairTargetId || e.id === s.builderId) continue;
     const d = (e.x - b.x) ** 2 + (e.y - b.y) ** 2;
     if (d < bd || (d === bd && best && e.id < best.id)) { best = e; bd = d; }
   }
@@ -432,11 +449,11 @@ function nodeById(match: MatchState, id: string | null) {
   return id ? match.resourceNodes.find((n) => n.id === id) : undefined;
 }
 
-/** Workers that `assign` may move to a node: not building, not the scout, not already there; nearest first. */
+/** Workers that `assign` may move to a node: not building, not the forward builder, not already there; nearest first. */
 function assignCandidates(match: MatchState, s: SeatState, node: { id: string; x: number; y: number }): MatchEntity[] {
   const out: MatchEntity[] = [];
   for (const e of match.entities.values()) {
-    if (e.type !== "worker" || e.ownerId !== s.playerId || e.buildTargetId || e.id === s.scoutId) continue;
+    if (e.type !== "worker" || e.ownerId !== s.playerId || e.buildTargetId || e.id === s.builderId) continue;
     if (e.gatheringNodeId === node.id) continue;
     out.push(e);
   }
@@ -446,24 +463,16 @@ function assignCandidates(match: MatchState, s: SeatState, node: { id: string; x
 
 function pruneArmies(match: MatchState, s: SeatState): void {
   for (const set of [s.armyA, s.armyB]) for (const id of set) if (!match.entities.has(id)) set.delete(id);
-  if (s.scoutId && !match.entities.has(s.scoutId)) s.scoutId = null;
+  if (s.builderId && !match.entities.has(s.builderId)) s.builderId = null;
 }
 
+/** The `scout` group: the seat's Outrider (beta). */
 function pickScout(match: MatchState, s: SeatState): MatchEntity | null {
-  if (s.scoutId) {
-    const e = match.entities.get(s.scoutId);
-    if (e) return e;
-  }
-  let fast: MatchEntity | null = null, worker: MatchEntity | null = null;
-  for (const e of match.entities.values()) {
-    if (e.ownerId !== s.playerId) continue;
-    if (FAST.has(e.type) && !e.moveTarget && !e.attackTargetId && !s.armyA.has(e.id) && !s.armyB.has(e.id)) { fast ??= e; }
-    else if (e.type === "worker" && !e.buildTargetId) { if (!worker || (isIdleWorker(match, e) && !isIdleWorker(match, worker))) worker = e; }
-  }
-  return fast ?? worker;
+  for (const e of match.entities.values()) if (e.type === "outrider" && e.ownerId === s.playerId && e.health > 0) return e;
+  return null;
 }
 
-/** Members of an army group (not `none` or `unit`). Does not assign the scout. */
+/** Members of an army group (not `none` or `unit`). */
 function groupMembers(match: MatchState, s: SeatState, g: Group): MatchEntity[] {
   if (g === "scout") { const e = pickScout(match, s); return e ? [e] : []; }
   const out: MatchEntity[] = [];
@@ -704,10 +713,10 @@ function armyCommands(match: MatchState, s: SeatState, g: Group, o: Order, a: V2
   let members: MatchEntity[];
   if (g === "unit") { const e = unitAt(match, s, a.unit); members = e ? [e] : []; }
   else members = groupMembers(match, s, g);
-  // The scout is the seat's one detached unit (off the worker autopilot and the army groups' builder
-  // and repair duty): the scout group's pick, or a worker sent somewhere through the unit pointer.
+  // The forward builder is the seat's one detached worker (off the worker autopilot and the army
+  // groups' builder and repair duty): a worker sent somewhere through the unit pointer.
   const sent = o === "move" || o === "attack_move" || o === "guard";
-  if ((g === "scout" || (g === "unit" && sent && members[0]?.type === "worker")) && members[0]) s.scoutId = members[0].id;
+  if (g === "unit" && sent && members[0]?.type === "worker") s.builderId = members[0].id;
   const crystal = ownCrystal(match, s.playerId);
   const doers = members.filter((e) => memberAccepts(match, s, g, o, e, crystal));
   const ids = doers.map((e) => e.id);
@@ -838,7 +847,7 @@ export function workerAutopilot(engine: MatchEngine, match: MatchState, s: SeatS
   const accepted: Cmd[] = [];
   const safe = s.nodeSlots.slice(0, ANCHOR_MAX.safeNodes).map((id) => nodeById(match, id)).filter((n) => !!n);
   for (const e of match.entities.values()) {
-    if (e.type !== "worker" || e.ownerId !== s.playerId || e.id === s.scoutId || e.moveOrder) continue;
+    if (e.type !== "worker" || e.ownerId !== s.playerId || e.id === s.builderId || e.moveOrder) continue;
     if (!isIdleWorker(match, e)) continue;
     let best: (typeof safe)[number] | undefined, bd = Infinity;
     for (const n of safe) {

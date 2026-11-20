@@ -22,7 +22,7 @@ export interface WSMessage {
 
 export interface MatchEntity {
   id: string;
-  type: "crystal" | "worker" | "placeholder" | "resource_node" | "building" | "skirmisher" | "gunner" | "bruiser" | "medic" | "bulwark";
+  type: "crystal" | "worker" | "placeholder" | "resource_node" | "building" | "skirmisher" | "gunner" | "bruiser" | "medic" | "bulwark" | "outrider";
   ownerId: string;
   x: number;
   y: number;

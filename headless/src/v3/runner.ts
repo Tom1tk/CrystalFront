@@ -215,7 +215,7 @@ class Slot {
       { playerId: PLAYER_IDS[0], username: cfg.blue, color: "blue", score: 0 },
       { playerId: PLAYER_IDS[1], username: cfg.red, color: "red", score: 0 },
     ];
-    this.match = this.engine.createMatch(`v2-${this.idx}-${this.episodes}`, players, { ...DEFAULT_CONFIG, mapId: cfg.map, maxTicks: this.g.cap }, this.episodeSeed);
+    this.match = this.engine.createMatch(`v2-${this.idx}-${this.episodes}`, players, { ...DEFAULT_CONFIG, ruleset: "beta", mapId: cfg.map, maxTicks: this.g.cap }, this.episodeSeed);
     this.engine.startMatch(this.match.id);
     this.seats = [V2.createSeatState(this.match, PLAYER_IDS[0]), V2.createSeatState(this.match, PLAYER_IDS[1])];
     this.oss = [OBS.createObsState(this.match, this.seats[0]), OBS.createObsState(this.match, this.seats[1])];

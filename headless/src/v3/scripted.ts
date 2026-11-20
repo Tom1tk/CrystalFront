@@ -18,6 +18,7 @@ import { losSet, visionCellOf, visionGridOf } from "../../../server/src/match/en
 import type { MatchEntity, MatchState } from "../../../server/src/match/types.js";
 import { fromOwnFrame, toOwnFrame } from "./frame.js";
 import type { SeatState } from "./actions.js";
+import { OutriderPlan, enemyReads, type Retrain, type ScoutStyle } from "./scout.js";
 import {
   act, BUILDINGS, ECON_ASSIGN0, ECON_BUILD0, ECON_REPAIR, ECON_TRAIN0, GRID_CELL_H, GRID_CELL_W, GRID_CELLS, GRID_COLS, GRID_ROWS, GROUPS, NAMED_SITES, ORDERS, TARGET_GRID0, TARGET_NONE, TRAIN_UNITS, WORKER_COUNTS,
   type V2Action, type V2Masks,
@@ -132,7 +133,7 @@ export interface Template {
   /** From this tick on, rebuild the economy to these targets (rushes that did not end the game). */
   late?: { tick: number; workers: number; contested: number };
   /**
-   * Forward outposts, `n` of them, built by one worker sent forward as the scout (needs a barracks).
+   * Forward outposts, `n` of them, built by one worker sent forward as the forward builder (needs a barracks).
    * `escort`: the push heads for the enemy choke and holds while the worker walks with the army and
    * builds them beside it on the enemy half, then goes on. `backdoor`: from `tick` on the worker goes round a map edge and builds
    * them beside the enemy crystal; skirmishers are then trained there first and attack on their own,
@@ -326,7 +327,11 @@ export const TEMPLATES: Record<string, Template> = {
   },
 };
 
-interface BotDef { templates: string[]; switchTo?: string; z?: number }
+/**
+ * `read`: an informed switcher (§2a) that switches on what it has seen rather than at a random time;
+ * `scout`: its Outrider style and when a dead Outrider is replaced (default: by game plan, `scoutFor`).
+ */
+interface BotDef { templates: string[]; switchTo?: string; z?: number; read?: "macro" | "turtle"; scout?: [ScoutStyle, Retrain] }
 
 /** Bot name → templates it samples from; switchers name their second phase. */
 export const SCRIPTED: Record<string, BotDef> = {
@@ -350,7 +355,27 @@ export const SCRIPTED: Record<string, BotDef> = {
   rush_post: { templates: ["rush_outpost"] },
   backdoor: { templates: ["backdoor"] },
   siege: { templates: ["turtle_siege"] },
+  sw_read_macro: { templates: ["macro_light"], z: 25, read: "macro", scout: ["map_watch", "spare"] },
+  sw_read_turtle: { templates: ["turtle_hold"], z: 26, read: "turtle", scout: ["watch", "spare"] },
 };
+
+/** Outrider style by bot (mainline 0.10 plan §2a); bots not listed watch and never retrain. */
+const SCOUT_STYLE: Record<string, [ScoutStyle, Retrain]> = {
+  rush1: ["reckless", "always"],
+  turtle: ["watch", "spare"], heavy: ["watch", "spare"], siege: ["watch", "spare"],
+  macro: ["map_watch", "spare"], swarm: ["map_watch", "spare"], swarm_mass: ["map_watch", "spare"], swarm_tide: ["map_watch", "spare"],
+  sw_macro_bruiser: ["map_watch", "spare"], sw_turtle_grab: ["map_watch", "spare"],
+  hidden: ["careful", "delay"], backdoor: ["careful", "delay"], rush_post: ["careful", "delay"],
+};
+export function scoutFor(name: string): [ScoutStyle, Retrain] {
+  return SCRIPTED[name]?.scout ?? SCOUT_STYLE[name] ?? ["watch", "never"];
+}
+/** Informed switchers: enemy combat units that count as an early army; reading stops at this tick (4:00). */
+const READ_ARMY = 4, READ_UNTIL = 2400;
+/** "Little army" reads count only from 3:00, when every plan has had time to build one. */
+const READ_SMALL = 1800;
+/** A fast expansion: more enemy workers on contested nodes than a standard plan keeps there (2). */
+const READ_EXPAND = 3;
 export const SWITCH_WINDOW: [number, number] = [1500, 4000];
 
 /** Every z a scripted bot can play, with its bot name. */
@@ -490,8 +515,14 @@ export class ScriptedV2Bot {
     this.jitter(this.t, rng);
     if (this.t.post?.mode === "backdoor") this.edge = rng.random() < 0.5 ? 0 : 1;
     this.rng = rng;
+    const [style, retrain] = scoutFor(name);
+    this.scout = new OutriderPlan(style, retrain, ctx);
+    this.read = def.read ?? null;
   }
   private rng: Rng;
+  private scout: OutriderPlan;
+  /** Informed switcher still reading the enemy (null once it has decided, or for other bots). */
+  private read: "macro" | "turtle" | null;
 
   /** Template label (and switch tick) for logs. */
   describe(): string {
@@ -511,9 +542,10 @@ export class ScriptedV2Bot {
       this.jitter(this.t, this.rng);
       this.pushing = false; this.viaDone = false; this.lastOrder = ""; this.ctrlBest = 0;
     }
+    if (this.read) this.readEnemy(obs, v.tick);
     this.site = 0; this.econPtr = 0;
     this.shielded = Math.max(obs.globals[G.shots_blocked], this.shielded * SHIELD_DECAY);
-    const econ = this.econ(obs, v, m);
+    const econ = this.scout.econ(obs, m, v.tick) || this.econ(obs, v, m);
     let army: Partial<V2Action> = this.armyOrder(obs, v, m);
     if (this.t.post?.mode === "backdoor") {
       // The backdoor's worker and skirmishers come before the home army's order (which is then issued on the next decision).
@@ -521,9 +553,39 @@ export class ScriptedV2Bot {
       if (post) { if (army.group) this.lastOrder = ""; army = post; }
       else if (!army.group) army = this.micro(obs, v, m) ?? army;
     } else if (!army.group) army = this.postOrder(obs, v, m) ?? this.micro(obs, v, m) ?? army;
+    // An enemy Outrider at the workers: one unit guards them for a while (it comes before the army order, which goes out again next decision).
+    const guard = this.scout.guardWorkers(obs, m, v.tick, this.decisions);
+    if (guard.ended) this.lastOrder = "";
+    if (guard.a) { if (army.group) this.lastOrder = ""; army = guard.a; }
+    else {
+      // The Outrider: urgent orders (running, going home) take the army slot; the others only a free one.
+      const s = this.scout.order(obs, m, this.decisions);
+      if (s && (s.urgent || !army.group)) { if (army.group) this.lastOrder = ""; army = s.a; }
+    }
     this.decisions++;
     return act({ econ, site: econ >= ECON_BUILD0 && econ < ECON_ASSIGN0 ? this.site : 0, econPtr: this.econPtr, ...army });
   }
+
+  /** Informed switchers: switch on what has been seen of the enemy, or stay on the first plan at READ_UNTIL. */
+  private readEnemy(obs: ObsV2, tick: number): void {
+    const r = enemyReads(obs);
+    let to: string | null = null;
+    if (this.read === "macro") {
+      if (r.combat >= READ_ARMY || r.barracks >= 2) to = "turtle_gunner";
+      else if (r.turrets > 0 && r.combat <= 1 && tick >= READ_SMALL) to = "bruiser_timing";
+    } else if (this.read === "turtle") {
+      if (r.combat > READ_ARMY) this.read = null; // a big army: the turtle stays
+      else if (r.contestedWorkers >= READ_EXPAND || r.outposts > 0 || (this.scout.scouted && r.combat <= 2 && tick >= READ_SMALL)) to = "control_grab";
+    }
+    if (to) {
+      this.t = TEMPLATES[to]; this.read = null;
+      this.jitter(this.t, this.rng);
+      this.pushing = false; this.viaDone = false; this.lastOrder = ""; this.ctrlBest = 0;
+    } else if (tick >= READ_UNTIL) this.read = null;
+  }
+
+  /** Template label now (informed switchers change it when they switch). */
+  get template(): string { return this.t.label; }
 
   // ---- view ----
 
@@ -764,9 +826,9 @@ export class ScriptedV2Bot {
     return d[Math.floor(d.length / 2)] - d[Math.floor(d.length / 4)];
   }
 
-  /** The worker sent forward (the scout), if it is alive. */
+  /** The worker sent forward (the forward builder), if it is alive. */
   private forwardWorker(obs: ObsV2): { e: number[]; i: number } | null {
-    const i = obs.entities.findIndex((e) => e[F.own] && e[F.type_worker] && e[F.scout]);
+    const i = obs.entities.findIndex((e) => e[F.own] && e[F.type_worker] && e[F.builder]);
     return i < 0 ? null : { e: obs.entities[i], i };
   }
 

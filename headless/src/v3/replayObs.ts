@@ -32,7 +32,7 @@ export function replayObservations(
   if (r.v2.actionSpaceVersion !== V2.ACTION_SPACE_VERSION) throw new Error(`replay action space ${r.v2.actionSpaceVersion}, this build ${V2.ACTION_SPACE_VERSION}`);
   const { k, cap, z } = r.v2;
   const engine = new MatchEngine();
-  const match = engine.createMatch("v2-replay", players(r), { ...DEFAULT_CONFIG, mapId: r.mapId, maxTicks: cap }, r.seed);
+  const match = engine.createMatch("v2-replay", players(r), { ...DEFAULT_CONFIG, ruleset: "beta", mapId: r.mapId, maxTicks: cap }, r.seed);
   engine.startMatch(match.id);
   const ids = [r.bluePlayerId, r.redPlayerId];
   const seats: [V2.SeatState, V2.SeatState] = [V2.createSeatState(match, ids[0]), V2.createSeatState(match, ids[1])];
@@ -73,7 +73,7 @@ export function replayObservations(
  */
 export function replayCommandLog(r: V2Replay, onTick?: (match: MatchState) => void): MatchState {
   const engine = new MatchEngine();
-  const match = engine.createMatch("replay", players(r), { ...DEFAULT_CONFIG, mapId: r.mapId }, r.seed);
+  const match = engine.createMatch("replay", players(r), { ...DEFAULT_CONFIG, ruleset: "beta", mapId: r.mapId }, r.seed);
   engine.startMatch(match.id);
   const byTick = new Map<number, V2Replay["commandLog"]>();
   for (const e of r.commandLog) {

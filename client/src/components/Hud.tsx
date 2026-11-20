@@ -263,7 +263,7 @@ export interface BotRead {
 
 const READ_NAMES: Record<string, [string, string]> = {
   worker: ["worker", "workers"], skirmisher: ["skirmisher", "skirmishers"], gunner: ["gunner", "gunners"], bruiser: ["bruiser", "bruisers"],
-  medic: ["medic", "medics"], bulwark: ["bulwark", "bulwarks"], barracks: ["barracks", "barracks"], foundry: ["foundry", "foundries"],
+  medic: ["medic", "medics"], bulwark: ["bulwark", "bulwarks"], outrider: ["outrider", "outriders"], barracks: ["barracks", "barracks"], foundry: ["foundry", "foundries"],
   supply_depot: ["depot", "depots"], turret: ["turret", "turrets"], outpost: ["outpost", "outposts"],
 };
 

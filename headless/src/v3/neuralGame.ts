@@ -26,7 +26,7 @@ export async function playGame(model: NeuralModel, bot: string, map: string, see
     { playerId: IDS[0], username: side === 0 ? "policy" : bot, color: "blue", score: 0 },
     { playerId: IDS[1], username: side === 1 ? "policy" : bot, color: "red", score: 0 },
   ];
-  const match = engine.createMatch(`ng-${seed}-${side}`, players, { ...DEFAULT_CONFIG, mapId: map, maxTicks: cap }, seed);
+  const match = engine.createMatch(`ng-${seed}-${side}`, players, { ...DEFAULT_CONFIG, ruleset: "beta", mapId: map, maxTicks: cap }, seed);
   engine.startMatch(match.id);
   const seats = [V2.createSeatState(match, IDS[0]), V2.createSeatState(match, IDS[1])] as [V2.SeatState, V2.SeatState];
   const oss = [OBS.createObsState(match, seats[0]), OBS.createObsState(match, seats[1])];

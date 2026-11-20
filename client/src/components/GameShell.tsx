@@ -91,7 +91,7 @@ const BUILDING_COLORS: Record<BuildingType, string> = {
 };
 
 const ENTITY_NAMES: Record<string, string> = {
-  worker: "Worker", skirmisher: "Skirmisher", gunner: "Gunner", bruiser: "Bruiser", medic: "Medic", bulwark: "Bulwark",
+  worker: "Worker", skirmisher: "Skirmisher", gunner: "Gunner", bruiser: "Bruiser", medic: "Medic", bulwark: "Bulwark", outrider: "Outrider",
   barracks: "Barracks", foundry: "Foundry", supply_depot: "Supply Depot", turret: "Turret", outpost: "Outpost",
 };
 
@@ -149,6 +149,7 @@ const UNIT_COSTS: Record<string, { cost: number; supplyCost: number }> = {
   bruiser: { cost: 100, supplyCost: 2 },
   medic: { cost: 60, supplyCost: 1 },
   bulwark: { cost: 125, supplyCost: 2 },
+  outrider: { cost: 50, supplyCost: 1 },
 };
 
 // ─── Terrain rendering (G-5/G-6) ─────────────────────────────────
@@ -272,6 +273,7 @@ const UNIT_RANGES: Record<string, number> = {
   bruiser: 20,
   medic: 80,
   worker: 15,
+  outrider: 15,
 };
 
 const UNIT_COOLDOWNS: Record<string, number> = {
@@ -280,6 +282,7 @@ const UNIT_COOLDOWNS: Record<string, number> = {
   bruiser: 8,
   medic: 25,
   worker: 20,
+  outrider: 15,
   building: 12,
 };
 
@@ -755,6 +758,24 @@ function drawBulwark(ctx: CanvasRenderingContext2D, x: number, y: number, isMyTe
   ctx.restore();
 }
 
+/** Beta scout: a small diamond with an eye dot. */
+function drawOutrider(ctx: CanvasRenderingContext2D, x: number, y: number, isMyTeam: boolean, selected: boolean) {
+  const c = silColors(isMyTeam);
+  ctx.save();
+  ctx.translate(x, y);
+  if (selected) {
+    ctx.beginPath(); ctx.arc(0, 0, 13, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(255,255,68,0.7)"; ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+  ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(9, 0); ctx.lineTo(0, 10); ctx.lineTo(-9, 0); ctx.closePath();
+  ctx.fillStyle = c.fill; ctx.strokeStyle = c.stroke; ctx.lineWidth = 2;
+  ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(0, 0, 2.5, 0, Math.PI * 2);
+  ctx.fillStyle = c.ink; ctx.fill();
+  ctx.restore();
+}
+
 function drawMedic(ctx: CanvasRenderingContext2D, x: number, y: number, isMyTeam: boolean, selected: boolean) {
   const c = silColors(isMyTeam);
   ctx.save();
@@ -842,6 +863,7 @@ export default function GameShell({
     | "train_bruiser"
     | "train_medic"
     | "train_bulwark"
+    | "train_outrider"
     | "build_supply_depot"
     | "build_barracks"
     | "build_foundry"
@@ -856,7 +878,8 @@ export default function GameShell({
     | "set_rally"
     | "none";
 
-  type HotkeySlot = { key: string; action: HotkeyAction; label: string; icon: string };
+  /** `disabled`: shown greyed out (the Outrider's one-at-a-time limit). */
+  type HotkeySlot = { key: string; action: HotkeyAction; label: string; icon: string; disabled?: boolean };
 
   // Context-aware hotkey computation
   const hotkeys = useMemo((): HotkeySlot[] => {
@@ -920,6 +943,24 @@ export default function GameShell({
         { key: "s", action: "none", label: "", icon: "" },
         { key: "d", action: "none", label: "", icon: "" },
         { key: "f", action: "none", label: "", icon: "" },
+      ];
+    }
+
+    // Beta: the Crystal also trains the Outrider, one alive or queued at a time.
+    if (crystalSelected && matchState?.ruleset === "beta") {
+      const mine = (e: MatchEntity) => e.ownerId === safePlayer.id;
+      const have = matchState.entities.some((e) => mine(e) && (e.type === "outrider" || (e.type === "crystal" && e.productionQueue.some((q) => q.unitType === "outrider"))));
+      return [
+        { key: "q", action: "train_worker", label: `Worker (${uc("worker")})`, icon: "👷" },
+        have
+          ? { key: "w", action: "train_outrider", label: "Outrider (one at a time)", icon: "🐎", disabled: true }
+          : { key: "w", action: "train_outrider", label: `Outrider (${uc("outrider")})`, icon: "🐎" },
+        { key: "e", action: "none", label: "", icon: "" },
+        { key: "r", action: "none", label: "", icon: "" },
+        { key: "a", action: "none", label: "", icon: "" },
+        { key: "s", action: "none", label: "", icon: "" },
+        { key: "d", action: "none", label: "", icon: "" },
+        { key: "f", action: "set_rally", label: "Rally", icon: "🚩" },
       ];
     }
 
@@ -1592,6 +1633,14 @@ export default function GameShell({
             if (crystal.length > 0) {
               onGameCommand({ type: "train_worker", entityId: crystal[0].id });
             }
+            break;
+          }
+          case "train_outrider": {
+            if (hotkey.disabled) break;
+            const crystal = selectedIds
+              .map((id) => entities.find((ent) => ent.id === id))
+              .find((ent): ent is MatchEntity => ent != null && ent.type === "crystal" && ent.ownerId === safePlayer.id);
+            if (crystal) onGameCommand({ type: "train_unit", buildingId: crystal.id, entityId: crystal.id, targetEntityId: "outrider" });
             break;
           }
           case "train_skirmisher":
@@ -2423,6 +2472,8 @@ export default function GameShell({
           drawBruiser(ctx, entity.x, entity.y, localIsMyTeam, isUnitSelected);
         } else if (entity.type === "medic") {
           drawMedic(ctx, entity.x, entity.y, localIsMyTeam, isUnitSelected);
+        } else if (entity.type === "outrider") {
+          drawOutrider(ctx, entity.x, entity.y, localIsMyTeam, isUnitSelected);
         } else if (entity.type === "bulwark") {
           const foe = entities.find((o) => o.type === "crystal" && o.ownerId !== entity.ownerId);
           const home = foe ? undefined : entities.find((o) => o.type === "crystal" && o.ownerId === entity.ownerId);
@@ -2840,7 +2891,7 @@ export default function GameShell({
   // Command card (G-12): the context hotkeys as clickable slots, plus what is selected.
   const commandSlots: CommandSlot[] = hotkeys.map((h) => {
     const m = /^(.*) \((\d+)\)$/.exec(h.label);
-    return { key: h.key, label: m ? m[1] : h.label, cost: m ? Number(m[2]) : undefined, enabled: h.action !== "none" };
+    return { key: h.key, label: m ? m[1] : h.label, cost: m ? Number(m[2]) : undefined, enabled: h.action !== "none" && !h.disabled };
   });
   const selectionInfo: SelectionInfo | null = (() => {
     if (isMultiSelect && selectedEntityIds.size > 1) return { name: "", count: selectedEntityIds.size };
@@ -2890,7 +2941,7 @@ export default function GameShell({
       <section>
         <div className="g-label" style={{ marginBottom: 8 }}>Spawn (then click the map)</div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {(["worker", "skirmisher", "gunner", "bruiser", "medic", "bulwark"] as const).map((t) => (
+          {(["worker", "skirmisher", "gunner", "bruiser", "medic", "bulwark", "outrider"] as const).map((t) => (
             <button key={t} type="button" className="g-btn small" onClick={() => { setDebugSpawnMode(t); setSettingsOpen(false); }}>+ {ENTITY_NAMES[t]}</button>
           ))}
           {(["barracks", "foundry", "supply_depot", "turret", "outpost"] as const).map((b) => (
