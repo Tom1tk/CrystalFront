@@ -2,7 +2,7 @@
 
 Status: **design only, not implemented** (2026-11-20). Separate from the 0.10 mainline work
 (`docs/MAINLINE_0.10_PLAN.md`) and can be designed and built while bot training runs. Items marked
-*(open)* need a decision.
+*(open)* need a decision. Decisions from 2026-11-20 are folded in (§11).
 
 ## 1. Goals
 
@@ -18,7 +18,7 @@ Status: **design only, not implemented** (2026-11-20). Separate from the 0.10 ma
 | Today | Consequence for tournaments |
 |---|---|
 | No accounts: a player is a username typed per connection | Needs a stable **player token** (random, kept in localStorage) so the same person is recognised across rounds, reloads and reconnects |
-| Disconnect = instant forfeit (`server/src/index.ts`, `ws.on("close")`) | Tournament matches need a **reconnect grace** (60 s *(open)*) before forfeiting, or one dropped Wi-Fi packet loses a round |
+| Disconnect = instant forfeit (`server/src/index.ts`, `ws.on("close")`) | Tournament matches need a **reconnect grace** (60 s) before forfeiting, or one dropped Wi-Fi packet loses a round |
 | 0.9 stable has **no time cap** | A Swiss round waits for its slowest game, so an endless game blocks the whole tournament. **Build on mainline**, which has the 20-minute cap and draws. Tournament matches use the beta ruleset (later 0.10). |
 | Server restarts on every `./deploy.sh` and keeps everything in memory | Tournament state is **saved to disk** after every change (`data/tournaments/<id>.json`) and reloaded at startup. Matches in progress when the server restarts are lost, so the manager decides how to handle them (§7). Don't deploy during a tournament; the dashboard warns the manager. |
 | Replays re-simulate from `match.commandLog` (`ReplayRunner`), and bots act through `processCommand`, so their actions are logged too | **Delayed spectating** reuses this: run a replay simulation that follows the live command log, held D seconds behind (§6) |
@@ -37,7 +37,7 @@ created (registration open) ── start ──▶ round 1 pairing ─▶ round 
 1. **Create.** The manager picks the settings and gets a 6-character code (same alphabet as lobby
    codes). The tournament is listed publicly as "Registering".
 2. **Register.** Players enter the code and a display name. Before start, the manager can kick
-   players and lock registration. Minimum 2 players. Maximum 32 *(open)*.
+   players and lock registration. Minimum 2 players. Maximum 32 entrants, humans and bots together.
 3. **Start.** Round 1 is seeded randomly, or by manager order *(open)*.
 4. **Each round:**
    1. Pair the players (§4) and publish the pairings.
@@ -112,8 +112,17 @@ Visible to every user of the site. No join is needed to watch.
   stops a player watching their own match from a second tab and seeing through fog.
 - **Delay:** 45 s by default. The manager can set 30–60 s.
 - **View:**
-  - Default: the full map, without fog.
-  - Option: either player's fog view *(open)*.
+  - The whole map is visible, as in an esports broadcast. The server sends the full,
+    fog-free state of the delayed simulation.
+  - Both players' fog is drawn on top of it:
+    - areas neither player can see are dimmed but still shown;
+    - each player's vision edge is outlined in their team colour.
+
+    So the viewer sees everything, plus who knows what.
+  - Observer toggles, as in SC2 observing: **Both** (default), **Blue's view** (only what blue
+    sees, true fog), **Red's view**, and **No fog**.
+  - Broadcast extras: a top bar for each player (resources, supply, army value, nodes held,
+    the Surge timer) and a production panel (what each side is training).
 - The client reuses the replay viewer, minus its seek and speed controls.
 - **Cost:** one extra engine per watched match, created only while someone is watching. With
   matches capped at 20 minutes and a typical game ending well before that, this is fine on this
@@ -129,7 +138,7 @@ Visible to every user of the site. No join is needed to watch.
 | **Add rounds** / remove remaining rounds | Any time before the final round is paired |
 | **Finish early** | Matches still running can be allowed to finish (default) or voided. Then the standings become final. |
 | **Withdraw a player** | Their current match is forfeited, they are not paired in future rounds, and their past results stand (so opponents' Buchholz doesn't change) |
-| **Add a player late** | Allowed until the last round is paired. The late player starts with 0 points, or with ½ point per missed round *(open, default 0)* |
+| **Add a player late** | Allowed until the last round is paired. The late player starts on 0 points |
 | Pause / resume between rounds | Stops auto-advance |
 | Re-pair the current round | Only before any of its matches start |
 | **Set a result** (adjudicate) | For disputes, server restarts, or a disconnect after the grace period: win, loss, draw, or replay the match |
@@ -142,13 +151,24 @@ The manager is identified only by their token. If they lose it (cleared browser)
 can't be managed. A server admin command (`npx tsx server/src/tournamentAdmin.ts`) can reassign
 the manager.
 
-## 8. Bots as entrants *(open, recommended)*
+## 8. Bots as entrants (decided: yes)
 
-The site has one regular user, so a Swiss of one human is not a tournament. The manager could add
-bot entrants:
+The manager can add bot entrants. They can do this before the start, or late, like any other late
+joiner. Every bot on the server is offered, with its version shown in the name:
 
-- neural Easy / Normal / Hard;
-- the scripted bots.
+- **Scripted bots:** rush, turtle, macro, heavy, and the others. On the beta ruleset they also
+  use the Outrider.
+- **Neural 0.9:** Easy, Normal and Hard. Tournament matches use the beta rules, so these bots play
+  through the evaluation adapter from the mainline plan:
+  - they see an enemy Outrider as a worker;
+  - they never train one;
+  - they don't know about Surges.
+
+  They are labelled "0.9" so that's clear.
+- **Neural beta:** each model as it is produced by the new training round, for example "beta
+  cycle 2 Hard".
+- The same bot can be entered more than once. Each copy is a separate entrant, for example
+  "Hard #1" and "Hard #2".
 
 How bot matches run:
 
@@ -157,6 +177,23 @@ How bot matches run:
 - **Bot v human:** the existing bot-game path, used as a tournament match.
 
 This also gives a cheap, watchable ladder for the new mainline bots.
+
+## 8a. Match length: Bo1 / Bo3 / Bo5
+
+- The manager sets the series length for the whole tournament. It can be overridden per round,
+  for example Bo1 Swiss rounds with a Bo3 or Bo5 last round. A round's length can be changed until
+  that round is paired.
+- **Maps:** game 1 is the round's map. Later games take the next maps in the pool rotation.
+  **Sides alternate every game.**
+- **Between games:** a 60 s ready check.
+- **The series** ends when a player reaches a majority of games (2 in Bo3, 3 in Bo5). A drawn
+  game counts ½ to each player.
+  - If every game is played and the score is still level (for example 1½–1½ in Bo3 after a draw),
+    the **series is a draw**, worth ½ in Swiss.
+  - Swiss scores whole series: win 1, draw ½, loss 0. Game scores are kept as an extra tiebreak
+    (game difference), placed after Sonneborn-Berger.
+- **Round length:** a round lasts as long as its slowest series. That's up to 20 minutes per game,
+  so up to 100 minutes for Bo5. The dashboard shows "game 2 of 3" on every live card.
 
 ## 9. Protocol (sketch)
 
@@ -183,19 +220,23 @@ This also gives a cheap, watchable ladder for the new mainline bots.
 | T1 | `shared/src/swiss.ts`: pairing, tiebreaks, byes, withdraw and late join | unit and fuzz tests |
 | T2 | Server `TournamentManager`: lifecycle, saving to disk, protocol, player tokens | server tests with simulated clients |
 | T3 | Client: create/join screens, dashboard, Tournaments list | manual test with 2–3 browser tabs |
-| T4 | Match integration: ready check, map and sides, results, reconnect grace, replay tagging | an end-to-end tournament with bots |
-| T5 | Delayed spectating | delay is never under D (server test); determinism against the live match |
+| T4 | Match integration: Bo1/3/5 series, ready check, map and sides, results, reconnect grace, replay tagging | an end-to-end tournament with bots |
+| T5 | Delayed spectating, broadcast view (both players' fog, toggles, top bars) | delay is never under D (server test); determinism against the live match |
 | T6 | Manager panel and the §7 operations | server tests for each operation |
-| T7 | Bot entrants (if wanted) | a full bot-only tournament runs unattended |
+| T7 | Bot entrants (all bots and versions, 0.9 via the adapter) | a full bot-only tournament runs unattended |
 
 T1 and T2 do not touch the game engine, so they can be built in parallel with the bot training round
 without changing golden hashes.
 
-## 11. Decisions needed
+## 11. Decisions (2026-11-20)
 
-1. Bots as entrants (§8)? (Recommended: yes.)
-2. Spectator view: full map only, or a choice of either player's fog?
-3. Late joiners: start on 0 points, or ½ point per missed round?
-4. Best-of-1 only, or best-of-3 for the final round(s)?
-5. Reconnect grace length (60 s?), and the maximum number of players (32?).
-6. Ship with 0.10 stable, or earlier in beta?
+1. **Bots:** yes. The manager adds them and can pick any bot on the server, of any version (§8).
+2. **Spectating:** the whole map, with both players' fog drawn over it, as in an esports
+   broadcast. There are toggles for one player's view or no fog (§6).
+3. **Late joiners** start on 0 points.
+4. **Series length:** Bo1, Bo3 or Bo5, set for the tournament and per round (§8a).
+5. **Reconnect window:** 60 s. **Maximum entrants:** 32.
+6. **Ships in beta** (beta ruleset), with 0.10 to follow.
+
+Still open: seeding round 1 randomly (default) or in the manager's order (§3), and how long a
+finished tournament stays viewable (7 days by default).
