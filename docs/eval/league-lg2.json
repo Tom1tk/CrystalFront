@@ -1,0 +1,25 @@
+{
+ "cycles": [
+  {
+   "cycle": 1,
+   "main": "checkpoints/v2/lg2-main/cycle_1.pt",
+   "exploiter": "checkpoints/v2/lg2-x1/final.pt",
+   "exploiter_win_rate": 0.59375,
+   "games": 32
+  },
+  {
+   "cycle": 2,
+   "main": "checkpoints/v2/lg2-main/cycle_2.pt",
+   "exploiter": "checkpoints/v2/lg2-x2/final.pt",
+   "exploiter_win_rate": 0.09375,
+   "games": 32
+  },
+  {
+   "cycle": 3,
+   "main": "checkpoints/v2/lg2-main/cycle_3.pt",
+   "exploiter": "checkpoints/v2/lg2-x3/final.pt",
+   "exploiter_win_rate": 0.0,
+   "games": 32
+  }
+ ]
+}

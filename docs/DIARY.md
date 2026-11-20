@@ -763,3 +763,17 @@ League lg1 stopped after cycle 2 on the user's call: the main agent answered its
 - User: siege-style play ("probably the best strategy") is fine; retrain. Chain `logs/m4_chain.sh` (detached): `m4-imitate` = m3-imitate settings with `--init checkpoints/v2/m3-imitate/final.pt` (the teachers changed: gunner reload, bruiser v gunner, medic heal, heavy bot), 20 bots, 3 M decisions; then the 0.40 gate eval (`docs/eval/m4-imitate.json`, 20 bots × 8 train maps × 3 seeds × 2 seats); if it passes, `python3 -m training.v2.league --run lg2 --init checkpoints/v2/m4-imitate/final.pt --bots <20>` with the default 4 cycles. Logs: `logs/m4-imitate.log`, `logs/m4-imitate-eval.log`, `logs/lg2.log`, `logs/m4_chain.out`.
 - First update's approx-KL 407 (the policy met teachers whose play changed), back to 0.1–1.2 from update 2; losses track m3-imitate's.
 
+- `m4-imitate`: 3,022,848 decisions in 4,698 s. Gate (20 bots × 8 training maps × 2 seats × 3 seeds) overall win **0.49** ≥ 0.40 → PASS; league started.
+
+## 2026-11-19/20 — League lg2 results; stopped after cycle 3
+
+- Exploitability (fresh exploiter from `m4-imitate/final.pt`, 3 M decisions v the frozen main, then 32 games): cycle 1 **0.59**, cycle 2 **0.09**, cycle 3 **0.00**.
+- Throughput fell during cycle 3's main phase (380 → 111 decisions/s; workers ~35% busy, GPU idle; back to 516/s at the end), so the run was slipping to Friday evening. User agreed: stop after cycle 3 (`logs/stop_after_cycle3.sh`, stopped 23:43 GMT 2026-11-19, ~90 s into cycle 4) and find the slowdown before the next run.
+- v the 20 scripted bots (8 training maps × 2 seats × 3 seeds = 960 games each; `docs/eval/lg2-cycle{1,2,3}.json`): overall win cycle 1 **0.82**, cycle 2 **0.87**, cycle 3 **0.89** (m4-imitate 0.49).
+  - Cycle 3 lowest: backdoor 0.48, swarm_mass 0.75, swarm_tide 0.77, swarm 0.83, gunline/outrider 0.85. Everything else ≥ 0.88.
+  - Cycle 2 had a hole v backdoor (0.17); cycle 3 recovered to 0.48. heavy 0.52 → 0.98 → 0.92; turtle 0.75 → 0.79 → 0.96; sw_turtle_grab 0.60 → 0.73 → 0.90.
+- Adaptivity (`training/eval/adapt.py`, from replay command logs): army mix differs from its overall mix by **13%** between opponents at cycle 3 (cycle 1 6%; m2-ppo-kl 3%).
+  - Cycle 3 goes gunner-heavy v slow/defensive bots (heavy 87% gunners, hidden 79%, turtle 78%, sw_fake_brush 76%, swarm_tide 74%) and keeps more skirmishers v rushes (rush3 66%, rush_post 65%, sw_rush_turtle 57%, swarm_mass 56%).
+  - Waits before pushing v turtle (5.6 min) and sw_turtle_grab (4.7 min) but pushes at ~2.5–2.7 min v rush3/rush_post/sw_rush_turtle.
+  - More turrets v outrider (8.1), swarm (7.2), swarm_tide (6.9), sw_fake_brush (6.5) than v rushes (~3.9). More workers than cycle 1 everywhere (10–15 v 6–10).
+  - Still almost no bruisers, medics, bulwarks or foundries: the variety is skirmisher/gunner ratio, timing and turret count.
