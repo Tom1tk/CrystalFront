@@ -11,6 +11,7 @@
 import { CONTROL } from "@crystalfront/shared";
 import type { MatchEntity, MatchState } from "../types.js";
 
+// Workers, bulwarks and the (beta) Outrider never hold or contest nodes.
 const UNIT_TYPES = new Set(["skirmisher", "gunner", "bruiser", "medic"]);
 
 function holds(e: MatchEntity): boolean {

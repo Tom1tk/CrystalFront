@@ -18,6 +18,20 @@ export interface BalanceSnapshot {
 }
 
 export const BALANCE_HISTORY: Readonly<Record<string, BalanceSnapshot>> = {
+  // ── 0.9.2-ML ──────────────────────────────────────────────────────────
+  // Mainline 0.10 step 3: the Outrider scout (UNIT_DEFS.outrider; cost 50, 60 HP, speed 8,
+  // vision 360, trained at the Crystal, one alive or queued, one free at start). It is gated by
+  // the match's ruleset ("beta"), not by version: 0.9-ruleset replays of any version play
+  // unchanged, and beta replays record ruleset "beta" so the viewer re-enables it. No
+  // BalanceSnapshot-tracked numeric changes vs 0.5.4-ML.
+  "0.9.2-ML": {
+    workerCost:            35,
+    workerSpeed:            3.4,
+    skirmisherSpeed:        4.0,
+    skirmisherDamage:      12,
+    passiveWinThreshold: 4500,
+  },
+
   // ── 0.5.4-ML ──────────────────────────────────────────────────────────
   // Phase 1 balance iteration 3 (REVIVAL_PLAN Task 1.3, line 244 lever list):
   //   MediumRushBot.FIRST_PUSH_TICK 200 → 300 (bot-internal constant, not

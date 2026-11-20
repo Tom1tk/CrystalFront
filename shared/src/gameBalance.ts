@@ -117,7 +117,25 @@ export const UNIT_DEFS: Record<string, UnitDef> = {
     attackCooldown: 25,
     visionRange: 210,
   },
+  // Beta ruleset only (mainline 0.10 plan §2): a fast scout trained at the Crystal, one per
+  // player (alive or queued), one free at match start. Cannot hold or contest nodes.
+  outrider: {
+    cost: 50,
+    supplyCost: 1,
+    buildTime: 60,
+    health: 60,
+    radius: 10,
+    damage: 5,
+    range: 15,
+    speed: 8.0,        // 2× a skirmisher: about 55 s across the map
+    color: "#e0b070",
+    attackCooldown: 15,
+    visionRange: 360,  // largest in the game
+  },
 };
+
+/** Beta: most Outriders a player may have alive or queued at once. */
+export const OUTRIDER_LIMIT = 1;
 
 // ====================================================================
 //  BUILDING DEFINITIONS

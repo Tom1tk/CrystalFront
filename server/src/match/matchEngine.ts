@@ -16,8 +16,8 @@ import type {
   UnitType,
 } from "./types.js";
 import { createMap } from "./map.js";
-import { DEFAULT_CONFIG, ORDER_QUEUE_MAX, type MatchEntity as QEntity, type QueuedOrderType } from "./types.js";
-import { BUILDING_DEFS, UNIT_DEFS, GATHERING, SIMULATION } from "@crystalfront/shared";
+import { DEFAULT_CONFIG, ORDER_QUEUE_MAX, isBeta, type MatchEntity as QEntity, type QueuedOrderType } from "./types.js";
+import { BUILDING_DEFS, UNIT_DEFS, GATHERING, SIMULATION, OUTRIDER_LIMIT } from "@crystalfront/shared";
 import { computeVisibility } from "./engine/visibility.js";
 import { processMovement } from "./engine/movement.js";
 import { processCombat } from "./engine/combat.js";
@@ -284,6 +284,7 @@ export class MatchEngine {
       commandLog: [],
     };
 
+    if (isBeta(match)) this.spawnStartOutriders(match);
     match.nav = rebuildNavGrid(match);
     computeVisibility(match);
     this.matches.set(id, match);
@@ -326,7 +327,7 @@ export class MatchEngine {
   debugSpawn(
     matchId: string,
     playerId: PlayerId,
-    entityType: "worker" | "skirmisher" | "gunner" | "bruiser" | "medic" | "bulwark" | "building",
+    entityType: "worker" | "skirmisher" | "gunner" | "bruiser" | "medic" | "bulwark" | "outrider" | "building",
     x: number,
     y: number,
     buildingType?: BuildingType
@@ -603,6 +604,10 @@ if (command.type === "gather") {
       return ok();
     }
 
+    if (command.type === "train_unit" && (command.unitType ?? command.targetEntityId) === "outrider") {
+      return this.trainOutrider(match, playerId, command.buildingId ?? command.entityId);
+    }
+
     if (command.type === "train_unit") {
       const buildingId = command.buildingId ?? command.entityId;
       if (!buildingId) {
@@ -638,7 +643,7 @@ if (command.type === "gather") {
 
       // Check total queue supply demand across ALL production buildings
       const queuedSupply = Array.from(match.entities.values())
-        .filter((e) => e.ownerId === playerId && e.type === "building")
+        .filter((e) => e.ownerId === playerId && (e.type === "building" || e.type === "crystal"))
         .reduce((sum, b) => sum + (b.productionQueue ?? []).reduce((s, item) => s + item.supplyCost, 0), 0);
       if (economy.supply + queuedSupply + unitDef.supplyCost > economy.maxSupply) {
         return { success: false, message: "Not enough supply" };
@@ -665,7 +670,7 @@ if (command.type === "gather") {
 
     if (command.type === "cancel_queue") {
       const building = command.entityId ? match.entities.get(command.entityId) : undefined;
-      if (!building || building.type !== "building" || building.ownerId !== playerId) return { success: false, message: "Building not found" };
+      if (!building || (building.type !== "building" && building.type !== "crystal") || building.ownerId !== playerId) return { success: false, message: "Building not found" };
 
       const queueIndex = command.targetX ?? 0;
       if (!building.productionQueue || building.productionQueue.length === 0) {
@@ -1259,6 +1264,7 @@ if (command.type === "gather") {
 
     // Phase 4: Construction & production
     this.processConstruction(match);
+    if (isBeta(match)) this.processCrystalQueues(match);
 
     // Phase 5: Death removal (before healing so dead targets are detected)
     this.processDeaths(match, damageLog);
@@ -1594,6 +1600,7 @@ if (command.type === "gather") {
         : null,
     ];
 
+    if (config.ruleset === "beta") this.spawnStartOutriders(match);
     match.nav = rebuildNavGrid(match);
     return match;
   }
@@ -1613,7 +1620,7 @@ if (command.type === "gather") {
 
   private createEntity(
     idGen: IdGen,
-    type: "crystal" | "worker" | "placeholder" | "resource_node" | "building" | "skirmisher" | "gunner" | "bruiser" | "medic" | "bulwark",
+    type: "crystal" | "worker" | "placeholder" | "resource_node" | "building" | "skirmisher" | "gunner" | "bruiser" | "medic" | "bulwark" | "outrider",
     ownerId: PlayerId,
     x: number,
     y: number,
@@ -1622,7 +1629,7 @@ if (command.type === "gather") {
     color: string,
     buildingType?: BuildingType
   ): MatchEntity {
-    const autoAttackEnabled = ["skirmisher", "gunner", "bruiser", "medic"].includes(type);
+    const autoAttackEnabled = ["skirmisher", "gunner", "bruiser", "medic", "outrider"].includes(type);
 
     if (type === "building" && buildingType) {
       const def = BUILDING_DEFS[buildingType];
@@ -1687,6 +1694,68 @@ if (command.type === "gather") {
    * Compute a spawn position just outside the parent entity so the new unit
    * doesn't overlap the building/crystal and can be selected immediately.
    */
+  /** Beta: the Outriders a player has alive or queued at their Crystal. */
+  private outriderCount(match: MatchState, playerId: PlayerId): number {
+    let n = 0;
+    for (const e of match.entities.values()) {
+      if (e.ownerId !== playerId) continue;
+      if (e.type === "outrider") n++;
+      else if (e.type === "crystal") n += e.productionQueue.filter((q) => q.unitType === "outrider").length;
+    }
+    return n;
+  }
+
+  /** Beta: queue an Outrider at the player's Crystal (one alive or queued at a time). */
+  private trainOutrider(match: MatchState, playerId: PlayerId, crystalId?: EntityId): { success: boolean; message?: string } {
+    if (!isBeta(match)) return { success: false, message: "Invalid unit type" };
+    const crystal = crystalId ? match.entities.get(crystalId) : undefined;
+    if (!crystal || crystal.type !== "crystal" || crystal.ownerId !== playerId) return { success: false, message: "Crystal not found" };
+    const playerIdx = match.players.findIndex((p) => p?.playerId === playerId);
+    const economy = playerIdx >= 0 ? match.economy[playerIdx] : null;
+    if (!economy) return { success: false, message: "No economy" };
+    if (this.outriderCount(match, playerId) >= OUTRIDER_LIMIT) return { success: false, message: "Only one Outrider at a time" };
+    const def = UNIT_DEFS.outrider;
+    const queuedSupply = Array.from(match.entities.values())
+      .filter((e) => e.ownerId === playerId && (e.type === "building" || e.type === "crystal"))
+      .reduce((sum, b) => sum + b.productionQueue.reduce((s, item) => s + item.supplyCost, 0), 0);
+    if (economy.supply + queuedSupply + def.supplyCost > economy.maxSupply) return { success: false, message: "Not enough supply" };
+    if (economy.resources < def.cost) return { success: false, message: "Not enough resources" };
+    economy.resources -= def.cost;
+    crystal.productionQueue.push({ unitType: "outrider", cost: def.cost, supplyCost: def.supplyCost, buildTime: def.buildTime, remainingTicks: def.buildTime });
+    return { success: true };
+  }
+
+  /** Beta: advance each Crystal's production queue (Outriders). */
+  private processCrystalQueues(match: MatchState): void {
+    for (const crystal of match.entities.values()) {
+      if (crystal.type !== "crystal" || crystal.productionQueue.length === 0) continue;
+      const item = crystal.productionQueue[0];
+      if (--item.remainingTicks > 0) continue;
+      const def = UNIT_DEFS[item.unitType];
+      const pIdx = match.players.findIndex((p) => p?.playerId === crystal.ownerId);
+      const spawn = this.spawnOutside(match, pIdx >= 0 ? pIdx : 0, crystal, def.radius);
+      const unit = this.createEntity(match.idGen, item.unitType, crystal.ownerId, spawn.x, spawn.y, def.health, def.radius, def.color);
+      if (crystal.rallyPoint) unit.moveTarget = { ...crystal.rallyPoint };
+      match.entities.set(unit.id, unit);
+      if (pIdx >= 0 && match.economy[pIdx]) match.economy[pIdx]!.supply += item.supplyCost;
+      crystal.productionQueue.shift();
+    }
+  }
+
+  /** Beta: one free Outrider per player at match start, just in front of the Crystal. */
+  private spawnStartOutriders(match: MatchState): void {
+    const def = UNIT_DEFS.outrider;
+    match.players.forEach((p, i) => {
+      const crystal = p ? [...match.entities.values()].find((e) => e.type === "crystal" && e.ownerId === p.playerId) : undefined;
+      if (!p || !crystal) return;
+      const dx = (crystal.radius + 120) * (i === 0 ? 1 : -1);
+      const pos = snapPoint({ x: crystal.x + dx, y: crystal.y }, match.config.mapWidth, match.config.mapHeight);
+      const unit = this.createEntity(match.idGen, "outrider", p.playerId, pos.x, pos.y, def.health, def.radius, def.color);
+      match.entities.set(unit.id, unit);
+      if (match.economy[i]) match.economy[i]!.supply += def.supplyCost;
+    });
+  }
+
   private spawnOutside(match: MatchState, playerIdx: number, parent: MatchEntity, childRadius: number): { x: number; y: number } {
     const gap = SIMULATION.spawnGap;
     const spawnDist = parent.radius + childRadius + gap;

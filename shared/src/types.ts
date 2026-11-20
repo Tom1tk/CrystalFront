@@ -51,11 +51,12 @@ export type EntityType =
   | "gunner"
   | "bruiser"
   | "medic"
-  | "bulwark";
+  | "bulwark"
+  | "outrider";
 
 export type BuildingType = "barracks" | "foundry" | "supply_depot" | "turret" | "outpost";
 
-export type UnitType = "worker" | "skirmisher" | "gunner" | "bruiser" | "medic" | "bulwark";
+export type UnitType = "worker" | "skirmisher" | "gunner" | "bruiser" | "medic" | "bulwark" | "outrider";
 
 export interface Entity {
   id: EntityId;
@@ -232,7 +233,7 @@ export interface ClientCommand {
   buildingType?: BuildingType;
   workerIds?: string[];
   buildingId?: string;
-  unitType?: "skirmisher" | "gunner" | "bruiser" | "medic" | "bulwark";
+  unitType?: "skirmisher" | "gunner" | "bruiser" | "medic" | "bulwark" | "outrider";
 }
 
 export interface GameSnapshot {

@@ -48,7 +48,7 @@ export interface ResourceNode {
 
 export type BuildingType = "barracks" | "foundry" | "supply_depot" | "turret" | "outpost";
 
-export type UnitType = "worker" | "skirmisher" | "gunner" | "bruiser" | "medic" | "bulwark";
+export type UnitType = "worker" | "skirmisher" | "gunner" | "bruiser" | "medic" | "bulwark" | "outrider";
 
 export interface ProductionQueueItem {
   unitType: UnitType;
@@ -109,7 +109,7 @@ export interface MatchState {
 
 export interface MatchEntity {
   id: EntityId;
-  type: "crystal" | "worker" | "placeholder" | "resource_node" | "building" | "skirmisher" | "gunner" | "bruiser" | "medic" | "bulwark";
+  type: "crystal" | "worker" | "placeholder" | "resource_node" | "building" | "skirmisher" | "gunner" | "bruiser" | "medic" | "bulwark" | "outrider";
   ownerId: PlayerId;
   x: number;
   y: number;
