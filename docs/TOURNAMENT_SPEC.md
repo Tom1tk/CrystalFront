@@ -19,7 +19,7 @@ Status: **design only, not implemented** (2026-11-20). Separate from the 0.10 ma
 |---|---|
 | No accounts: a player is a username typed per connection | Needs a stable **player token** (random, kept in localStorage) so the same person is recognised across rounds, reloads and reconnects |
 | Disconnect = instant forfeit (`server/src/index.ts`, `ws.on("close")`) | Tournament matches need a **reconnect grace** (60 s *(open)*) before forfeiting, or one dropped Wi-Fi packet loses a round |
-| 0.9 stable has **no time cap** | A Swiss round waits for its slowest game, so an endless game blocks the whole tournament. **Build on mainline**, which has the 20-minute cap and draws. Ship with 0.10, or in beta before that. |
+| 0.9 stable has **no time cap** | A Swiss round waits for its slowest game, so an endless game blocks the whole tournament. **Build on mainline**, which has the 20-minute cap and draws. Tournament matches use the beta ruleset (later 0.10). |
 | Server restarts on every `./deploy.sh` and keeps everything in memory | Tournament state is **saved to disk** after every change (`data/tournaments/<id>.json`) and reloaded at startup. Matches in progress when the server restarts are lost, so the manager decides how to handle them (§7). Don't deploy during a tournament; the dashboard warns the manager. |
 | Replays re-simulate from `match.commandLog` (`ReplayRunner`), and bots act through `processCommand`, so their actions are logged too | **Delayed spectating** reuses this: run a replay simulation that follows the live command log, held D seconds behind (§6) |
 

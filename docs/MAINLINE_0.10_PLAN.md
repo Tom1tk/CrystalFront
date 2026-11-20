@@ -1,4 +1,4 @@
-# Mainline 0.10 plan: Outrider, Surges, 20-minute cap, stable/beta channels
+# Mainline 0.10 plan: Outrider, Surges, 20-minute cap, 0.9 vs beta per-match toggle
 
 Status: **agreed design, not implemented** (2026-11-20). Decisions below are the user's
 answers to the planning questions; items marked *(proposed)* still need a yes.
@@ -14,32 +14,43 @@ Live games also have no time limit. Node control (hold more than half the contes
 net 60 s) is the only objective win. When nobody holds a majority, a game can run forever. 18% of
 scripted-matrix games reach the 20-minute training cap.
 
-## 1. Channels: 0.9 stays playable while the mainline is built
+## 1. Rulesets: 0.9 stays playable while the mainline is built
 
-- **Stable = 0.9.1-ML, frozen.** Its game, bot and models do not change. It runs from a separate
-  worktree `/root/CrystalFront-stable` on branch `release/0.9`, tagged `v0.9.1-ML`, with its own
-  replays directory.
-  - It gets one UI-only commit: the channel switch.
-  - After that commit, the golden hashes and a diff of `server/`, `shared/`, `headless/` and
-    `models/` show the game and bot are byte-identical to v0.9.1-ML.
-- **Beta = `main`.** This is the new mainline. It keeps 0.9.x version numbers (0.9.2, 0.9.3, …)
-  until it is ready to become 0.10.0.
-- **One public port.**
-  - A small channel router (its own systemd unit) listens on 3777 and forwards HTTP and WebSocket
-    upgrades by a `cf_channel` cookie:
-    - stable → 3779 (default, no cookie);
-    - beta → 3778.
-  - Same origin, so settings in localStorage carry over between channels.
-  - *(open)* Simpler alternative if port 3778 is reachable from your browser: no router, stable
-    stays on 3777, beta on 3778, and the switch is just a link between them (settings would not
-    carry over). Which ports reach you depends on how you access the box.
-- **The switch.**
-  - Main menu, both builds: "Game version: 0.9 (stable) / 0.9.x beta — dev testing only".
-  - Flipping it sets the cookie and reloads the page.
-  - Beta shows a permanent "DEV BETA 0.9.x" badge in the HUD and menu.
-- **Deploys.**
-  - `deploy.sh` deploys beta only.
-  - `deploy-stable.sh` exists but should only ever need running for the switch commit.
+**One server, one deploy.** When you start a match you pick the game version with a toggle:
+**0.9 (stable)**, the default, or **0.9.x beta — dev testing only**.
+
+- **Where the toggle appears:** the bot-game, solo-test and PvP host screens. In PvP the host
+  picks, and the joiner sees which version they're joining.
+- **What it does:** the choice is stored on the match as `ruleset: "0.9" | "beta"`. It never
+  changes mid-match.
+- **Beta matches** show a "DEV BETA 0.9.x" badge in the HUD.
+- **Version numbers:** the server version keeps 0.9.x numbers (0.9.2, 0.9.3, …) until 0.10.0.
+  At 0.10.0 the beta ruleset becomes the default.
+
+**How 0.9 stays exactly as it is:**
+
+- **Game engine: one engine with a ruleset flag.** Every new feature is switched on only when
+  `ruleset === "beta"`:
+  - the Outrider (its unit definition is invisible to 0.9 matches);
+  - the free Outrider at match start;
+  - Surges;
+  - the 20-minute cap and draws.
+  - **Proof that 0.9 is unchanged:** the existing golden hashes must stay byte-identical under the
+    0.9 ruleset on every commit.
+- **Neural bot code: frozen copy.** The 0.9 bot code (`headless/src/v2`) and models
+  (`models/policy-*`) are frozen. The beta bot gets its own copy (`headless/src/v3`,
+  `models/beta/`) with the new observation and action layout. The bot that plays a match is
+  chosen by its ruleset.
+  - **New regression test:** each 0.9 neural model plays fixed seeded games, and the hash of every
+    decision must not change. It runs as part of `goldenHashes --check`.
+- **Replays** record their ruleset. The replay viewer runs each one under the ruleset it was played
+  with. The replay browser gets a ruleset filter.
+- **Client:** one client handles both rulesets. Beta-only HUD elements (Surge timer, Outrider
+  button) appear only when the match says it is beta.
+
+*Alternative, not recommended:* vendor a complete copy of the 0.9 engine and pick an engine per
+match. That gives total isolation, but every bug fix or UX change to the engine has to be made
+twice. The ruleset flag plus golden hashes gives the same guarantee, and the hashes catch any drift.
 
 ## 2. Outrider (scout unit)
 
@@ -108,7 +119,7 @@ scripted-matrix games reach the 20-minute training cap.
    - Reference points: the 0.9 models running in the new rules through an evaluation-only adapter
      (an Outrider is seen as a worker; they never train one).
    - Also watch behaviour: when the bot scouts, and how it reacts to being scouted.
-6. **Ship.** New Easy/Normal/Hard in beta. When happy → 0.10.0, which becomes the stable channel.
+6. **Ship.** New Easy/Normal/Hard in beta. When happy → 0.10.0, which becomes the default ruleset.
 
 ## 5. Order of work
 
@@ -116,13 +127,16 @@ scripted-matrix games reach the 20-minute training cap.
    - Game-length distribution and stalemate rate across the stored replays and the scripted matrix.
    - Map-crossing time per map, per unit.
    - Check that 10:00, 14:00 and 18:00 come after a typical game has already ended.
-2. **Channels.** Release branch and worktree, router, switch, beta badge. Stable must be unchanged
-   (diff and golden hashes).
+2. **Rulesets.**
+   - `ruleset` on match config and replays, the start-match toggle, and the beta badge.
+   - Freeze the bot code: split off v3 from v2.
+   - Add the 0.9 neural regression hash.
+   - Verify: golden hashes and neural hashes unchanged.
 3. **Outrider**: engine, client, 3D model, scripted bots. Beta 0.9.2.
 4. **Surges, cap, draws and HUD**: regenerate golden hashes; scripted matrix for stalemate rate and
    strategy win rates. Beta 0.9.3.
 5. **Bot round**: surgery, training, ladder, behaviour review. Beta 0.9.x.
 6. **0.10.0** release and switch-over.
 
-Each step: version bump (beta only), full check procedure, commit as Tom1tk, push, deploy beta,
+Each step: version bump, full check procedure, commit as Tom1tk, push, deploy beta,
 check in with the user.
