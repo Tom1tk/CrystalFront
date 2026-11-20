@@ -70,10 +70,75 @@ twice. The ruleset flag plus golden hashes gives the same guarantee, and the has
 
 - **Visuals.** Vendor one more Kenney mini-character (CC0, same pack), team-painted. Add a speed
   cue: a lighter build and a dust trail.
-- **Scripted bots.** They scout with the Outrider instead of a worker.
+- **Scripted bots.** See §2a.
 - **Engine.** The Outrider is a new `UNIT_DEFS` entry. Crystal production gets a per-player limit
   check. `control.ts` excludes the Outrider. Match start spawns one per player. Replays need a
   balance-history entry, and old replays must still play.
+
+## 2a. Scripted bots and the Outrider (decided 2026-11-20)
+
+Neither scripted family uses scouting information today:
+
+- **v1 menu bots** (`headless/src/bots/`) play fixed build orders and timed pushes.
+- **v2 training bots** (`headless/src/v2/scripted.ts`) pick a game plan at random and play it.
+
+Both react only to enemies close to their crystal, and to local fights. In beta both change as
+below. On the 0.9 ruleset nothing changes.
+
+**Menu.** In beta, the menu's "Scripted" list shows the **v2 bots**, grouped Rush / Defensive /
+Macro / Switchers / Specialists, with a one-line description each. They see only what their own
+units see. The v1 bots stay as they are for 0.9 matches. Only the v2 family needs Outrider logic.
+
+**One shared scout routine for every v2 bot:**
+
+1. Ride to the enemy base and circle the crystal just outside turret range.
+2. Park at a watch point: the centre node, or the enemy's attack path.
+3. Run from enemy combat units.
+4. Go home when below half health.
+
+Each game plan then sets an Outrider style:
+
+| Style | Game plans | Behaviour |
+|---|---|---|
+| **Watch** | rush2, rush3, turtle, heavy, phalanx, gunline, siege | Scout once, then park as early warning. Retrain after it dies only if the game plan has spare income (turtle, heavy, siege). |
+| **Map watch** | macro, swarm family, control-grab plans | Watch the contested nodes and the enemy's expansion nodes; move between the nodes the bot doesn't hold |
+| **Careful poke** | hidden, backdoor, rush_post | Attack enemy workers only when no defender is in sight; run as soon as one appears; retrain after a delay |
+| **Reckless raider** | **rush1** (rush_light) | Goes straight at the enemy's workers and keeps hitting them, whatever turns up. It doesn't run, and when it dies it is **retrained at once**, every time, all game. |
+
+Why rush1 is the reckless raider: it is the light, fast, all-in plan. Each 50-crystal Outrider
+spent hurting the enemy's mining before the light rush arrives fits that plan, and it gives the
+neural bot an opponent that punishes undefended workers.
+
+**Informed switchers (new v2 bots).** They play a default game plan and switch on what their
+Outrider has seen, not at a random time:
+
+- **`sw_read_macro`**: starts on macro_light.
+  - Seeing an early army (≥ 4 combat units) or 2+ barracks → turtle_gunner.
+  - Seeing turrets with little army → bruiser_timing.
+  - Seeing nothing conclusive by 4:00 → stays on macro.
+- **`sw_read_turtle`**: starts on turtle_hold.
+  - Seeing a fast expansion or a small army → control_grab.
+  - Seeing a big army → stays.
+
+They get their own z tokens, like the existing switchers, so the neural bot learns that a
+switch follows from a read. The existing random-time switchers stay as they are.
+
+**Reacting to an enemy Outrider (every v2 bot):**
+
+- It does **not** count as a crystal threat. Otherwise a 50-crystal unit could recall a whole
+  army.
+- If it attacks workers, the nearest single combat unit guards those workers for about 20 s, then
+  goes back to what it was doing.
+- Nodes with turrets deal with it on their own.
+
+**Housekeeping:**
+
+- The existing v2 bot named `outrider` (template skirm_forward) gets renamed in v3, to
+  `vanguard`, so the bot name doesn't clash with the unit.
+- The v3 "scout" group means the Outrider. The worker that builds forward outposts becomes a
+  separate builder role.
+- The 0.9 neural bots in beta rules (via the adapter) don't see their own Outrider, so it idles at
+  home as free base vision.
 
 ## 3. Surges, the 20-minute cap, draws
 
@@ -132,7 +197,8 @@ twice. The ruleset flag plus golden hashes gives the same guarantee, and the has
    - Freeze the bot code: split off v3 from v2.
    - Add the 0.9 neural regression hash.
    - Verify: golden hashes and neural hashes unchanged.
-3. **Outrider**: engine, client, 3D model, scripted bots. Beta 0.9.2.
+3. **Outrider**: engine, client, 3D model, v2 scripted bots (§2a: scout routine, styles, informed
+   switchers, beta menu list). Beta 0.9.2.
 4. **Surges, cap, draws and HUD**: regenerate golden hashes; scripted matrix for stalemate rate and
    strategy win rates. Beta 0.9.3.
 5. **Bot round**: surgery, training, ladder, behaviour review. Beta 0.9.x.
