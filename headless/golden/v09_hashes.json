@@ -1,0 +1,118 @@
+[
+ {
+  "kind": "neural",
+  "a": "easy",
+  "b": "swarm",
+  "map": "shardfall",
+  "seed": 11,
+  "side": 0,
+  "hashes": [
+   "cce819dd14753d425829c1475640046e49b4c4debf20ae083a9196c10be56b53",
+   "draw@3000"
+  ]
+ },
+ {
+  "kind": "neural",
+  "a": "normal",
+  "b": "turtle",
+  "map": "twin-spires",
+  "seed": 12,
+  "side": 1,
+  "hashes": [
+   "f62189ba58901bf4e5ee0c41bf902719dab499eaf4edaedc186b32a66423fc8b",
+   "draw@3000"
+  ]
+ },
+ {
+  "kind": "neural",
+  "a": "hard",
+  "b": "backdoor",
+  "map": "basalt-run",
+  "seed": 13,
+  "side": 0,
+  "hashes": [
+   "8216836ffdb3dfeac5859da9245cf8679d39c5cb261ef5ccd362e2834804285c",
+   "draw@3000"
+  ]
+ },
+ {
+  "kind": "neural",
+  "a": "hard",
+  "b": "rush2",
+  "map": "cinder-flats",
+  "seed": 14,
+  "side": 1,
+  "hashes": [
+   "1b0891d0a5bfc330a05016175267040598aae0c07990697a289bafaf8faff647",
+   "draw@3000"
+  ]
+ },
+ {
+  "kind": "scripted",
+  "a": "rush1",
+  "b": "macro",
+  "map": "shardfall",
+  "seed": 21,
+  "side": 0,
+  "hashes": [
+   "63083e85f46ecdbbf709514c2028a3698ba0970f2bd440e196f09a609dc18f1b",
+   "b90998714409b94aca71cd56d9bab433204cf3928e3a61a407005c229aae8263",
+   "e104a21168bfa6c04f9b60ff66a9dd8acecb32f8ab58a0b604ee1728a310832a",
+   "65a989e9d9261c74053bb7f67122826cf62b0abfc2b93d6261e01bd163fb6b89",
+   "9c18f886376d7693f7bd6d16e9006b774ef61f73ea119a8e8a0548595de4348b",
+   "f6274c8675ba1c62e228e0bfc802323aae0af64c4b4bf3b9750d71b438b0b60f",
+   "f6274c8675ba1c62e228e0bfc802323aae0af64c4b4bf3b9750d71b438b0b60f"
+  ]
+ },
+ {
+  "kind": "scripted",
+  "a": "sw_turtle_grab",
+  "b": "swarm",
+  "map": "glimmerfen",
+  "seed": 22,
+  "side": 0,
+  "hashes": [
+   "ec02690b02d26220df98517694edaddaa0ed1e472e861e1101a2e2ac42cb5e19",
+   "544ffb17df47400ca9d7d8c5268bd1b4fabc7cbecafc3a26db7637aee3a3079b",
+   "333c66285046c301f9c202533a1c3fd0a600c696b969a576571e2b0aa3ea01cc",
+   "43f40fe39395d5fc4efff52e2c69e54c1374be7d80941e6ee7103bc1e56dd522",
+   "e44462bd97f608d2dcf07808382f33866b2285dd26793ff05bb777db46d92c6f",
+   "472080a6180fa7a6bf8310d68bca0c4458d6d481e7e1d92ef059e4625534db9e",
+   "472080a6180fa7a6bf8310d68bca0c4458d6d481e7e1d92ef059e4625534db9e"
+  ]
+ },
+ {
+  "kind": "scripted",
+  "a": "backdoor",
+  "b": "gunline",
+  "map": "saltmarsh",
+  "seed": 23,
+  "side": 0,
+  "hashes": [
+   "3af90a7964d943ad2b5e0f7aa66d2edd2ce5589bff094c97b94600da758cbaf0",
+   "ca0b1490340ad65d91f9d91fff48e5fad9634878a400f244056ef3a69fc8af41",
+   "9dabdb886ef272eb45d1d2e6df7aa08b19d041f5fa99ace986b71bf472434332",
+   "af25cd214600340f95ed12a2d46122ffb80667cc17b5de7760df9e1ec3df451d",
+   "58ba64f5999cac2bc19ccbde32ac0da470d5926dd05643a3949992209a166488",
+   "e93e7a66cf6a6e3b7af2d722a2e9703061b276a8edf9fcd861f72da820fdb603",
+   "e93e7a66cf6a6e3b7af2d722a2e9703061b276a8edf9fcd861f72da820fdb603"
+  ]
+ },
+ {
+  "kind": "scripted",
+  "a": "heavy",
+  "b": "outrider",
+  "map": "ironreed",
+  "seed": 24,
+  "side": 0,
+  "hashes": [
+   "01d8cf7390bb11d2bc7dc2c3109c2af3a16e63202a2b8b7f58d01378f6356005",
+   "0be7ea73565454ae79e66077b0243961974528817ae1268e2fe95fc9e7c18454",
+   "bd7172b7d20b8366023d71d81e85829c6a9677fa87623300fe6b23bf09345b92",
+   "4ad4deb3738a349faa6661697f280bd5b4afe2ffba8f941d239102b629f93f5b",
+   "1be4eb59f24e7664fa88354b6b0041c63759b35a66acea8ea29fb6d1c9623f31",
+   "734557a17d7bb8fba3c324575e25a8de2c3462d88caadd13294dd7a3eb615628",
+   "734557a17d7bb8fba3c324575e25a8de2c3462d88caadd13294dd7a3eb615628"
+  ]
+ }
+]
