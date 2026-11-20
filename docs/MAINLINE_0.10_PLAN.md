@@ -192,6 +192,19 @@ switch follows from a read. The existing random-time switchers stay as they are.
    - Game-length distribution and stalemate rate across the stored replays and the scripted matrix.
    - Map-crossing time per map, per unit.
    - Check that 10:00, 14:00 and 18:00 come after a typical game has already ended.
+   - **Done 2026-11-20** (`docs/experiments.md`, `tools/measure/`):
+
+     | | Neural v bot (3,364 replays) | Scripted matrix (8,000 games) |
+     |---|---|---|
+     | Median game length | 9.4 min | 9.6 min |
+     | Still running at 10:00 | 41% | 42% |
+     | Still running at 14:00 | 12% | 20% |
+     | Still running at 18:00 | 5% | 15% |
+     | Hit the 20:00 cap | 4% | 14% |
+
+     Crossing times are the same on every map: skirmisher 114–121 s, Outrider about 57–60 s.
+     So **Surge I is part of about 4 games in 10**, not only of stalemates. Surges II and III and
+     the cap affect only the long tail.
 2. **Rulesets.**
    - `ruleset` on match config and replays, the start-match toggle, and the beta badge.
    - Freeze the bot code: split off v3 from v2.
