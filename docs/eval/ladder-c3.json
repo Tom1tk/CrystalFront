@@ -1,0 +1,4299 @@
+{
+ "checkpoint": "checkpoints/v2/lg2-main/cycle_3.pt",
+ "greedy": false,
+ "seeds": 2,
+ "seconds": 1224,
+ "opponents": {
+  "ckpt:checkpoints/v2/lg2-main/update_40.pt": {
+   "n": 32,
+   "win": 28,
+   "loss": 3,
+   "draw": 1,
+   "win_ci": [
+    0.7193135021517204,
+    0.950299461555257
+   ],
+   "loss_ci": [
+    0.032400962626319516,
+    0.24218499335778831
+   ],
+   "draw_ci": [
+    0.005537717362550945,
+    0.15744607800372734
+   ],
+   "ticks": 6584.8125,
+   "winTypes": {
+    "combat": 25,
+    "control": 3
+   },
+   "maps": {
+    "basalt-run": {
+     "n": 4,
+     "win": 4,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.5100999795960008,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "draw_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "ticks": 5902.75,
+     "winTypes": {
+      "combat": 3,
+      "control": 1
+     }
+    },
+    "cinder-flats": {
+     "n": 4,
+     "win": 4,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.5100999795960008,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "draw_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "ticks": 7582.5,
+     "winTypes": {
+      "combat": 4
+     }
+    },
+    "glimmerfen": {
+     "n": 4,
+     "win": 4,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.5100999795960008,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "draw_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "ticks": 6167.25,
+     "winTypes": {
+      "combat": 2,
+      "control": 2
+     }
+    },
+    "hollow-crown": {
+     "n": 4,
+     "win": 2,
+     "loss": 1,
+     "draw": 1,
+     "win_ci": [
+      0.15003570882017148,
+      0.8499642911798285
+     ],
+     "loss_ci": [
+      0.045586062644636216,
+      0.6993639475573634
+     ],
+     "draw_ci": [
+      0.045586062644636216,
+      0.6993639475573634
+     ],
+     "ticks": 7011.0,
+     "winTypes": {
+      "combat": 2
+     }
+    },
+    "ironreed": {
+     "n": 4,
+     "win": 3,
+     "loss": 1,
+     "draw": 0,
+     "win_ci": [
+      0.3006360524426366,
+      0.9544139373553637
+     ],
+     "loss_ci": [
+      0.045586062644636216,
+      0.6993639475573634
+     ],
+     "draw_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "ticks": 7526.5,
+     "winTypes": {
+      "combat": 3
+     }
+    },
+    "saltmarsh": {
+     "n": 4,
+     "win": 4,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.5100999795960008,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "draw_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "ticks": 5873.5,
+     "winTypes": {
+      "combat": 4
+     }
+    },
+    "shardfall": {
+     "n": 4,
+     "win": 4,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.5100999795960008,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "draw_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "ticks": 6968.75,
+     "winTypes": {
+      "combat": 4
+     }
+    },
+    "twin-spires": {
+     "n": 4,
+     "win": 3,
+     "loss": 1,
+     "draw": 0,
+     "win_ci": [
+      0.3006360524426366,
+      0.9544139373553637
+     ],
+     "loss_ci": [
+      0.045586062644636216,
+      0.6993639475573634
+     ],
+     "draw_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "ticks": 5646.25,
+     "winTypes": {
+      "combat": 3
+     }
+    }
+   },
+   "sides": {
+    "blue": {
+     "n": 16,
+     "win": 14,
+     "loss": 2,
+     "draw": 0,
+     "win_ci": [
+      0.6397666856325173,
+      0.9650232506629428
+     ],
+     "loss_ci": [
+      0.034976749337057134,
+      0.3602333143674828
+     ],
+     "draw_ci": [
+      0.0,
+      0.19361341827271994
+     ],
+     "ticks": 6407.1875,
+     "winTypes": {
+      "combat": 14
+     }
+    },
+    "red": {
+     "n": 16,
+     "win": 14,
+     "loss": 1,
+     "draw": 1,
+     "win_ci": [
+      0.6397666856325173,
+      0.9650232506629428
+     ],
+     "loss_ci": [
+      0.01111905730833121,
+      0.2832926836802987
+     ],
+     "draw_ci": [
+      0.01111905730833121,
+      0.2832926836802987
+     ],
+     "ticks": 6762.4375,
+     "winTypes": {
+      "combat": 11,
+      "control": 3
+     }
+    }
+   }
+  },
+  "ckpt:checkpoints/v2/m4-imitate/final.pt": {
+   "n": 32,
+   "win": 32,
+   "loss": 0,
+   "draw": 0,
+   "win_ci": [
+    0.8928172849426366,
+    1.0
+   ],
+   "loss_ci": [
+    0.0,
+    0.1071827150573635
+   ],
+   "draw_ci": [
+    0.0,
+    0.1071827150573635
+   ],
+   "ticks": 6335.84375,
+   "winTypes": {
+    "combat": 31,
+    "control": 1
+   },
+   "maps": {
+    "basalt-run": {
+     "n": 4,
+     "win": 4,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.5100999795960008,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "draw_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "ticks": 5289.0,
+     "winTypes": {
+      "combat": 4
+     }
+    },
+    "cinder-flats": {
+     "n": 4,
+     "win": 4,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.5100999795960008,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "draw_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "ticks": 5829.25,
+     "winTypes": {
+      "combat": 4
+     }
+    },
+    "glimmerfen": {
+     "n": 4,
+     "win": 4,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.5100999795960008,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "draw_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "ticks": 6668.0,
+     "winTypes": {
+      "combat": 3,
+      "control": 1
+     }
+    },
+    "hollow-crown": {
+     "n": 4,
+     "win": 4,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.5100999795960008,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "draw_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "ticks": 6848.0,
+     "winTypes": {
+      "combat": 4
+     }
+    },
+    "ironreed": {
+     "n": 4,
+     "win": 4,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.5100999795960008,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "draw_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "ticks": 6076.0,
+     "winTypes": {
+      "combat": 4
+     }
+    },
+    "saltmarsh": {
+     "n": 4,
+     "win": 4,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.5100999795960008,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "draw_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "ticks": 6148.5,
+     "winTypes": {
+      "combat": 4
+     }
+    },
+    "shardfall": {
+     "n": 4,
+     "win": 4,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.5100999795960008,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "draw_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "ticks": 6159.25,
+     "winTypes": {
+      "combat": 4
+     }
+    },
+    "twin-spires": {
+     "n": 4,
+     "win": 4,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.5100999795960008,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "draw_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "ticks": 7668.75,
+     "winTypes": {
+      "combat": 4
+     }
+    }
+   },
+   "sides": {
+    "blue": {
+     "n": 16,
+     "win": 16,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.8063865817272802,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.19361341827271994
+     ],
+     "draw_ci": [
+      0.0,
+      0.19361341827271994
+     ],
+     "ticks": 5995.9375,
+     "winTypes": {
+      "combat": 16
+     }
+    },
+    "red": {
+     "n": 16,
+     "win": 16,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.8063865817272802,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.19361341827271994
+     ],
+     "draw_ci": [
+      0.0,
+      0.19361341827271994
+     ],
+     "ticks": 6675.75,
+     "winTypes": {
+      "combat": 15,
+      "control": 1
+     }
+    }
+   }
+  },
+  "ckpt:checkpoints/v2/lg2-main/update_100.pt": {
+   "n": 32,
+   "win": 29,
+   "loss": 3,
+   "draw": 0,
+   "win_ci": [
+    0.7578150066422116,
+    0.9675990373736805
+   ],
+   "loss_ci": [
+    0.032400962626319516,
+    0.24218499335778831
+   ],
+   "draw_ci": [
+    0.0,
+    0.1071827150573635
+   ],
+   "ticks": 6394.90625,
+   "winTypes": {
+    "combat": 26,
+    "control": 3
+   },
+   "maps": {
+    "basalt-run": {
+     "n": 4,
+     "win": 3,
+     "loss": 1,
+     "draw": 0,
+     "win_ci": [
+      0.3006360524426366,
+      0.9544139373553637
+     ],
+     "loss_ci": [
+      0.045586062644636216,
+      0.6993639475573634
+     ],
+     "draw_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "ticks": 6661.0,
+     "winTypes": {
+      "combat": 2,
+      "control": 1
+     }
+    },
+    "cinder-flats": {
+     "n": 4,
+     "win": 3,
+     "loss": 1,
+     "draw": 0,
+     "win_ci": [
+      0.3006360524426366,
+      0.9544139373553637
+     ],
+     "loss_ci": [
+      0.045586062644636216,
+      0.6993639475573634
+     ],
+     "draw_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "ticks": 7402.75,
+     "winTypes": {
+      "combat": 3
+     }
+    },
+    "glimmerfen": {
+     "n": 4,
+     "win": 4,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.5100999795960008,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "draw_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "ticks": 6452.5,
+     "winTypes": {
+      "control": 2,
+      "combat": 2
+     }
+    },
+    "hollow-crown": {
+     "n": 4,
+     "win": 4,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.5100999795960008,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "draw_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "ticks": 5923.0,
+     "winTypes": {
+      "combat": 4
+     }
+    },
+    "ironreed": {
+     "n": 4,
+     "win": 4,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.5100999795960008,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "draw_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "ticks": 6284.0,
+     "winTypes": {
+      "combat": 4
+     }
+    },
+    "saltmarsh": {
+     "n": 4,
+     "win": 3,
+     "loss": 1,
+     "draw": 0,
+     "win_ci": [
+      0.3006360524426366,
+      0.9544139373553637
+     ],
+     "loss_ci": [
+      0.045586062644636216,
+      0.6993639475573634
+     ],
+     "draw_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "ticks": 5965.75,
+     "winTypes": {
+      "combat": 3
+     }
+    },
+    "shardfall": {
+     "n": 4,
+     "win": 4,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.5100999795960008,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "draw_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "ticks": 5243.75,
+     "winTypes": {
+      "combat": 4
+     }
+    },
+    "twin-spires": {
+     "n": 4,
+     "win": 4,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.5100999795960008,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "draw_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "ticks": 7226.5,
+     "winTypes": {
+      "combat": 4
+     }
+    }
+   },
+   "sides": {
+    "blue": {
+     "n": 16,
+     "win": 15,
+     "loss": 1,
+     "draw": 0,
+     "win_ci": [
+      0.7167073163197013,
+      0.9888809426916687
+     ],
+     "loss_ci": [
+      0.01111905730833121,
+      0.2832926836802987
+     ],
+     "draw_ci": [
+      0.0,
+      0.19361341827271994
+     ],
+     "ticks": 6002.5625,
+     "winTypes": {
+      "combat": 14,
+      "control": 1
+     }
+    },
+    "red": {
+     "n": 16,
+     "win": 14,
+     "loss": 2,
+     "draw": 0,
+     "win_ci": [
+      0.6397666856325173,
+      0.9650232506629428
+     ],
+     "loss_ci": [
+      0.034976749337057134,
+      0.3602333143674828
+     ],
+     "draw_ci": [
+      0.0,
+      0.19361341827271994
+     ],
+     "ticks": 6787.25,
+     "winTypes": {
+      "combat": 12,
+      "control": 2
+     }
+    }
+   }
+  },
+  "ckpt:checkpoints/v2/lg2-main/cycle_1.pt": {
+   "n": 32,
+   "win": 22,
+   "loss": 3,
+   "draw": 7,
+   "win_ci": [
+    0.514330003019676,
+    0.8204764788338126
+   ],
+   "loss_ci": [
+    0.032400962626319516,
+    0.24218499335778831
+   ],
+   "draw_ci": [
+    0.11023696931531854,
+    0.3875533079044484
+   ],
+   "ticks": 9318.9375,
+   "winTypes": {
+    "combat": 18,
+    "control": 4
+   },
+   "maps": {
+    "basalt-run": {
+     "n": 4,
+     "win": 2,
+     "loss": 0,
+     "draw": 2,
+     "win_ci": [
+      0.15003570882017148,
+      0.8499642911798285
+     ],
+     "loss_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "draw_ci": [
+      0.15003570882017148,
+      0.8499642911798285
+     ],
+     "ticks": 10004.0,
+     "winTypes": {
+      "combat": 2
+     }
+    },
+    "cinder-flats": {
+     "n": 4,
+     "win": 3,
+     "loss": 1,
+     "draw": 0,
+     "win_ci": [
+      0.3006360524426366,
+      0.9544139373553637
+     ],
+     "loss_ci": [
+      0.045586062644636216,
+      0.6993639475573634
+     ],
+     "draw_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "ticks": 8674.25,
+     "winTypes": {
+      "combat": 3
+     }
+    },
+    "glimmerfen": {
+     "n": 4,
+     "win": 3,
+     "loss": 0,
+     "draw": 1,
+     "win_ci": [
+      0.3006360524426366,
+      0.9544139373553637
+     ],
+     "loss_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "draw_ci": [
+      0.045586062644636216,
+      0.6993639475573634
+     ],
+     "ticks": 9634.75,
+     "winTypes": {
+      "control": 3
+     }
+    },
+    "hollow-crown": {
+     "n": 4,
+     "win": 3,
+     "loss": 1,
+     "draw": 0,
+     "win_ci": [
+      0.3006360524426366,
+      0.9544139373553637
+     ],
+     "loss_ci": [
+      0.045586062644636216,
+      0.6993639475573634
+     ],
+     "draw_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "ticks": 9566.5,
+     "winTypes": {
+      "combat": 2,
+      "control": 1
+     }
+    },
+    "ironreed": {
+     "n": 4,
+     "win": 2,
+     "loss": 0,
+     "draw": 2,
+     "win_ci": [
+      0.15003570882017148,
+      0.8499642911798285
+     ],
+     "loss_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "draw_ci": [
+      0.15003570882017148,
+      0.8499642911798285
+     ],
+     "ticks": 10998.0,
+     "winTypes": {
+      "combat": 2
+     }
+    },
+    "saltmarsh": {
+     "n": 4,
+     "win": 3,
+     "loss": 1,
+     "draw": 0,
+     "win_ci": [
+      0.3006360524426366,
+      0.9544139373553637
+     ],
+     "loss_ci": [
+      0.045586062644636216,
+      0.6993639475573634
+     ],
+     "draw_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "ticks": 8044.75,
+     "winTypes": {
+      "combat": 3
+     }
+    },
+    "shardfall": {
+     "n": 4,
+     "win": 3,
+     "loss": 0,
+     "draw": 1,
+     "win_ci": [
+      0.3006360524426366,
+      0.9544139373553637
+     ],
+     "loss_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "draw_ci": [
+      0.045586062644636216,
+      0.6993639475573634
+     ],
+     "ticks": 9160.25,
+     "winTypes": {
+      "combat": 3
+     }
+    },
+    "twin-spires": {
+     "n": 4,
+     "win": 3,
+     "loss": 0,
+     "draw": 1,
+     "win_ci": [
+      0.3006360524426366,
+      0.9544139373553637
+     ],
+     "loss_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "draw_ci": [
+      0.045586062644636216,
+      0.6993639475573634
+     ],
+     "ticks": 8469.0,
+     "winTypes": {
+      "combat": 3
+     }
+    }
+   },
+   "sides": {
+    "blue": {
+     "n": 16,
+     "win": 11,
+     "loss": 1,
+     "draw": 4,
+     "win_ci": [
+      0.4440393186673406,
+      0.8583556494803894
+     ],
+     "loss_ci": [
+      0.01111905730833121,
+      0.2832926836802987
+     ],
+     "draw_ci": [
+      0.10181901984237346,
+      0.49498768929398645
+     ],
+     "ticks": 9321.5625,
+     "winTypes": {
+      "combat": 9,
+      "control": 2
+     }
+    },
+    "red": {
+     "n": 16,
+     "win": 11,
+     "loss": 2,
+     "draw": 3,
+     "win_ci": [
+      0.4440393186673406,
+      0.8583556494803894
+     ],
+     "loss_ci": [
+      0.034976749337057134,
+      0.3602333143674828
+     ],
+     "draw_ci": [
+      0.06591478773586765,
+      0.4300935986845823
+     ],
+     "ticks": 9316.3125,
+     "winTypes": {
+      "combat": 9,
+      "control": 2
+     }
+    }
+   }
+  },
+  "ckpt:checkpoints/v2/lg2-main/cycle_2.pt": {
+   "n": 32,
+   "win": 17,
+   "loss": 6,
+   "draw": 9,
+   "win_ci": [
+    0.3644923793257382,
+    0.6913087009831766
+   ],
+   "loss_ci": [
+    0.08889423936162782,
+    0.3530949575492244
+   ],
+   "draw_ci": [
+    0.15564406845647866,
+    0.4537483693811179
+   ],
+   "ticks": 9569.15625,
+   "winTypes": {
+    "combat": 16,
+    "control": 1
+   },
+   "maps": {
+    "basalt-run": {
+     "n": 4,
+     "win": 2,
+     "loss": 2,
+     "draw": 0,
+     "win_ci": [
+      0.15003570882017148,
+      0.8499642911798285
+     ],
+     "loss_ci": [
+      0.15003570882017148,
+      0.8499642911798285
+     ],
+     "draw_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "ticks": 7250.75,
+     "winTypes": {
+      "combat": 2
+     }
+    },
+    "cinder-flats": {
+     "n": 4,
+     "win": 3,
+     "loss": 0,
+     "draw": 1,
+     "win_ci": [
+      0.3006360524426366,
+      0.9544139373553637
+     ],
+     "loss_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "draw_ci": [
+      0.045586062644636216,
+      0.6993639475573634
+     ],
+     "ticks": 10677.0,
+     "winTypes": {
+      "combat": 3
+     }
+    },
+    "glimmerfen": {
+     "n": 4,
+     "win": 2,
+     "loss": 1,
+     "draw": 1,
+     "win_ci": [
+      0.15003570882017148,
+      0.8499642911798285
+     ],
+     "loss_ci": [
+      0.045586062644636216,
+      0.6993639475573634
+     ],
+     "draw_ci": [
+      0.045586062644636216,
+      0.6993639475573634
+     ],
+     "ticks": 8983.75,
+     "winTypes": {
+      "combat": 1,
+      "control": 1
+     }
+    },
+    "hollow-crown": {
+     "n": 4,
+     "win": 2,
+     "loss": 1,
+     "draw": 1,
+     "win_ci": [
+      0.15003570882017148,
+      0.8499642911798285
+     ],
+     "loss_ci": [
+      0.045586062644636216,
+      0.6993639475573634
+     ],
+     "draw_ci": [
+      0.045586062644636216,
+      0.6993639475573634
+     ],
+     "ticks": 10695.5,
+     "winTypes": {
+      "combat": 2
+     }
+    },
+    "ironreed": {
+     "n": 4,
+     "win": 2,
+     "loss": 0,
+     "draw": 2,
+     "win_ci": [
+      0.15003570882017148,
+      0.8499642911798285
+     ],
+     "loss_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "draw_ci": [
+      0.15003570882017148,
+      0.8499642911798285
+     ],
+     "ticks": 11363.5,
+     "winTypes": {
+      "combat": 2
+     }
+    },
+    "saltmarsh": {
+     "n": 4,
+     "win": 1,
+     "loss": 0,
+     "draw": 3,
+     "win_ci": [
+      0.045586062644636216,
+      0.6993639475573634
+     ],
+     "loss_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "draw_ci": [
+      0.3006360524426366,
+      0.9544139373553637
+     ],
+     "ticks": 11493.25,
+     "winTypes": {
+      "combat": 1
+     }
+    },
+    "shardfall": {
+     "n": 4,
+     "win": 1,
+     "loss": 2,
+     "draw": 1,
+     "win_ci": [
+      0.045586062644636216,
+      0.6993639475573634
+     ],
+     "loss_ci": [
+      0.15003570882017148,
+      0.8499642911798285
+     ],
+     "draw_ci": [
+      0.045586062644636216,
+      0.6993639475573634
+     ],
+     "ticks": 9088.25,
+     "winTypes": {
+      "combat": 1
+     }
+    },
+    "twin-spires": {
+     "n": 4,
+     "win": 4,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.5100999795960008,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "draw_ci": [
+      0.0,
+      0.48990002040399916
+     ],
+     "ticks": 7001.25,
+     "winTypes": {
+      "combat": 4
+     }
+    }
+   },
+   "sides": {
+    "blue": {
+     "n": 16,
+     "win": 10,
+     "loss": 3,
+     "draw": 3,
+     "win_ci": [
+      0.3864064709793481,
+      0.815190174452472
+     ],
+     "loss_ci": [
+      0.06591478773586765,
+      0.4300935986845823
+     ],
+     "draw_ci": [
+      0.06591478773586765,
+      0.4300935986845823
+     ],
+     "ticks": 9086.375,
+     "winTypes": {
+      "combat": 9,
+      "control": 1
+     }
+    },
+    "red": {
+     "n": 16,
+     "win": 7,
+     "loss": 3,
+     "draw": 6,
+     "win_ci": [
+      0.2309836333518552,
+      0.6682180439322347
+     ],
+     "loss_ci": [
+      0.06591478773586765,
+      0.4300935986845823
+     ],
+     "draw_ci": [
+      0.18480982554752806,
+      0.613593529020652
+     ],
+     "ticks": 10051.9375,
+     "winTypes": {
+      "combat": 7
+     }
+    }
+   }
+  }
+ },
+ "games": [
+  {
+   "seed": 847826553,
+   "map": "twin-spires",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_40.pt",
+   "side": "red",
+   "result": "loss",
+   "winType": "combat",
+   "ticks": 3906,
+   "stats": {
+    "decisions": 489,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 135,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "glimmerfen",
+   "opp": "ckpt:checkpoints/v2/m4-imitate/final.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4185,
+   "stats": {
+    "decisions": 524,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 125,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "basalt-run",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_100.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4185,
+   "stats": {
+    "decisions": 524,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 127,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "hollow-crown",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_100.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4284,
+   "stats": {
+    "decisions": 536,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 132,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "shardfall",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_40.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4327,
+   "stats": {
+    "decisions": 541,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 105,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "saltmarsh",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_100.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4465,
+   "stats": {
+    "decisions": 559,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 135,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "shardfall",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_100.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4507,
+   "stats": {
+    "decisions": 564,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 148,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "shardfall",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_100.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4549,
+   "stats": {
+    "decisions": 569,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 238,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "shardfall",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_100.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4639,
+   "stats": {
+    "decisions": 580,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 243,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "hollow-crown",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_40.pt",
+   "side": "blue",
+   "result": "loss",
+   "winType": "combat",
+   "ticks": 4659,
+   "stats": {
+    "decisions": 583,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 83,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "hollow-crown",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_100.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4690,
+   "stats": {
+    "decisions": 587,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 135,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "saltmarsh",
+   "opp": "ckpt:checkpoints/v2/m4-imitate/final.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4786,
+   "stats": {
+    "decisions": 599,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 92,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "basalt-run",
+   "opp": "ckpt:checkpoints/v2/m4-imitate/final.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4800,
+   "stats": {
+    "decisions": 600,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 93,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "basalt-run",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_40.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4793,
+   "stats": {
+    "decisions": 600,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 130,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "glimmerfen",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_40.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4894,
+   "stats": {
+    "decisions": 612,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 99,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "cinder-flats",
+   "opp": "ckpt:checkpoints/v2/m4-imitate/final.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4900,
+   "stats": {
+    "decisions": 613,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 32,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "twin-spires",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_40.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4899,
+   "stats": {
+    "decisions": 613,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 45,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "cinder-flats",
+   "opp": "ckpt:checkpoints/v2/m4-imitate/final.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4921,
+   "stats": {
+    "decisions": 616,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 215,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "saltmarsh",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_40.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4970,
+   "stats": {
+    "decisions": 622,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 147,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "twin-spires",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_100.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5009,
+   "stats": {
+    "decisions": 627,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 47,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "saltmarsh",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_1.pt",
+   "side": "red",
+   "result": "loss",
+   "winType": "combat",
+   "ticks": 5065,
+   "stats": {
+    "decisions": 634,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 144,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "saltmarsh",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_40.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5079,
+   "stats": {
+    "decisions": 635,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 136,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "shardfall",
+   "opp": "ckpt:checkpoints/v2/m4-imitate/final.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5089,
+   "stats": {
+    "decisions": 637,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 68,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "basalt-run",
+   "opp": "ckpt:checkpoints/v2/m4-imitate/final.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5102,
+   "stats": {
+    "decisions": 638,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 84,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "shardfall",
+   "opp": "ckpt:checkpoints/v2/m4-imitate/final.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5106,
+   "stats": {
+    "decisions": 639,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 218,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "ironreed",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_100.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5137,
+   "stats": {
+    "decisions": 643,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 81,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "ironreed",
+   "opp": "ckpt:checkpoints/v2/m4-imitate/final.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5193,
+   "stats": {
+    "decisions": 650,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 252,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "ironreed",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_40.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5228,
+   "stats": {
+    "decisions": 654,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 44,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "basalt-run",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_2.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5262,
+   "stats": {
+    "decisions": 658,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 320,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "ironreed",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_100.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5370,
+   "stats": {
+    "decisions": 672,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 88,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "glimmerfen",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_40.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5405,
+   "stats": {
+    "decisions": 676,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 226,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "hollow-crown",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_40.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5462,
+   "stats": {
+    "decisions": 683,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 245,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "glimmerfen",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_100.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "control",
+   "ticks": 5463,
+   "stats": {
+    "decisions": 683,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 95,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "ironreed",
+   "opp": "ckpt:checkpoints/v2/m4-imitate/final.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5507,
+   "stats": {
+    "decisions": 689,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 245,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "shardfall",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_40.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5517,
+   "stats": {
+    "decisions": 690,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 67,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "twin-spires",
+   "opp": "ckpt:checkpoints/v2/m4-imitate/final.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5559,
+   "stats": {
+    "decisions": 695,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 51,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "cinder-flats",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_1.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5577,
+   "stats": {
+    "decisions": 698,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 332,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "basalt-run",
+   "opp": "ckpt:checkpoints/v2/m4-imitate/final.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5593,
+   "stats": {
+    "decisions": 700,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 132,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "hollow-crown",
+   "opp": "ckpt:checkpoints/v2/m4-imitate/final.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5609,
+   "stats": {
+    "decisions": 702,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 107,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "hollow-crown",
+   "opp": "ckpt:checkpoints/v2/m4-imitate/final.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5625,
+   "stats": {
+    "decisions": 704,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 115,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "cinder-flats",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_40.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5637,
+   "stats": {
+    "decisions": 705,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 100,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "basalt-run",
+   "opp": "ckpt:checkpoints/v2/m4-imitate/final.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5661,
+   "stats": {
+    "decisions": 708,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 239,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "cinder-flats",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_100.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5728,
+   "stats": {
+    "decisions": 716,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 82,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "twin-spires",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_2.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5742,
+   "stats": {
+    "decisions": 718,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 123,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "twin-spires",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_2.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5781,
+   "stats": {
+    "decisions": 723,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 280,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "hollow-crown",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_100.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5810,
+   "stats": {
+    "decisions": 727,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 163,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "cinder-flats",
+   "opp": "ckpt:checkpoints/v2/m4-imitate/final.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5847,
+   "stats": {
+    "decisions": 731,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 84,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "twin-spires",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_2.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5848,
+   "stats": {
+    "decisions": 731,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 220,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "basalt-run",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_40.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "control",
+   "ticks": 5880,
+   "stats": {
+    "decisions": 735,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 180,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "hollow-crown",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_40.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5923,
+   "stats": {
+    "decisions": 741,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 39,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "basalt-run",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_40.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5941,
+   "stats": {
+    "decisions": 743,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 108,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "shardfall",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_1.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5975,
+   "stats": {
+    "decisions": 747,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 71,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "saltmarsh",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_100.pt",
+   "side": "red",
+   "result": "loss",
+   "winType": "combat",
+   "ticks": 6048,
+   "stats": {
+    "decisions": 756,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 223,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "twin-spires",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_1.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6089,
+   "stats": {
+    "decisions": 762,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 160,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "saltmarsh",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_40.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6125,
+   "stats": {
+    "decisions": 766,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 375,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "saltmarsh",
+   "opp": "ckpt:checkpoints/v2/m4-imitate/final.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6159,
+   "stats": {
+    "decisions": 770,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 41,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "shardfall",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_2.pt",
+   "side": "blue",
+   "result": "loss",
+   "winType": "combat",
+   "ticks": 6160,
+   "stats": {
+    "decisions": 770,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 124,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "glimmerfen",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_100.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6173,
+   "stats": {
+    "decisions": 772,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 120,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "twin-spires",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_40.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6204,
+   "stats": {
+    "decisions": 776,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 157,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "saltmarsh",
+   "opp": "ckpt:checkpoints/v2/m4-imitate/final.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6425,
+   "stats": {
+    "decisions": 804,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 193,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "glimmerfen",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_40.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "control",
+   "ticks": 6458,
+   "stats": {
+    "decisions": 808,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 55,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "saltmarsh",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_100.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6476,
+   "stats": {
+    "decisions": 810,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 49,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "twin-spires",
+   "opp": "ckpt:checkpoints/v2/m4-imitate/final.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6553,
+   "stats": {
+    "decisions": 820,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 94,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "ironreed",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_40.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6625,
+   "stats": {
+    "decisions": 829,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 117,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "glimmerfen",
+   "opp": "ckpt:checkpoints/v2/m4-imitate/final.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6677,
+   "stats": {
+    "decisions": 835,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 193,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "ironreed",
+   "opp": "ckpt:checkpoints/v2/m4-imitate/final.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6732,
+   "stats": {
+    "decisions": 842,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 51,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "glimmerfen",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_100.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "control",
+   "ticks": 6835,
+   "stats": {
+    "decisions": 855,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 134,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "ironreed",
+   "opp": "ckpt:checkpoints/v2/m4-imitate/final.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6872,
+   "stats": {
+    "decisions": 859,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 160,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "basalt-run",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_100.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6865,
+   "stats": {
+    "decisions": 859,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 58,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "ironreed",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_100.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6870,
+   "stats": {
+    "decisions": 859,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 344,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "saltmarsh",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_100.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6874,
+   "stats": {
+    "decisions": 860,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 45,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "cinder-flats",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_100.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6881,
+   "stats": {
+    "decisions": 861,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 266,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "basalt-run",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_1.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6908,
+   "stats": {
+    "decisions": 864,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 71,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "shardfall",
+   "opp": "ckpt:checkpoints/v2/m4-imitate/final.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6932,
+   "stats": {
+    "decisions": 867,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 485,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "basalt-run",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_40.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6997,
+   "stats": {
+    "decisions": 875,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 77,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "basalt-run",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_2.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 7076,
+   "stats": {
+    "decisions": 885,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 132,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "hollow-crown",
+   "opp": "ckpt:checkpoints/v2/m4-imitate/final.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 7198,
+   "stats": {
+    "decisions": 900,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 163,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "saltmarsh",
+   "opp": "ckpt:checkpoints/v2/m4-imitate/final.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 7224,
+   "stats": {
+    "decisions": 903,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 94,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "basalt-run",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_100.pt",
+   "side": "blue",
+   "result": "loss",
+   "winType": "combat",
+   "ticks": 7229,
+   "stats": {
+    "decisions": 904,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 88,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "shardfall",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_100.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 7280,
+   "stats": {
+    "decisions": 910,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 128,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "saltmarsh",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_40.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 7320,
+   "stats": {
+    "decisions": 915,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 49,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "glimmerfen",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_100.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 7339,
+   "stats": {
+    "decisions": 918,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 42,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "shardfall",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_2.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 7338,
+   "stats": {
+    "decisions": 918,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 125,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "twin-spires",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_1.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 7482,
+   "stats": {
+    "decisions": 936,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 258,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "shardfall",
+   "opp": "ckpt:checkpoints/v2/m4-imitate/final.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 7510,
+   "stats": {
+    "decisions": 939,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 50,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "cinder-flats",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_100.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 7523,
+   "stats": {
+    "decisions": 941,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 78,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "glimmerfen",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_1.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "control",
+   "ticks": 7544,
+   "stats": {
+    "decisions": 943,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 65,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "twin-spires",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_100.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 7564,
+   "stats": {
+    "decisions": 946,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 418,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "glimmerfen",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_1.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "control",
+   "ticks": 7567,
+   "stats": {
+    "decisions": 946,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 158,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "twin-spires",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_40.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 7576,
+   "stats": {
+    "decisions": 947,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 289,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "hollow-crown",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_1.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 7592,
+   "stats": {
+    "decisions": 949,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 216,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "twin-spires",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_100.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 7609,
+   "stats": {
+    "decisions": 952,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 187,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "cinder-flats",
+   "opp": "ckpt:checkpoints/v2/m4-imitate/final.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 7649,
+   "stats": {
+    "decisions": 957,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 72,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "glimmerfen",
+   "opp": "ckpt:checkpoints/v2/m4-imitate/final.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 7697,
+   "stats": {
+    "decisions": 963,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 54,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "ironreed",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_100.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 7759,
+   "stats": {
+    "decisions": 970,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 199,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "cinder-flats",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_40.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 7798,
+   "stats": {
+    "decisions": 975,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 277,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "cinder-flats",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_40.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 7819,
+   "stats": {
+    "decisions": 978,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 64,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "glimmerfen",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_40.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "control",
+   "ticks": 7912,
+   "stats": {
+    "decisions": 989,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 98,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "ironreed",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_40.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 7945,
+   "stats": {
+    "decisions": 994,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 306,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "basalt-run",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_2.pt",
+   "side": "red",
+   "result": "loss",
+   "winType": "combat",
+   "ticks": 8102,
+   "stats": {
+    "decisions": 1013,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 126,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "glimmerfen",
+   "opp": "ckpt:checkpoints/v2/m4-imitate/final.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "control",
+   "ticks": 8113,
+   "stats": {
+    "decisions": 1015,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 56,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "shardfall",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_40.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 8203,
+   "stats": {
+    "decisions": 1026,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 46,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "twin-spires",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_1.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 8305,
+   "stats": {
+    "decisions": 1039,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 228,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "basalt-run",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_100.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "control",
+   "ticks": 8365,
+   "stats": {
+    "decisions": 1046,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 83,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "twin-spires",
+   "opp": "ckpt:checkpoints/v2/m4-imitate/final.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 8486,
+   "stats": {
+    "decisions": 1061,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 376,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "basalt-run",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_2.pt",
+   "side": "blue",
+   "result": "loss",
+   "winType": "combat",
+   "ticks": 8563,
+   "stats": {
+    "decisions": 1071,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 77,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "saltmarsh",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_1.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 8606,
+   "stats": {
+    "decisions": 1076,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 234,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "twin-spires",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_100.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 8724,
+   "stats": {
+    "decisions": 1091,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 99,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "saltmarsh",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_1.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 8823,
+   "stats": {
+    "decisions": 1103,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 58,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "hollow-crown",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_100.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 8908,
+   "stats": {
+    "decisions": 1114,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 161,
+    "contested": 1,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "hollow-crown",
+   "opp": "ckpt:checkpoints/v2/m4-imitate/final.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 8960,
+   "stats": {
+    "decisions": 1120,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 86,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "cinder-flats",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_1.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 9035,
+   "stats": {
+    "decisions": 1130,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 89,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "cinder-flats",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_40.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 9076,
+   "stats": {
+    "decisions": 1135,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 46,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "cinder-flats",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_1.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 9092,
+   "stats": {
+    "decisions": 1137,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 65,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "basalt-run",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_1.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 9108,
+   "stats": {
+    "decisions": 1139,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 99,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "shardfall",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_1.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 9322,
+   "stats": {
+    "decisions": 1166,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 60,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "shardfall",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_1.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 9344,
+   "stats": {
+    "decisions": 1168,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 173,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "hollow-crown",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_1.pt",
+   "side": "blue",
+   "result": "loss",
+   "winType": "combat",
+   "ticks": 9457,
+   "stats": {
+    "decisions": 1183,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 455,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "cinder-flats",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_100.pt",
+   "side": "red",
+   "result": "loss",
+   "winType": "combat",
+   "ticks": 9479,
+   "stats": {
+    "decisions": 1185,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 586,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "hollow-crown",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_2.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 9530,
+   "stats": {
+    "decisions": 1192,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 252,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "ironreed",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_1.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 9676,
+   "stats": {
+    "decisions": 1210,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 186,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "saltmarsh",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_1.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 9685,
+   "stats": {
+    "decisions": 1211,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 76,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "shardfall",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_40.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 9828,
+   "stats": {
+    "decisions": 1229,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 63,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "twin-spires",
+   "opp": "ckpt:checkpoints/v2/m4-imitate/final.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 10077,
+   "stats": {
+    "decisions": 1260,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 98,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "hollow-crown",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_2.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 10264,
+   "stats": {
+    "decisions": 1283,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 93,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "ironreed",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_40.pt",
+   "side": "blue",
+   "result": "loss",
+   "winType": "combat",
+   "ticks": 10308,
+   "stats": {
+    "decisions": 1289,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 164,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "ironreed",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_1.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 10316,
+   "stats": {
+    "decisions": 1290,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 428,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "hollow-crown",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_1.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 10356,
+   "stats": {
+    "decisions": 1295,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 179,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "twin-spires",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_2.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 10634,
+   "stats": {
+    "decisions": 1330,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 102,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "shardfall",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_2.pt",
+   "side": "blue",
+   "result": "loss",
+   "winType": "combat",
+   "ticks": 10855,
+   "stats": {
+    "decisions": 1357,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 53,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "hollow-crown",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_1.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "control",
+   "ticks": 10861,
+   "stats": {
+    "decisions": 1358,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 80,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "hollow-crown",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_2.pt",
+   "side": "red",
+   "result": "loss",
+   "winType": "combat",
+   "ticks": 10988,
+   "stats": {
+    "decisions": 1374,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 421,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "cinder-flats",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_1.pt",
+   "side": "red",
+   "result": "loss",
+   "winType": "combat",
+   "ticks": 10993,
+   "stats": {
+    "decisions": 1375,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 189,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "glimmerfen",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_1.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "control",
+   "ticks": 11428,
+   "stats": {
+    "decisions": 1429,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 66,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "hollow-crown",
+   "opp": "ckpt:checkpoints/v2/lg2-main/update_40.pt",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 318,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "shardfall",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_1.pt",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 407,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "basalt-run",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_1.pt",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 84,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "basalt-run",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_1.pt",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 184,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "twin-spires",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_1.pt",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 88,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "glimmerfen",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_1.pt",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 35,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "ironreed",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_1.pt",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 272,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "ironreed",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_1.pt",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 1329,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "shardfall",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_2.pt",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 1012,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "hollow-crown",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_2.pt",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 42,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "glimmerfen",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_2.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 7630,
+   "stats": {
+    "decisions": 954,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 95,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "glimmerfen",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_2.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "control",
+   "ticks": 8221,
+   "stats": {
+    "decisions": 1028,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 71,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "cinder-flats",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_2.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 8000,
+   "stats": {
+    "decisions": 1000,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 103,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "saltmarsh",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_2.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 9973,
+   "stats": {
+    "decisions": 1247,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 155,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "glimmerfen",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_2.pt",
+   "side": "red",
+   "result": "loss",
+   "winType": "control",
+   "ticks": 8084,
+   "stats": {
+    "decisions": 1011,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 258,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "saltmarsh",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_2.pt",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 165,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "cinder-flats",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_2.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 11760,
+   "stats": {
+    "decisions": 1470,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 335,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "ironreed",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_2.pt",
+   "side": "blue",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 171,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "saltmarsh",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_2.pt",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 91,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "saltmarsh",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_2.pt",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 35,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "ironreed",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_2.pt",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 80,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "cinder-flats",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_2.pt",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 155,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 847826553,
+   "map": "glimmerfen",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_2.pt",
+   "side": "red",
+   "result": "draw",
+   "winType": null,
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 207,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "cinder-flats",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_2.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 10948,
+   "stats": {
+    "decisions": 1369,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 180,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "ironreed",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_2.pt",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 11430,
+   "stats": {
+    "decisions": 1429,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 150,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  },
+  {
+   "seed": 226241612,
+   "map": "ironreed",
+   "opp": "ckpt:checkpoints/v2/lg2-main/cycle_2.pt",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 10024,
+   "stats": {
+    "decisions": 1253,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 93,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": null
+  }
+ ]
+}

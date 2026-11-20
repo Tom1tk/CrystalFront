@@ -22,9 +22,9 @@ const BOTS: Array<{ name: string; label: string; sub: string }> = [
 
 /** Trained neural opponents (G-10): three snapshots of the same policy, further into training. */
 const NEURAL: Array<{ name: string; label: string; sub: string }> = [
-  { name: "neural_easy", label: "Easy", sub: "An early snapshot of the trained bot." },
-  { name: "neural_normal", label: "Normal", sub: "Midway through training." },
-  { name: "neural_hard", label: "Hard", sub: "The final trained bot." },
+  { name: "neural_easy", label: "Easy", sub: "Learned by copying the scripted bots." },
+  { name: "neural_normal", label: "Normal", sub: "After one round of self-play." },
+  { name: "neural_hard", label: "Hard", sub: "After three rounds of self-play." },
 ];
 
 const NAME_KEY = "cf.name";

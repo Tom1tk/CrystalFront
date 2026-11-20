@@ -1,0 +1,47 @@
+{
+ "checkpoint": "checkpoints/v2/lg2-main/cycle_3.pt",
+ "obsSchemaVersion": 5,
+ "actionSpaceVersion": 7,
+ "hidden": 384,
+ "nOpp": 104,
+ "main": {
+  "in": [
+   "globals",
+   "z",
+   "ent",
+   "ent_n",
+   "nodes",
+   "memory",
+   "grid",
+   "h0",
+   "c0"
+  ],
+  "out": [
+   "h1",
+   "c1",
+   "opp",
+   "hh",
+   "E",
+   "econ",
+   "site",
+   "econPtr",
+   "econTarget",
+   "group",
+   "order",
+   "unit"
+  ]
+ },
+ "tail": {
+  "in": [
+   "hh",
+   "E",
+   "order",
+   "unit",
+   "unit_on"
+  ],
+  "out": [
+   "target",
+   "ptr"
+  ]
+ }
+}

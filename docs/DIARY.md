@@ -785,3 +785,14 @@ League lg1 stopped after cycle 2 on the user's call: the main agent answered its
 - Slowdown: at 08:30 GMT the container's cgroup IO pressure was ~80% and direct reads from the host HDD (WD30EFRX, `sdc`) ran at **1.2 MB/s**; by 09:30 pressure ~0 and reads 139 MB/s. Cause outside the container (user: probably a host backup job).
 - Replica of cycle 3 training (same args, resumed from `cycle_3.pt`, 30 updates, healthy disk): **340–410 decisions/s** (env 75–78%, workers ~40% busy) — the rate cycle 3 had before its trough (380 at 9 M). So the 111/s trough was the disk; the drop from cycle 1's ~550/s to ~350/s is the two frozen-checkpoint opponents and longer games.
 - Remaining headroom: workers idle ~60% because the vector env steps in lockstep (each step waits for the slowest of 18 processes). Not changed.
+
+## 2026-11-20 — v0.9.0-ML: neural opponents ship (G-10 M4)
+
+- User approved shipping: ONNX export, production model, release notes + version bump, deploy ("on to 0.9").
+- Export (`training/v2/export_onnx.py`): two graphs, batch 1. Main: observation + LSTM state → new state, opponent-model probabilities and every head's logits for each choice it can be conditioned on. Tail: target and pointer logits for the chosen order and unit. Entities padded to 200: with a dynamic count the attention reshape traced N as a constant.
+- TypeScript policy (`headless/src/v2/neural.ts`, onnxruntime-node 1.22 installed with `ONNXRUNTIME_NODE_INSTALL=skip`): samples the heads in the same order and with the same masking as `Agent.policy`.
+- Parity (`training/v2/test_onnx_parity.py`): whole games from `headless/src/v2/neuralGame.ts --log` replayed through PyTorch with the LSTM state carried. For easy / normal / hard: 3,058 / 3,206 / 3,502 decisions, worst per-head |Δ log-prob| 3.4e-5 / 9.4e-6 / 1.2e-5, 0 illegal actions, 15–35 ms per decision.
+- Server (`server/src/match/neuralBotPlayer.ts`): `neural_easy|normal|hard`, models loaded at startup. Every 8 ticks: worker autopilot, observe, masks, then async inference; the action is applied through `processCommand`, so replays replay it. The bot's read of its opponent (expected counts per unit/building, most likely army anchor) is sent with the state and saved in the replay (`botReads`).
+- Client: Neural opponent cards (default Normal), Settings toggle "Bot's read of you" (off by default), read panel always in replays of neural matches.
+- Difficulty ladder (`logs/ladder.sh`, training maps, 2 seeds × 2 seats, 32 games per pairing; `docs/eval/ladder-*.json`). Bradley–Terry Elo, draws = ½: m4-imitate 0, update_100 40, update_40 111, cycle_1 295, cycle_2 404, cycle_3 527. Easy = m4-imitate, Normal = cycle_1, Hard = cycle_3 (gaps 295 / 232). update_40 above update_100 is within noise at 32 games.
+- Found while testing: a freshly started server does not answer for ~40 s while `listReplays` parses all 3,410 replays (2.2 GB) synchronously. Not new and not changed here.
