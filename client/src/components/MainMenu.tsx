@@ -5,6 +5,7 @@
 import { useState } from "react";
 import { Icon, Tabs, PageTitle, Wordmark, IconBtn } from "../design/glass";
 import { MapCards } from "./MapPicker";
+import type { Ruleset } from "../types";
 
 declare const __APP_VERSION__: string;
 
@@ -27,6 +28,43 @@ const NEURAL: Array<{ name: string; label: string; sub: string }> = [
   { name: "neural_hard", label: "Hard", sub: "After three rounds of self-play." },
 ];
 
+/**
+ * Beta scripted opponents (mainline 0.10 plan §2a): the v2 training bots, which see only what
+ * their own units see. Sent as "v3_<name>".
+ */
+const BETA_SCRIPTED: Array<{ group: string; bots: Array<{ name: string; label: string; sub: string }> }> = [
+  { group: "Rush", bots: [
+    { name: "rush1", label: "Light Rush", sub: "Five skirmishers at about 1:30." },
+    { name: "rush2", label: "Rush", sub: "Early skirmisher or gunner pushes." },
+    { name: "rush3", label: "Double Rush", sub: "Two barracks, constant skirmishers." },
+    { name: "rush_post", label: "Outpost Rush", sub: "Rush with outposts at home." },
+  ] },
+  { group: "Defensive", bots: [
+    { name: "turtle", label: "Turtle", sub: "Turrets, then a control win." },
+    { name: "gunline", label: "Gunline", sub: "Economy, then massed gunners." },
+    { name: "phalanx", label: "Phalanx", sub: "Gunners behind bulwarks." },
+    { name: "siege", label: "Siege", sub: "Turtle, then outposts at your door." },
+  ] },
+  { group: "Macro", bots: [
+    { name: "macro", label: "Macro", sub: "Economy first, then a mixed army." },
+    { name: "heavy", label: "Heavy", sub: "Foundry first, slow heavy push." },
+    { name: "swarm", label: "Swarm", sub: "Skirmisher and medic swarm." },
+    { name: "swarm_mass", label: "Mass", sub: "Twenty skirmishers at once." },
+    { name: "swarm_tide", label: "Tide", sub: "Turrets at home, late swarm." },
+  ] },
+  { group: "Switchers", bots: [
+    { name: "sw_rush_turtle", label: "Rush → Turtle", sub: "Rushes, then digs in." },
+    { name: "sw_macro_bruiser", label: "Macro → Bruisers", sub: "Economy, then a bruiser timing." },
+    { name: "sw_fake_brush", label: "Fake Expand", sub: "Fakes an expansion, strikes through brush." },
+    { name: "sw_turtle_grab", label: "Turtle → Grab", sub: "Turtles, then grabs the nodes." },
+  ] },
+  { group: "Specialists", bots: [
+    { name: "hidden", label: "Hidden", sub: "Masses out of sight, then attacks." },
+    { name: "backdoor", label: "Backdoor", sub: "Sneaks outposts behind your Crystal." },
+    { name: "vanguard", label: "Vanguard", sub: "Swarm with escorted forward outposts." },
+  ] },
+];
+
 const NAME_KEY = "cf.name";
 function savedName() {
   try { return window.localStorage.getItem(NAME_KEY) ?? ""; } catch { return ""; }
@@ -39,10 +77,10 @@ function saveName(name: string) {
 type PlayTab = "bot" | "online" | "solo";
 
 interface MainMenuProps {
-  onHost: (username: string) => void;
+  onHost: (username: string, ruleset: Ruleset) => void;
   onJoin: (code: string, username: string) => void;
-  onSoloTest: (username: string, mapId: string) => void;
-  onBotGame: (username: string, bot: string, mapId: string) => void;
+  onSoloTest: (username: string, mapId: string, ruleset: Ruleset) => void;
+  onBotGame: (username: string, bot: string, mapId: string, ruleset: Ruleset) => void;
   onReplays: () => void;
   onSettings: () => void;
   /** Show this map in the backdrop ("random": keep the current one). */
@@ -57,7 +95,14 @@ export default function MainMenu({ onHost, onJoin, onSoloTest, onBotGame, onRepl
   const [code, setCode] = useState("");
   const [bot, setBot] = useState("neural_normal");
   const [mapId, setMapId] = useState("random");
+  const [ruleset, setRuleset] = useState<Ruleset>("0.9");
   const [error, setError] = useState("");
+  const beta = ruleset === "beta";
+  const pickRuleset = (r: Ruleset) => {
+    setRuleset(r);
+    // Scripted lists differ between versions; the neural picks exist in both.
+    if (!bot.startsWith("neural_")) setBot("neural_normal");
+  };
 
   const name = username.trim();
   const pickMap = (id: string) => { setMapId(id); onPreviewMap(id); };
@@ -115,30 +160,61 @@ export default function MainMenu({ onHost, onJoin, onSoloTest, onBotGame, onRepl
           </div>
 
           <div className="g-scroll" style={{ flex: 1, minHeight: 0, padding: "16px 22px", display: "flex", flexDirection: "column", gap: 18 }}>
+            <section>
+              <div className="g-label" style={{ marginBottom: 8 }}>Game version{tab === "online" ? " · when you host" : ""}</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+                <button type="button" className={`g-card${!beta ? " on" : ""}`} onClick={() => pickRuleset("0.9")} style={{ padding: "10px 11px" }}>
+                  <span className="g-card-name">0.9 (stable)</span>
+                  <span className="g-sub" style={{ fontSize: 12 }}>The current game.</span>
+                </button>
+                <button type="button" className={`g-card${beta ? " on" : ""}`} onClick={() => pickRuleset("beta")} style={{ padding: "10px 11px" }}>
+                  <span className="g-card-name">0.9.x beta</span>
+                  <span className="g-sub" style={{ fontSize: 12 }}>Dev testing only: the next version, unfinished.</span>
+                </button>
+              </div>
+            </section>
             {tab === "bot" && (
               <>
                 <section>
-                  <div className="g-label" style={{ marginBottom: 8 }}>Neural opponent</div>
+                  <div className="g-label" style={{ marginBottom: 8 }}>Neural opponent{beta ? " · 0.9 models" : ""}</div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
                     {NEURAL.map((b) => (
                       <button key={b.name} type="button" className={`g-card${bot === b.name ? " on" : ""}`} onClick={() => setBot(b.name)} style={{ padding: "10px 11px" }}>
                         <span className="g-card-name">{b.label}</span>
-                        <span className="g-sub" style={{ fontSize: 12 }}>{b.sub}</span>
+                        <span className="g-sub" style={{ fontSize: 12 }}>{beta ? "The 0.9 bot: it ignores the beta's new features." : b.sub}</span>
                       </button>
                     ))}
                   </div>
                 </section>
-                <section>
-                  <div className="g-label" style={{ marginBottom: 8 }}>Scripted opponent</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
-                    {BOTS.map((b) => (
-                      <button key={b.name} type="button" className={`g-card${bot === b.name ? " on" : ""}`} onClick={() => setBot(b.name)} style={{ padding: "10px 11px" }}>
-                        <span className="g-card-name">{b.label}</span>
-                        <span className="g-sub" style={{ fontSize: 12 }}>{b.sub}</span>
-                      </button>
-                    ))}
-                  </div>
-                </section>
+                {!beta && (
+                  <section>
+                    <div className="g-label" style={{ marginBottom: 8 }}>Scripted opponent</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+                      {BOTS.map((b) => (
+                        <button key={b.name} type="button" className={`g-card${bot === b.name ? " on" : ""}`} onClick={() => setBot(b.name)} style={{ padding: "10px 11px" }}>
+                          <span className="g-card-name">{b.label}</span>
+                          <span className="g-sub" style={{ fontSize: 12 }}>{b.sub}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                )}
+                {beta && BETA_SCRIPTED.map((g) => (
+                  <section key={g.group}>
+                    <div className="g-label" style={{ marginBottom: 8 }}>Scripted · {g.group}</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+                      {g.bots.map((b) => {
+                        const id = `v3_${b.name}`;
+                        return (
+                          <button key={id} type="button" className={`g-card${bot === id ? " on" : ""}`} onClick={() => setBot(id)} style={{ padding: "10px 11px" }}>
+                            <span className="g-card-name">{b.label}</span>
+                            <span className="g-sub" style={{ fontSize: 12 }}>{b.sub}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ))}
                 <section>
                   <div className="g-label" style={{ marginBottom: 8 }}>Map</div>
                   <MapCards value={mapId} onChange={pickMap} columns={3} />
@@ -151,13 +227,13 @@ export default function MainMenu({ onHost, onJoin, onSoloTest, onBotGame, onRepl
                 <section className="g-glass flat" style={{ padding: 16, background: "rgba(255,255,255,0.04)" }}>
                   <div className="g-title" style={{ fontSize: 18 }}>Host a match</div>
                   <p className="g-sub" style={{ margin: "6px 0 12px" }}>Creates a lobby with a code to share. You pick the map in the lobby.</p>
-                  <button type="button" className="g-btn primary" onClick={() => withName(onHost)}>
+                  <button type="button" className="g-btn primary" onClick={() => withName((n) => onHost(n, ruleset))}>
                     <Icon name="flag" size={18} />Host
                   </button>
                 </section>
                 <section className="g-glass flat" style={{ padding: 16, background: "rgba(255,255,255,0.04)" }}>
                   <div className="g-title" style={{ fontSize: 18 }}>Join a match</div>
-                  <p className="g-sub" style={{ margin: "6px 0 12px" }}>Enter the code from the host.</p>
+                  <p className="g-sub" style={{ margin: "6px 0 12px" }}>Enter the code from the host. You play the version the host picked.</p>
                   <div style={{ display: "flex", gap: 8 }}>
                     <input className="g-input" value={code} maxLength={6} placeholder="ABC123" aria-label="Lobby code"
                       style={{ width: 170, fontFamily: "var(--mono)", letterSpacing: "0.3em", textTransform: "uppercase" }}
@@ -182,7 +258,7 @@ export default function MainMenu({ onHost, onJoin, onSoloTest, onBotGame, onRepl
           {tab !== "online" && (
             <div style={{ padding: "14px 22px 18px", borderTop: "1px solid var(--edge)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
               <span className="g-error">{shownError}</span>
-              <button type="button" className="g-btn primary big" onClick={() => withName((n) => (tab === "bot" ? onBotGame(n, bot, mapId) : onSoloTest(n, mapId)))}>
+              <button type="button" className="g-btn primary big" onClick={() => withName((n) => (tab === "bot" ? onBotGame(n, bot, mapId, ruleset) : onSoloTest(n, mapId, ruleset)))}>
                 <Icon name="play" size={18} />{tab === "bot" ? "Start match" : "Start solo test"}
               </button>
             </div>

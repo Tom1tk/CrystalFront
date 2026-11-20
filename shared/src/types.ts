@@ -21,7 +21,16 @@ export interface Lobby {
   hostId: PlayerId;
   /** G-7: chosen map id, or "random" (a random pool map). */
   mapId: string;
+  /** Game version the host picked (mainline 0.10 plan §1); absent = "0.9". */
+  ruleset?: Ruleset;
 }
+
+/**
+ * Game version of a match (mainline 0.10 plan §1). "0.9" is the frozen v0.9.1-ML game;
+ * "beta" is the mainline being built toward 0.10. Absent on a config or replay = "0.9".
+ */
+export type Ruleset = "0.9" | "beta";
+export const RULESETS: readonly Ruleset[] = ["0.9", "beta"];
 
 export interface LobbyState {
   lobbies: Record<LobbyCode, Lobby>;
@@ -172,6 +181,8 @@ export interface MatchState {
   config: MatchConfig;
   mapWidth: number;
   mapHeight: number;
+  /** Mainline 0.10 plan §1: the match's game version (absent from old servers = "0.9"). */
+  ruleset?: Ruleset;
   /** G-11: static map data, present on MATCH_START only. */
   staticMap?: {
     cellSize: number; cols: number; rows: number; mapId?: string; mapVersion?: number; terrain?: string;

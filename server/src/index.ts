@@ -22,6 +22,7 @@ import {
 import type { Agent } from "../../headless/src/types.js";
 import { actionStateOf, headingOf, staticMapOf, type ActionState } from "./match/engine/presentation.js";
 import { encodeVision } from "./match/engine/visibility.js";
+import { ScriptedBotPlayer, scriptedBotFor, SCRIPTED_PREFIX } from "./match/scriptedBotPlayer.js";
 import { ReplayRunner, listReplays, getReplay, ensureReplaysDir, saveReplay } from "./match/replayRunner.js";
 import type { MatchEntity, MatchState, PlayerSlot, ResourceNode, PlayerEconomy, MatchConfig } from "./match/types.js";
 import { DEFAULT_CONFIG } from "./match/types.js";
@@ -33,7 +34,7 @@ import { encodeTerrain } from "./match/engine/terrain.js";
  * "random" or anything else picks a random pool map. CF_MAP overrides a
  * random pick (dev). With an empty pool the default map is used.
  */
-function liveConfig(requested?: string): MatchConfig {
+function liveConfig(requested?: string, ruleset?: Ruleset): MatchConfig {
   let mapId: string;
   if (requested && requested !== "random" && isKnownMap(requested)) mapId = requested;
   else if (process.env.CF_MAP && isKnownMap(process.env.CF_MAP)) mapId = process.env.CF_MAP;
@@ -41,7 +42,7 @@ function liveConfig(requested?: string): MatchConfig {
     const pool = poolMaps();
     mapId = pool.length ? pool[Math.floor(Math.random() * pool.length)].mapId : DEFAULT_MAP_ID;
   }
-  return { ...DEFAULT_CONFIG, mapId };
+  return { ...DEFAULT_CONFIG, mapId, ...(ruleset === "beta" ? { ruleset: "beta" as const } : {}) };
 }
 import {
   CLIENT_MSG,
@@ -52,6 +53,7 @@ import {
   type EntityType,
   type BuildingType,
   type UnitType,
+  type Ruleset,
 } from "@crystalfront/shared";
 import {
   USERNAME_MIN_LENGTH,
@@ -98,7 +100,7 @@ const replayRunner = new ReplayRunner();
 const replayWatchers = new Map<WebSocket, string>();
 
 // Per-match bot players (for Solo Test mode)
-const botPlayers = new Map<string, BotPlayer | NeuralBotPlayer>();
+const botPlayers = new Map<string, BotPlayer | NeuralBotPlayer | ScriptedBotPlayer>();
 
 const liveRunner = new LiveMatchRunner(matchEngine, (matchId: string) => {
   // Step the bot (if any) before broadcasting so the bot's commands are included
@@ -157,6 +159,7 @@ matchEngine.setMatchEndCallback((matchId: string, winner: string) => {
           version:      GAME_VERSION,
           mapId:        match.terrain.mapId,
           mapVersion:   match.terrain.mapVersion,
+          ruleset:      match.config.ruleset ?? "0.9",
           ...(endedBot instanceof NeuralBotPlayer ? { botReads: endedBot.reads } : {}),
         });
       }
@@ -397,6 +400,7 @@ function buildMatchStatePayload(match: MatchState, stateTimestamp?: number, play
     },
     mapWidth: match.config.mapWidth,
     mapHeight: match.config.mapHeight,
+    ruleset: (match.config.ruleset ?? "0.9") as Ruleset,
     // Neural opponents: the bot's latest read of its opponent (the client shows it only if asked to).
     botRead: (() => { const b = botPlayers.get(match.id); return b instanceof NeuralBotPlayer ? b.latestRead : undefined; })(),
   };
@@ -511,7 +515,7 @@ wss.on("connection", (ws) => {
       }
 
     case CLIENT_MSG.CREATE_LOBBY: {
-        const { code, player } = lobbyManager.createLobby(msg.payload.username);
+        const { code, player } = lobbyManager.createLobby(msg.payload.username, msg.payload.ruleset);
 
         playerId = player.id;
         playerLobbyMap.set(playerId, {
@@ -531,7 +535,8 @@ wss.on("connection", (ws) => {
         // Create a solo test lobby with a scripted bot opponent
         const difficulty = (msg.payload as { username: string; difficulty?: string }).difficulty ?? "medium";
         const soloMapId = (msg.payload as { mapId?: string }).mapId;
-        const { code, player } = lobbyManager.createLobby(msg.payload.username);
+        const soloRuleset = msg.payload.ruleset;
+        const { code, player } = lobbyManager.createLobby(msg.payload.username, soloRuleset);
         
         playerId = player.id;
         playerLobbyMap.set(playerId, {
@@ -573,7 +578,7 @@ wss.on("connection", (ws) => {
             toPlayerSlot(p1),
           ];
           
-          const match = matchEngine.createMatch(code, players, liveConfig(soloMapId));
+          const match = matchEngine.createMatch(code, players, liveConfig(soloMapId, soloRuleset));
           lobbyMatchMap.set(code, match.id);
           matchLobbyMap.set(match.id, code);
           loadGate.wait(match.id, [playerId]);
@@ -606,19 +611,24 @@ wss.on("connection", (ws) => {
       }
 
     case CLIENT_MSG.START_BOT_GAME: {
-        const { username: bgUsername, bot: botName, mapId: bgMapId } = msg.payload as { username: string; bot: string; mapId?: string };
+        const { username: bgUsername, bot: botName, mapId: bgMapId, ruleset: bgRuleset } = msg.payload;
         const neural = botName.startsWith("neural_") ? neuralModelFor(botName) : null;
         if (botName.startsWith("neural_") && !neural) {
           sendWS(ws, { type: SERVER_EVT.ERROR, payload: { message: "That neural opponent is not available on this server." } });
           return;
         }
-        const { code, player } = lobbyManager.createLobby(bgUsername);
+        const scripted = scriptedBotFor(botName);
+        if (botName.startsWith(SCRIPTED_PREFIX) && (!scripted || bgRuleset !== "beta")) {
+          sendWS(ws, { type: SERVER_EVT.ERROR, payload: { message: "That scripted opponent is only available in the beta." } });
+          return;
+        }
+        const { code, player } = lobbyManager.createLobby(bgUsername, bgRuleset);
 
         playerId = player.id;
         playerLobbyMap.set(playerId, { playerId, code, ws });
         sendWS(ws, { type: SERVER_EVT.CONNECTED, payload: { playerId: player.id } });
 
-        const botPlayer = lobbyManager.addBotToLobby(code, neural ? NEURAL_NAMES[botName] ?? "Neural" : "Bot");
+        const botPlayer = lobbyManager.addBotToLobby(code, neural ? NEURAL_NAMES[botName] ?? "Neural" : scripted ? `Bot · ${scripted}` : "Bot");
         if (!botPlayer) {
           sendWS(ws, { type: SERVER_EVT.ERROR, payload: { message: "Failed to create bot game." } });
           return;
@@ -640,13 +650,15 @@ wss.on("connection", (ws) => {
             toPlayerSlot(lobby.players[0]!),
             toPlayerSlot(lobby.players[1]!),
           ];
-          const match = matchEngine.createMatch(code, players, liveConfig(bgMapId));
+          const match = matchEngine.createMatch(code, players, liveConfig(bgMapId, bgRuleset));
           lobbyMatchMap.set(code, match.id);
           matchLobbyMap.set(match.id, code);
           loadGate.wait(match.id, [playerId]);
 
           if (neural) {
             botPlayers.set(match.id, new NeuralBotPlayer(neural, botPlayer.id, match.id, matchEngine));
+          } else if (scripted) {
+            botPlayers.set(match.id, new ScriptedBotPlayer(scripted, botPlayer.id, match.id, matchEngine));
           } else {
             const bot = new BotPlayer(createBotAgent(botName), botPlayer.id, match.id, matchEngine);
             bot.init();
@@ -713,7 +725,7 @@ wss.on("connection", (ws) => {
             toPlayerSlot(p1),
           ];
 
-          const match = matchEngine.createMatch(session.code, players, liveConfig(result.lobby.mapId));
+          const match = matchEngine.createMatch(session.code, players, liveConfig(result.lobby.mapId, result.lobby.ruleset));
           lobbyMatchMap.set(session.code, match.id);
 
           // Start once both clients have loaded
@@ -1189,6 +1201,7 @@ app.get("/api/replays", (req: Request, res: Response) => {
   const asc      = req.query.asc === "true";
   const winner   = (req.query.winner  as string) || "all";
   const winType  = (req.query.winType as string) || "all";
+  const ruleset  = (req.query.ruleset as string) || "all";
   const bot      = ((req.query.bot    as string) || "").toLowerCase().trim();
   const flags    = ((req.query.flags  as string) || "").split(",").filter(Boolean);
   const starred  = new Set(((req.query.starred as string) || "").split(",").filter(Boolean));
@@ -1200,6 +1213,7 @@ app.get("/api/replays", (req: Request, res: Response) => {
   else if (winner === "draw")  list = list.filter(r => !r.outcome.winner);
 
   if (winType !== "all") list = list.filter(r => (r.winType ?? r.outcome.winType) === winType);
+  if (ruleset !== "all") list = list.filter(r => (r.ruleset ?? "0.9") === ruleset);
   if (bot)               list = list.filter(r => r.blue.toLowerCase().includes(bot) || r.red.toLowerCase().includes(bot));
   if (flags.length > 0)  list = list.filter(r => flags.every(f => (r.flags ?? []).includes(f)));
   if (starred.size > 0)  list = list.filter(r => starred.has(r.id));

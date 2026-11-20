@@ -1,4 +1,4 @@
-import type { PlayerId, LobbyState, MatchState, ClientCommand, EntityType, BuildingType } from "./types.js";
+import type { PlayerId, LobbyState, MatchState, ClientCommand, EntityType, BuildingType, Ruleset } from "./types.js";
 
 export const WS_EVENT = {
   CONNECTED: "connected",
@@ -61,7 +61,7 @@ export const SERVER_EVT = {
 
 export type ClientToServerMsg =
   | { type: typeof CLIENT_MSG.JOIN_LOBBY; payload: { code: string; username: string } }
-  | { type: typeof CLIENT_MSG.CREATE_LOBBY; payload: { username: string } }
+  | { type: typeof CLIENT_MSG.CREATE_LOBBY; payload: { username: string; ruleset?: Ruleset } }
   | { type: typeof CLIENT_MSG.READY_TOGGLE }
   | { type: typeof CLIENT_MSG.LEAVE_LOBBY }
   | { type: typeof CLIENT_MSG.DEBUG_WIN; payload: { winner: "player1" | "player2" | "self" } }
@@ -69,8 +69,8 @@ export type ClientToServerMsg =
   | { type: typeof CLIENT_MSG.USERNAME; payload: { username: string } }
   | { type: typeof CLIENT_MSG.GAME_COMMAND; payload: ClientCommand }
   | { type: typeof CLIENT_MSG.MATCH_START }
-  | { type: typeof CLIENT_MSG.START_SOLO_TEST; payload: { username: string; difficulty?: "easy" | "medium" | "hard"; mapId?: string } }
-  | { type: typeof CLIENT_MSG.START_BOT_GAME; payload: { username: string; bot: string; mapId?: string } }
+  | { type: typeof CLIENT_MSG.START_SOLO_TEST; payload: { username: string; difficulty?: "easy" | "medium" | "hard"; mapId?: string; ruleset?: Ruleset } }
+  | { type: typeof CLIENT_MSG.START_BOT_GAME; payload: { username: string; bot: string; mapId?: string; ruleset?: Ruleset } }
   | { type: typeof CLIENT_MSG.SET_MAP; payload: { mapId: string } }
   | { type: typeof CLIENT_MSG.START_REPLAY; payload: { replayId: string } }
   | { type: typeof CLIENT_MSG.STOP_REPLAY }

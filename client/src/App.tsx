@@ -5,7 +5,7 @@ import LobbyScreen from "./components/LobbyScreen";
 import GameShell, { initialView3d, saveView3d } from "./components/GameShell";
 import MatchEndScreen from "./components/MatchEndScreen";
 import ReplayBrowser from "./components/ReplayBrowser";
-import type { Screen, Player, MatchState, Lobby } from "./types";
+import type { Screen, Player, MatchState, Lobby, Ruleset } from "./types";
 import MenuBackdrop from "./components/MenuBackdrop";
 import BootScreen from "./components/BootScreen";
 import SettingsModal from "./components/SettingsModal";
@@ -111,9 +111,9 @@ function useScreenFlow() {
     restartRef.current = restart;
   };
   const handleHost = useCallback(
-    (name: string) => {
+    (name: string, ruleset: Ruleset) => {
       newLobby(null);
-      ws.createLobby(name);
+      ws.createLobby(name, ruleset);
       setIsHost(true);
       setVsBot(false);
     },
@@ -131,9 +131,9 @@ function useScreenFlow() {
   );
 
   const handleSoloTest = useCallback(
-    (name: string, mapId?: string) => {
-      newLobby(() => ws.startSoloTest(name, mapId));
-      ws.startSoloTest(name, mapId);
+    (name: string, mapId: string, ruleset: Ruleset) => {
+      newLobby(() => ws.startSoloTest(name, mapId, ruleset));
+      ws.startSoloTest(name, mapId, ruleset);
       setIsHost(true);
       setVsBot(true);
     },
@@ -141,9 +141,9 @@ function useScreenFlow() {
   );
 
   const handleBotGame = useCallback(
-    (name: string, bot: string, mapId?: string) => {
-      newLobby(() => ws.startBotGame(name, bot, mapId));
-      ws.startBotGame(name, bot, mapId);
+    (name: string, bot: string, mapId: string, ruleset: Ruleset) => {
+      newLobby(() => ws.startBotGame(name, bot, mapId, ruleset));
+      ws.startBotGame(name, bot, mapId, ruleset);
       setIsHost(true);
       setVsBot(true);
     },

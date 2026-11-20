@@ -8,9 +8,10 @@ import type {
   AttackEvent,
   PlayerSlot,
   CameraState,
+  Ruleset,
 } from "@crystalfront/shared";
 
-export type { Lobby, Player, LobbyState, BuildingType, UnitType, ProductionQueueItem, AttackEvent, PlayerSlot, CameraState };
+export type { Lobby, Player, LobbyState, BuildingType, UnitType, ProductionQueueItem, AttackEvent, PlayerSlot, CameraState, Ruleset };
 
 export type Screen = "menu" | "lobby" | "game" | "matchEnd" | "replays" | "watching_replay";
 
@@ -93,6 +94,8 @@ export interface MatchState {
   };
   mapWidth: number;
   mapHeight: number;
+  /** Mainline 0.10 plan §1: game version of the match (absent = "0.9"). */
+  ruleset?: Ruleset;
   /** Sent with match_start; the client hook carries it on every later state (G-5). */
   staticMap?: StaticMap;
   /** Node control (G-8): public, ignores fog. holder/controller are player slots. */

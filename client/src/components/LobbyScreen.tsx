@@ -2,6 +2,7 @@
  * Online lobby (G-12, UI-5): glass panel over the live 3D backdrop (which shows the chosen
  * map). Lobby code with copy, one card per team, host-only map choice, Ready / Leave.
  */
+import BetaBadge from "./BetaBadge";
 import { useState } from "react";
 import type { Lobby, Player } from "../types";
 import { Icon, IconBtn, PageTitle } from "../design/glass";
@@ -83,6 +84,13 @@ export default function LobbyScreen({ lobby, player, isHost, onReady, onLeave, o
                 {copied ? <><Icon name="check" size={16} />Copied</> : "Copy"}
               </button>
             </div>
+          </section>
+
+          <section>
+            <div className="g-label" style={{ marginBottom: 8 }}>Game version{isHost ? "" : " · chosen by the host"}</div>
+            {lobby.ruleset === "beta"
+              ? <span style={{ display: "flex", alignItems: "center", gap: 10 }}><BetaBadge /><span className="g-sub">The next version, for dev testing only.</span></span>
+              : <span className="g-sub" style={{ color: "var(--ink)" }}>0.9 (stable)</span>}
           </section>
 
           <section style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>

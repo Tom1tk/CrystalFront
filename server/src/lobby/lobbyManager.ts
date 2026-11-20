@@ -3,7 +3,7 @@ import {
   LOBBY_CODE_CHARS,
   MAX_PLAYERS_PER_LOBBY,
 } from "@crystalfront/shared";
-import type { Lobby, Player, PlayerId, LobbyCode } from "@crystalfront/shared";
+import type { Lobby, Player, PlayerId, LobbyCode, Ruleset } from "@crystalfront/shared";
 
 function generateLobbyCode(): LobbyCode {
   const chars = LOBBY_CODE_CHARS;
@@ -39,7 +39,7 @@ export class LobbyManager {
     return result;
   }
 
-  createLobby(username: string): { code: LobbyCode; player: Player } {
+  createLobby(username: string, ruleset?: Ruleset): { code: LobbyCode; player: Player } {
     let code: LobbyCode;
     let attempts = 0;
     const MAX_RETRIES = 100;
@@ -59,6 +59,7 @@ export class LobbyManager {
       status: "waiting",
       hostId: player.id,
       mapId: "random",
+      ...(ruleset === "beta" ? { ruleset } : {}),
     };
 
     this.lobbies.set(code, lobby);

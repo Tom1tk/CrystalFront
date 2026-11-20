@@ -3,6 +3,7 @@
  * command card with the selection panel, the first-match tip and the replay bar.
  * GameShell owns all game state; these components only draw it and report clicks.
  */
+import BetaBadge from "./BetaBadge";
 import { useState, type ReactNode } from "react";
 import { Icon, IconBtn, SoundToggle, Wordmark } from "../design/glass";
 import { tipsEnabled } from "./SettingsModal";
@@ -39,7 +40,7 @@ function Stat({ label, value, tint, title }: { label: string; value: ReactNode; 
 
 export interface NodesInfo { mine: number; theirs: number; need: number; myPct: number; theirPct: number; holder: "me" | "them" | null }
 
-export function HudTopBar({ me, them, tick, resources, supply, maxSupply, nodes, view3d, onToggle3d, onSettings }: {
+export function HudTopBar({ me, them, tick, resources, supply, maxSupply, nodes, beta, view3d, onToggle3d, onSettings }: {
   me: { name: string; score?: number; team: Team };
   them: { name: string; score?: number; team: Team };
   tick: number;
@@ -48,6 +49,8 @@ export function HudTopBar({ me, them, tick, resources, supply, maxSupply, nodes,
   supply?: number;
   maxSupply?: number;
   nodes: NodesInfo | null;
+  /** Beta-ruleset match: shows the DEV BETA badge. */
+  beta?: boolean;
   view3d: boolean;
   onToggle3d: () => void;
   onSettings: () => void;
@@ -75,6 +78,7 @@ export function HudTopBar({ me, them, tick, resources, supply, maxSupply, nodes,
         <Stat label="Time" value={clock(tick)} />
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
+        {beta && <BetaBadge style={{ marginRight: 6 }} />}
         <button type="button" className="g-btn small" title="Switch 3D / 2D view (F3)" onClick={onToggle3d} style={{ minWidth: 44 }}>
           {view3d ? "3D" : "2D"}
         </button>

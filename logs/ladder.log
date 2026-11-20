@@ -1,0 +1,25 @@
+  100/160 games, 471s
+checkpoints/v2/lg2-main/cycle_3.pt: 160 games in 1224s
+opponent              n    win [95% CI]       loss   draw  ticks  blue/red win
+lg2-main/update_40   32   0.88 [0.72, 0.95]   0.09   0.03   6585  0.88/0.88
+m4-imitate/final     32   1.00 [0.89, 1.00]   0.00   0.00   6336  1.00/1.00
+lg2-main/update_100   32   0.91 [0.76, 0.97]   0.09   0.00   6395  0.94/0.88
+lg2-main/cycle_1     32   0.69 [0.51, 0.82]   0.09   0.22   9319  0.69/0.69
+lg2-main/cycle_2     32   0.53 [0.36, 0.69]   0.19   0.28   9569  0.62/0.44
+wrote docs/eval/ladder-c3.json
+checkpoints/v2/lg2-main/cycle_1.pt: 96 games in 507s
+opponent              n    win [95% CI]       loss   draw  ticks  blue/red win
+lg2-main/update_100   32   0.78 [0.61, 0.89]   0.09   0.12   6888  0.81/0.75
+m4-imitate/final     32   0.84 [0.68, 0.93]   0.12   0.03   5996  0.88/0.81
+lg2-main/update_40   32   0.62 [0.45, 0.77]   0.19   0.19   8080  0.69/0.56
+wrote docs/eval/ladder-c1.json
+checkpoints/v2/lg2-main/update_100.pt: 64 games in 260s
+opponent              n    win [95% CI]       loss   draw  ticks  blue/red win
+m4-imitate/final     32   0.47 [0.31, 0.64]   0.34   0.19   7278  0.50/0.44
+lg2-main/update_40   32   0.34 [0.20, 0.52]   0.56   0.09   6726  0.25/0.44
+wrote docs/eval/ladder-u100.json
+checkpoints/v2/lg2-main/update_40.pt: 32 games in 141s
+opponent              n    win [95% CI]       loss   draw  ticks  blue/red win
+m4-imitate/final     32   0.59 [0.42, 0.74]   0.41   0.00   6213  0.50/0.69
+wrote docs/eval/ladder-u40.json
+ladder done

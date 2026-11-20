@@ -1,0 +1,57 @@
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/root/CrystalFront/training/eval/evaluate.py", line 186, in <module>
+    main()
+    ~~~~^^
+  File "/root/CrystalFront/training/eval/evaluate.py", line 94, in main
+    cur = env.reset()
+  File "/root/CrystalFront/training/env/vec_env_v2.py", line 213, in reset
+    _check_dist_fresh()
+    ~~~~~~~~~~~~~~~~~^^
+  File "/root/CrystalFront/training/env/vec_env_v2.py", line 115, in _check_dist_fresh
+    raise RuntimeError(f"headless/dist is stale ({p} is newer) — run: npm run build:headless")
+RuntimeError: headless/dist is stale (/root/CrystalFront/headless/src/v2/neuralGame.ts is newer) — run: npm run build:headless
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/root/CrystalFront/training/eval/evaluate.py", line 186, in <module>
+    main()
+    ~~~~^^
+  File "/root/CrystalFront/training/eval/evaluate.py", line 94, in main
+    cur = env.reset()
+  File "/root/CrystalFront/training/env/vec_env_v2.py", line 213, in reset
+    _check_dist_fresh()
+    ~~~~~~~~~~~~~~~~~^^
+  File "/root/CrystalFront/training/env/vec_env_v2.py", line 115, in _check_dist_fresh
+    raise RuntimeError(f"headless/dist is stale ({p} is newer) — run: npm run build:headless")
+RuntimeError: headless/dist is stale (/root/CrystalFront/headless/src/v2/neuralGame.ts is newer) — run: npm run build:headless
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/root/CrystalFront/training/eval/evaluate.py", line 186, in <module>
+    main()
+    ~~~~^^
+  File "/root/CrystalFront/training/eval/evaluate.py", line 94, in main
+    cur = env.reset()
+  File "/root/CrystalFront/training/env/vec_env_v2.py", line 213, in reset
+    _check_dist_fresh()
+    ~~~~~~~~~~~~~~~~~^^
+  File "/root/CrystalFront/training/env/vec_env_v2.py", line 115, in _check_dist_fresh
+    raise RuntimeError(f"headless/dist is stale ({p} is newer) — run: npm run build:headless")
+RuntimeError: headless/dist is stale (/root/CrystalFront/headless/src/v2/neuralGame.ts is newer) — run: npm run build:headless
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/root/CrystalFront/training/eval/evaluate.py", line 186, in <module>
+    main()
+    ~~~~^^
+  File "/root/CrystalFront/training/eval/evaluate.py", line 94, in main
+    cur = env.reset()
+  File "/root/CrystalFront/training/env/vec_env_v2.py", line 213, in reset
+    _check_dist_fresh()
+    ~~~~~~~~~~~~~~~~~^^
+  File "/root/CrystalFront/training/env/vec_env_v2.py", line 115, in _check_dist_fresh
+    raise RuntimeError(f"headless/dist is stale ({p} is newer) — run: npm run build:headless")
+RuntimeError: headless/dist is stale (/root/CrystalFront/headless/src/v2/neuralGame.ts is newer) — run: npm run build:headless
+ladder done

@@ -6,6 +6,7 @@ import type {
   MatchState,
   ResourceNodeDisplay,
   BuildingType,
+  Ruleset,
 } from "../types";
 
 const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -20,10 +21,10 @@ interface UseWebSocketReturn {
   loadedPlayers: string[];
   replayEnd: { ticks: number; winner: string | null } | null;
   resourceNodes: ResourceNodeDisplay[];
-  createLobby: (username: string) => void;
+  createLobby: (username: string, ruleset?: Ruleset) => void;
   joinLobby: (code: string, username: string) => void;
-  startSoloTest: (username: string, mapId?: string) => void;
-  startBotGame: (username: string, bot: string, mapId?: string) => void;
+  startSoloTest: (username: string, mapId?: string, ruleset?: Ruleset) => void;
+  startBotGame: (username: string, bot: string, mapId?: string, ruleset?: Ruleset) => void;
   setMap: (mapId: string) => void;
   /** Tell the server this client finished loading the match. */
   clientLoaded: () => void;
@@ -142,8 +143,8 @@ export function useWebSocket(): UseWebSocketReturn {
   }, []);
 
   const createLobby = useCallback(
-    (username: string) => {
-      sendMessage({ type: "create_lobby", payload: { username } });
+    (username: string, ruleset?: Ruleset) => {
+      sendMessage({ type: "create_lobby", payload: { username, ruleset } });
     },
     [sendMessage]
   );
@@ -156,15 +157,15 @@ export function useWebSocket(): UseWebSocketReturn {
   );
 
   const startSoloTest = useCallback(
-    (username: string, mapId?: string) => {
-      sendMessage({ type: "start_solo_test", payload: { username, mapId } });
+    (username: string, mapId?: string, ruleset?: Ruleset) => {
+      sendMessage({ type: "start_solo_test", payload: { username, mapId, ruleset } });
     },
     [sendMessage]
   );
 
   const startBotGame = useCallback(
-    (username: string, bot: string, mapId?: string) => {
-      sendMessage({ type: "start_bot_game", payload: { username, bot, mapId } });
+    (username: string, bot: string, mapId?: string, ruleset?: Ruleset) => {
+      sendMessage({ type: "start_bot_game", payload: { username, bot, mapId, ruleset } });
     },
     [sendMessage]
   );

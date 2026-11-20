@@ -12,6 +12,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
 import { runMatch } from "./runMatch.js";
 import { HeavyBot, MacroBot, MediumRushBot, TurtleBot, WeakRushBot } from "./bots/index.js";
 import { DEFAULT_CONFIG } from "../../server/src/match/types.js";
@@ -76,6 +77,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       console.log(`${ok ? "ok  " : "DIFF"} ${g.map.padEnd(12)} ${g.blue}-${g.red} seed ${g.seed}${ok ? "" : ` first mismatch at hash #${i < 0 ? h.length : i} (tick ${(i < 0 ? h.length : i + 1) * EVERY})`}`);
     }
     console.log(bad ? `${bad} case(s) differ` : "all golden hashes match");
-    process.exit(bad ? 1 : 0);
+    // Mainline 0.10 plan §1: the frozen 0.9 neural and v2 scripted bots must play unchanged too.
+    const g09 = spawnSync(process.execPath, [...process.execArgv, join(dirname(fileURLToPath(import.meta.url)), "golden09.ts"), "--check"], { stdio: "inherit" });
+    process.exit(bad || g09.status !== 0 ? 1 : 0);
   }
 }

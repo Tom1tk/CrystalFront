@@ -2948,7 +2948,7 @@ export default function GameShell({
             <HudTopBar
               me={{ name: matchState?.players[0]?.username ?? "Blue", score: matchState?.players[0]?.score, team: "blue" }}
               them={{ name: matchState?.players[1]?.username ?? "Red", score: matchState?.players[1]?.score, team: "red" }}
-              tick={matchState?.tick ?? 0} nodes={null}
+              tick={matchState?.tick ?? 0} nodes={null} beta={matchState?.ruleset === "beta"}
               view3d={view3d} onToggle3d={() => setView3d((v) => !v)} onSettings={() => setSettingsOpen(true)}
             />
           ) : (
@@ -2957,7 +2957,7 @@ export default function GameShell({
               them={{ name: opponent?.username ?? "…", score: opponent?.score ?? 0, team: opponent?.color === "red" ? "red" : "blue" }}
               tick={matchState?.tick ?? 0}
               resources={myEconomy?.resources ?? 0} supply={myEconomy?.supply ?? 0} maxSupply={myEconomy?.maxSupply ?? 0}
-              nodes={controlHud}
+              nodes={controlHud} beta={matchState?.ruleset === "beta"}
               view3d={view3d} onToggle3d={() => setView3d((v) => !v)} onSettings={() => setSettingsOpen(true)}
             />
           )}

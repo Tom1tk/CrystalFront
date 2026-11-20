@@ -220,6 +220,11 @@ export interface MatchConfig {
   viewportHeight: number;
   /** Map id (G-5); terrain comes from the map registry. Default "classic" (no terrain). */
   mapId?: string;
+  /**
+   * Mainline 0.10 plan §1: "beta" switches on the mainline features (Outrider, Surges, cap,
+   * draws). Absent = the frozen 0.9 rules, so 0.9 config hashes stay byte-identical.
+   */
+  ruleset?: "beta";
   // ── Per-version balance overrides (populated from BalanceSnapshot for replays) ──
   maxTicks?: number;              // tick cap; 0 = no cap; tiebreak resolves the winner
   workerSpeed?: number;           // px/substep override
@@ -245,3 +250,8 @@ export const DEFAULT_CONFIG: MatchConfig = {
   viewportWidth: MAP.viewportWidth,
   viewportHeight: MAP.viewportHeight,
 };
+
+/** True when a match runs the beta (mainline 0.10) rules. */
+export function isBeta(m: { config: MatchConfig }): boolean {
+  return m.config.ruleset === "beta";
+}

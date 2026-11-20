@@ -35,6 +35,8 @@ export interface ReplayMeta {
   engineVersion: number;
   mapId?: string;
   mapVersion?: number;
+  /** Mainline 0.10 plan §1: absent on replays before 0.9.2 = "0.9". */
+  ruleset?: "0.9" | "beta";
   timestamp: number;
   // Phase 5 — enriched metadata extracted from commandLog
   winType?: string | null;
@@ -76,6 +78,7 @@ export interface SaveReplayArgs {
   version:      string;
   mapId?:       string;
   mapVersion?:  number;
+  ruleset?:     "0.9" | "beta";
   botReads?:    BotRead[];
 }
 
@@ -93,6 +96,7 @@ export function saveReplay(args: SaveReplayArgs): string {
     engineVersion: ENGINE_VERSION,
     mapId:         args.mapId ?? "classic",
     mapVersion:    args.mapVersion ?? 1,
+    ruleset:       args.ruleset ?? "0.9",
     timestamp:     Date.now(),
     outcome: {
       winner:     args.winner,
@@ -255,6 +259,7 @@ export function listReplays(): ReplayMeta[] {
         version: raw.version ?? "?",
         engineVersion: raw.engineVersion,
         mapId: raw.mapId ?? "classic",
+        ruleset: raw.ruleset === "beta" ? "beta" : "0.9",
         timestamp: raw.timestamp ?? 0,
         winType: enriched.winType,
         blueUnits: enriched.blueUnits,
@@ -301,6 +306,7 @@ export function getReplay(id: string): ReplayFile | null {
       engineVersion: raw.engineVersion,
       mapId: raw.mapId ?? "classic",
       mapVersion: raw.mapVersion,
+      ruleset: raw.ruleset === "beta" ? "beta" : "0.9",
       timestamp: raw.timestamp ?? 0,
       commandLog: raw.commandLog ?? [],
       ...(Array.isArray(raw.botReads) ? { botReads: raw.botReads } : {}),
@@ -343,7 +349,7 @@ export class ReplayRunner {
     ];
 
     // G-9e: only same-engine replays reach here. G-5: replay on the recorded map.
-    const replayConfig = { ...DEFAULT_CONFIG, mapId: replay.mapId ?? "classic" };
+    const replayConfig = { ...DEFAULT_CONFIG, mapId: replay.mapId ?? "classic", ...(replay.ruleset === "beta" ? { ruleset: "beta" as const } : {}) };
 
     const match = this.engine.createMatch("replay", players, replayConfig, replay.seed);
     this.engine.startMatch(match.id);
@@ -484,5 +490,6 @@ function serializeMatch(match: import("./types.js").MatchState | undefined): Rec
     },
     mapWidth: match.config.mapWidth,
     mapHeight: match.config.mapHeight,
+    ruleset: match.config.ruleset ?? "0.9",
   };
 }

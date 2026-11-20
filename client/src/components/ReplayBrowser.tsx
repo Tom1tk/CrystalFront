@@ -10,6 +10,7 @@ interface ReplayMeta {
   blue: string;
   red: string;
   outcome: { winner: string | null; winnerName?: string | null; winType?: string | null; ticks: number };
+  ruleset?: "0.9" | "beta";
   durationSecs: number;
   version: string;
   mapId?: string;
@@ -105,6 +106,7 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
   // Filters
   const [filterWinner,  setFilterWinner]  = useState("all");
   const [filterWinType, setFilterWinType] = useState("all");
+  const [filterRuleset, setFilterRuleset] = useState("all");
   const [filterBot,     setFilterBot]     = useState("");
   const [filterStarred, setFilterStarred] = useState(false);
   const [filterFlags,   setFilterFlags]   = useState<Set<string>>(new Set());
@@ -123,7 +125,7 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
   }, [filterBot]);
 
   // Reset to page 1 whenever any filter or sort changes
-  useEffect(() => { setPage(1); }, [filterWinner, filterWinType, debouncedBot, filterStarred, filterFlags, sortField, sortAsc, pageSize]);
+  useEffect(() => { setPage(1); }, [filterWinner, filterWinType, filterRuleset, debouncedBot, filterStarred, filterFlags, sortField, sortAsc, pageSize]);
 
   // Fetch one page from the server whenever page / filters / sort change
   useEffect(() => {
@@ -137,6 +139,7 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
       asc:      String(sortAsc),
       winner:   filterWinner,
       winType:  filterWinType,
+      ruleset:  filterRuleset,
     });
     if (debouncedBot)         params.set("bot",     debouncedBot);
     if (filterFlags.size > 0) params.set("flags",   [...filterFlags].join(","));
@@ -153,7 +156,7 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
       .then(d => { if (stale) return; setReplays(d.replays ?? []); setTotal(d.total ?? 0); setLoading(false); })
       .catch(() => { if (stale) return; setError("Could not load replays."); setLoading(false); });
     return () => { stale = true; };
-  }, [page, pageSize, sortField, sortAsc, filterWinner, filterWinType, debouncedBot, filterFlags, filterStarred, starred]);
+  }, [page, pageSize, sortField, sortAsc, filterWinner, filterWinType, filterRuleset, debouncedBot, filterFlags, filterStarred, starred]);
 
   const toggleStar = useCallback((id: string) => {
     setStarred(prev => {
@@ -173,7 +176,7 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
   }, []);
 
   const totalPages  = Math.max(1, Math.ceil(total / pageSize));
-  const hasFilters  = filterWinner !== "all" || filterWinType !== "all"
+  const hasFilters  = filterWinner !== "all" || filterWinType !== "all" || filterRuleset !== "all"
     || filterBot.trim() || filterStarred || filterFlags.size > 0;
 
   // Dev view: a dense table instead of cards (remembered per browser).
@@ -196,6 +199,7 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
               value={filterBot} onChange={e => setFilterBot(e.target.value)} style={{ width: 190, padding: "7px 10px" }} />
             <Seg value={filterWinner} onChange={setFilterWinner} options={[["all", "Any winner"], ["blue", "Blue"], ["red", "Red"], ["draw", "Draw"]]} />
             <Seg value={filterWinType} onChange={setFilterWinType} options={[["all", "Any result"], ["combat", "Crystal"], ["control", "Nodes"], ["timeout", "Time"]]} />
+            <Seg value={filterRuleset} onChange={setFilterRuleset} options={[["all", "Any version"], ["0.9", "0.9"], ["beta", "Beta"]]} />
             <button type="button" className={`g-btn small${filterStarred ? " primary" : ""}`} onClick={() => setFilterStarred(v => !v)}>
               <Icon name="star" size={14} />Starred
             </button>
@@ -221,7 +225,7 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
             </label>
             {hasFilters && (
               <button type="button" className="g-btn small ghost" onClick={() => {
-                setFilterWinner("all"); setFilterWinType("all");
+                setFilterWinner("all"); setFilterWinType("all"); setFilterRuleset("all");
                 setFilterBot(""); setFilterStarred(false);
                 setFilterFlags(new Set());
               }}>Clear</button>
@@ -299,7 +303,7 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
                 </div>
                 <div className="g-label" style={{ textAlign: "right", color: "var(--ink-faint)", flexShrink: 0, lineHeight: 1.6 }}>
                   <div>{formatDate(r.timestamp)}</div>
-                  <div>v{r.version ?? "?"}</div>
+                  <div>v{r.version ?? "?"}{r.ruleset === "beta" ? " · beta" : ""}</div>
                 </div>
                 <IconBtn icon="star" title={isStarred ? "Unstar" : "Star"} small on={isStarred} onClick={() => toggleStar(r.id)} />
                 <button type="button" className="g-btn primary small" onClick={() => onWatch(r.id, r.outcome.ticks, r.version)}>
