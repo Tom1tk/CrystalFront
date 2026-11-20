@@ -4,13 +4,13 @@ import { FCT, FctStyles, DbgBtn, HEX_CLIP, NOTCH_R } from "../design/facet";
 import { decodeTerrain } from "../terrainCodec";
 import { themeFor } from "../mapThemes";
 import { MatchSfx, play as playSound } from "../audio";
-import { HudTopBar, CommandCard, FirstMatchTip, BotReadPanel, ReplayBar, MatchLoading, HUD_BAR_HEIGHT, type CommandSlot, type SelectionInfo, type NodesInfo } from "./Hud";
+import { HudTopBar, CommandCard, FirstMatchTip, BotReadPanel, ReplayBar, MatchLoading, HUD_BAR_HEIGHT, SurgeBanner, NodeTip, nodeTipWanted, type CommandSlot, type SelectionInfo, type NodesInfo, type SurgeClock } from "./Hud";
 import SettingsModal, { botReadEnabled, edgePanSpeed, setBotReadEnabled } from "./SettingsModal";
 import { setAccent } from "../design/glass";
 
 /** G-4: how long a move order's planned path stays on screen. */
 const PATH_SHOW_MS = 1200;
-import { UNIT_DEFS, BUILDING_DEFS, BULWARK } from "@crystalfront/shared";
+import { UNIT_DEFS, BUILDING_DEFS, BULWARK, SURGES, surgeStageAt } from "@crystalfront/shared";
 import type { World3D } from "../three/World3D";
 
 /** G-11: 3D/2D preference key ("3d" | "2d"). Replaces the old "cf.view3d", which saved
@@ -1001,6 +1001,31 @@ export default function GameShell({
   // G-11: optional 3D view, drawn on a WebGL canvas under the (then transparent) 2D canvas.
   const [view3d, setView3d] = useState(initialView3d);
   const [showBotRead, setShowBotRead] = useState(botReadEnabled);
+
+  // Beta Surges (mainline 0.10 §3): a banner and a sound when a stage starts while watching it
+  // happen (not after a replay seek or a reconnect), and a one-time tip when a node is first held.
+  const isBetaMatch = matchState?.ruleset === "beta";
+  const surgeStage = isBetaMatch ? surgeStageAt(matchState?.tick ?? 0) : 0;
+  const [banner, setBanner] = useState(0);
+  const lastStage = useRef<{ stage: number; tick: number } | null>(null);
+  useEffect(() => {
+    const tick = matchState?.tick ?? 0;
+    const prev = lastStage.current;
+    lastStage.current = { stage: surgeStage, tick };
+    if (!prev || surgeStage <= prev.stage || tick - prev.tick > 50) return;
+    setBanner(surgeStage);
+    playSound("surge");
+    const t = window.setTimeout(() => setBanner(0), 5000);
+    return () => window.clearTimeout(t);
+  }, [surgeStage]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [nodeTip, setNodeTip] = useState(false);
+  const nodeTipDone = useRef(false);
+  const anyNodeHeld = !!matchState?.control?.nodes.some((n) => n.controller !== null);
+  useEffect(() => {
+    if (!isBetaMatch || isReplay || !anyNodeHeld || nodeTipDone.current) return;
+    nodeTipDone.current = true;
+    if (nodeTipWanted()) setNodeTip(true);
+  }, [isBetaMatch, isReplay, anyNodeHeld]);
   const world3dRef = useRef<World3D | null>(null);
   /** How far an entity's 3D model rises above its footprint on screen (world px), for picking; 0 in the 2D view. */
   const liftOf = useCallback((e: MatchEntity) => {
@@ -2885,7 +2910,20 @@ export default function GameShell({
       mine, theirs, need: c.need, myPct: pct(c.progress[mySlot]), theirPct: pct(c.progress[1 - mySlot]),
       holder: c.holder === null ? null : c.holder === mySlot ? "me" : "them",
     };
+    if (ms.ruleset === "beta") {
+      // Progress keeps its 0…holdTicks scale; Surges fill it faster (see SURGES in shared).
+      const step = c.holdTicks / (SURGES.holdSeconds[surgeStageAt(ms.tick)] * 10);
+      info.total = c.nodes.length;
+      if (c.holder !== null) info.leftTicks = Math.ceil((c.holdTicks - c.progress[c.holder]) / step);
+    }
     return info;
+  })();
+
+  const surgeClock: SurgeClock | null = (() => {
+    if (!isBetaMatch || !matchState) return null;
+    const t = matchState.tick;
+    if (surgeStage < 3) return { next: `Surge ${["I", "II", "III"][surgeStage]}`, inTicks: SURGES.stageTicks[surgeStage as 0 | 1 | 2] - t };
+    return { next: "Hard cap", inTicks: Math.max(0, SURGES.capTicks - t) };
   })();
 
   // Command card (G-12): the context hotkeys as clickable slots, plus what is selected.
@@ -2999,7 +3037,7 @@ export default function GameShell({
             <HudTopBar
               me={{ name: matchState?.players[0]?.username ?? "Blue", score: matchState?.players[0]?.score, team: "blue" }}
               them={{ name: matchState?.players[1]?.username ?? "Red", score: matchState?.players[1]?.score, team: "red" }}
-              tick={matchState?.tick ?? 0} nodes={null} beta={matchState?.ruleset === "beta"}
+              tick={matchState?.tick ?? 0} nodes={null} beta={matchState?.ruleset === "beta"} surge={surgeClock}
               view3d={view3d} onToggle3d={() => setView3d((v) => !v)} onSettings={() => setSettingsOpen(true)}
             />
           ) : (
@@ -3008,7 +3046,7 @@ export default function GameShell({
               them={{ name: opponent?.username ?? "…", score: opponent?.score ?? 0, team: opponent?.color === "red" ? "red" : "blue" }}
               tick={matchState?.tick ?? 0}
               resources={myEconomy?.resources ?? 0} supply={myEconomy?.supply ?? 0} maxSupply={myEconomy?.maxSupply ?? 0}
-              nodes={controlHud} beta={matchState?.ruleset === "beta"}
+              nodes={controlHud} beta={matchState?.ruleset === "beta"} surge={surgeClock}
               view3d={view3d} onToggle3d={() => setView3d((v) => !v)} onSettings={() => setSettingsOpen(true)}
             />
           )}
@@ -3021,6 +3059,8 @@ export default function GameShell({
           )}
 
           {!isReplay && <FirstMatchTip />}
+          {banner > 0 && <SurgeBanner stage={banner} />}
+          {nodeTip && <NodeTip onClose={() => setNodeTip(false)} />}
 
           {matchState?.botRead && (isReplay || showBotRead) && <BotReadPanel read={matchState.botRead} you={!isReplay} />}
 

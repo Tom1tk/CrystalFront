@@ -1,7 +1,8 @@
-import { UNIT_DEFS, GUARD, LEASH, RETALIATE, BULWARK } from "@crystalfront/shared";
+import { UNIT_DEFS, GUARD, LEASH, RETALIATE, BULWARK, SURGES } from "@crystalfront/shared";
 import type { MatchEntity, MatchState } from "../types.js";
 import { dist, getRange, getDamage, getAttackCooldown, getCounterMultiplier } from "./utils.js";
 import { isVisibleTo } from "./visibility.js";
+import { surgeStage } from "./surges.js";
 
 /** G-13 E2 threat order for auto-targeting: 0 combat units and finished turrets, 1 workers, 2 everything else. Lower wins. */
 export function targetClass(o: Pick<MatchEntity, "type" | "buildingType" | "constructionProgress">): number {
@@ -43,6 +44,8 @@ const COVER_SLACK = 6;
 
 export function processCombat(match: MatchState): Map<string, number> {
   const damageLog = new Map<string, number>();
+  // Beta Surges II/III: units hit buildings and crystals harder (×1 in 0.9).
+  const buildingDamage = SURGES.buildingDamage[surgeStage(match)];
   const entities = Array.from(match.entities.values());
 
   // Auto-attack acquisition: idle combat units pick an enemy in range, by threat
@@ -270,7 +273,8 @@ export function processCombat(match: MatchState): Map<string, number> {
     }
 
     const baseDamage = getDamage(entity, match.config);
-    const multiplier = getCounterMultiplier(entity.type, target.type, target.buildingType);
+    const siege = entity.type !== "building" && (target.type === "building" || target.type === "crystal") ? buildingDamage : 1;
+    const multiplier = getCounterMultiplier(entity.type, target.type, target.buildingType) * siege;
     const finalDamage = Math.round(baseDamage * multiplier);
     const currentDamage = damageLog.get(target.id) ?? 0;
     damageLog.set(target.id, currentDamage + finalDamage);

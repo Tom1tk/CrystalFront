@@ -1,9 +1,10 @@
-import { UNIT_DEFS, SIMULATION, TERRAIN, BULWARK } from "@crystalfront/shared";
+import { UNIT_DEFS, SIMULATION, TERRAIN, BULWARK, SURGES } from "@crystalfront/shared";
 import type { MatchState } from "../types.js";
 import { dist, getRange, entityIdNum } from "./utils.js";
 import { footprintOf, pushOutOfRect, type Rect } from "./navGrid.js";
 import { isObstacleCode, terrainAt, T_ROUGH, type Terrain } from "./terrain.js";
 import { cellOf, hasLineOfSight, planPath } from "./pathfinding.js";
+import { surgeStage } from "./surges.js";
 import type { MatchEntity } from "../types.js";
 
 /** Ticks without progress before a unit replans (G-4). */
@@ -91,6 +92,7 @@ export function processMovement(match: MatchState): void {
     if (t && dist(b.x, b.y, t.x, t.y) <= BULWARK.coverSense) covered.add(t.id);
   }
 
+  const surge = surgeStage(match) >= 1 ? SURGES.speedMult : 1;
   for (const entity of entities) {
     if (entity.type === "crystal" || entity.type === "building") continue;
     if (!entity.moveTarget) { entity.route = undefined; continue; }
@@ -100,7 +102,7 @@ export function processMovement(match: MatchState): void {
     const speedPerTick = Math.min(covered.has(entity.id) ? UNIT_DEFS.bulwark.speed : Infinity, (
       entity.type === "worker"     && match.config.workerSpeed     !== undefined ? match.config.workerSpeed :
       entity.type === "skirmisher" && match.config.skirmisherSpeed !== undefined ? match.config.skirmisherSpeed :
-      baseSpeed)) * (match.terrain.any && terrainAt(match.terrain, entity.x, entity.y) === T_ROUGH ? TERRAIN.roughSpeed : 1);
+      baseSpeed)) * (match.terrain.any && terrainAt(match.terrain, entity.x, entity.y) === T_ROUGH ? TERRAIN.roughSpeed : 1) * surge;
     if (dist(entity.x, entity.y, entity.moveTarget.x, entity.moveTarget.y) <= arrivalThreshold) {
       arrive(entity);
       continue;

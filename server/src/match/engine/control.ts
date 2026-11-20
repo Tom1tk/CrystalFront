@@ -10,6 +10,7 @@
  */
 import { CONTROL } from "@crystalfront/shared";
 import type { MatchEntity, MatchState } from "../types.js";
+import { controlStep } from "./surges.js";
 
 // Workers, bulwarks and the (beta) Outrider never hold or contest nodes.
 const UNIT_TYPES = new Set(["skirmisher", "gunner", "bruiser", "medic"]);
@@ -51,7 +52,9 @@ export function processControl(match: MatchState): 0 | 1 | null {
   match.control.holder = holder;
   if (holder === null) return null;
   const p = match.control.progress;
-  p[holder]++;
-  p[1 - holder] = Math.max(0, p[1 - holder] - 1);
+  // Beta Surges shorten the hold by filling the same 0…holdTicks scale faster (step 1 in 0.9).
+  const step = controlStep(match);
+  p[holder] = Math.min(CONTROL.holdTicks, p[holder] + step);
+  p[1 - holder] = Math.max(0, p[1 - holder] - step);
   return p[holder] >= CONTROL.holdTicks ? holder : null;
 }

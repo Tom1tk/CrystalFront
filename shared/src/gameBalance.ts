@@ -137,6 +137,35 @@ export const UNIT_DEFS: Record<string, UnitDef> = {
 /** Beta: most Outriders a player may have alive or queued at once. */
 export const OUTRIDER_LIMIT = 1;
 
+/**
+ * Beta ruleset (mainline 0.10 plan §3): Surges at fixed match times, then a hard cap.
+ * Stage 0 is before Surge I. Ticks are at 10 Hz.
+ *
+ * - Surge I (10:00): every unit moves 25% faster; gathering ×1.5.
+ * - Surge II (14:00): units deal ×1.5 damage to buildings, turrets and crystals; hold 30 s.
+ * - Surge III (18:00): building damage ×2 (replaces ×1.5); hold 15 s.
+ * - Cap (20:00): the higher control percentage wins (winType "time"); equal is a draw.
+ *
+ * Control progress keeps its 0…CONTROL.holdTicks scale; a shorter hold just fills it faster,
+ * so the percentage held carries over when the hold time shrinks.
+ */
+export const SURGES = {
+  stageTicks: [6000, 8400, 10800] as const,
+  capTicks: 12000,
+  speedMult: 1.25,
+  gatherMult: 1.5,
+  /** Units' damage to buildings and crystals, by stage. */
+  buildingDamage: [1, 1, 1.5, 2] as const,
+  /** Seconds of majority hold needed to win, by stage. */
+  holdSeconds: [60, 60, 30, 15] as const,
+} as const;
+
+/** Surge stage (0–3) at a tick. */
+export function surgeStageAt(tick: number): 0 | 1 | 2 | 3 {
+  const t = SURGES.stageTicks;
+  return tick >= t[2] ? 3 : tick >= t[1] ? 2 : tick >= t[0] ? 1 : 0;
+}
+
 // ====================================================================
 //  BUILDING DEFINITIONS
 // ====================================================================

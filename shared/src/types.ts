@@ -1,5 +1,11 @@
 export type PlayerId = string;
 
+/**
+ * How a match ended. "timeout" is the 0.9 tick-cap tiebreak; beta (mainline 0.10 §3) ends at
+ * 20:00 with "time" (higher control percentage) or "draw" (equal; the winner is null).
+ */
+export type WinType = "combat" | "control" | "timeout" | "forfeit" | "time" | "draw";
+
 export type LobbyCode = string;
 
 export type PlayerColor = "blue" | "red";
@@ -174,7 +180,7 @@ export interface MatchState {
   players: [PlayerSlot | null, PlayerSlot | null];
   entities: Entity[];
   attackLog: AttackEvent[];
-  result: { winner: PlayerId } | null;
+  result: { winner: PlayerId | null; winType?: WinType } | null;
   startedAt: number;
   endedAt: number | null;
   economy: [PlayerEconomy | null, PlayerEconomy | null];

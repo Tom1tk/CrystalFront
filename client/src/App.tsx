@@ -452,7 +452,7 @@ export default function App() {
           onQuit={handleExit}
         />
       )}
-      {screen === "matchEnd" && lobby && player && matchWinnerId && (
+      {screen === "matchEnd" && lobby && player && (matchWinnerId || (ws.matchEnd?.winType ?? ws.matchState?.result?.winType) === "draw") && (
         <MatchEndScreen
           lobby={lobby}
           player={player}

@@ -21,6 +21,7 @@ const SOUNDS = {
   death: ["impactSoft_heavy_000", "impactSoft_heavy_001"],
   collapse: ["impactWood_heavy_000"],
   crystalDown: ["impactBell_heavy_000"],
+  surge: ["impactBell_heavy_000"],
   built: ["confirmation_002"],
   select: ["select_002"],
   order: ["click_002"],
@@ -31,7 +32,7 @@ export type SoundName = keyof typeof SOUNDS;
 
 const VOLUME: Partial<Record<SoundName, number>> = {
   shot: 0.35, spear: 0.45, punch: 0.5, sword: 0.45, turret: 0.45, heal: 0.25, hitBuilding: 0.4,
-  hitCrystal: 0.5, death: 0.6, select: 0.5, order: 0.5, error: 0.5, built: 0.6, mine: 0.25,
+  hitCrystal: 0.5, surge: 0.7, death: 0.6, select: 0.5, order: 0.5, error: 0.5, built: 0.6, mine: 0.25,
 };
 /** Minimum gap between two plays of the same sound (ms), so big fights stay readable. */
 const GAP_MS = 70;

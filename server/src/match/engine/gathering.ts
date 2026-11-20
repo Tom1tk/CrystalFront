@@ -1,7 +1,8 @@
-import { NODES } from "@crystalfront/shared";
+import { NODES, SURGES } from "@crystalfront/shared";
 import type { EntityId } from "@crystalfront/shared";
 import type { MatchState } from "../types.js";
 import { dist } from "./utils.js";
+import { surgeStage } from "./surges.js";
 
 const GATHER_RANGE = 60;
 const GATHER_RATE_PER_WORKER = 0.33;
@@ -31,7 +32,7 @@ export function processGathering(match: MatchState): void {
     const gatherCount = inRangeWorkers.length;
     if (gatherCount === 0) continue;
 
-    const totalGather = gatherCount * GATHER_RATE_PER_WORKER;
+    const totalGather = gatherCount * GATHER_RATE_PER_WORKER * (surgeStage(match) >= 1 ? SURGES.gatherMult : 1);
     node.accumulatedGather = (node.accumulatedGather ?? 0) + totalGather;
     const wholeResources = Math.floor(node.accumulatedGather);
 

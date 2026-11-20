@@ -38,9 +38,77 @@ function Stat({ label, value, tint, title }: { label: string; value: ReactNode; 
   );
 }
 
-export interface NodesInfo { mine: number; theirs: number; need: number; myPct: number; theirPct: number; holder: "me" | "them" | null }
+export interface NodesInfo {
+  mine: number; theirs: number; need: number; myPct: number; theirPct: number; holder: "me" | "them" | null;
+  /** Beta: contested nodes in all, and ticks of hold the holder still needs at the current Surge rate. */
+  total?: number; leftTicks?: number;
+}
 
-export function HudTopBar({ me, them, tick, resources, supply, maxSupply, nodes, beta, view3d, onToggle3d, onSettings }: {
+/** Beta: the next timed event and the ticks until it. */
+export interface SurgeClock { next: string; inTicks: number }
+
+/** Beta node-control readout: one bar per side, "Hold 3 of 5 nodes · 0:42 left to win". */
+function ControlBars({ nodes, me, them }: { nodes: NodesInfo; me: Team; them: Team }) {
+  const row = (team: Team, held: number, pct: number, holding: boolean) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, height: 17 }}>
+      <div style={{ width: 70, height: 6, background: "rgba(255,255,255,0.08)", flexShrink: 0 }}>
+        <div style={{ width: `${pct}%`, height: "100%", background: TEAM[team], transition: "width 0.3s linear" }} />
+      </div>
+      <span style={{ fontFamily: "var(--mono)", fontSize: 11, whiteSpace: "nowrap", color: holding ? "var(--ink)" : "var(--ink-dim)" }}>
+        Hold {held} of {nodes.total ?? nodes.need} nodes · {holding && nodes.leftTicks !== undefined ? `${clock(nodes.leftTicks)} left to win` : `${pct}%`}
+      </span>
+    </div>
+  );
+  return (
+    <div title={`Hold ${nodes.need} or more contested nodes to fill your bar; a full bar wins. Losing the majority drains it. At 20:00 the fuller bar wins; equal bars draw.`}
+      style={{ display: "flex", flexDirection: "column", minWidth: 220 }}>
+      {row(me, nodes.mine, nodes.myPct, nodes.holder === "me")}
+      {row(them, nodes.theirs, nodes.theirPct, nodes.holder === "them")}
+    </div>
+  );
+}
+
+const STAGE_TEXT: Record<number, [string, string]> = {
+  1: ["Surge I", "Every unit moves 25% faster; gathering ×1.5"],
+  2: ["Surge II", "Units deal ×1.5 damage to buildings and Crystals; hold 30 s to win"],
+  3: ["Surge III", "Building damage ×2; hold 15 s to win. Hard cap at 20:00"],
+};
+
+/** Beta: a banner for a few seconds when a Surge starts. */
+export function SurgeBanner({ stage }: { stage: number }) {
+  const t = STAGE_TEXT[stage];
+  if (!t) return null;
+  return (
+    <div key={stage} style={{ position: "absolute", left: 0, right: 0, top: HUD_BAR_HEIGHT + 56, display: "flex", justifyContent: "center", pointerEvents: "none", zIndex: 11 }}>
+      <div className="g-glass strong g-enter" style={{ padding: "10px 22px", textAlign: "center" }}>
+        <div className="g-title" style={{ fontSize: 26, color: "var(--accent)" }}>{t[0]}</div>
+        <div className="g-sub" style={{ color: "var(--ink)", marginTop: 2 }}>{t[1]}</div>
+      </div>
+    </div>
+  );
+}
+
+const NODE_TIP_SEEN = "cf.tip.nodes";
+/** Beta: shown once (per browser) the first time a contested node is held. */
+export function nodeTipWanted(): boolean {
+  try { return tipsEnabled() && window.localStorage.getItem(NODE_TIP_SEEN) !== "1"; } catch { return false; }
+}
+export function NodeTip({ onClose }: { onClose: () => void }) {
+  const close = () => {
+    try { window.localStorage.setItem(NODE_TIP_SEEN, "1"); } catch { /* storage blocked */ }
+    onClose();
+  };
+  return (
+    <div style={{ position: "absolute", left: 0, right: 0, top: HUD_BAR_HEIGHT + 10, display: "flex", justifyContent: "center", pointerEvents: "none", zIndex: 12 }}>
+      <div className="g-glass strong g-enter" style={{ padding: "8px 10px 8px 16px", display: "flex", gap: 10, alignItems: "center", pointerEvents: "auto" }}>
+        <span className="g-sub" style={{ color: "var(--ink)" }}>A combat unit next to a contested node holds it. Hold most of them to fill your bar; a full bar wins.</span>
+        <IconBtn icon="close" title="Got it" small onClick={close} />
+      </div>
+    </div>
+  );
+}
+
+export function HudTopBar({ me, them, tick, resources, supply, maxSupply, nodes, beta, surge, view3d, onToggle3d, onSettings }: {
   me: { name: string; score?: number; team: Team };
   them: { name: string; score?: number; team: Team };
   tick: number;
@@ -49,8 +117,10 @@ export function HudTopBar({ me, them, tick, resources, supply, maxSupply, nodes,
   supply?: number;
   maxSupply?: number;
   nodes: NodesInfo | null;
-  /** Beta-ruleset match: shows the DEV BETA badge. */
+  /** Beta-ruleset match: shows the DEV BETA badge and the per-side control bars. */
   beta?: boolean;
+  /** Beta: countdown to the next Surge or the hard cap. */
+  surge?: SurgeClock | null;
   view3d: boolean;
   onToggle3d: () => void;
   onSettings: () => void;
@@ -70,12 +140,14 @@ export function HudTopBar({ me, them, tick, resources, supply, maxSupply, nodes,
       <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
         {resources !== undefined && <Stat label="Crystal" value={resources} tint="var(--accent)" />}
         {supply !== undefined && <Stat label="Supply" value={`${supply}/${maxSupply ?? 0}`} tint={supply >= (maxSupply ?? 0) ? "var(--warn)" : undefined} />}
-        {nodes && (
+        {nodes && beta && <ControlBars nodes={nodes} me={me.team} them={them.team} />}
+        {nodes && !beta && (
           <Stat label="Nodes" tint={nodesTint}
             title={`Contested nodes held: you ${nodes.mine}, opponent ${nodes.theirs}. Hold ${nodes.need} to start the countdown. Countdown: you ${nodes.myPct}%, opponent ${nodes.theirPct}%.`}
             value={<>{nodes.mine}:{nodes.theirs}<span style={{ color: "var(--ink-faint)", fontSize: 12 }}> /{nodes.need}</span>{nodes.holder && <span style={{ fontSize: 12 }}> · {nodes.holder === "me" ? nodes.myPct : nodes.theirPct}%</span>}</>} />
         )}
         <Stat label="Time" value={clock(tick)} />
+        {surge && <Stat label={`${surge.next} in`} value={clock(surge.inTicks)} tint={surge.inTicks <= 600 ? "var(--warn)" : "var(--ink-dim)"} />}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
         {beta && <BetaBadge style={{ marginRight: 6 }} />}

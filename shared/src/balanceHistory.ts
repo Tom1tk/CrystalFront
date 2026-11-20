@@ -18,6 +18,19 @@ export interface BalanceSnapshot {
 }
 
 export const BALANCE_HISTORY: Readonly<Record<string, BalanceSnapshot>> = {
+  // ── 0.9.4-ML ──────────────────────────────────────────────────────────
+  // Mainline 0.10 step 4: Surges, the 20:00 cap and draws (SURGES in gameBalance.ts). Beta
+  // ruleset only, like the Outrider: Surge I at 10:00 (speed ×1.25, gather ×1.5), II at 14:00
+  // (units ×1.5 vs buildings and Crystals, hold 30 s), III at 18:00 (×2, hold 15 s); at 20:00
+  // the higher control bar wins on time, equal bars draw. 0.9-ruleset matches unchanged.
+  "0.9.4-ML": {
+    workerCost:            35,
+    workerSpeed:            3.4,
+    skirmisherSpeed:        4.0,
+    skirmisherDamage:      12,
+    passiveWinThreshold: 4500,
+  },
+
   // ── 0.9.2-ML ──────────────────────────────────────────────────────────
   // Mainline 0.10 step 3: the Outrider scout (UNIT_DEFS.outrider; cost 50, 60 HP, speed 8,
   // vision 360, trained at the Crystal, one alive or queued, one free at start). It is gated by

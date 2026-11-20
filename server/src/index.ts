@@ -50,6 +50,7 @@ import {
   type ClientToServerMsg,
   type ServerToClientMsg,
   type PlayerId,
+  type WinType,
   type EntityType,
   type BuildingType,
   type UnitType,
@@ -124,14 +125,14 @@ const loadGate = new LoadGate((matchId: string) => {
   }
 });
 
-matchEngine.setMatchEndCallback((matchId: string, winner: string) => {
+matchEngine.setMatchEndCallback((matchId: string, winner: string | null) => {
   liveRunner.stop(matchId);
   const endedBot = botPlayers.get(matchId);
   botPlayers.delete(matchId);
   const code = matchLobbyMap.get(matchId);
   if (code) {
     const lobby = lobbyManager.getLobby(code);
-    if (lobby) {
+    if (lobby && winner) { // a beta draw scores for nobody
       const winnerSlot = winner === lobby.players[0]?.id ? "player1" : "player2";
       lobbyManager.recordWin(code, winnerSlot);
     }
@@ -425,13 +426,13 @@ function broadcastGameState(code: string) {
   }
 }
 
-function broadcastMatchEnd(code: string, winner: string, winType?: "combat" | "control" | "timeout" | "forfeit", replayId?: string) {
+function broadcastMatchEnd(code: string, winner: string | null, winType?: WinType, replayId?: string) {
   const matchId = lobbyMatchMap.get(code);
   if (!matchId) return;
 
   const msg: ServerToClientMsg = {
     type: SERVER_EVT.MATCH_END,
-    payload: { winner: winner as PlayerId, winType, replayId },
+    payload: { winner: winner as PlayerId | null, winType, replayId },
   };
   for (const session of playerLobbyMap.values()) {
     if (session.code === code && session.matchId === matchId) {

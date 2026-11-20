@@ -64,7 +64,7 @@ function saveStarred(s: Set<string>) {
 // ── display helpers ───────────────────────────────────────────────────────────
 
 const TEAM = { blue: "var(--blue)", red: "var(--red)" } as const;
-const WIN_TYPE: Record<string, string> = { combat: "Crystal destroyed", control: "Node control", timeout: "Time", forfeit: "Forfeit" };
+const WIN_TYPE: Record<string, string> = { combat: "Crystal destroyed", control: "Node control", timeout: "Tiebreak", time: "Control at 20:00", draw: "Draw", forfeit: "Forfeit" };
 
 function formatDuration(secs: number): string {
   const m = Math.floor(secs / 60), s = Math.floor(secs % 60);
@@ -91,6 +91,7 @@ function unitsSummary(units?: Record<string, number>) {
   if (units.bruiser)    p.push(`B${units.bruiser}`);
   if (units.medic)      p.push(`M${units.medic}`);
   if (units.bulwark)    p.push(`W${units.bulwark}`);
+  if (units.outrider)   p.push(`O${units.outrider}`);
   return p.join(" ") || "—";
 }
 
@@ -198,7 +199,7 @@ export default function ReplayBrowser({ onBack, onWatch }: ReplayBrowserProps) {
             <input className="g-input" type="text" placeholder="Search player or bot" aria-label="Search player or bot"
               value={filterBot} onChange={e => setFilterBot(e.target.value)} style={{ width: 190, padding: "7px 10px" }} />
             <Seg value={filterWinner} onChange={setFilterWinner} options={[["all", "Any winner"], ["blue", "Blue"], ["red", "Red"], ["draw", "Draw"]]} />
-            <Seg value={filterWinType} onChange={setFilterWinType} options={[["all", "Any result"], ["combat", "Crystal"], ["control", "Nodes"], ["timeout", "Time"]]} />
+            <Seg value={filterWinType} onChange={setFilterWinType} options={[["all", "Any result"], ["combat", "Crystal"], ["control", "Nodes"], ["time", "20:00"], ["draw", "Draw"], ["timeout", "Tiebreak"]]} />
             <Seg value={filterRuleset} onChange={setFilterRuleset} options={[["all", "Any version"], ["0.9", "0.9"], ["beta", "Beta"]]} />
             <button type="button" className={`g-btn small${filterStarred ? " primary" : ""}`} onClick={() => setFilterStarred(v => !v)}>
               <Icon name="star" size={14} />Starred

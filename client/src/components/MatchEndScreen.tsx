@@ -1,6 +1,6 @@
 /**
  * Match result (G-12, UI-7): a glass card over the frozen final frame of the match.
- * Victory / Defeat, how it was won, length, map and running score; then Rematch,
+ * Victory / Defeat / Draw (beta, 20:00 cap), how it was won, length, map and running score; then Rematch,
  * Watch replay (when the server saved one) or Main menu.
  */
 import type { Lobby, Player } from "../types";
@@ -10,7 +10,8 @@ import { clock } from "./Hud";
 interface MatchEndScreenProps {
   lobby: Lobby;
   player: Player;
-  winnerId: string;
+  /** null for a draw. */
+  winnerId: string | null;
   winType?: string;
   ticks: number;
   mapName: string;
@@ -24,10 +25,12 @@ const HOW: Record<string, string> = {
   combat: "by destroying the Crystal",
   control: "by holding the contested nodes",
   timeout: "on time",
+  time: "on node control at 20:00",
   forfeit: "by forfeit",
 };
 
 export default function MatchEndScreen({ lobby, player, winnerId, winType, ticks, mapName, onRematch, onWatchReplay, onExit }: MatchEndScreenProps) {
+  const draw = winnerId === null;
   const won = player.id === winnerId;
   const players = lobby.players.filter((p): p is Player => p !== null);
   const winner = players.find((p) => p.id === winnerId);
@@ -40,11 +43,13 @@ export default function MatchEndScreen({ lobby, player, winnerId, winType, ticks
       <div className="g-glass strong g-enter" style={{ width: 460, maxWidth: "100%", padding: "26px 28px", display: "flex", flexDirection: "column", gap: 20 }}>
         <div>
           <div className="g-label">Match over</div>
-          <div className="g-title" style={{ fontSize: 56, lineHeight: 1.05, marginTop: 6, color: won ? "var(--good)" : "var(--bad)" }}>
-            {won ? "Victory" : "Defeat"}
+          <div className="g-title" style={{ fontSize: 56, lineHeight: 1.05, marginTop: 6, color: draw ? "var(--ink)" : won ? "var(--good)" : "var(--bad)" }}>
+            {draw ? "Draw" : won ? "Victory" : "Defeat"}
           </div>
           <p className="g-sub" style={{ margin: "8px 0 0", fontSize: 14 }}>
-            {winner ? `${winner.username} wins` : "Match ended"}{winType && HOW[winType] ? ` ${HOW[winType]}` : ""}.
+            {draw
+              ? "20:00 reached with equal node control."
+              : <>{winner ? `${winner.username} wins` : "Match ended"}{winType && HOW[winType] ? ` ${HOW[winType]}` : ""}.</>}
           </p>
         </div>
 

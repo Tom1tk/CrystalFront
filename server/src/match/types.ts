@@ -1,4 +1,4 @@
-import type { EntityId, MatchId, PlayerId, PlayerColor } from "@crystalfront/shared";
+import type { EntityId, MatchId, PlayerId, PlayerColor, WinType } from "@crystalfront/shared";
 import {
   ECONOMY,
   GATHERING,
@@ -78,7 +78,8 @@ export interface MatchState {
   players: [PlayerSlot | null, PlayerSlot | null];
   entities: Map<EntityId, MatchEntity>;
   attackLog: AttackEvent[];
-  result: { winner: PlayerId; winType?: "combat" | "control" | "timeout" | "forfeit" } | null;
+  /** winner is null only for a beta draw (winType "draw"). */
+  result: { winner: PlayerId | null; winType?: WinType } | null;
   startedAt: number;
   endedAt: number | null;
   economy: [PlayerEconomy | null, PlayerEconomy | null];

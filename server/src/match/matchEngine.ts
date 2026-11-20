@@ -23,6 +23,7 @@ import { processMovement } from "./engine/movement.js";
 import { processCombat } from "./engine/combat.js";
 import { processGathering } from "./engine/gathering.js";
 import { processControl } from "./engine/control.js";
+import { betaCap } from "./engine/surges.js";
 import { processRepairAndHealing, processCrystalRegen, releaseRepairer } from "./engine/repair.js";
 import { dist, snapPoint } from "./engine/utils.js";
 import { contestedNodesFor, mapSymmetry, terrainFor } from "./maps.js";
@@ -86,7 +87,7 @@ function isBusy(e: QEntity, ignoreQueue = false): boolean {
 export class MatchEngine {
   private matches = new Map<string, MatchState>();
   private broadcastCallback: ((matchId: string) => void) | null = null;
-  private matchEndCallback: ((matchId: string, winner: PlayerId) => void) | null = null;
+  private matchEndCallback: ((matchId: string, winner: PlayerId | null) => void) | null = null;
   private nextMatchId = 0;
 
   /**
@@ -99,7 +100,7 @@ export class MatchEngine {
     this.broadcastCallback = cb;
   }
 
-  setMatchEndCallback(cb: (matchId: string, winner: PlayerId) => void): void {
+  setMatchEndCallback(cb: (matchId: string, winner: PlayerId | null) => void): void {
     this.matchEndCallback = cb;
   }
 
@@ -1218,9 +1219,22 @@ if (command.type === "gather") {
     // Phase 3: Gathering
     processGathering(match);
 
+    // Phase 3.6 (beta): the 20:00 hard cap (or a runner's shorter cap). The higher control
+    // percentage wins; equal percentages, including 0%–0%, are a draw (mainline 0.10 plan §3).
+    if (isBeta(match) && match.tick >= betaCap(match)) {
+      const p = match.control.progress;
+      const lead = p[0] === p[1] ? null : p[0] > p[1] ? 0 : 1;
+      const winner = lead === null ? null : match.players[lead]?.playerId ?? null;
+      match.phase = "ended";
+      match.result = winner ? { winner, winType: "time" } : { winner: null, winType: "draw" };
+      match.endedAt = this.clock();
+      if (this.matchEndCallback) this.matchEndCallback(match.id, winner);
+      return match;
+    }
+
     // Phase 3.6: Tick-cap tiebreaker — deterministic winner when maxTicks is reached
     const maxTicks = match.config.maxTicks ?? 0;
-    if (maxTicks > 0 && match.tick >= maxTicks) {
+    if (!isBeta(match) && maxTicks > 0 && match.tick >= maxTicks) {
       const crystals = match.players.map((p, i) =>
         p ? [...match.entities.values()].find(e => e.type === "crystal" && e.ownerId === p.playerId) : undefined
       );
