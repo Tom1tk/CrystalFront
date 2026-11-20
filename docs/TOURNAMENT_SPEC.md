@@ -1,8 +1,8 @@
 # Tournament mode spec (Swiss)
 
 Status: **design only, not implemented** (2026-11-20). Separate from the 0.10 mainline work
-(`docs/MAINLINE_0.10_PLAN.md`) and can be designed and built while bot training runs. Items marked
-*(open)* need a decision. Decisions from 2026-11-20 are folded in (§11).
+(`docs/MAINLINE_0.10_PLAN.md`) and can be designed and built while bot training runs.
+Decisions from 2026-11-20 are folded in (§11).
 
 ## 1. Goals
 
@@ -38,7 +38,11 @@ created (registration open) ── start ──▶ round 1 pairing ─▶ round 
    codes). The tournament is listed publicly as "Registering".
 2. **Register.** Players enter the code and a display name. Before start, the manager can kick
    players and lock registration. Minimum 2 players. Maximum 32 entrants, humans and bots together.
-3. **Start.** Round 1 is seeded randomly, or by manager order *(open)*.
+3. **Start.** Round 1 seeding is a creator setting:
+   - **Random** (default).
+   - **Manual:** the creator drags entrants into seed order on the registration screen.
+
+   The seed order is also the final tiebreak.
 4. **Each round:**
    1. Pair the players (§4) and publish the pairings.
    2. **Ready check:** each player gets "Your round N match vs X is ready". Both have 60 s to click
@@ -49,7 +53,7 @@ created (registration open) ── start ──▶ round 1 pairing ─▶ round 
    5. When every match in the round is done, the next round starts. It starts automatically after
       a 60 s countdown that the manager can cut short, or it waits for the manager *(setting)*.
 5. **Finish.** After the last round, or when the manager finishes early: final standings, a
-   podium, and replay links. The tournament stays viewable read-only for 7 days *(open)*.
+   podium, and replay links. The tournament stays viewable read-only **forever**, as replays do now. A cleanup policy can come later.
 
 ## 4. Swiss pairing
 
@@ -238,5 +242,7 @@ without changing golden hashes.
 5. **Reconnect window:** 60 s. **Maximum entrants:** 32.
 6. **Ships in beta** (beta ruleset), with 0.10 to follow.
 
-Still open: seeding round 1 randomly (default) or in the manager's order (§3), and how long a
-finished tournament stays viewable (7 days by default).
+7. **Seeding:** random by default. The creator can switch to manual seed order (§3).
+8. **Retention:** finished tournaments are kept forever, as replays are. Revisit later.
+
+No decisions are left open.
