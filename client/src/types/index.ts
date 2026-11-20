@@ -99,6 +99,8 @@ export interface MatchState {
   control?: ControlState;
   /** Own vision bitmap (G-6b): base64 bitset over the vision grid, row-major. */
   vision?: string;
+  /** Neural opponents (G-10 M4): the bot's latest read of its opponent. */
+  botRead?: import("../components/Hud").BotRead | null;
 }
 
 export interface ControlState {

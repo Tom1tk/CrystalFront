@@ -4,8 +4,8 @@ import { FCT, FctStyles, DbgBtn, HEX_CLIP, NOTCH_R } from "../design/facet";
 import { decodeTerrain } from "../terrainCodec";
 import { themeFor } from "../mapThemes";
 import { MatchSfx, play as playSound } from "../audio";
-import { HudTopBar, CommandCard, FirstMatchTip, ReplayBar, MatchLoading, HUD_BAR_HEIGHT, type CommandSlot, type SelectionInfo, type NodesInfo } from "./Hud";
-import SettingsModal, { edgePanSpeed } from "./SettingsModal";
+import { HudTopBar, CommandCard, FirstMatchTip, BotReadPanel, ReplayBar, MatchLoading, HUD_BAR_HEIGHT, type CommandSlot, type SelectionInfo, type NodesInfo } from "./Hud";
+import SettingsModal, { botReadEnabled, edgePanSpeed, setBotReadEnabled } from "./SettingsModal";
 import { setAccent } from "../design/glass";
 
 /** G-4: how long a move order's planned path stays on screen. */
@@ -925,6 +925,7 @@ export default function GameShell({
 
   // G-11: optional 3D view, drawn on a WebGL canvas under the (then transparent) 2D canvas.
   const [view3d, setView3d] = useState(initialView3d);
+  const [showBotRead, setShowBotRead] = useState(botReadEnabled);
   const world3dRef = useRef<World3D | null>(null);
   // Loading screen: true once the chosen view can draw (2D at once; 3D after its models
   // load, or failed to). Only the first load matters, so F3 mid-match never resets it.
@@ -2891,6 +2892,8 @@ export default function GameShell({
 
           {!isReplay && <FirstMatchTip />}
 
+          {matchState?.botRead && (isReplay || showBotRead) && <BotReadPanel read={matchState.botRead} you={!isReplay} />}
+
           {!isReplay && (
             <CommandCard
               slots={commandSlots}
@@ -2919,7 +2922,8 @@ export default function GameShell({
         <SettingsModal onClose={() => setSettingsOpen(false)} view3d={view3d} onView3d={setView3d}
           debug={isReplay ? undefined : debugControls}
           onQuit={isReplay ? undefined : onQuit}
-          quitWarning={vsBot ? undefined : "Abandoning an online match counts as a loss."} />
+          quitWarning={vsBot ? undefined : "Abandoning an online match counts as a loss."}
+          {...(!isReplay && vsBot ? { botRead: showBotRead, onBotRead: (v: boolean) => { setShowBotRead(v); setBotReadEnabled(v); } } : {})} />
       )}
     </div>
   );

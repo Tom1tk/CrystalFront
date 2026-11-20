@@ -48,8 +48,13 @@ export interface ReplayMeta {
   flags?: string[];                       // auto-flag: "fast", "lopsided", "control_win"
 }
 
+/** A neural opponent's read of its opponent at one decision (see neuralBotPlayer.ts). */
+export interface BotRead { tick: number; [k: string]: unknown }
+
 export interface ReplayFile extends ReplayMeta {
   commandLog: Array<{ tick: number; playerId: string; command: Record<string, unknown> }>;
+  /** Neural-opponent matches: the bot's read at each decision, shown during playback. */
+  botReads?: BotRead[];
 }
 
 export function ensureReplaysDir(): void {
@@ -71,6 +76,7 @@ export interface SaveReplayArgs {
   version:      string;
   mapId?:       string;
   mapVersion?:  number;
+  botReads?:    BotRead[];
 }
 
 export function saveReplay(args: SaveReplayArgs): string {
@@ -95,6 +101,7 @@ export function saveReplay(args: SaveReplayArgs): string {
       ticks:   args.ticks,
     },
     commandLog: args.commandLog,
+    ...(args.botReads ? { botReads: args.botReads } : {}),
   };
   writeFileSync(join(REPLAYS_DIR, `${id}.json`), JSON.stringify(payload));
   return id;
@@ -296,6 +303,7 @@ export function getReplay(id: string): ReplayFile | null {
       mapVersion: raw.mapVersion,
       timestamp: raw.timestamp ?? 0,
       commandLog: raw.commandLog ?? [],
+      ...(Array.isArray(raw.botReads) ? { botReads: raw.botReads } : {}),
     };
   } catch {
     return null;
@@ -310,6 +318,9 @@ interface ReplaySession {
   interval: NodeJS.Timeout | null;
   cmdsByTick: Map<number, Array<{ playerId: string; command: Record<string, unknown> }>>;
   totalTicks: number;
+  botReads: BotRead[];
+  /** Index of the next bot read not yet shown. */
+  readIdx: number;
   ws: WebSocket;
   onEnd: (matchId: string) => void;
 }
@@ -349,6 +360,8 @@ export class ReplayRunner {
       interval: null,
       cmdsByTick,
       totalTicks: replay.outcome.ticks,
+      botReads: replay.botReads ?? [],
+      readIdx: 0,
       ws,
       onEnd,
     };
@@ -394,9 +407,12 @@ export class ReplayRunner {
       this.engine.processCommand(matchId, playerId, command as Parameters<MatchEngine["processCommand"]>[2]);
     }
     this.engine.tick(matchId);
+    const reads = session.botReads;
+    while (session.readIdx < reads.length && reads[session.readIdx].tick <= m.tick) session.readIdx++;
+    const botRead = session.readIdx > 0 ? reads[session.readIdx - 1] : undefined;
     send(session.ws, {
       type: "game_state",
-      payload: { match: serializeMatch(this.engine.getMatch(matchId) ?? m), isReplay: true },
+      payload: { match: { ...serializeMatch(this.engine.getMatch(matchId) ?? m), botRead }, isReplay: true },
     });
     if (m.tick >= session.totalTicks) this._finish(matchId);
   }

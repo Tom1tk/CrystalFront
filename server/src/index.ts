@@ -14,6 +14,7 @@ import { MatchEngine } from "./match/matchEngine.js";
 import { LiveMatchRunner } from "./match/liveMatchRunner.js";
 import { LoadGate } from "./match/loadGate.js";
 import { BotPlayer } from "./match/botPlayer.js";
+import { NeuralBotPlayer, loadNeuralModels, neuralModelFor } from "./match/neuralBotPlayer.js";
 import {
   IdleBot, PassiveBot, WeakRushBot, WeakMediumRushBot,
   MediumRushBot, RushBot, TurtleBot, MacroBot, HeavyBot,
@@ -90,13 +91,14 @@ function createBotAgent(name: string): Agent {
     default:                 return new MacroBot();
   }
 }
+const NEURAL_NAMES: Record<string, string> = { neural_easy: "Neural · Easy", neural_normal: "Neural · Normal", neural_hard: "Neural · Hard" };
 const replayRunner = new ReplayRunner();
 
 // Track which WS connection is watching which replay matchId
 const replayWatchers = new Map<WebSocket, string>();
 
 // Per-match bot players (for Solo Test mode)
-const botPlayers = new Map<string, BotPlayer>();
+const botPlayers = new Map<string, BotPlayer | NeuralBotPlayer>();
 
 const liveRunner = new LiveMatchRunner(matchEngine, (matchId: string) => {
   // Step the bot (if any) before broadcasting so the bot's commands are included
@@ -122,6 +124,7 @@ const loadGate = new LoadGate((matchId: string) => {
 
 matchEngine.setMatchEndCallback((matchId: string, winner: string) => {
   liveRunner.stop(matchId);
+  const endedBot = botPlayers.get(matchId);
   botPlayers.delete(matchId);
   const code = matchLobbyMap.get(matchId);
   if (code) {
@@ -154,6 +157,7 @@ matchEngine.setMatchEndCallback((matchId: string, winner: string) => {
           version:      GAME_VERSION,
           mapId:        match.terrain.mapId,
           mapVersion:   match.terrain.mapVersion,
+          ...(endedBot instanceof NeuralBotPlayer ? { botReads: endedBot.reads } : {}),
         });
       }
     } catch (e) {
@@ -393,6 +397,8 @@ function buildMatchStatePayload(match: MatchState, stateTimestamp?: number, play
     },
     mapWidth: match.config.mapWidth,
     mapHeight: match.config.mapHeight,
+    // Neural opponents: the bot's latest read of its opponent (the client shows it only if asked to).
+    botRead: (() => { const b = botPlayers.get(match.id); return b instanceof NeuralBotPlayer ? b.latestRead : undefined; })(),
   };
 }
 
@@ -601,13 +607,18 @@ wss.on("connection", (ws) => {
 
     case CLIENT_MSG.START_BOT_GAME: {
         const { username: bgUsername, bot: botName, mapId: bgMapId } = msg.payload as { username: string; bot: string; mapId?: string };
+        const neural = botName.startsWith("neural_") ? neuralModelFor(botName) : null;
+        if (botName.startsWith("neural_") && !neural) {
+          sendWS(ws, { type: SERVER_EVT.ERROR, payload: { message: "That neural opponent is not available on this server." } });
+          return;
+        }
         const { code, player } = lobbyManager.createLobby(bgUsername);
 
         playerId = player.id;
         playerLobbyMap.set(playerId, { playerId, code, ws });
         sendWS(ws, { type: SERVER_EVT.CONNECTED, payload: { playerId: player.id } });
 
-        const botPlayer = lobbyManager.addBotToLobby(code);
+        const botPlayer = lobbyManager.addBotToLobby(code, neural ? NEURAL_NAMES[botName] ?? "Neural" : "Bot");
         if (!botPlayer) {
           sendWS(ws, { type: SERVER_EVT.ERROR, payload: { message: "Failed to create bot game." } });
           return;
@@ -634,10 +645,13 @@ wss.on("connection", (ws) => {
           matchLobbyMap.set(match.id, code);
           loadGate.wait(match.id, [playerId]);
 
-          const botAgent = createBotAgent(botName);
-          const bot = new BotPlayer(botAgent, botPlayer.id, match.id, matchEngine);
-          bot.init();
-          botPlayers.set(match.id, bot);
+          if (neural) {
+            botPlayers.set(match.id, new NeuralBotPlayer(neural, botPlayer.id, match.id, matchEngine));
+          } else {
+            const bot = new BotPlayer(createBotAgent(botName), botPlayer.id, match.id, matchEngine);
+            bot.init();
+            botPlayers.set(match.id, bot);
+          }
 
           for (const p of lobby.players) {
             if (p) { const s = playerLobbyMap.get(p.id); if (s) s.matchId = match.id; }
@@ -1227,6 +1241,7 @@ app.get("{*path}", (_req: Request, res: Response) => {
 
 httpServer.listen(PORT, "0.0.0.0", () => {
   console.log(`CrystalFront RTS server running on http://0.0.0.0:${PORT}`);
+  void loadNeuralModels();
   // Parse replay metadata once at boot so the first Replays visit isn't slow.
   setTimeout(() => { try { listReplays(); } catch { /* listed lazily instead */ } }, 1000);
 });

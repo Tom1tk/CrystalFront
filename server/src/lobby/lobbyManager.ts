@@ -88,11 +88,11 @@ export class LobbyManager {
     return { success: true, player, lobby };
   }
 
-  addBotToLobby(code: LobbyCode): Player | null {
+  addBotToLobby(code: LobbyCode, name = "Bot"): Player | null {
     const lobby = this.lobbies.get(code);
     if (!lobby) return null;
     if (lobby.players[1] !== null) return null;
-    const bot = createPlayer("Bot", "red");
+    const bot = createPlayer(name, "red");
     lobby.players[1] = bot;
     return bot;
   }

@@ -20,6 +20,13 @@ const BOTS: Array<{ name: string; label: string; sub: string }> = [
   { name: "heavy", label: "Heavy", sub: "Bruiser-heavy army." },
 ];
 
+/** Trained neural opponents (G-10): three snapshots of the same policy, further into training. */
+const NEURAL: Array<{ name: string; label: string; sub: string }> = [
+  { name: "neural_easy", label: "Easy", sub: "An early snapshot of the trained bot." },
+  { name: "neural_normal", label: "Normal", sub: "Midway through training." },
+  { name: "neural_hard", label: "Hard", sub: "The final trained bot." },
+];
+
 const NAME_KEY = "cf.name";
 function savedName() {
   try { return window.localStorage.getItem(NAME_KEY) ?? ""; } catch { return ""; }
@@ -48,7 +55,7 @@ export default function MainMenu({ onHost, onJoin, onSoloTest, onBotGame, onRepl
   const [tab, setTab] = useState<PlayTab>("bot");
   const [username, setUsername] = useState(savedName);
   const [code, setCode] = useState("");
-  const [bot, setBot] = useState("macro");
+  const [bot, setBot] = useState("neural_normal");
   const [mapId, setMapId] = useState("random");
   const [error, setError] = useState("");
 
@@ -111,7 +118,18 @@ export default function MainMenu({ onHost, onJoin, onSoloTest, onBotGame, onRepl
             {tab === "bot" && (
               <>
                 <section>
-                  <div className="g-label" style={{ marginBottom: 8 }}>Opponent</div>
+                  <div className="g-label" style={{ marginBottom: 8 }}>Neural opponent</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+                    {NEURAL.map((b) => (
+                      <button key={b.name} type="button" className={`g-card${bot === b.name ? " on" : ""}`} onClick={() => setBot(b.name)} style={{ padding: "10px 11px" }}>
+                        <span className="g-card-name">{b.label}</span>
+                        <span className="g-sub" style={{ fontSize: 12 }}>{b.sub}</span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+                <section>
+                  <div className="g-label" style={{ marginBottom: 8 }}>Scripted opponent</div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
                     {BOTS.map((b) => (
                       <button key={b.name} type="button" className={`g-card${bot === b.name ? " on" : ""}`} onClick={() => setBot(b.name)} style={{ padding: "10px 11px" }}>

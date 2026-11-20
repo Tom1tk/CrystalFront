@@ -9,6 +9,14 @@ import { setAudioPrefs } from "../audio";
 type Tab = "general" | "audio" | "controls" | "debug";
 
 const TIPS_KEY = "cf.tips";
+const BOT_READ_KEY = "cf.botRead";
+/** Show a neural opponent's read of you during live matches (default off). */
+export function botReadEnabled(): boolean {
+  try { return window.localStorage.getItem(BOT_READ_KEY) === "1"; } catch { return false; }
+}
+export function setBotReadEnabled(v: boolean): void {
+  try { window.localStorage.setItem(BOT_READ_KEY, v ? "1" : "0"); } catch { /* storage blocked */ }
+}
 export function tipsEnabled(): boolean {
   try { return window.localStorage.getItem(TIPS_KEY) !== "0"; } catch { return true; }
 }
@@ -36,7 +44,7 @@ const SHORTCUTS: Array<[string, string]> = [
   ["Esc", "Cancel the current mode, or open Settings"],
 ];
 
-export default function SettingsModal({ onClose, view3d, onView3d, debug, initialTab, onQuit, quitWarning }: {
+export default function SettingsModal({ onClose, view3d, onView3d, debug, initialTab, onQuit, quitWarning, botRead, onBotRead }: {
   onClose: () => void;
   view3d: boolean;
   onView3d: (v: boolean) => void;
@@ -47,6 +55,9 @@ export default function SettingsModal({ onClose, view3d, onView3d, debug, initia
   onQuit?: () => void;
   /** When set, Quit asks for confirmation with this text first (PvP: the quit counts as a loss). */
   quitWarning?: string;
+  /** Live matches: the "bot's read of you" toggle. */
+  botRead?: boolean;
+  onBotRead?: (v: boolean) => void;
 }) {
   const [tab, setTab] = useState<Tab>(initialTab ?? "general");
   const audio = useAudioPrefs();
@@ -84,6 +95,11 @@ export default function SettingsModal({ onClose, view3d, onView3d, debug, initia
                   try { window.localStorage.setItem(TIPS_KEY, v ? "1" : "0"); } catch { /* storage blocked */ }
                 }} />
               </Row>
+              {onBotRead && (
+                <Row name="Bot's read of you" help="Neural opponents only: what the bot believes about your army and buildings, and where it thinks your army is. Always shown in replays.">
+                  <Toggle label="Bot's read of you" on={!!botRead} onChange={onBotRead} />
+                </Row>
+              )}
             </>
           )}
           {tab === "audio" && (

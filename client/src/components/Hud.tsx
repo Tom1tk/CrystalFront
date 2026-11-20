@@ -248,3 +248,58 @@ export function MatchLoading({ visible, title, mapName, players }: {
     </div>
   );
 }
+
+/** A neural opponent's read of its opponent (server: headless/src/v2/neural.ts `readOpponent`). */
+export interface BotRead {
+  tick: number;
+  units: Record<string, number>;
+  buildings: Record<string, number>;
+  army: { anchor: string; p: number };
+}
+
+const READ_NAMES: Record<string, [string, string]> = {
+  worker: ["worker", "workers"], skirmisher: ["skirmisher", "skirmishers"], gunner: ["gunner", "gunners"], bruiser: ["bruiser", "bruisers"],
+  medic: ["medic", "medics"], bulwark: ["bulwark", "bulwarks"], barracks: ["barracks", "barracks"], foundry: ["foundry", "foundries"],
+  supply_depot: ["depot", "depots"], turret: ["turret", "turrets"], outpost: ["outpost", "outposts"],
+};
+
+/** Anchor names are in the bot's frame ("own_base" is the bot's base). */
+function armyWhere(anchor: string, your: string): string {
+  const a = anchor.replace(/\[\d+\]$/, "");
+  switch (a) {
+    case "own_base": case "own_pockets": return "near the bot's base";
+    case "own_chokes": return "at the bot's chokepoints";
+    case "own_safe": return "at the bot's safe nodes";
+    case "centre": return "mid-map";
+    case "nodes": return "at the contested nodes";
+    case "enemy_base": case "enemy_pockets": return `near ${your} base`;
+    case "enemy_chokes": return `at ${your} chokepoints`;
+    case "enemy_safe": return `at ${your} safe nodes`;
+    default: return "not seen";
+  }
+}
+
+function countList(xs: Record<string, number>): string {
+  const parts = Object.entries(xs).filter(([, v]) => v >= 0.5).map(([k, v]) => {
+    const n = Math.round(v);
+    const [one, many] = READ_NAMES[k] ?? [k, k];
+    return `${n} ${n === 1 ? one : many}`;
+  });
+  return parts.length ? parts.join(", ") : "none";
+}
+
+/** What a neural bot believes about its opponent (live: Settings toggle; replays: always). */
+export function BotReadPanel({ read, you }: { read: BotRead; you: boolean }) {
+  const your = you ? "your" : "the player's";
+  return (
+    <div className="g-glass strong" style={{ position: "absolute", top: HUD_BAR_HEIGHT + 10, right: 10, width: 260, padding: "10px 14px", zIndex: 6, pointerEvents: "none" }}>
+      <div className="g-label" style={{ marginBottom: 6 }}>{you ? "Bot's read of you" : "Bot's read of the player"}</div>
+      <div className="g-sub" style={{ color: "var(--ink)", fontSize: 12, display: "grid", gridTemplateColumns: "auto 1fr", columnGap: 10, rowGap: 4 }}>
+        <span className="g-label" style={{ fontSize: 9 }}>Units</span><span>{countList(read.units)}</span>
+        <span className="g-label" style={{ fontSize: 9 }}>Buildings</span><span>{countList(read.buildings)}</span>
+        <span className="g-label" style={{ fontSize: 9 }}>Army</span>
+        <span>{armyWhere(read.army.anchor, your)} <span style={{ color: "var(--ink-faint)" }}>({Math.round(read.army.p * 100)}%)</span></span>
+      </div>
+    </div>
+  );
+}
