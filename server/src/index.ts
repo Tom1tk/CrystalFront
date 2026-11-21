@@ -3,7 +3,8 @@ import { createServer } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { readFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { resolve as resolvePath, dirname as dirnameFn } from "node:path";
 
 const _serverDir = dirnameFn(fileURLToPath(import.meta.url));
@@ -1431,6 +1432,41 @@ app.get("/api/matches", (_req: Request, res: Response) => {
 /** G-7: maps the lobby offers (pool first, then dev maps), with thumbnail data. */
 app.get("/api/tournaments", (_req: Request, res: Response) => {
   res.json({ tournaments: tournaments.summaries(), bots: tournamentBots() });
+});
+
+// Server admin (server/src/tournamentAdmin.ts, spec §7): a fresh secret each start, in a file only this
+// box can read; requests must also come from loopback.
+const adminSecret = randomBytes(24).toString("hex");
+{
+  const dir = path.resolve(process.cwd(), "tournaments"), file = path.join(dir, ".admin-token");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(file, adminSecret, { mode: 0o600 });
+  chmodSync(file, 0o600);
+}
+function isAdmin(req: Request): boolean {
+  const given = Buffer.from(String(req.get("x-admin-token") ?? ""));
+  const loopback = ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(req.socket.remoteAddress ?? "");
+  return loopback && given.length === adminSecret.length && timingSafeEqual(given, Buffer.from(adminSecret));
+}
+
+/** Give a tournament's manager role to a player's browser (`entrant`), a given token, or a new one. */
+app.post("/api/admin/tournaments/:code/manager", express.json(), (req: Request, res: Response) => {
+  if (!isAdmin(req)) { res.status(403).json({ error: "Forbidden." }); return; }
+  const t = tournaments.byCode(req.params.code);
+  if (!t) { res.status(404).json({ error: "Tournament not found." }); return; }
+  const body = (req.body ?? {}) as { entrant?: unknown; token?: unknown };
+  let token: string;
+  if (typeof body.entrant === "string") {
+    const want = body.entrant.trim().toLowerCase();
+    const e = t.entrants.find((x) => !x.bot && x.name.toLowerCase() === want);
+    if (!e || !t.tokens[e.id]) { res.status(404).json({ error: `No human entrant named "${body.entrant}".` }); return; }
+    token = t.tokens[e.id];
+  } else if (body.token !== undefined) {
+    if (typeof body.token !== "string" || body.token.length < 16 || body.token.length > 128) { res.status(400).json({ error: "A token is 16–128 characters." }); return; }
+    token = body.token;
+  } else token = randomBytes(16).toString("hex");
+  tournaments.reassignManager(t, token);
+  res.json({ code: t.code, name: t.settings.name, token });
 });
 
 app.get("/api/maps", (_req: Request, res: Response) => {
