@@ -24,6 +24,8 @@ interface Props {
   /** Enter this player's live game. */
   onPlay: () => void;
   onWatchReplay: (replayId: string) => void;
+  /** Watch a live series (delayed by the spectator delay). */
+  onSpectate: (slot: number) => void;
 }
 
 const STATUS_LABEL: Record<string, string> = { registering: "Registering", running: "Running", finished: "Finished", cancelled: "Cancelled" };
@@ -199,7 +201,7 @@ function SettingsFields({ settings, onChange, maps, withRounds, withSeeding }: {
 
 type DashTab = "standings" | "rounds" | "manage";
 
-function Dashboard({ code, view, error, ready, maps, onOpen, send, onPlay, onWatchReplay }: Props & { code: string }) {
+function Dashboard({ code, view, error, ready, maps, onOpen, send, onPlay, onWatchReplay, onSpectate }: Props & { code: string }) {
   const now = useNow();
   const [tab, setTab] = useState<DashTab>("standings");
   const [roundTab, setRoundTab] = useState<number | null>(null);
@@ -264,9 +266,14 @@ function Dashboard({ code, view, error, ready, maps, onOpen, send, onPlay, onWat
                 <div className="g-label" style={{ marginBottom: 8 }}>Live</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 8 }}>
                   {round.series.filter((s) => s.status === "playing").map((s) => (
-                    <div key={s.slot} className="g-card" style={{ padding: "10px 12px", cursor: "default" }}>
-                      <span className="g-card-name">{nameOf(s.a)} <span style={{ color: "var(--ink-dim)" }}>vs</span> {nameOf(s.b)}</span>
-                      <span className="g-card-meta">Game {s.games.length} · {mapName(s.games[s.games.length - 1]?.map ?? round.map)} · {seriesScore(s)}</span>
+                    <div key={s.slot} className="g-card" style={{ padding: "10px 12px", cursor: "default", display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+                        <span className="g-card-name">{nameOf(s.a)} <span style={{ color: "var(--ink-dim)" }}>vs</span> {nameOf(s.b)}</span>
+                        <span className="g-card-meta">Game {s.games.length} · {mapName(s.games[s.games.length - 1]?.map ?? round.map)} · {seriesScore(s)}</span>
+                      </div>
+                      <button type="button" className="g-btn small" title={`Watch, ${state.settings.spectatorDelay} s behind live`} onClick={() => onSpectate(s.slot)}>
+                        <Icon name="play" size={12} />Spectate
+                      </button>
                     </div>
                   ))}
                 </div>

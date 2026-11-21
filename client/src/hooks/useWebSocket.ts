@@ -9,6 +9,7 @@ import type {
   Ruleset,
 } from "../types";
 import type { TournamentPublicState, TournamentViewer } from "@crystalfront/shared";
+import type { SpectateInfo } from "../components/Spectate";
 
 export interface TournamentView { state: TournamentPublicState; viewer: TournamentViewer }
 export interface TournamentMatchReady { code: string; round: number; slot: number; game: number; opponent: string; map: string; side: "blue" | "red"; deadline: number }
@@ -40,6 +41,8 @@ interface UseWebSocketReturn {
   /** Players who have finished loading the new match (while it waits to start). */
   loadedPlayers: string[];
   replayEnd: { ticks: number; winner: string | null } | null;
+  spectate: SpectateInfo | null;
+  clearSpectate: () => void;
   resourceNodes: ResourceNodeDisplay[];
   createLobby: (username: string, ruleset?: Ruleset) => void;
   joinLobby: (code: string, username: string) => void;
@@ -90,6 +93,8 @@ export function useWebSocket(): UseWebSocketReturn {
   const staticMapRef = useRef<MatchState["staticMap"]>(undefined);
   const [matchEnd, setMatchEnd] = useState<{ winner: string | null; winType?: string; replayId?: string } | null>(null);
   const [replayEnd, setReplayEnd] = useState<{ ticks: number; winner: string | null } | null>(null);
+  /** Set by a match_start from a tournament spectator feed. */
+  const [spectate, setSpectate] = useState<SpectateInfo | null>(null);
   const [resourceNodes, setResourceNodes] = useState<ResourceNodeDisplay[]>([]);
   const [loadedPlayers, setLoadedPlayers] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -150,6 +155,7 @@ export function useWebSocket(): UseWebSocketReturn {
           const ms = msg.payload.match as MatchState;
           ms.attackLog = ms.attackLog ?? [];
           staticMapRef.current = ms.staticMap;
+          setSpectate((msg.payload.spectate as SpectateInfo | undefined) ?? null);
           setLoadedPlayers([]);
           setMatchState(ms);
           setResourceNodes(ms.resourceNodes ?? []);
@@ -255,6 +261,8 @@ export function useWebSocket(): UseWebSocketReturn {
     [sendMessage]
   );
 
+  const clearSpectate = useCallback(() => setSpectate(null), []);
+
   const stopReplay = useCallback(() => {
     sendMessage({ type: "stop_replay" });
   }, [sendMessage]);
@@ -342,6 +350,8 @@ export function useWebSocket(): UseWebSocketReturn {
     matchEnd,
     loadedPlayers,
     replayEnd,
+    spectate,
+    clearSpectate,
     resourceNodes,
     createLobby,
     joinLobby,

@@ -6,6 +6,7 @@ import GameShell, { initialView3d, saveView3d } from "./components/GameShell";
 import MatchEndScreen from "./components/MatchEndScreen";
 import ReplayBrowser from "./components/ReplayBrowser";
 import TournamentScreen from "./components/TournamentScreen";
+import { spectatorView, type FogMode } from "./components/Spectate";
 import type { Screen, Player, MatchState, Lobby, Ruleset } from "./types";
 import MenuBackdrop from "./components/MenuBackdrop";
 import BootScreen from "./components/BootScreen";
@@ -56,6 +57,7 @@ function useScreenFlow() {
     if (screen === "menu") return;
     if (screen === "replays") return;
     if (screen === "watching_replay") return;
+    if (ws.spectate) return;
     // Transition to game when match starts
     if (ws.matchState && (ws.matchState.phase === "spawn" || ws.matchState.phase === "playing")) {
       setScreen("game");
@@ -66,7 +68,7 @@ function useScreenFlow() {
       setScreen("matchEnd");
       return;
     }
-  }, [ws.matchState, screen]);
+  }, [ws.matchState, ws.spectate, screen]);
 
   // Transition to match end when match_end received
   useEffect(() => {
@@ -83,9 +85,18 @@ function useScreenFlow() {
     }
   }, [ws.matchState, screen]);
 
-  // Buffer incoming frames during replay
+  // A tournament spectator feed started (TOURNAMENT_SPECTATE → match_start with spectate info).
+  const [fogMode, setFogMode] = useState<FogMode>("both");
   useEffect(() => {
-    if (screen !== "watching_replay") return;
+    if (ws.spectate && ws.matchState && screen === "tournament") {
+      setFogMode("both");
+      setScreen("watching_replay");
+    }
+  }, [ws.spectate, ws.matchState, screen]);
+
+  // Buffer incoming frames during replay (a live spectator feed just shows the newest)
+  useEffect(() => {
+    if (screen !== "watching_replay" || ws.spectate) return;
     if (!ws.matchState) return;
     replayBufferRef.current.push(ws.matchState);
   }, [ws.matchState, screen]);
@@ -103,12 +114,19 @@ function useScreenFlow() {
 
   // Sync server speed with forward playback speed (server doesn't do reverse)
   useEffect(() => {
-    if (screen !== "watching_replay") return;
+    if (screen !== "watching_replay" || ws.spectate) return;
     ws.setReplaySpeed(playbackSpeed < 0 ? 0 : playbackSpeed);
   }, [playbackSpeed, screen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // When server finishes, pause and let user rewind freely
   useEffect(() => {
+    if (ws.replayEnd && screen === "watching_replay" && ws.spectate) {
+      // The spectated game is over: back to the dashboard.
+      ws.clearReplayEnd();
+      ws.clearSpectate();
+      setScreen("tournament");
+      return;
+    }
     if (ws.replayEnd && screen === "watching_replay") {
       ws.clearReplayEnd();
       replayDoneRef.current = true;
@@ -183,12 +201,17 @@ function useScreenFlow() {
   const handleStopReplay = useCallback(() => {
     ws.stopReplay();
     ws.clearMatchState();
+    if (ws.spectate) {
+      ws.clearSpectate();
+      setScreen("tournament");
+      return;
+    }
     replayBufferRef.current = [];
     setReplayFrame(0);
     setPlaybackSpeed(1);
     replayDoneRef.current = false;
     setScreen("replays");
-  }, [ws.stopReplay, ws.clearMatchState]);
+  }, [ws.stopReplay, ws.clearMatchState, ws.spectate, ws.clearSpectate]);
 
   const handleBackFromReplays = useCallback(() => {
     setScreen("menu");
@@ -262,6 +285,20 @@ function useScreenFlow() {
     setVsBot(false);
     ws.playTournament(true);
   }, [ws.playTournament]);
+
+  /** Watch a live series on the dashboard (delayed). */
+  const spectateTournament = useCallback((slot: number) => {
+    ws.tournamentSend("tournament_spectate", { slot });
+  }, [ws.tournamentSend]);
+
+  // This player's own ready check stops spectating, so they see it.
+  useEffect(() => {
+    if (!ws.tournamentReady || !ws.spectate) return;
+    ws.stopReplay();
+    ws.clearMatchState();
+    ws.clearSpectate();
+    setScreen("tournament");
+  }, [ws.tournamentReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The server announces a starting game: enter it (once per game).
   const enteredRef = useRef("");
@@ -355,7 +392,7 @@ function useScreenFlow() {
     return null;
   };
 
-  const displayMatchState = screen === "watching_replay"
+  const displayMatchState = screen === "watching_replay" && !ws.spectate
     ? (replayBufferRef.current[replayFrame] ?? ws.matchState)
     : ws.matchState;
 
@@ -397,6 +434,9 @@ function useScreenFlow() {
     enterTournamentGame,
     watchTournamentReplay,
     inTournamentGame: inTournamentGameRef.current,
+    spectateTournament,
+    fogMode,
+    setFogMode,
   };
 }
 
@@ -438,10 +478,14 @@ export default function App() {
     enterTournamentGame,
     watchTournamentReplay,
     inTournamentGame,
+    spectateTournament,
+    fogMode,
+    setFogMode,
   } = useScreenFlow();
 
   const player = getCurrentPlayer();
   const currentLobby = getCurrentLobby();
+  const spectatedState = ws.spectate && displayMatchState ? spectatorView(displayMatchState, fogMode) : null;
   // An opponent who quits leaves the lobby at once; keep their name and score on the
   // HUD and the result screen until we leave the match ourselves.
   const matchPlayersRef = useRef<Lobby["players"]>([null, null]);
@@ -511,14 +555,15 @@ export default function App() {
       )}
       {screen === "tournament" && (
         <TournamentScreen code={tCode} view={ws.tournament} error={ws.tournamentError} ready={ws.tournamentReady} maps={maps}
-          onOpen={openTournament} onBack={closeTournaments} send={ws.tournamentSend} onPlay={enterTournamentGame} onWatchReplay={watchTournamentReplay} />
+          onOpen={openTournament} onBack={closeTournaments} send={ws.tournamentSend} onPlay={enterTournamentGame} onWatchReplay={watchTournamentReplay} onSpectate={spectateTournament} />
       )}
       {screen === "watching_replay" && displayMatchState && (
         <GameShell
           lobby={{ code: "REPLAY", players: [null, null], status: "match", hostId: "", mapId: "" }}
           player={{ id: "__observer__", username: "Replay", color: "blue", ready: false, score: 0 }}
-          matchState={displayMatchState}
-          resourceNodes={displayMatchState.resourceNodes ?? ws.resourceNodes}
+          matchState={spectatedState ?? displayMatchState}
+          resourceNodes={spectatedState?.resourceNodes ?? displayMatchState.resourceNodes ?? ws.resourceNodes}
+          spectate={ws.spectate ? { info: ws.spectate, fog: fogMode, onFog: setFogMode, full: displayMatchState } : undefined}
           onDebugWin={handleDebugWin}
           onDebugSpawn={handleDebugSpawn}
           onGameCommand={handleGameCommand}

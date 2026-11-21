@@ -25,6 +25,7 @@ import { encodeVision } from "./match/engine/visibility.js";
 import { ScriptedBotPlayer, scriptedBotFor, SCRIPTED_PREFIX } from "./match/scriptedBotPlayer.js";
 import { SCRIPTED } from "../../headless/src/v3/scripted.js";
 import { TournamentManager, TournamentError, type Tournament, type AdminOp } from "./tournament/tournamentManager.js";
+import { SpectatorFeeds } from "./tournament/spectatorFeed.js";
 import { ReplayRunner, listReplays, getReplay, ensureReplaysDir, saveReplay } from "./match/replayRunner.js";
 import type { MatchEntity, MatchState, PlayerSlot, ResourceNode, PlayerEconomy, MatchConfig } from "./match/types.js";
 import { DEFAULT_CONFIG } from "./match/types.js";
@@ -303,6 +304,26 @@ const tournaments = new TournamentManager({
   },
 }, { botName: (bot) => tournamentBots().find((b) => b.id === bot)?.name ?? null, isMap: isKnownMap });
 const tournamentTick = setInterval(() => tournaments.tick(), 1000);
+
+/** Delayed spectator feeds (spec §6): full state plus each seat's vision; `seen` bit 1 = first seat, 2 = second. */
+function spectatorPayload(match: MatchState, start: boolean) {
+  const base = buildMatchStatePayload(match, start ? undefined : Date.now());
+  const vis = match.players.map((p) => (p ? match.visibilityData?.get(p.playerId) : undefined));
+  const ids = match.players.map((p) => p?.playerId);
+  const seenBy = (owner: string | undefined, has: (v: NonNullable<(typeof vis)[number]>) => boolean) =>
+    vis.reduce((m, v, i) => m | ((owner !== undefined && owner === ids[i]) || (v && has(v)) ? 1 << i : 0), 0);
+  return {
+    ...base,
+    entities: base.entities.map((e) => ({ ...e, seen: seenBy(e.ownerId, (v) => v.entityIds.has(e.id)) })),
+    resourceNodes: base.resourceNodes.map((n) => ({ ...n, seen: seenBy(undefined, (v) => v.nodeIds.has(n.id)) })),
+    visionBySeat: vis.map((v) => (v ? encodeVision(v.cells) : null)),
+  };
+}
+const feeds = new SpectatorFeeds<WebSocket>({
+  send: (ws, msg) => sendWS(ws, msg as unknown as ServerToClientMsg),
+  serialize: spectatorPayload,
+});
+const feedTick = setInterval(() => feeds.step(), 100);
 
 /** After a tournament match ends: free its seats and report the result (deferred, so a forced stop can't re-enter). */
 function tournamentMatchEnded(matchId: string, code: string, winner: string | null, winType?: string, replayId?: string): void {
@@ -1186,6 +1207,7 @@ wss.on("connection", (ws) => {
       }
 
       case CLIENT_MSG.STOP_REPLAY: {
+        feeds.unwatch(ws);
         const watchingMatchId = replayWatchers.get(ws);
         if (watchingMatchId) {
           replayRunner.stop(watchingMatchId);
@@ -1200,11 +1222,12 @@ wss.on("connection", (ws) => {
       case CLIENT_MSG.TOURNAMENT_READY:
       case CLIENT_MSG.TOURNAMENT_WATCH:
       case CLIENT_MSG.TOURNAMENT_ADMIN:
+      case CLIENT_MSG.TOURNAMENT_SPECTATE:
       case CLIENT_MSG.TOURNAMENT_PLAY: {
         const fail = (message: string) => sendWS(ws, { type: SERVER_EVT.TOURNAMENT_ERROR, payload: { message } });
         const p = msg.payload as { code?: string; token?: string };
         const token = typeof p.token === "string" && p.token.length >= 16 && p.token.length <= 128 ? p.token : undefined;
-        if (msg.type !== CLIENT_MSG.TOURNAMENT_WATCH && !token) { fail("Missing or invalid token."); break; }
+        if (msg.type !== CLIENT_MSG.TOURNAMENT_WATCH && msg.type !== CLIENT_MSG.TOURNAMENT_SPECTATE && !token) { fail("Missing or invalid token."); break; }
         try {
           if (msg.type === CLIENT_MSG.TOURNAMENT_CREATE) {
             const t = tournaments.create(token!, msg.payload.settings, poolMaps().map((m) => m.mapId));
@@ -1228,6 +1251,17 @@ wss.on("connection", (ws) => {
             case CLIENT_MSG.TOURNAMENT_ADMIN: {
               const { code: _c, token: _t, ...op } = msg.payload;
               tournaments.admin(t, token!, op as AdminOp);
+              break;
+            }
+            case CLIENT_MSG.TOURNAMENT_SPECTATE: {
+              const round = t.rounds[t.rounds.length - 1];
+              const s = round?.series.find((x) => x.slot === Number(msg.payload.slot));
+              const g = s?.status === "playing" ? s.games[s.games.length - 1] : undefined;
+              const live = g?.matchId ? matchEngine.getMatch(g.matchId) : undefined;
+              if (!s || !g || !live || live.phase !== "playing") { fail("That game isn't live."); break; }
+              const name = (id: string | null) => t.entrants.find((e) => e.id === id)?.name ?? "?";
+              const info = { code: t.code, round: round.number, slot: s.slot, game: s.games.length, bestOf: s.bestOf, a: name(s.a), b: name(s.b) };
+              if (!feeds.watch(ws, live, { ...DEFAULT_CONFIG, mapId: g.map, ruleset: "beta" }, t.settings.spectatorDelay, info)) fail("That game isn't live.");
               break;
             }
             case CLIENT_MSG.TOURNAMENT_PLAY: {
@@ -1290,6 +1324,7 @@ wss.on("connection", (ws) => {
       replayWatchers.delete(ws);
     }
     tWatchers.delete(ws);
+    feeds.unwatch(ws);
 
     // A tournament seat survives a disconnect: the player has a grace period to rejoin with TOURNAMENT_PLAY.
     const tSession = playerId ? playerLobbyMap.get(playerId) : undefined;
@@ -1380,6 +1415,8 @@ httpServer.on("close", () => {
   clearInterval(pingInterval);
   clearInterval(rateLimitCleanup);
   clearInterval(tournamentTick);
+  clearInterval(feedTick);
+  feeds.stopAll();
 });
 
 // API routes

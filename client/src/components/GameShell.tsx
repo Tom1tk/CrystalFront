@@ -4,6 +4,7 @@ import { FCT, FctStyles, DbgBtn, HEX_CLIP, NOTCH_R } from "../design/facet";
 import { decodeTerrain } from "../terrainCodec";
 import { themeFor } from "../mapThemes";
 import { MatchSfx, play as playSound } from "../audio";
+import { SpectateBar, BroadcastPanels, broadcastFogCanvas, type FogMode, type SpectateInfo } from "./Spectate";
 import { HudTopBar, CommandCard, FirstMatchTip, BotReadPanel, ReplayBar, MatchLoading, HUD_BAR_HEIGHT, SurgeBanner, NodeTip, nodeTipWanted, type CommandSlot, type SelectionInfo, type NodesInfo, type SurgeClock } from "./Hud";
 import SettingsModal, { botReadEnabled, edgePanSpeed, setBotReadEnabled } from "./SettingsModal";
 import { setAccent } from "../design/glass";
@@ -58,6 +59,8 @@ interface GameShellProps {
   replayFrame?: number;
   replayBufferSize?: number;
   onSeekReplay?: (frame: number) => void;
+  /** Tournament spectating (isReplay too): the fog modes, and the full state for the broadcast panels. */
+  spectate?: { info: SpectateInfo; fog: FogMode; onFog: (m: FogMode) => void; full: MatchState };
   /** Live matches: called once when this client is ready, so the server can start the match. */
   onLoaded?: () => void;
   /** Players the server reports as loaded (for the loading screen). */
@@ -812,6 +815,7 @@ export default function GameShell({
   replayFrame = 0,
   replayBufferSize = 0,
   onSeekReplay,
+  spectate,
   onLoaded,
   loadedPlayers,
   vsBot = false,
@@ -2226,7 +2230,7 @@ export default function GameShell({
     // Cells outside the player's vision are darkened. Drawn before
     // entities so player units always render clearly on top.
     // G-6b: the server's line-of-sight bitmap; circle tiles as a fallback.
-    const fog = fogCanvas(matchState.vision, matchState.staticMap);
+    const fog = matchState.broadcastFog ? broadcastFogCanvas(matchState.broadcastFog, matchState.staticMap) : fogCanvas(matchState.vision, matchState.staticMap);
     if (fog) {
       const sm = matchState.staticMap!;
       const vcs = sm.visionCellSize ?? 40;
@@ -2803,7 +2807,7 @@ export default function GameShell({
       );
 
       // Minimap fog overlay: the G-6b vision bitmap, or circle tiles as a fallback
-      const mmFog = fogCanvas(matchState.vision, matchState.staticMap);
+      const mmFog = matchState.broadcastFog ? broadcastFogCanvas(matchState.broadcastFog, matchState.staticMap) : fogCanvas(matchState.vision, matchState.staticMap);
       if (mmFog) {
         // The vision grid overhangs the map by the offset on each side; clip it to the minimap.
         const sm = matchState.staticMap!;
@@ -3076,7 +3080,9 @@ export default function GameShell({
         </div>
       </div>
 
-      {isReplay && (
+      {spectate && <SpectateBar info={spectate.info} fog={spectate.fog} onFog={spectate.onFog} onExit={() => onStopReplay?.()} />}
+      {spectate && <BroadcastPanels match={spectate.full} />}
+      {isReplay && !spectate && (
         <ReplayBar
           speed={playbackSpeed}
           onSpeed={onSetPlaybackSpeed}

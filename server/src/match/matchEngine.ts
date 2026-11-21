@@ -606,7 +606,8 @@ if (command.type === "gather") {
     }
 
     if (command.type === "train_unit" && (command.unitType ?? command.targetEntityId) === "outrider") {
-      return this.trainOutrider(match, playerId, command.buildingId ?? command.entityId);
+      const r = this.trainOutrider(match, playerId, command.buildingId ?? command.entityId);
+      return r.success ? ok() : r;
     }
 
     if (command.type === "train_unit") {

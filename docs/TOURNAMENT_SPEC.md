@@ -1,6 +1,7 @@
 # Tournament mode spec (Swiss)
 
-Status: **design only, not implemented** (2026-11-20). Separate from the 0.10 mainline work
+Status: **T1–T5 and T7 implemented** (0.9.8-ML, 2026-11-21); T6 has the in-app manager panel, the
+server admin script is still to do. Designed 2026-11-20. Separate from the 0.10 mainline work
 (`docs/MAINLINE_0.10_PLAN.md`) and can be designed and built while bot training runs.
 Decisions from 2026-11-20 are folded in (§11).
 

@@ -53,6 +53,8 @@ export interface MatchEntity {
   path?: Array<{ x: number; y: number }>;
   /** G-9f: shift-queued order destinations (own units only). */
   queue?: Array<{ x: number; y: number; type: string }>;
+  /** Spectator feeds: who sees it, bit 1 = first seat, bit 2 = second. */
+  seen?: number;
 }
 
 export interface ResourceNodeDisplay {
@@ -63,6 +65,8 @@ export interface ResourceNodeDisplay {
   color: string;
   capacity: number;
   remaining: number;
+  /** Spectator feeds: seat bitmask, as MatchEntity.seen. */
+  seen?: number;
 }
 
 export interface PlayerEconomyDisplay {
@@ -102,6 +106,10 @@ export interface MatchState {
   control?: ControlState;
   /** Own vision bitmap (G-6b): base64 bitset over the vision grid, row-major. */
   vision?: string;
+  /** Spectator feeds: each seat's vision bitmap. */
+  visionBySeat?: (string | null)[];
+  /** Spectating with both fogs (client-side): drawn dimmed where neither seat sees, team-tinted edges. */
+  broadcastFog?: { vision: (string | null)[]; colors: string[] };
   /** Neural opponents (G-10 M4): the bot's latest read of its opponent. */
   botRead?: import("../components/Hud").BotRead | null;
 }

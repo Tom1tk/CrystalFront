@@ -43,6 +43,8 @@ describe("Outrider (beta ruleset)", () => {
     expect(train().success).toBe(true);
     expect(match.economy[0]!.resources).toBe(1000 - UNIT_DEFS.outrider.cost);
     expect(train().message).toBe("Only one Outrider at a time");
+    // Only the accepted order is logged, so replays and spectator feeds see it.
+    expect(match.commandLog.filter((c) => c.command.unitType === "outrider")).toHaveLength(1);
     for (let i = 0; i < UNIT_DEFS.outrider.buildTime; i++) engine.tick(match.id);
     expect(of(match, "outrider", "p1")).toHaveLength(1);
     expect(crystal.productionQueue).toHaveLength(0);

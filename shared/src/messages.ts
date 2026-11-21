@@ -32,6 +32,7 @@ export const WS_EVENT = {
   TOURNAMENT_WATCH: "tournament_watch",
   TOURNAMENT_UNWATCH: "tournament_unwatch",
   TOURNAMENT_PLAY: "tournament_play",
+  TOURNAMENT_SPECTATE: "tournament_spectate",
   TOURNAMENT_ADMIN: "tournament_admin",
   TOURNAMENT_STATE: "tournament_state",
   TOURNAMENT_MATCH_READY: "tournament_match_ready",
@@ -66,6 +67,8 @@ export const CLIENT_MSG = {
   TOURNAMENT_UNWATCH: "tournament_unwatch",
   /** Join (or rejoin after a reconnect) this player's live tournament match. */
   TOURNAMENT_PLAY: "tournament_play",
+  /** Watch a live series' current game, delayed by the tournament's spectator delay. */
+  TOURNAMENT_SPECTATE: "tournament_spectate",
   TOURNAMENT_ADMIN: "tournament_admin",
 } as const;
 
@@ -112,6 +115,7 @@ export type ClientToServerMsg =
   | { type: typeof CLIENT_MSG.TOURNAMENT_WATCH; payload: { code: string; token?: string } }
   | { type: typeof CLIENT_MSG.TOURNAMENT_UNWATCH }
   | { type: typeof CLIENT_MSG.TOURNAMENT_PLAY; payload: { code: string; token: string } }
+  | { type: typeof CLIENT_MSG.TOURNAMENT_SPECTATE; payload: { code: string; slot: number; token?: string } }
   | { type: typeof CLIENT_MSG.TOURNAMENT_ADMIN; payload: { code: string; token: string; op: string; [arg: string]: unknown } };
 
 export type ServerToClientMsg =
