@@ -16,9 +16,9 @@ import {
   BUILDINGS, ECON_ASSIGN0, ECON_BUILD0, ECON_RALLY, ECON_REPAIR, GROUPS, ORDERS, POINT_ORDERS, PTR_ORDERS, PTR_SIZE,
   TRAIN_UNITS, N_ANCHOR_TARGETS, ANCHOR_TARGETS, NOOP_ACTION, type V2Action, type V2Masks,
 } from "./actions.js";
-import { ENTITY_F, type ObsV2 } from "./observation.js";
+import { ENTITY_F, GLOBAL_NAMES, MEMORY_F as MEM_F, NODE_F, NODE_ROWS, type ObsV2 } from "./observation.js";
 
-const N_GLOBALS = 61, NODE_ROWS = 20, NODE_F = 13, MEM_ROWS = 16, MEM_F = 15, GRID_C = 10, GRID_R = 15, GRID_W = 50;
+const N_GLOBALS = GLOBAL_NAMES.length, MEM_ROWS = 16, GRID_C = 10, GRID_R = 15, GRID_W = 50;
 const OPP_BINS = 6;
 const GROUP_UNIT = GROUPS.indexOf("unit");
 const POINT = new Set([...POINT_ORDERS].map((o) => ORDERS.indexOf(o as typeof ORDERS[number])));

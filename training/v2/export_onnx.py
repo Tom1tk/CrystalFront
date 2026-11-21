@@ -101,7 +101,8 @@ def export(ckpt: str, out: str) -> None:
         outs = Main(a)(*args)
         tail_args = (outs[3], outs[4], torch.tensor([1]), torch.tensor([2]), torch.tensor([1.0]))
         torch.onnx.export(Tail(a), tail_args, f"{out}.tail.onnx", input_names=TAIL_IN, output_names=TAIL_OUT, opset_version=17, dynamo=False)
-    meta = {"checkpoint": ckpt, "obsSchemaVersion": 5, "actionSpaceVersion": 7, "hidden": 384,
+    meta = {"checkpoint": ckpt, "layout": S.LAYOUT,
+            "obsSchemaVersion": 7 if S.LAYOUT == "v3" else 5, "actionSpaceVersion": 8 if S.LAYOUT == "v3" else 7, "hidden": 384,
             "nOpp": a.n_opp, "main": {"in": MAIN_IN, "out": MAIN_OUT}, "tail": {"in": TAIL_IN, "out": TAIL_OUT}}
     Path(f"{out}.json").write_text(json.dumps(meta, indent=1))
     print(f"wrote {out}.main.onnx, {out}.tail.onnx, {out}.json")

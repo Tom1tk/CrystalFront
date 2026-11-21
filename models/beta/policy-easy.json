@@ -1,0 +1,48 @@
+{
+ "checkpoint": "checkpoints/v2/b1-imitate/final.pt",
+ "layout": "v3",
+ "obsSchemaVersion": 7,
+ "actionSpaceVersion": 8,
+ "hidden": 384,
+ "nOpp": 110,
+ "main": {
+  "in": [
+   "globals",
+   "z",
+   "ent",
+   "ent_n",
+   "nodes",
+   "memory",
+   "grid",
+   "h0",
+   "c0"
+  ],
+  "out": [
+   "h1",
+   "c1",
+   "opp",
+   "hh",
+   "E",
+   "econ",
+   "site",
+   "econPtr",
+   "econTarget",
+   "group",
+   "order",
+   "unit"
+  ]
+ },
+ "tail": {
+  "in": [
+   "hh",
+   "E",
+   "order",
+   "unit",
+   "unit_on"
+  ],
+  "out": [
+   "target",
+   "ptr"
+  ]
+ }
+}

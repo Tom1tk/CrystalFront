@@ -19,6 +19,7 @@ import sys
 
 import torch
 
+from training.v2 import spaces as S
 from training.v2.batch import stack_masks, stack_obs, static_grid
 from training.v2.export_onnx import load
 from training.v2.model import HEADS
@@ -52,8 +53,8 @@ def run(ckpt: str, log: str) -> int:
             # Mask rows actually used for the given choices (same selection as sampling)
             b = torch.arange(1)
             e = g["econ"]
-            bi = (e - 7).clamp(0, 4)
-            ki = (e - 60).clamp(0, 2)
+            bi = (e - S.ECON_BUILD0).clamp(0, S.N_BUILDINGS - 1)
+            ki = (e - S.ECON_REPAIR).clamp(0, S.ECON_PTR_KINDS - 1)
             rows = {"econ": masks["econ"], "site": masks["site"][b, bi], "econPtr": masks["econPtr"][b, ki],
                     "econTarget": masks["econTarget"], "group": masks["group"], "order": masks["order"][b, g["group"]],
                     "unit": masks["unit"][b, g["order"]], "target": masks["target"][b, g["order"]], "ptr": masks["ptr"][b, g["order"]]}

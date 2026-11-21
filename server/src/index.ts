@@ -15,7 +15,7 @@ import { MatchEngine } from "./match/matchEngine.js";
 import { LiveMatchRunner } from "./match/liveMatchRunner.js";
 import { LoadGate } from "./match/loadGate.js";
 import { BotPlayer } from "./match/botPlayer.js";
-import { NeuralBotPlayer, loadNeuralModels, neuralModelFor } from "./match/neuralBotPlayer.js";
+import { NeuralBotPlayer, betaNeuralCheckpoints, loadNeuralModels, neuralModelFor } from "./match/neuralBotPlayer.js";
 import {
   IdleBot, PassiveBot, WeakRushBot, WeakMediumRushBot,
   MediumRushBot, RushBot, TurtleBot, MacroBot, HeavyBot,
@@ -209,7 +209,10 @@ const secondBots = new Map<string, Bot>();
 /** Bots a tournament manager can enter, with their version in the name. */
 function tournamentBots(): { id: string; name: string }[] {
   const out: { id: string; name: string }[] = [];
-  for (const level of ["easy", "normal", "hard"]) if (neuralModelFor(`neural_${level}`)) out.push({ id: `neural_${level}`, name: `Neural ${level[0].toUpperCase()}${level.slice(1)} (0.9)` });
+  const cap = (l: string) => `${l[0].toUpperCase()}${l.slice(1)}`;
+  // "neural_<level>" in a tournament is the 0.9 bot (through the adapter); the beta models are "neuralb_<level>".
+  for (const level of ["easy", "normal", "hard"]) if (neuralModelFor(`neural09_${level}`)) out.push({ id: `neural_${level}`, name: `Neural ${cap(level)} (0.9)` });
+  for (const [level, ckpt] of Object.entries(betaNeuralCheckpoints())) out.push({ id: `neuralb_${level}`, name: `Neural ${cap(level)} (beta ${ckpt})` });
   for (const name of Object.keys(SCRIPTED)) out.push({ id: `${SCRIPTED_PREFIX}${name}`, name: `Scripted ${name} (beta)` });
   for (const name of ["rush", "turtle", "macro", "heavy"]) out.push({ id: name, name: `Classic ${name} (0.9)` });
   return out;
@@ -772,7 +775,7 @@ wss.on("connection", (ws) => {
 
     case CLIENT_MSG.START_BOT_GAME: {
         const { username: bgUsername, bot: botName, mapId: bgMapId, ruleset: bgRuleset } = msg.payload;
-        const neural = botName.startsWith("neural_") ? neuralModelFor(botName) : null;
+        const neural = botName.startsWith("neural_") ? neuralModelFor(botName, bgRuleset) : null;
         if (botName.startsWith("neural_") && !neural) {
           sendWS(ws, { type: SERVER_EVT.ERROR, payload: { message: "That neural opponent is not available on this server." } });
           return;

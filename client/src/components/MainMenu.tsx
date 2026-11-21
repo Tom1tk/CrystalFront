@@ -22,10 +22,10 @@ const BOTS: Array<{ name: string; label: string; sub: string }> = [
 ];
 
 /** Trained neural opponents (G-10): three snapshots of the same policy, further into training. */
-const NEURAL: Array<{ name: string; label: string; sub: string }> = [
-  { name: "neural_easy", label: "Easy", sub: "Learned by copying the scripted bots." },
-  { name: "neural_normal", label: "Normal", sub: "After one round of self-play." },
-  { name: "neural_hard", label: "Hard", sub: "After three rounds of self-play." },
+const NEURAL: Array<{ name: string; label: string; sub: string; betaSub: string }> = [
+  { name: "neural_easy", label: "Easy", sub: "Learned by copying the scripted bots.", betaSub: "0.9 Hard, retaught by the beta scripted bots." },
+  { name: "neural_normal", label: "Normal", sub: "After one round of self-play.", betaSub: "0.9 Hard after one round of beta self-play." },
+  { name: "neural_hard", label: "Hard", sub: "After three rounds of self-play.", betaSub: "0.9 Hard after two rounds of beta self-play." },
 ];
 
 /**
@@ -183,12 +183,12 @@ export default function MainMenu({ onHost, onJoin, onSoloTest, onBotGame, onRepl
             {tab === "bot" && (
               <>
                 <section>
-                  <div className="g-label" style={{ marginBottom: 8 }}>Neural opponent{beta ? " · 0.9 models" : ""}</div>
+                  <div className="g-label" style={{ marginBottom: 8 }}>Neural opponent{beta ? " · beta models" : ""}</div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
                     {NEURAL.map((b) => (
                       <button key={b.name} type="button" className={`g-card${bot === b.name ? " on" : ""}`} onClick={() => setBot(b.name)} style={{ padding: "10px 11px" }}>
                         <span className="g-card-name">{b.label}</span>
-                        <span className="g-sub" style={{ fontSize: 12 }}>{beta ? "The 0.9 bot: it ignores the beta's new features." : b.sub}</span>
+                        <span className="g-sub" style={{ fontSize: 12 }}>{beta ? b.betaSub : b.sub}</span>
                       </button>
                     ))}
                   </div>
