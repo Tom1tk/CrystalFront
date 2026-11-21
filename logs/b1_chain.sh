@@ -4,7 +4,7 @@
 # baseline -> league b1 (2 cycles). If the top-up loses more than 0.05 of the baseline score, the
 # league starts from the surgery model instead (imitating weaker teachers must not undo PPO).
 set -e
-cd /root/CrystalFront
+cd "$(dirname "$0")/.."
 export CF_LAYOUT=v3
 BOTS=rush1,rush2,rush3,turtle,macro,heavy,hidden,sw_rush_turtle,sw_macro_bruiser,sw_fake_brush,sw_turtle_grab,swarm,swarm_mass,swarm_tide,phalanx,gunline,vanguard,rush_post,backdoor,siege,sw_read_macro,sw_read_turtle
 SURG=checkpoints/v3/surgery/cycle_3_v3.pt

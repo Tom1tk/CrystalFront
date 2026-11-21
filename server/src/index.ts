@@ -23,6 +23,8 @@ import type { Agent } from "../../headless/src/types.js";
 import { actionStateOf, headingOf, staticMapOf, type ActionState } from "./match/engine/presentation.js";
 import { encodeVision } from "./match/engine/visibility.js";
 import { ScriptedBotPlayer, scriptedBotFor, SCRIPTED_PREFIX } from "./match/scriptedBotPlayer.js";
+import { SCRIPTED } from "../../headless/src/v3/scripted.js";
+import { TournamentManager, TournamentError, type Tournament, type AdminOp } from "./tournament/tournamentManager.js";
 import { ReplayRunner, listReplays, getReplay, ensureReplaysDir, saveReplay } from "./match/replayRunner.js";
 import type { MatchEntity, MatchState, PlayerSlot, ResourceNode, PlayerEconomy, MatchConfig } from "./match/types.js";
 import { DEFAULT_CONFIG } from "./match/types.js";
@@ -55,6 +57,8 @@ import {
   type BuildingType,
   type UnitType,
   type Ruleset,
+  type TournamentRound,
+  type TournamentSeries,
 } from "@crystalfront/shared";
 import {
   USERNAME_MIN_LENGTH,
@@ -106,6 +110,7 @@ const botPlayers = new Map<string, BotPlayer | NeuralBotPlayer | ScriptedBotPlay
 const liveRunner = new LiveMatchRunner(matchEngine, (matchId: string) => {
   // Step the bot (if any) before broadcasting so the bot's commands are included
   botPlayers.get(matchId)?.tick();
+  secondBots.get(matchId)?.tick();
   const code = matchLobbyMap.get(matchId);
   if (code) {
     broadcastGameState(code);
@@ -168,6 +173,7 @@ matchEngine.setMatchEndCallback((matchId: string, winner: string | null) => {
       console.error("[server] Failed to save replay:", e);
     }
     broadcastMatchEnd(code, winner, matchEngine.getMatch(matchId)?.result?.winType, replayId);
+    tournamentMatchEnded(matchId, code, winner, matchEngine.getMatch(matchId)?.result?.winType, replayId);
 
     // Reset ready states and broadcast so both players see updated scores + un-ready status
     lobbyManager.resetReadyStates(code);
@@ -184,6 +190,137 @@ const matchLobbyMap = new Map<string, string>(); // matchId -> lobbyCode reverse
 // Rate limiting for game commands
 const commandRateMap = new Map<string, { count: number; resetTime: number }>();
 const MAX_COMMANDS_PER_SECOND = 100;
+
+// ── Tournaments (docs/TOURNAMENT_SPEC.md) ────────────────────────────────────
+/** A disconnected tournament player has this long to come back before forfeiting the game. */
+const TOURNAMENT_GRACE_MS = 60_000;
+type Bot = BotPlayer | NeuralBotPlayer | ScriptedBotPlayer;
+/** Live tournament match → its tournament and the seats' lobby player ids. */
+const tMatches = new Map<string, { tid: string; code: string; byPlayer: Record<string, string>; byEntrant: Record<string, string> }>();
+/** Human tournament seat (lobby player id) → its grace timer while nobody is connected to it. */
+const tGrace = new Map<string, ReturnType<typeof setTimeout>>();
+/** Dashboard subscribers. */
+const tWatchers = new Map<WebSocket, { tid: string; token?: string }>();
+/** The red seat's bot in a bot-v-bot tournament match (botPlayers holds blue's). */
+const secondBots = new Map<string, Bot>();
+
+/** Bots a tournament manager can enter, with their version in the name. */
+function tournamentBots(): { id: string; name: string }[] {
+  const out: { id: string; name: string }[] = [];
+  for (const level of ["easy", "normal", "hard"]) if (neuralModelFor(`neural_${level}`)) out.push({ id: `neural_${level}`, name: `Neural ${level[0].toUpperCase()}${level.slice(1)} (0.9)` });
+  for (const name of Object.keys(SCRIPTED)) out.push({ id: `${SCRIPTED_PREFIX}${name}`, name: `Scripted ${name} (beta)` });
+  for (const name of ["rush", "turtle", "macro", "heavy"]) out.push({ id: name, name: `Classic ${name} (0.9)` });
+  return out;
+}
+
+function makeBot(bot: string, playerId: string, matchId: string): Bot {
+  const neural = neuralModelFor(bot);
+  if (neural) return new NeuralBotPlayer(neural, playerId, matchId, matchEngine);
+  const scripted = scriptedBotFor(bot);
+  if (scripted) return new ScriptedBotPlayer(scripted, playerId, matchId, matchEngine);
+  const b = new BotPlayer(createBotAgent(bot), playerId, matchId, matchEngine);
+  b.init();
+  return b;
+}
+
+function tournamentSockets(tid: string, token: string | undefined): WebSocket[] {
+  if (!token) return [];
+  return [...tWatchers].filter(([, w]) => w.tid === tid && w.token === token).map(([ws]) => ws);
+}
+
+function pushTournament(t: Tournament): void {
+  const state = tournaments.publicState(t);
+  for (const [ws, w] of tWatchers) {
+    if (w.tid === t.id) sendWS(ws, { type: SERVER_EVT.TOURNAMENT_STATE, payload: { state, viewer: tournaments.viewer(t, w.token) } });
+  }
+}
+
+/** A human seat nobody is connected to: forfeit the game unless they (re)connect in time. */
+function armGrace(playerId: string, matchId: string): void {
+  clearTimeout(tGrace.get(playerId));
+  tGrace.set(playerId, setTimeout(() => {
+    tGrace.delete(playerId);
+    const match = matchEngine.getMatch(matchId);
+    if (!match || match.phase === "ended") return;
+    loadGate.release(matchId);
+    const other = match.players.find((p) => p && p.playerId !== playerId);
+    if (other) { liveRunner.stop(matchId); matchEngine.endMatch(matchId, other.playerId, "forfeit"); }
+  }, TOURNAMENT_GRACE_MS));
+}
+
+/** Create the lobby and match for a tournament game; bots join at once, humans via TOURNAMENT_PLAY. */
+function startTournamentGame(t: Tournament, round: TournamentRound, s: TournamentSeries, game: number): string | null {
+  const g = s.games[game];
+  const blue = t.entrants.find((e) => e.id === g.blue);
+  const red = t.entrants.find((e) => e.id === (g.blue === s.a ? s.b : s.a));
+  if (!blue || !red) return null;
+  const { code, player: p0 } = lobbyManager.createLobby(blue.name, "beta");
+  const joined = red.bot ? lobbyManager.addBotToLobby(code, red.name) : (() => { const r = lobbyManager.joinLobby(code, red.name === blue.name ? `${red.name}_` : red.name); return r.success ? r.player : null; })();
+  if (!joined) { lobbyManager.leaveLobby(code, p0.id); return null; }
+  const match = matchEngine.createMatch(code, [toPlayerSlot(p0), toPlayerSlot(joined)], { ...DEFAULT_CONFIG, mapId: g.map, ruleset: "beta" });
+  lobbyMatchMap.set(code, match.id);
+  matchLobbyMap.set(match.id, code);
+  tMatches.set(match.id, { tid: t.id, code, byPlayer: { [p0.id]: blue.id, [joined.id]: red.id }, byEntrant: { [blue.id]: p0.id, [red.id]: joined.id } });
+  const humans: string[] = [];
+  for (const [p, e] of [[p0, blue], [joined, red]] as const) {
+    if (e.bot) {
+      const bot = makeBot(e.bot, p.id, match.id);
+      if (botPlayers.has(match.id)) secondBots.set(match.id, bot); else botPlayers.set(match.id, bot);
+    } else {
+      humans.push(p.id);
+      armGrace(p.id, match.id);
+      for (const ws of tournamentSockets(t.id, t.tokens[e.id])) {
+        sendWS(ws, { type: SERVER_EVT.TOURNAMENT_MATCH_START, payload: { code: t.code, round: round.number, slot: s.slot, game } });
+      }
+    }
+  }
+  loadGate.wait(match.id, humans);
+  return match.id;
+}
+
+const tournaments = new TournamentManager({
+  startGame: startTournamentGame,
+  stopGame: (matchId, winner) => {
+    const tm = tMatches.get(matchId);
+    const match = matchEngine.getMatch(matchId);
+    if (!tm || !match || match.phase === "ended") return;
+    loadGate.release(matchId);
+    liveRunner.stop(matchId);
+    matchEngine.endMatch(matchId, (winner ? tm.byEntrant[winner] ?? null : null) as PlayerId, "forfeit");
+  },
+  changed: pushTournament,
+  readyCheck: (t, s, game) => {
+    for (const [me, them] of [[s.a, s.b], [s.b, s.a]] as const) {
+      if (!me || !them) continue;
+      const opponent = t.entrants.find((e) => e.id === them)?.name ?? "?";
+      for (const ws of tournamentSockets(t.id, t.tokens[me])) {
+        sendWS(ws, { type: SERVER_EVT.TOURNAMENT_MATCH_READY, payload: {
+          code: t.code, round: t.rounds.length, slot: s.slot, game, opponent, map: s.games[game].map,
+          side: s.games[game].blue === me ? "blue" : "red", deadline: s.deadline ?? Date.now(),
+        } });
+      }
+    }
+  },
+}, { botName: (bot) => tournamentBots().find((b) => b.id === bot)?.name ?? null, isMap: isKnownMap });
+const tournamentTick = setInterval(() => tournaments.tick(), 1000);
+
+/** After a tournament match ends: free its seats and report the result (deferred, so a forced stop can't re-enter). */
+function tournamentMatchEnded(matchId: string, code: string, winner: string | null, winType?: string, replayId?: string): void {
+  const tm = tMatches.get(matchId);
+  if (!tm) return;
+  tMatches.delete(matchId);
+  secondBots.delete(matchId);
+  for (const pid of Object.keys(tm.byPlayer)) {
+    clearTimeout(tGrace.get(pid));
+    tGrace.delete(pid);
+    playerLobbyMap.delete(pid);
+    lobbyManager.leaveLobby(code, pid);
+  }
+  lobbyMatchMap.delete(code);
+  matchLobbyMap.delete(matchId);
+  const winnerEntrant = winner ? tm.byPlayer[winner] ?? null : null;
+  setImmediate(() => tournaments.gameEnded(matchId, winnerEntrant, winType, replayId));
+}
 
 function sendWS(ws: WebSocket, msg: ServerToClientMsg) {
   if (ws.readyState === WebSocket.OPEN) {
@@ -1057,6 +1194,72 @@ wss.on("connection", (ws) => {
         break;
       }
 
+      case CLIENT_MSG.TOURNAMENT_CREATE:
+      case CLIENT_MSG.TOURNAMENT_JOIN:
+      case CLIENT_MSG.TOURNAMENT_LEAVE:
+      case CLIENT_MSG.TOURNAMENT_READY:
+      case CLIENT_MSG.TOURNAMENT_WATCH:
+      case CLIENT_MSG.TOURNAMENT_ADMIN:
+      case CLIENT_MSG.TOURNAMENT_PLAY: {
+        const fail = (message: string) => sendWS(ws, { type: SERVER_EVT.TOURNAMENT_ERROR, payload: { message } });
+        const p = msg.payload as { code?: string; token?: string };
+        const token = typeof p.token === "string" && p.token.length >= 16 && p.token.length <= 128 ? p.token : undefined;
+        if (msg.type !== CLIENT_MSG.TOURNAMENT_WATCH && !token) { fail("Missing or invalid token."); break; }
+        try {
+          if (msg.type === CLIENT_MSG.TOURNAMENT_CREATE) {
+            const t = tournaments.create(token!, msg.payload.settings, poolMaps().map((m) => m.mapId));
+            tWatchers.set(ws, { tid: t.id, token });
+            pushTournament(t);
+            break;
+          }
+          const t = tournaments.byCode(String(p.code ?? ""));
+          if (!t) { fail("Tournament not found."); break; }
+          switch (msg.type) {
+            case CLIENT_MSG.TOURNAMENT_WATCH:
+              tWatchers.set(ws, { tid: t.id, token });
+              sendWS(ws, { type: SERVER_EVT.TOURNAMENT_STATE, payload: { state: tournaments.publicState(t), viewer: tournaments.viewer(t, token) } });
+              break;
+            case CLIENT_MSG.TOURNAMENT_JOIN:
+              tWatchers.set(ws, { tid: t.id, token });
+              tournaments.join(t, String(msg.payload.username ?? "").trim().slice(0, 20), token!);
+              break;
+            case CLIENT_MSG.TOURNAMENT_LEAVE: tournaments.leave(t, token!); break;
+            case CLIENT_MSG.TOURNAMENT_READY: tournaments.ready(t, token!); break;
+            case CLIENT_MSG.TOURNAMENT_ADMIN: {
+              const { code: _c, token: _t, ...op } = msg.payload;
+              tournaments.admin(t, token!, op as AdminOp);
+              break;
+            }
+            case CLIENT_MSG.TOURNAMENT_PLAY: {
+              const entrantId = tournaments.viewer(t, token).entrantId;
+              const live = entrantId ? [...tMatches].find(([, m]) => m.tid === t.id && m.byEntrant[entrantId]) : undefined;
+              const match = live && matchEngine.getMatch(live[0]);
+              if (!live || !match || match.phase === "ended") { fail("You have no game in progress."); break; }
+              const [matchId, tm] = live;
+              const seat = tm.byEntrant[entrantId!];
+              clearTimeout(tGrace.get(seat));
+              tGrace.delete(seat);
+              // A second tab takes the seat over.
+              const old = playerLobbyMap.get(seat);
+              if (old && old.ws !== ws) sendWS(old.ws, { type: SERVER_EVT.TOURNAMENT_ERROR, payload: { message: "This game was opened in another window." } });
+              playerId = seat;
+              playerLobbyMap.set(seat, { playerId: seat, code: tm.code, ws, matchId });
+              sendWS(ws, { type: SERVER_EVT.CONNECTED, payload: { playerId: seat } });
+              broadcastLobbyState(ws, tm.code);
+              sendWS(ws, { type: SERVER_EVT.MATCH_START, payload: { match: buildMatchStatePayload(match, undefined, seat) } });
+              break;
+            }
+          }
+        } catch (e) {
+          if (e instanceof TournamentError) fail(e.message); else throw e;
+        }
+        break;
+      }
+
+      case CLIENT_MSG.TOURNAMENT_UNWATCH:
+        tWatchers.delete(ws);
+        break;
+
       case CLIENT_MSG.CLIENT_LOADED: {
         const matchId = playerId ? playerLobbyMap.get(playerId)?.matchId : undefined;
         if (matchId) loadGate.loaded(matchId, playerId!);
@@ -1085,6 +1288,16 @@ wss.on("connection", (ws) => {
     if (watchingMatchId) {
       replayRunner.stop(watchingMatchId);
       replayWatchers.delete(ws);
+    }
+    tWatchers.delete(ws);
+
+    // A tournament seat survives a disconnect: the player has a grace period to rejoin with TOURNAMENT_PLAY.
+    const tSession = playerId ? playerLobbyMap.get(playerId) : undefined;
+    if (playerId && tSession?.matchId && tMatches.has(tSession.matchId)) {
+      // Unless another window has taken the seat over.
+      if (tSession.ws === ws) { playerLobbyMap.delete(playerId); armGrace(playerId, tSession.matchId); }
+      playerId = null;
+      return;
     }
 
     if (playerId) {
@@ -1166,6 +1379,7 @@ const rateLimitCleanup = setInterval(() => {
 httpServer.on("close", () => {
   clearInterval(pingInterval);
   clearInterval(rateLimitCleanup);
+  clearInterval(tournamentTick);
 });
 
 // API routes
@@ -1178,6 +1392,10 @@ app.get("/api/matches", (_req: Request, res: Response) => {
 });
 
 /** G-7: maps the lobby offers (pool first, then dev maps), with thumbnail data. */
+app.get("/api/tournaments", (_req: Request, res: Response) => {
+  res.json({ tournaments: tournaments.summaries(), bots: tournamentBots() });
+});
+
 app.get("/api/maps", (_req: Request, res: Response) => {
   const W = DEFAULT_CONFIG.mapWidth, H = DEFAULT_CONFIG.mapHeight;
   const describe = (mapId: string, name: string, version: number, approved: string | null, pool: boolean) => {

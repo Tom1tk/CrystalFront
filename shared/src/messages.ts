@@ -1,4 +1,5 @@
 import type { PlayerId, LobbyState, MatchState, ClientCommand, EntityType, BuildingType, Ruleset, WinType } from "./types.js";
+import type { TournamentPublicState, TournamentSettings, TournamentViewer } from "./tournament.js";
 
 export const WS_EVENT = {
   CONNECTED: "connected",
@@ -24,6 +25,18 @@ export const WS_EVENT = {
   CLIENT_LOADED: "client_loaded",
   /** Which players have finished loading a new match (sent while it waits to start). */
   LOAD_STATUS: "load_status",
+  TOURNAMENT_CREATE: "tournament_create",
+  TOURNAMENT_JOIN: "tournament_join",
+  TOURNAMENT_LEAVE: "tournament_leave",
+  TOURNAMENT_READY: "tournament_ready",
+  TOURNAMENT_WATCH: "tournament_watch",
+  TOURNAMENT_UNWATCH: "tournament_unwatch",
+  TOURNAMENT_PLAY: "tournament_play",
+  TOURNAMENT_ADMIN: "tournament_admin",
+  TOURNAMENT_STATE: "tournament_state",
+  TOURNAMENT_MATCH_READY: "tournament_match_ready",
+  TOURNAMENT_MATCH_START: "tournament_match_start",
+  TOURNAMENT_ERROR: "tournament_error",
 } as const;
 
 export const CLIENT_MSG = {
@@ -44,6 +57,16 @@ export const CLIENT_MSG = {
   REPLAY_SPEED: "replay_speed",
   /** The client finished loading the match (3D assets); the server starts it when all have. */
   CLIENT_LOADED: "client_loaded",
+  TOURNAMENT_CREATE: "tournament_create",
+  TOURNAMENT_JOIN: "tournament_join",
+  TOURNAMENT_LEAVE: "tournament_leave",
+  TOURNAMENT_READY: "tournament_ready",
+  /** Subscribe to a tournament's dashboard (anyone, no join needed). */
+  TOURNAMENT_WATCH: "tournament_watch",
+  TOURNAMENT_UNWATCH: "tournament_unwatch",
+  /** Join (or rejoin after a reconnect) this player's live tournament match. */
+  TOURNAMENT_PLAY: "tournament_play",
+  TOURNAMENT_ADMIN: "tournament_admin",
 } as const;
 
 export const SERVER_EVT = {
@@ -57,6 +80,12 @@ export const SERVER_EVT = {
   REPLAY_END: "replay_end",
   /** Which players have finished loading a new match (sent while it waits to start). */
   LOAD_STATUS: "load_status",
+  TOURNAMENT_STATE: "tournament_state",
+  /** Ready check for this player's next tournament game. */
+  TOURNAMENT_MATCH_READY: "tournament_match_ready",
+  /** This player's tournament game has been created: reply with TOURNAMENT_PLAY to enter it. */
+  TOURNAMENT_MATCH_START: "tournament_match_start",
+  TOURNAMENT_ERROR: "tournament_error",
 } as const;
 
 export type ClientToServerMsg =
@@ -75,7 +104,15 @@ export type ClientToServerMsg =
   | { type: typeof CLIENT_MSG.START_REPLAY; payload: { replayId: string } }
   | { type: typeof CLIENT_MSG.STOP_REPLAY }
   | { type: typeof CLIENT_MSG.REPLAY_SPEED; payload: { speed: number } }
-  | { type: typeof CLIENT_MSG.CLIENT_LOADED };
+  | { type: typeof CLIENT_MSG.CLIENT_LOADED }
+  | { type: typeof CLIENT_MSG.TOURNAMENT_CREATE; payload: { token: string; settings: Partial<TournamentSettings> & { name: string } } }
+  | { type: typeof CLIENT_MSG.TOURNAMENT_JOIN; payload: { code: string; username: string; token: string } }
+  | { type: typeof CLIENT_MSG.TOURNAMENT_LEAVE; payload: { code: string; token: string } }
+  | { type: typeof CLIENT_MSG.TOURNAMENT_READY; payload: { code: string; token: string } }
+  | { type: typeof CLIENT_MSG.TOURNAMENT_WATCH; payload: { code: string; token?: string } }
+  | { type: typeof CLIENT_MSG.TOURNAMENT_UNWATCH }
+  | { type: typeof CLIENT_MSG.TOURNAMENT_PLAY; payload: { code: string; token: string } }
+  | { type: typeof CLIENT_MSG.TOURNAMENT_ADMIN; payload: { code: string; token: string; op: string; [arg: string]: unknown } };
 
 export type ServerToClientMsg =
   | { type: typeof SERVER_EVT.CONNECTED; payload: { playerId: PlayerId } }
@@ -86,4 +123,8 @@ export type ServerToClientMsg =
   | { type: typeof SERVER_EVT.MATCH_START; payload: { match: MatchState } }
   | { type: typeof SERVER_EVT.GAME_STATE; payload: { match: MatchState } }
   | { type: typeof SERVER_EVT.REPLAY_END; payload: { ticks: number; winner: string | null } }
-  | { type: typeof SERVER_EVT.LOAD_STATUS; payload: { loaded: PlayerId[] } };
+  | { type: typeof SERVER_EVT.LOAD_STATUS; payload: { loaded: PlayerId[] } }
+  | { type: typeof SERVER_EVT.TOURNAMENT_STATE; payload: { state: TournamentPublicState; viewer: TournamentViewer } }
+  | { type: typeof SERVER_EVT.TOURNAMENT_MATCH_READY; payload: { code: string; round: number; slot: number; game: number; opponent: string; map: string; side: "blue" | "red"; deadline: number } }
+  | { type: typeof SERVER_EVT.TOURNAMENT_MATCH_START; payload: { code: string; round: number; slot: number; game: number } }
+  | { type: typeof SERVER_EVT.TOURNAMENT_ERROR; payload: { message: string } };

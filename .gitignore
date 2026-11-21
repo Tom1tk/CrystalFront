@@ -13,3 +13,4 @@ headless/src/**/*.d.ts
 
 # TypeScript incremental build caches (local only)
 *.tsbuildinfo
+tournaments/
