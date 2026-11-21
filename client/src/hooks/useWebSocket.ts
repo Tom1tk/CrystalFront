@@ -8,6 +8,26 @@ import type {
   BuildingType,
   Ruleset,
 } from "../types";
+import type { TournamentPublicState, TournamentViewer } from "@crystalfront/shared";
+
+export interface TournamentView { state: TournamentPublicState; viewer: TournamentViewer }
+export interface TournamentMatchReady { code: string; round: number; slot: number; game: number; opponent: string; map: string; side: "blue" | "red"; deadline: number }
+export interface TournamentMatchStart { code: string; round: number; slot: number; game: number }
+
+const TOKEN_KEY = "cf.tournamentToken";
+/** This browser's tournament identity: registers, readies up and (for its creator) manages. */
+export function tournamentToken(): string {
+  try {
+    let t = window.localStorage.getItem(TOKEN_KEY);
+    if (!t) { t = [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, "0")).join(""); window.localStorage.setItem(TOKEN_KEY, t); }
+    return t;
+  } catch {
+    // Storage blocked: a per-page token (lost on reload).
+    const w = window as unknown as { __cfToken?: string };
+    w.__cfToken ??= [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, "0")).join("");
+    return w.__cfToken;
+  }
+}
 
 const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 const WS_URL = `${protocol}//${window.location.host}`;
@@ -49,6 +69,17 @@ interface UseWebSocketReturn {
   clearMatchState: () => void;
   clearReplayEnd: () => void;
   clearError: () => void;
+  tournament: TournamentView | null;
+  tournamentError: string | null;
+  tournamentReady: TournamentMatchReady | null;
+  tournamentStart: TournamentMatchStart | null;
+  /** Watch a tournament (null = stop); the connection then reconnects by itself if it drops. */
+  watchTournament: (code: string | null) => void;
+  /** Send a tournament message; `code` and this browser's token are added. */
+  tournamentSend: (type: string, payload?: Record<string, unknown>) => void;
+  /** Enter (or re-enter) this player's live tournament game; kept across reconnects until `false`. */
+  playTournament: (on: boolean) => void;
+  clearTournamentStart: () => void;
 }
 
 export function useWebSocket(): UseWebSocketReturn {
@@ -63,14 +94,28 @@ export function useWebSocket(): UseWebSocketReturn {
   const [loadedPlayers, setLoadedPlayers] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
+  const [tournament, setTournament] = useState<TournamentView | null>(null);
+  const [tournamentError, setTournamentError] = useState<string | null>(null);
+  const [tournamentReady, setTournamentReady] = useState<TournamentMatchReady | null>(null);
+  const [tournamentStart, setTournamentStart] = useState<TournamentMatchStart | null>(null);
+  const tWatchRef = useRef<string | null>(null);
+  const tPlayRef = useRef(false);
 
   useEffect(() => {
+    let disposed = false;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const connect = () => {
     const ws = new WebSocket(WS_URL);
     wsRef.current = ws;
 
     ws.onopen = () => {
       setConnected(true);
       setError(null);
+      const code = tWatchRef.current;
+      if (code) {
+        ws.send(JSON.stringify({ type: "tournament_watch", payload: { code, token: tournamentToken() } }));
+        if (tPlayRef.current) ws.send(JSON.stringify({ type: "tournament_play", payload: { code, token: tournamentToken() } }));
+      }
     };
 
     ws.onerror = () => {
@@ -78,8 +123,10 @@ export function useWebSocket(): UseWebSocketReturn {
       setTimeout(() => setError(null), 4000);
     };
 
-    ws.onclose = (event) => {
+    ws.onclose = () => {
       setConnected(false);
+      // Only tournament pages reconnect: a tournament seat survives a short drop (60 s grace).
+      if (!disposed && tWatchRef.current) retry = setTimeout(connect, 2000);
     };
 
     ws.onmessage = (event) => {
@@ -119,6 +166,21 @@ export function useWebSocket(): UseWebSocketReturn {
         if (msg.type === "load_status" && Array.isArray(msg.payload?.loaded)) {
           setLoadedPlayers(msg.payload.loaded as string[]);
         }
+        if (msg.type === "tournament_state" && msg.payload?.state) {
+          const view = msg.payload as unknown as TournamentView;
+          tWatchRef.current ??= view.state.code;
+          setTournament(view);
+        }
+        if (msg.type === "tournament_error" && msg.payload?.message) {
+          setTournamentError(msg.payload.message as string);
+          setTimeout(() => setTournamentError(null), 5000);
+        }
+        if (msg.type === "tournament_match_ready" && msg.payload) {
+          setTournamentReady(msg.payload as unknown as TournamentMatchReady);
+        }
+        if (msg.type === "tournament_match_start" && msg.payload) {
+          setTournamentStart(msg.payload as unknown as TournamentMatchStart);
+        }
         if (msg.type === "replay_end") {
           setReplayEnd(msg.payload as { ticks: number; winner: string | null });
           setMatchState(null);
@@ -129,8 +191,13 @@ export function useWebSocket(): UseWebSocketReturn {
       }
     };
 
+    };
+    connect();
+
     return () => {
-      ws.close();
+      disposed = true;
+      clearTimeout(retry);
+      wsRef.current?.close();
     };
   }, []);
 
@@ -249,6 +316,25 @@ export function useWebSocket(): UseWebSocketReturn {
     setError(null);
   }, []);
 
+  const watchTournament = useCallback((code: string | null) => {
+    if (tWatchRef.current && tWatchRef.current !== code) sendMessage({ type: "tournament_unwatch" });
+    tWatchRef.current = code;
+    setTournament(null);
+    setTournamentReady(null);
+    if (code) sendMessage({ type: "tournament_watch", payload: { code, token: tournamentToken() } });
+  }, [sendMessage]);
+
+  const tournamentSend = useCallback((type: string, payload: Record<string, unknown> = {}) => {
+    sendMessage({ type, payload: { code: tWatchRef.current ?? undefined, ...payload, token: tournamentToken() } });
+  }, [sendMessage]);
+
+  const playTournament = useCallback((on: boolean) => {
+    tPlayRef.current = on;
+    if (on && tWatchRef.current) sendMessage({ type: "tournament_play", payload: { code: tWatchRef.current, token: tournamentToken() } });
+  }, [sendMessage]);
+
+  const clearTournamentStart = useCallback(() => setTournamentStart(null), []);
+
   return {
     playerId,
     lobbyState,
@@ -277,5 +363,13 @@ export function useWebSocket(): UseWebSocketReturn {
     clearMatchState,
     clearReplayEnd,
     clearError,
+    tournament,
+    tournamentError,
+    tournamentReady,
+    tournamentStart,
+    watchTournament,
+    tournamentSend,
+    playTournament,
+    clearTournamentStart,
   };
 }

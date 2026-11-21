@@ -1467,8 +1467,8 @@ const rootDir = path.resolve(serverDir, "..", "..");
 const clientBuildPath = path.join(rootDir, "client", "dist");
 app.use(express.static(clientBuildPath));
 
-// Catch-all for SPA routing
-app.get("{*path}", (_req: Request, res: Response) => {
+// Catch-all for SPA routes (/t/<CODE>); Express 4, so a regex. API and asset paths still 404.
+app.get(/^\/(?!api\/)[^.]*$/, (_req: Request, res: Response) => {
   res.sendFile(path.join(clientBuildPath, "index.html"));
 });
 

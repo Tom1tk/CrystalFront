@@ -5,6 +5,7 @@ import LobbyScreen from "./components/LobbyScreen";
 import GameShell, { initialView3d, saveView3d } from "./components/GameShell";
 import MatchEndScreen from "./components/MatchEndScreen";
 import ReplayBrowser from "./components/ReplayBrowser";
+import TournamentScreen from "./components/TournamentScreen";
 import type { Screen, Player, MatchState, Lobby, Ruleset } from "./types";
 import MenuBackdrop from "./components/MenuBackdrop";
 import BootScreen from "./components/BootScreen";
@@ -14,8 +15,17 @@ import { SoundToggle, IconBtn, setAccent } from "./design/glass";
 import { setMusic } from "./audio";
 import { themeFor } from "./mapThemes";
 
+/** /t (list) or /t/<CODE> (dashboard) on load. */
+function routeTournament(): string | null | undefined {
+  const m = /^\/t(?:\/([A-Za-z0-9]{6}))?\/?$/.exec(window.location.pathname);
+  return m ? (m[1]?.toUpperCase() ?? null) : undefined;
+}
+
 function useScreenFlow() {
-  const [screen, setScreen] = useState<Screen>("menu");
+  const [screen, setScreen] = useState<Screen>(() => (routeTournament() !== undefined ? "tournament" : "menu"));
+  /** Open tournament dashboard (null = the list). Tournament games return here. */
+  const [tCode, setTCode] = useState<string | null>(() => routeTournament() ?? null);
+  const inTournamentGameRef = useRef(false);
   const [isHost, setIsHost] = useState(false);
   const [replayTotalTicks, setReplayTotalTicks] = useState<number | undefined>(undefined);
   const hasLobbyStateRef = useRef(false);
@@ -27,6 +37,10 @@ function useScreenFlow() {
   const replayDoneRef = useRef(false);
 
   const ws = useWebSocket();
+
+  useEffect(() => {
+    if (tCode) ws.watchTournament(tCode);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Transition to lobby when lobby data arrives (using ref to avoid unstable ws dependency)
   useEffect(() => {
@@ -200,11 +214,93 @@ function useScreenFlow() {
   }, [ws.clearMatchEnd, ws.clearMatchState, ws.leaveLobby]);
 
   const handleExit = useCallback(() => {
+    if (inTournamentGameRef.current) {
+      // The server frees tournament seats when the game ends; leaving a live one forfeits it.
+      const live = !ws.matchEnd && ws.matchState?.phase !== "ended";
+      inTournamentGameRef.current = false;
+      ws.playTournament(false);
+      ws.clearTournamentStart();
+      ws.clearMatchEnd();
+      ws.clearMatchState();
+      if (live) ws.leaveLobby();
+      setScreen("tournament");
+      return;
+    }
     ws.clearMatchEnd();
     ws.clearMatchState();
     ws.leaveLobby();
     setScreen("menu");
-  }, [ws.clearMatchEnd, ws.clearMatchState, ws.leaveLobby]);
+  }, [ws.matchEnd, ws.matchState, ws.playTournament, ws.clearTournamentStart, ws.clearMatchEnd, ws.clearMatchState, ws.leaveLobby]);
+
+  // ─── tournaments ───
+  const openTournament = useCallback((code: string | null) => {
+    setTCode(code);
+    ws.watchTournament(code);
+    const path = code ? `/t/${code}` : "/t";
+    if (window.location.pathname !== path) window.history.pushState(null, "", path);
+    setScreen("tournament");
+  }, [ws.watchTournament]);
+
+  const closeTournaments = useCallback(() => {
+    setTCode(null);
+    ws.watchTournament(null);
+    if (window.location.pathname !== "/") window.history.pushState(null, "", "/");
+    setScreen("menu");
+  }, [ws.watchTournament]);
+
+  // A tournament just created (or state for a code we didn't ask for) opens its dashboard.
+  useEffect(() => {
+    if (screen === "tournament" && !tCode && ws.tournament) openTournament(ws.tournament.state.code);
+  }, [ws.tournament]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Take this player's seat in their live tournament game; the match state then opens the game. */
+  const enterTournamentGame = useCallback(() => {
+    inTournamentGameRef.current = true;
+    hasLobbyStateRef.current = true; // straight to the game, no lobby screen
+    restartRef.current = null;
+    setIsHost(false);
+    setVsBot(false);
+    ws.playTournament(true);
+  }, [ws.playTournament]);
+
+  // The server announces a starting game: enter it (once per game).
+  const enteredRef = useRef("");
+  useEffect(() => {
+    const st = ws.tournamentStart;
+    if (!st || screen !== "tournament") return;
+    const key = `${st.code}/${st.round}/${st.slot}/${st.game}`;
+    if (enteredRef.current === key) return;
+    enteredRef.current = key;
+    enterTournamentGame();
+  }, [ws.tournamentStart, screen]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A voided tournament game has no result card: go back to the dashboard.
+  useEffect(() => {
+    if (screen !== "matchEnd" || !inTournamentGameRef.current) return;
+    const winType = ws.matchEnd?.winType ?? ws.matchState?.result?.winType;
+    if (ws.matchEnd?.winner || ws.matchState?.result?.winner || winType === "draw") return;
+    const id = setTimeout(handleExit, 1500);
+    return () => clearTimeout(id);
+  }, [screen, ws.matchEnd, ws.matchState?.result, handleExit]);
+
+  // Browser back/forward between the menu, the list and dashboards.
+  useEffect(() => {
+    const onPop = () => {
+      const r = routeTournament();
+      if (screen !== "menu" && screen !== "tournament") return;
+      if (r === undefined) { setTCode(null); ws.watchTournament(null); setScreen("menu"); }
+      else { setTCode(r); ws.watchTournament(r); setScreen("tournament"); }
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [screen, ws.watchTournament]);
+
+  const watchTournamentReplay = useCallback((replayId: string) => {
+    void fetch(`/api/replays/${replayId}`).then((r) => r.json()).then((rep) => {
+      setScreen("replays");
+      handleWatchReplay(replayId, rep?.outcome?.ticks ?? 0);
+    }).catch(() => {});
+  }, [handleWatchReplay]);
 
   /** From the result screen: leave the lobby and play back the replay just saved. */
   const handleWatchMatchReplay = useCallback(() => {
@@ -295,6 +391,12 @@ function useScreenFlow() {
     handleGameCommand,
     handleBotGame,
     vsBot,
+    tCode,
+    openTournament,
+    closeTournaments,
+    enterTournamentGame,
+    watchTournamentReplay,
+    inTournamentGame: inTournamentGameRef.current,
   };
 }
 
@@ -330,6 +432,12 @@ export default function App() {
     handleGameCommand,
     handleBotGame,
     vsBot,
+    tCode,
+    openTournament,
+    closeTournaments,
+    enterTournamentGame,
+    watchTournamentReplay,
+    inTournamentGame,
   } = useScreenFlow();
 
   const player = getCurrentPlayer();
@@ -369,7 +477,7 @@ export default function App() {
     const t = setTimeout(() => setBootDone(true), backdropReady ? Math.max(0, 800 - performance.now()) : 8000);
     return () => clearTimeout(t);
   }, [backdropReady]);
-  const menuScreen = screen === "menu" || screen === "replays" || screen === "lobby";
+  const menuScreen = screen === "menu" || screen === "replays" || screen === "lobby" || screen === "tournament";
   const inMatch = screen === "game" || screen === "matchEnd" || screen === "watching_replay";
   const backdropId = screen === "lobby" && lobby?.mapId && lobby.mapId !== "random" ? lobby.mapId : previewId;
   const backdropMap = maps.find((m) => m.mapId === backdropId) ?? null;
@@ -395,11 +503,15 @@ export default function App() {
       )}
       {screen === "menu" && (
         <MainMenu onHost={handleHost} onJoin={handleJoin} onSoloTest={handleSoloTest} onBotGame={handleBotGame}
-          onReplays={handleOpenReplays} onSettings={() => setSettingsOpen(true)}
+          onReplays={handleOpenReplays} onTournaments={() => openTournament(null)} onSettings={() => setSettingsOpen(true)}
           onPreviewMap={(id) => { if (id !== "random") setPreviewId(id); }} error={ws.error} />
       )}
       {screen === "replays" && (
         <ReplayBrowser onBack={handleBackFromReplays} onWatch={handleWatchReplay} />
+      )}
+      {screen === "tournament" && (
+        <TournamentScreen code={tCode} view={ws.tournament} error={ws.tournamentError} ready={ws.tournamentReady} maps={maps}
+          onOpen={openTournament} onBack={closeTournaments} send={ws.tournamentSend} onPlay={enterTournamentGame} onWatchReplay={watchTournamentReplay} />
       )}
       {screen === "watching_replay" && displayMatchState && (
         <GameShell
@@ -460,9 +572,10 @@ export default function App() {
           winType={ws.matchEnd?.winType ?? ws.matchState?.result?.winType}
           ticks={matchState?.tick ?? 0}
           mapName={maps.find((m) => m.mapId === matchState?.staticMap?.mapId)?.name ?? matchState?.staticMap?.mapId ?? "Unknown"}
-          onRematch={handleRematch}
-          onWatchReplay={ws.matchEnd?.replayId ? handleWatchMatchReplay : undefined}
+          onRematch={inTournamentGame ? undefined : handleRematch}
+          onWatchReplay={ws.matchEnd?.replayId && !inTournamentGame ? handleWatchMatchReplay : undefined}
           onExit={handleExit}
+          exitLabel={inTournamentGame ? "Tournament" : "Menu"}
         />
       )}
     </div>

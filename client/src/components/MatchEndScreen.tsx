@@ -15,7 +15,9 @@ interface MatchEndScreenProps {
   winType?: string;
   ticks: number;
   mapName: string;
-  onRematch: () => void;
+  /** Unset hides Rematch (tournament games). */
+  onRematch?: () => void;
+  exitLabel?: string;
   onWatchReplay?: () => void;
   onExit: () => void;
 }
@@ -29,7 +31,7 @@ const HOW: Record<string, string> = {
   forfeit: "by forfeit",
 };
 
-export default function MatchEndScreen({ lobby, player, winnerId, winType, ticks, mapName, onRematch, onWatchReplay, onExit }: MatchEndScreenProps) {
+export default function MatchEndScreen({ lobby, player, winnerId, winType, ticks, mapName, onRematch, onWatchReplay, onExit, exitLabel = "Menu" }: MatchEndScreenProps) {
   const draw = winnerId === null;
   const won = player.id === winnerId;
   const players = lobby.players.filter((p): p is Player => p !== null);
@@ -71,9 +73,9 @@ export default function MatchEndScreen({ lobby, player, winnerId, winType, ticks
         </div>
 
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-          <button type="button" className="g-btn primary" style={{ flex: 1 }} onClick={onRematch}><Icon name="play" size={16} />Rematch</button>
+          {onRematch && <button type="button" className="g-btn primary" style={{ flex: 1 }} onClick={onRematch}><Icon name="play" size={16} />Rematch</button>}
           {onWatchReplay && <button type="button" className="g-btn" onClick={onWatchReplay}><Icon name="film" size={16} />Replay</button>}
-          <button type="button" className="g-btn" onClick={onExit}>Menu</button>
+          <button type="button" className={`g-btn${onRematch ? "" : " primary"}`} style={onRematch ? undefined : { flex: 1 }} onClick={onExit}>{exitLabel}</button>
         </div>
       </div>
     </div>

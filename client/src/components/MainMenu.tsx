@@ -84,13 +84,14 @@ interface MainMenuProps {
   onSoloTest: (username: string, mapId: string, ruleset: Ruleset) => void;
   onBotGame: (username: string, bot: string, mapId: string, ruleset: Ruleset) => void;
   onReplays: () => void;
+  onTournaments: () => void;
   onSettings: () => void;
   /** Show this map in the backdrop ("random": keep the current one). */
   onPreviewMap: (mapId: string) => void;
   error?: string | null;
 }
 
-export default function MainMenu({ onHost, onJoin, onSoloTest, onBotGame, onReplays, onSettings, onPreviewMap, error: serverError }: MainMenuProps) {
+export default function MainMenu({ onHost, onJoin, onSoloTest, onBotGame, onReplays, onTournaments, onSettings, onPreviewMap, error: serverError }: MainMenuProps) {
   const [page, setPage] = useState<"home" | "play">("home");
   const [tab, setTab] = useState<PlayTab>("bot");
   const [username, setUsername] = useState(savedName);
@@ -138,6 +139,10 @@ export default function MainMenu({ onHost, onJoin, onSoloTest, onBotGame, onRepl
             <button type="button" className="g-btn primary big full left" style={{ marginTop: 6 }} onClick={() => withName(() => setPage("play"))}>
               <span style={{ display: "flex", alignItems: "center", gap: 10 }}><Icon name="play" size={18} />Play</span>
               <span className="g-btn-sub">vs bot · online · solo</span>
+            </button>
+            <button type="button" className="g-btn full left" onClick={onTournaments}>
+              <span style={{ display: "flex", alignItems: "center", gap: 10 }}><Icon name="star" size={18} />Tournaments</span>
+              <span className="g-btn-sub">Swiss · join with a code</span>
             </button>
             <button type="button" className="g-btn full left" onClick={onReplays}>
               <span style={{ display: "flex", alignItems: "center", gap: 10 }}><Icon name="film" size={18} />Replays</span>
