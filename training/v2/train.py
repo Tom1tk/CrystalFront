@@ -73,6 +73,8 @@ def parse() -> argparse.Namespace:
     ap.add_argument("--init", default="", help="start from these model weights (fresh optimiser and counters); with --kl-coef, also the frozen reference policy")
     ap.add_argument("--kl-coef", type=float, default=0.0, help="KL penalty toward the --init policy (k3 estimator on the taken actions)")
     ap.add_argument("--kl-anneal", type=float, default=0.5, help="fraction of the budget over which --kl-coef anneals linearly to 0")
+    ap.add_argument("--scout-teacher", default="", help="frozen checkpoint whose Outrider handling is distilled: where it picks the scout group, the policy gets cross-entropy on its army action")
+    ap.add_argument("--scout-coef", type=float, default=1.0, help="weight of the scout distillation loss (averaged over all decisions)")
     ap.add_argument("--imitate", action="store_true", help="behaviour cloning: both seats are teach:<bot> from --opponents; policy heads learn the teacher's actions (cross-entropy), value heads the returns")
     ap.add_argument("--overfit", action="store_true", help="with --imitate: collect one rollout and train on it repeatedly (overfit probe: loss < 0.05)")
     a = ap.parse_args()
@@ -202,6 +204,13 @@ def main() -> None:
             ref.eval()
             for p_ in ref.parameters():
                 p_.requires_grad_(False)
+    teach = None
+    if a.scout_teacher:
+        teach = Agent().to(dev)
+        load_weights(teach, torch.load(a.scout_teacher, map_location=dev)["model"])
+        teach.eval()
+        for p_ in teach.parameters():
+            p_.requires_grad_(False)
     if a.resume:
         ck = torch.load(a.resume, map_location=dev)
         agent.load_state_dict(ck["model"])
@@ -233,6 +242,7 @@ def main() -> None:
     ep_ret = np.zeros((B, 3))
     hc = agent.zero_state(B, dev)
     hc_ref = agent.zero_state(B, dev)
+    hc_teach = agent.zero_state(B, dev)
     first = np.ones(B, dtype=bool)  # the next observation starts an episode
 
     recent = deque(maxlen=200)
@@ -281,6 +291,7 @@ def main() -> None:
                 keep = torch.as_tensor(~first, device=dev).float().unsqueeze(1)
                 hc = (hc[0] * keep, hc[1] * keep)
                 hc_ref = (hc_ref[0] * keep, hc_ref[1] * keep)
+                hc_teach = (hc_teach[0] * keep, hc_teach[1] * keep)
                 if t % L == 0:
                     store["h0"].append(hc[0].cpu().numpy())
                     store["c0"].append(hc[1].cpu().numpy())
@@ -293,6 +304,11 @@ def main() -> None:
                     if ref is not None:
                         hr, Er, vr, hc_ref, _ = ref.trunk(ot, hc_ref)
                         store["ref_lp"].append(ref.policy(hr, Er, vr, rows=rows, given=out)[2].cpu().numpy())
+                    if teach is not None:  # the teacher's own action on the same state (its rows are its masks)
+                        ht, Et, vt, hc_teach, _ = teach.trunk(ot, hc_teach)
+                        tout, trows, _, _ = teach.policy(ht, Et, vt, masks=to_t(masks, dev))
+                        store["t_rows"].append({k: r.cpu().numpy() for k, r in trows.items()})
+                        store["t_act"].append({k: tout[k].cpu().numpy() for k in HEADS})
                 acts = [None] * len(cur)
                 if not a.imitate:
                     for j, w in zip(lrn, wire_actions(out)):
@@ -396,6 +412,10 @@ def main() -> None:
             f_act = {k: np.concatenate([x[k] for x in store["act"]]) for k in HEADS}
             f_lp = np.concatenate(store["lp"])
             f_ref = np.concatenate(store["ref_lp"]) if ref is not None else None
+            if teach is not None:
+                t_rows = {k: np.concatenate([r[k] for r in store["t_rows"]]) for k in store["t_rows"][0]}
+                t_act = {k: np.concatenate([x[k] for x in store["t_act"]]) for k in HEADS}
+                t_flag = t_act["group"] == S.GROUP_SCOUT
             f_opp = np.concatenate(store["opp"])
             f_first = firsts.reshape(N)
             h0, c0 = np.stack(store["h0"]), np.stack(store["c0"])  # (T / L, B, d)
@@ -447,6 +467,15 @@ def main() -> None:
                     kl_ref = (logr.exp() - 1 - logr).mean()
                     loss = loss + kl_coef * kl_ref
                     logs["kl/ref"].append(kl_ref.item())
+                if teach is not None:  # scout distillation: cross-entropy on the teacher's army action where it scouts
+                    tlp = {}
+                    agent.policy(h, E, valid, rows={k: torch.as_tensor(t_rows[k][idx], device=dev) for k in t_rows},
+                                 given={k: torch.as_tensor(t_act[k][idx], device=dev) for k in HEADS}, head_lp=tlp)
+                    fl = torch.as_tensor(t_flag[idx], device=dev).float()
+                    army = tlp["group"] + tlp["order"] + tlp["unit"] + tlp["target"] + tlp["ptr"]
+                    scout_ce = -(army * fl).sum() / fl.numel()
+                    loss = loss + a.scout_coef * scout_ce
+                    logs["scout/ce"].append((-(army * fl).sum() / fl.sum().clamp(min=1)).item())
                 opt.zero_grad()
                 loss.backward()
                 gn = torch.nn.utils.clip_grad_norm_(agent.parameters(), a.max_grad)
@@ -480,6 +509,9 @@ def main() -> None:
             writer.add_scalar(f"reward/mean_{k}", float(rew[..., i].mean()), step)
         writer.add_scalar("noop/econ", float((f_act["econ"] == 0).mean()), step)
         writer.add_scalar("noop/army_group", float((f_act["group"] == 0).mean()), step)
+        if teach is not None:
+            writer.add_scalar("scout/teacher_rate", float(t_flag.mean()), step)
+            writer.add_scalar("scout/policy_rate", float((f_act["group"] == S.GROUP_SCOUT).mean()), step)
         writer.add_scalar("perf/decisions_per_s", T * B / roll_s, step)
         writer.add_scalar("perf/env_share", t_env / roll_s, step)
         writer.add_scalar("perf/update_s", upd_s, step)

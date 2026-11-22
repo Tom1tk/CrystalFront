@@ -22,6 +22,7 @@ TARGETS = 804
 N_GROUPS, N_ORDERS = 11, 12
 ECON_BUILD0, ECON_ASSIGN0, ECON_REPAIR, ECON_RALLY = 7, 12, 60, 61
 GROUP_UNIT = 10
+GROUP_SCOUT = 9  # the Outrider (v3)
 TARGET_NONE = 803
 TARGET_GRID0 = 53              # 37 anchors + 16 memory slots, then the 750 grid cells
 NAMED_SITES = 10               # then 750 grid build sites

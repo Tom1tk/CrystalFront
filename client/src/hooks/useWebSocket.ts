@@ -95,6 +95,12 @@ export function useWebSocket(): UseWebSocketReturn {
   const [replayEnd, setReplayEnd] = useState<{ ticks: number; winner: string | null } | null>(null);
   /** Set by a match_start from a tournament spectator feed. */
   const [spectate, setSpectate] = useState<SpectateInfo | null>(null);
+  /**
+   * Set by stopReplay: frames the server sent before it saw the stop are dropped until the next
+   * match_start. Otherwise a late frame revives the match state after it was cleared, and the app
+   * switches to a game screen there's no lobby for (a black page).
+   */
+  const stoppedRef = useRef(false);
   const [resourceNodes, setResourceNodes] = useState<ResourceNodeDisplay[]>([]);
   const [loadedPlayers, setLoadedPlayers] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -155,12 +161,13 @@ export function useWebSocket(): UseWebSocketReturn {
           const ms = msg.payload.match as MatchState;
           ms.attackLog = ms.attackLog ?? [];
           staticMapRef.current = ms.staticMap;
+          stoppedRef.current = false;
           setSpectate((msg.payload.spectate as SpectateInfo | undefined) ?? null);
           setLoadedPlayers([]);
           setMatchState(ms);
           setResourceNodes(ms.resourceNodes ?? []);
         }
-        if (msg.type === "game_state" && msg.payload?.match) {
+        if (msg.type === "game_state" && msg.payload?.match && !stoppedRef.current) {
           const ms = msg.payload.match as MatchState;
           ms.attackLog = ms.attackLog ?? [];
           // Static map arrives once with match_start; carry it on every state (G-5).
@@ -187,7 +194,7 @@ export function useWebSocket(): UseWebSocketReturn {
         if (msg.type === "tournament_match_start" && msg.payload) {
           setTournamentStart(msg.payload as unknown as TournamentMatchStart);
         }
-        if (msg.type === "replay_end") {
+        if (msg.type === "replay_end" && !stoppedRef.current) {
           setReplayEnd(msg.payload as { ticks: number; winner: string | null });
           setMatchState(null);
           setResourceNodes([]);
@@ -264,6 +271,7 @@ export function useWebSocket(): UseWebSocketReturn {
   const clearSpectate = useCallback(() => setSpectate(null), []);
 
   const stopReplay = useCallback(() => {
+    stoppedRef.current = true;
     sendMessage({ type: "stop_replay" });
   }, [sendMessage]);
 
