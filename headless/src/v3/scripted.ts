@@ -122,7 +122,11 @@ export interface Template {
   mix: Partial<Record<Unit, number>>;
   /** Build a depot when free supply (incl. queued) is at most this. */
   headroom: number;
-  push: { tick: number; size: number; regroup: number; targets: PushTarget[]; via?: "brush" };
+  /**
+   * `via`: the route before the attack. `brush` through a brush anchor; `edge` along a map edge (top or bottom, drawn per game)
+   * into the enemy half; `swing` up the middle, then out to an edge on the enemy half and in from the side.
+   */
+  push: { tick: number; size: number; regroup: number; targets: PushTarget[]; via?: "brush" | "edge" | "swing" };
   stage: Stage;
   /** Retreat when pushing and the army's mean health fraction drops below this. */
   retreat: number;
@@ -325,6 +329,26 @@ export const TEMPLATES: Record<string, Template> = {
     ],
     mix: { gunner: 4, bulwark: 1 }, push: { tick: 0, size: 12, regroup: 6, targets: ["enemy_base", "control"] }, stage: "choke", retreat: 0.3, mass: true,
   },
+  // Flankers: armies that come round the side instead of down the middle (b2, against turrets clumped on the central route).
+  flank_edge: {
+    z: 27, label: "gunners and skirmishers round a map edge", workers: 7, contested: 2, headroom: 3,
+    builds: [{ b: "barracks", n: 1, sites: BASE }, { b: "barracks", n: 2, sites: BASE, army: 4 }],
+    mix: { gunner: 2, skirmisher: 1 }, push: { tick: 0, size: 12, regroup: 5, targets: ["enemy_base"], via: "edge" }, stage: "base", retreat: 0, cohere: true,
+  },
+  flank_swarm: {
+    z: 28, label: "skirmisher + medic swarm round a map edge", workers: 8, contested: 2, headroom: 3,
+    builds: [
+      { b: "barracks", n: 1, sites: BASE }, { b: "barracks", n: 2, sites: BASE }, { b: "foundry", n: 1, sites: BASE, army: 4 },
+    ],
+    mix: { skirmisher: 4, medic: 1 }, push: { tick: 0, size: 16, regroup: 8, targets: ["enemy_base"], via: "edge" }, stage: "base", retreat: 0.4,
+  },
+  flank_swing: {
+    z: 29, label: "heavy push up the middle that swings out and hits from the side", workers: 8, contested: 2, headroom: 3,
+    builds: [
+      { b: "barracks", n: 1, sites: BASE }, { b: "foundry", n: 1, sites: BASE }, { b: "barracks", n: 2, sites: BASE, army: 4 },
+    ],
+    mix: { gunner: 2, bruiser: 1, skirmisher: 1 }, push: { tick: 0, size: 14, regroup: 6, targets: ["enemy_base", "enemy_safe"], via: "swing" }, stage: "choke", retreat: 0.3, cohere: true,
+  },
 };
 
 /**
@@ -357,6 +381,8 @@ export const SCRIPTED: Record<string, BotDef> = {
   siege: { templates: ["turtle_siege"] },
   sw_read_macro: { templates: ["macro_light"], z: 25, read: "macro", scout: ["map_watch", "spare"] },
   sw_read_turtle: { templates: ["turtle_hold"], z: 26, read: "turtle", scout: ["watch", "spare"] },
+  flank: { templates: ["flank_edge", "flank_swarm"] },
+  swing: { templates: ["flank_swing"] },
 };
 
 /** Outrider style by bot (mainline 0.10 plan §2a); bots not listed watch and never retrain. */
@@ -366,6 +392,7 @@ const SCOUT_STYLE: Record<string, [ScoutStyle, Retrain]> = {
   macro: ["map_watch", "spare"], swarm: ["map_watch", "spare"], swarm_mass: ["map_watch", "spare"], swarm_tide: ["map_watch", "spare"],
   sw_macro_bruiser: ["map_watch", "spare"], sw_turtle_grab: ["map_watch", "spare"],
   hidden: ["careful", "delay"], backdoor: ["careful", "delay"], rush_post: ["careful", "delay"],
+  flank: ["careful", "delay"], swing: ["map_watch", "spare"],
 };
 export function scoutFor(name: string): [ScoutStyle, Retrain] {
   return SCRIPTED[name]?.scout ?? SCOUT_STYLE[name] ?? ["watch", "never"];
@@ -406,6 +433,8 @@ const MICRO_RADIUS = 300;
 const MASS_RADIUS = 400;
 /** `cohere` templates: gather when the leading quarter of the army is this far ahead of its middle unit (px); go on once within COHERE_NEAR. */
 const COHERE_FAR = 250, COHERE_NEAR = 120;
+/** Edge and swing routes: how close the army's centre must get to a waypoint (px), how long it may take (ticks), and how far from the edge it walks (fraction of the height). */
+const VIA_NEAR = 220, VIA_PATIENCE = 900, FLANK_EDGE_Y = 0.1;
 /** Scripted bots repair own turrets below this health fraction. */
 const REPAIR_BELOW = 0.75;
 /** A focus order holds the main army order back for this many decisions; micro of one kind repeats at most this often. */
@@ -471,6 +500,9 @@ export class ScriptedV2Bot {
   private lastOrderAt = -99;
   private decisions = 0;
   private viaDone = false;
+  /** Edge and swing routes: the waypoint the army is walking to, and the tick it set out for it. */
+  private viaStep = 0;
+  private viaAt = 0;
   /** `cohere`: grid cell the army is gathering on (−1: not gathering). */
   private gather = -1;
   /** Control push: best own control progress seen and the tick it was reached. */
@@ -517,7 +549,8 @@ export class ScriptedV2Bot {
     // Per-episode jitter of the first phase; the switch phase gets its own draws.
     this.pushTick = 0; this.pushSize = 0; this.target = "enemy_base";
     this.jitter(this.t, rng);
-    if (this.t.post?.mode === "backdoor") this.edge = rng.random() < 0.5 ? 0 : 1;
+    // (Drawn only by templates that use it, so the other bots' draws are unchanged.)
+    if (this.t.post?.mode === "backdoor" || this.t.push.via === "edge" || this.t.push.via === "swing") this.edge = rng.random() < 0.5 ? 0 : 1;
     this.rng = rng;
     const [style, retrain] = scoutFor(name);
     this.scout = new OutriderPlan(style, retrain, ctx);
@@ -767,7 +800,7 @@ export class ScriptedV2Bot {
       if (obs.globals[G.control_progress_own] <= obs.globals[G.control_progress_enemy]) { this.target = "control"; this.ctrlBest = -1; this.ctrlAt = v.tick; }
     }
     if (!this.pushing && size >= this.pushSize && v.tick >= this.pushTick) {
-      this.pushing = true; this.viaDone = false; this.ctrlAt = v.tick;
+      this.pushing = true; this.viaDone = false; this.ctrlAt = v.tick; this.viaStep = 0; this.viaAt = v.tick;
     }
     // A control push that makes no progress for CONTROL_PATIENCE ticks turns into a base attack
     // (holding more than half the contested nodes needs several separately ordered groups).
@@ -807,6 +840,14 @@ export class ScriptedV2Bot {
         const c = this.centroid(v.army);
         if (via < 0 || this.dist(c, this.norm(this.ctx.targets[via])) < 250) this.viaDone = true;
         else { order = O_MOVE; target = via; }
+      } else if ((this.t.push.via === "edge" || this.t.push.via === "swing") && !this.viaDone) {
+        // Walk the route (attack-moving, so it fights what it meets); a waypoint it can't reach is given up after VIA_PATIENCE.
+        const route = this.flankRoute(this.t.push.via);
+        const c = this.centroid(v.army);
+        while (this.viaStep < route.length && (this.dist(c, route[this.viaStep]) < VIA_NEAR || v.tick - this.viaAt > VIA_PATIENCE)) { this.viaStep++; this.viaAt = v.tick; }
+        const cell = this.viaStep < route.length ? this.cellNear(m, route[this.viaStep]) : -1;
+        if (cell < 0) this.viaDone = true;
+        else { order = O_AM; target = cell; }
       }
     } else {
       // Waiting: guard the staging point (v3) instead of attack-moving to it.
@@ -1249,6 +1290,12 @@ export class ScriptedV2Bot {
       if (x < bx) { bx = x; best = t; }
     }
     return best;
+  }
+
+  /** Waypoints (own frame, normalised) of an edge or swing route on the side drawn for this game. */
+  private flankRoute(via: "edge" | "swing"): Pt[] {
+    const y = this.edge ? 1 - FLANK_EDGE_Y : FLANK_EDGE_Y;
+    return via === "edge" ? [{ x: 0.3, y }, { x: 0.78, y }] : [{ x: 0.45, y: 0.5 }, { x: 0.72, y }];
   }
 
   /** A brush anchor to route the attack through: centre or own chokes, then the flank-most centre anchor; −1 if none valid. */
