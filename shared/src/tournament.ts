@@ -1,10 +1,13 @@
 /** Tournament state shared by server and client (docs/TOURNAMENT_SPEC.md). Tokens never leave the server. */
+import type { TournamentFormat } from "./bracket.js";
 
 export type SeriesLength = 1 | 3 | 5;
 
 export interface TournamentSettings {
   name: string;
-  /** Planned rounds; the manager can add or remove remaining ones. */
+  /** Fixed at the start. Tournaments saved before formats existed are Swiss. */
+  format: TournamentFormat;
+  /** Planned rounds (Swiss: the manager can add or remove remaining ones; other formats: set at the start). */
   rounds: number;
   seeding: "random" | "manual";
   bestOf: SeriesLength;
@@ -61,6 +64,9 @@ export interface TournamentSeries {
   /** Ready-check deadline (ms epoch). */
   deadline?: number;
   result?: "a" | "b" | "draw" | "both_lose" | "void";
+  /** Elimination: the bracket node this series plays, and its name ("Semi-final", "Losers R2"). */
+  node?: string;
+  label?: string;
 }
 
 export interface TournamentRound {
@@ -82,6 +88,8 @@ export interface TournamentStanding {
   buchholz: number;
   sb: number;
   gameDiff: number;
+  /** Elimination: where this player was knocked out. */
+  outIn?: string;
 }
 
 /** What every viewer receives. */
@@ -118,12 +126,14 @@ export interface TournamentSummary {
   entrants: number;
   round: number;
   rounds: number;
+  format: TournamentFormat;
   createdAt: number;
 }
 
 export const TOURNAMENT_LIMITS = { maxEntrants: 32, minEntrants: 2, delayMin: 30, delayMax: 60, readyMin: 15, readyMax: 300 } as const;
 
 export const DEFAULT_TOURNAMENT_SETTINGS: Omit<TournamentSettings, "name" | "rounds" | "mapPool"> = {
+  format: "single",
   seeding: "random",
   bestOf: 1,
   roundBestOf: {},

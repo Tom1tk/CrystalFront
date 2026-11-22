@@ -1,5 +1,5 @@
 /**
- * Swiss tournaments (docs/TOURNAMENT_SPEC.md): lifecycle, ready checks, series, manager operations and
+ * Tournaments (docs/TOURNAMENT_SPEC.md): Swiss, round robin, single and double elimination: lifecycle, ready checks, series, manager operations and
  * saving to disk. No sockets or engine here: the server calls the methods, drives time with `tick(now)`
  * and starts and stops matches through the hooks.
  */
@@ -7,8 +7,9 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFile
 import { join, resolve } from "node:path";
 import {
   DEFAULT_TOURNAMENT_SETTINGS, LOBBY_CODE_CHARS, LOBBY_CODE_LENGTH, TOURNAMENT_LIMITS,
-  defaultRounds, nextMap, pairRound, seriesBlue, seriesMaps, seriesState, standings,
-  type GameOutcome, type SeriesLength, type SwissPlayer, type SwissRound, type TournamentEntrant,
+  bracketRounds, buildBracket, defaultRounds, eliminationRanks, finalNode, nextMap, pairRound, resolveBracket, roundRobin,
+  seriesBlue, seriesMaps, seriesState, standings,
+  type BracketNode, type GameOutcome, type NodeSeries, type TournamentFormat, type SeriesLength, type SwissPlayer, type SwissRound, type TournamentEntrant,
   type TournamentPublicState, type TournamentRound, type TournamentSeries, type TournamentSettings,
   type TournamentSummary, type TournamentViewer,
 } from "@crystalfront/shared";
@@ -20,6 +21,10 @@ export interface Tournament extends Omit<TournamentPublicState, "standings"> {
   /** Finish when the current round is done (finish early, letting matches finish). */
   finishing?: boolean;
   nextEntrant: number;
+  /** Elimination formats: the bracket, fixed at the start. */
+  bracket?: BracketNode[];
+  /** Round robin: entrant ids of each round's pairs (null = sits out), fixed at the start. */
+  schedule?: [string, string | null][][];
 }
 
 export interface TournamentHooks {
@@ -37,6 +42,8 @@ export class TournamentError extends Error {}
 
 const fail = (message: string): never => { throw new TournamentError(message); };
 const SERIES: SeriesLength[] = [1, 3, 5];
+const FORMATS: TournamentFormat[] = ["single", "double", "round_robin", "swiss"];
+const isBracket = (t: Tournament) => t.settings.format === "single" || t.settings.format === "double";
 
 export type AdminOp =
   | { op: "lock" } | { op: "unlock" }
@@ -109,12 +116,19 @@ export class TournamentManager {
   }
 
   publicState(t: Tournament): TournamentPublicState {
-    const { managerToken: _m, tokens: _t, finishing: _f, nextEntrant: _n, ...pub } = t;
-    const st = standings(this.swissPlayers(t), this.swissRounds(t)).map((s) => ({
+    const { managerToken: _m, tokens: _t, finishing: _f, nextEntrant: _n, schedule: _s, ...pub } = t;
+    let st = standings(this.swissPlayers(t), this.swissRounds(t)).map((s) => ({
       id: s.id, rank: s.rank, points: s.points, wins: s.wins, draws: s.draws, losses: s.losses,
-      buchholz: s.buchholz, sb: s.sb, gameDiff: s.gameDiff,
+      buchholz: s.buchholz, sb: s.sb, gameDiff: s.gameDiff, outIn: undefined as string | undefined,
     }));
-    return structuredClone({ ...pub, standings: st });
+    // Elimination: ranked by how far each player got; points are series won.
+    if (t.bracket) {
+      const by = new Map(st.map((s) => [s.id, s]));
+      const ranks = eliminationRanks(t.bracket, this.bracketState(t), t.entrants.map((e) => e.id), (id) => this.entrant(t, id).seed,
+        new Set(t.entrants.filter((e) => e.withdrawn).map((e) => e.id)));
+      st = ranks.map((r) => ({ ...by.get(r.id)!, points: by.get(r.id)!.wins, rank: r.rank, outIn: r.outIn }));
+    }
+    return structuredClone({ ...pub, standings: st.map(({ outIn, ...s }) => (outIn ? { ...s, outIn } : s)) });
   }
 
   viewer(t: Tournament, token: string | undefined): TournamentViewer {
@@ -125,7 +139,7 @@ export class TournamentManager {
   summaries(): TournamentSummary[] {
     return this.all().sort((x, y) => y.createdAt - x.createdAt).map((t) => ({
       id: t.id, code: t.code, name: t.settings.name, status: t.status,
-      entrants: t.entrants.filter((e) => !e.withdrawn).length, round: t.rounds.length, rounds: t.settings.rounds, createdAt: t.createdAt,
+      entrants: t.entrants.filter((e) => !e.withdrawn).length, round: t.rounds.length, rounds: t.settings.rounds, format: t.settings.format, createdAt: t.createdAt,
     }));
   }
 
@@ -161,7 +175,7 @@ export class TournamentManager {
     if (known) return t.entrants.find((e) => e.id === known)!;
     if (t.status !== "registering" && t.status !== "running") fail("This tournament has ended.");
     if (t.locked) fail("Registration is closed.");
-    if (t.status === "running" && !this.canAddLate(t)) fail("The last round has been paired; no more players can join.");
+    if (t.status === "running" && !this.canAddLate(t)) fail(this.lateMessage(t));
     const e = this.addEntrant(t, name.trim().slice(0, 24) || "Player");
     t.tokens[e.id] = token;
     this.changed(t);
@@ -249,6 +263,7 @@ export class TournamentManager {
       }
       case "start": this.start(t); break;
       case "set_rounds": {
+        if (t.settings.format !== "swiss") fail("Only a Swiss tournament's rounds can be changed.");
         const min = Math.max(1, t.rounds.length);
         if (!Number.isInteger(a.rounds) || a.rounds < min || a.rounds > TOURNAMENT_LIMITS.maxEntrants) fail(`Rounds must be between ${min} and ${TOURNAMENT_LIMITS.maxEntrants}.`);
         t.settings.rounds = a.rounds;
@@ -271,7 +286,7 @@ export class TournamentManager {
         break;
       case "add_bot": {
         const name = this.botName(a.bot) ?? fail("Unknown bot.");
-        if (t.status === "running" && !this.canAddLate(t)) fail("The last round has been paired.");
+        if (t.status === "running" && !this.canAddLate(t)) fail(this.lateMessage(t));
         const same = t.entrants.filter((e) => e.bot === a.bot).length;
         const e = this.addEntrant(t, same ? `${name} #${same + 1}` : name);
         e.bot = a.bot;
@@ -289,6 +304,7 @@ export class TournamentManager {
         this.advance(t);
         break;
       case "repair": {
+        if (t.settings.format !== "swiss") fail("Only Swiss rounds are re-paired.");
         const round = this.current(t) ?? fail("No round to re-pair.");
         if (round!.series.some((s) => s.b !== null && s.games.some((g) => g.matchId || g.result))) fail("A match of this round has already started.");
         t.rounds.pop();
@@ -296,7 +312,11 @@ export class TournamentManager {
         break;
       }
       case "set_result": this.setResult(t, a.round, a.slot, a.result); break;
-      case "settings": t.settings = this.validSettings({ ...t.settings, ...a.settings, rounds: t.settings.rounds, name: t.settings.name }); break;
+      case "settings": {
+        if (!registering && a.settings.format !== undefined && a.settings.format !== t.settings.format) fail("The format can't be changed after the start.");
+        t.settings = this.validSettings({ ...t.settings, ...a.settings, rounds: t.settings.rounds, name: t.settings.name });
+        break;
+      }
       case "transfer": {
         const tok = t.tokens[a.entrantId] ?? fail("Only a human entrant can become the manager.");
         t.managerToken = tok!;
@@ -333,7 +353,15 @@ export class TournamentManager {
       order.forEach((e, i) => { e.seed = i + 1; });
       t.entrants.sort((x, y) => x.seed - y.seed);
     }
-    if (!t.settings.rounds) t.settings.rounds = defaultRounds(t.entrants.length);
+    const n = t.entrants.length, f = t.settings.format;
+    if (f === "single" || f === "double") {
+      t.bracket = buildBracket(f, n);
+      t.settings.rounds = bracketRounds(t.bracket);
+    } else if (f === "round_robin") {
+      const id = (seed: number) => t.entrants[seed - 1].id;
+      t.schedule = roundRobin(n).map((r) => r.map(([x, y]) => [id(x), y === null ? null : id(y)] as [string, string | null]));
+      t.settings.rounds = t.schedule.length;
+    } else if (!t.settings.rounds) t.settings.rounds = defaultRounds(n);
     t.status = "running";
     t.locked = true;
     this.pairNext(t);
@@ -341,7 +369,7 @@ export class TournamentManager {
 
   /** Pair the next round, or finish when the planned rounds are done or too few players are left. */
   private advance(t: Tournament): void {
-    if (t.finishing || t.rounds.length >= t.settings.rounds) return this.finish(t);
+    if (t.finishing || this.lastRoundDone(t)) return this.finish(t);
     if (t.entrants.filter((e) => !e.withdrawn).length < 2) return this.finish(t);
     this.pairNext(t);
   }
@@ -351,11 +379,12 @@ export class TournamentManager {
     const swiss = this.swissRounds(t);
     const map = nextMap(t.settings.mapPool, swiss);
     const bestOf = t.settings.roundBestOf[number] ?? t.settings.bestOf;
-    const { pairings } = pairRound(this.swissPlayers(t), swiss);
+    const pairings = this.pairings(t, number, swiss);
     const round: TournamentRound = {
       number, map, bestOf,
       series: pairings.map((p, slot) => ({
         slot, a: p.a, b: p.b, bestOf, status: "waiting", games: [], ready: { a: false, b: false },
+        ...(p.node ? { node: p.node, label: p.label } : {}),
         ...(p.b === null ? { status: "done" as const, result: "a" as const } : {}),
       })),
     };
@@ -364,11 +393,43 @@ export class TournamentManager {
     this.roundProgress(t);
   }
 
+  /** The next round's series, by format. Round robin and brackets skip pairs with a withdrawn player (the other gets a bye or walkover). */
+  private pairings(t: Tournament, number: number, swiss: ReturnType<TournamentManager["swissRounds"]>): { a: string; b: string | null; node?: string; label?: string }[] {
+    if (t.schedule) {
+      const out = new Set(t.entrants.filter((e) => e.withdrawn).map((e) => e.id));
+      return (t.schedule[number - 1] ?? []).flatMap(([x, y]) => {
+        const px = out.has(x) ? null : x, py = y !== null && !out.has(y) ? y : null;
+        if (!px && !py) return [];
+        return [px && py ? { a: px, b: py } : { a: (px ?? py)!, b: null }];
+      });
+    }
+    if (t.bracket) {
+      const st = this.bracketState(t);
+      return t.bracket.filter((n) => st.get(n.id)!.ready).map((n) => ({ a: st.get(n.id)!.a!, b: st.get(n.id)!.b!, node: n.id, label: n.label }));
+    }
+    return pairRound(this.swissPlayers(t), swiss).pairings;
+  }
+
+  /** Every bracket node's players and result, from the series played so far. */
+  private bracketState(t: Tournament) {
+    const series = new Map<string, NodeSeries>();
+    for (const r of t.rounds) for (const s of r.series) if (s.node) series.set(s.node, { a: s.a, b: s.b, result: s.status === "done" ? s.result : undefined });
+    const seeds = [...t.entrants].sort((x, y) => x.seed - y.seed).map((e) => e.id);
+    return resolveBracket(t.bracket!, seeds, series, new Set(t.entrants.filter((e) => e.withdrawn).map((e) => e.id)));
+  }
+
+  /** No more rounds to play: the planned rounds are done, or the bracket has a champion. */
+  private lastRoundDone(t: Tournament): boolean {
+    if (t.bracket) return this.bracketState(t).get(finalNode(t.bracket).id)!.winner !== undefined;
+    return t.rounds.length >= t.settings.rounds;
+  }
+
   /** Open the next game of a series: ready check (bots are always ready). */
   private nextGame(t: Tournament, s: TournamentSeries): void {
     const round = this.current(t)!;
     const game = s.games.length;
-    const maps = seriesMaps(t.settings.mapPool, round.map, s.bestOf);
+    // An elimination series can run past its length (a level series plays on until someone wins).
+    const maps = seriesMaps(t.settings.mapPool, round.map, Math.max(s.bestOf, game + 1));
     s.games.push({ map: maps[game], blue: seriesBlue({ a: s.a, b: s.b }, game) });
     s.ready = { a: this.isBot(t, s.a), b: this.isBot(t, s.b!) };
     if (s.ready.a && s.ready.b) return this.launch(t, s);
@@ -388,7 +449,7 @@ export class TournamentManager {
 
   private afterGame(t: Tournament, s: TournamentSeries): void {
     const st = seriesState(s.games.filter((g) => g.result).map((g) => g.result as GameOutcome), s.bestOf);
-    if (st.done) this.endSeries(t, s, st.result!);
+    if (st.done && !(st.result === "draw" && s.node)) this.endSeries(t, s, st.result!);
     else this.nextGame(t, s);
     this.roundProgress(t);
   }
@@ -404,7 +465,7 @@ export class TournamentManager {
   /** After a series ends: if the round is done, count down to the next one (or finish). */
   private roundProgress(t: Tournament): void {
     if (t.status !== "running" || !this.roundDone(t)) return;
-    if (t.finishing || t.rounds.length >= t.settings.rounds) return this.finish(t);
+    if (t.finishing || this.lastRoundDone(t)) return this.finish(t);
     if (t.settings.autoAdvance && !t.paused) t.nextRoundAt ??= this.now() + t.settings.advanceSeconds * 1000;
   }
 
@@ -420,6 +481,8 @@ export class TournamentManager {
     const s = round!.series.find((x) => x.slot === slot) ?? fail("No such match.");
     if (s!.b === null) fail("A bye has no result to set.");
     const live = round === this.current(t);
+    if (s!.node && (result === "draw" || result === "void")) fail("An elimination match needs a winner (or both lose).");
+    if (s!.node && !live) fail("Past bracket results can't be changed: later rounds were paired from them.");
     if (result === "replay") {
       if (!live || t.status !== "running") fail("Only a match of the current round can be replayed.");
       for (const g of s!.games) if (g.matchId) this.hooks.stopGame(g.matchId, null);
@@ -466,7 +529,11 @@ export class TournamentManager {
   }
 
   private canAddLate(t: Tournament): boolean {
-    return t.status === "registering" || (t.status === "running" && t.rounds.length < t.settings.rounds);
+    return t.status === "registering" || (t.status === "running" && t.settings.format === "swiss" && t.rounds.length < t.settings.rounds);
+  }
+
+  private lateMessage(t: Tournament): string {
+    return t.settings.format === "swiss" ? "The last round has been paired; no more players can join." : "Players can only join before this tournament starts.";
   }
 
   private entrant(t: Tournament, id: string): TournamentEntrant {
@@ -505,8 +572,9 @@ export class TournamentManager {
     const pool = [...new Set(s.mapPool)].filter((m) => this.isMap(m));
     if (!pool.length) fail("Pick at least one map.");
     const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(Number(v) || lo)));
+    if (!FORMATS.includes(s.format)) fail("Unknown tournament format.");
     return {
-      name: s.name, rounds: Math.max(1, Math.round(s.rounds)), seeding: s.seeding === "manual" ? "manual" : "random",
+      name: s.name, format: s.format, rounds: Math.max(1, Math.round(s.rounds)), seeding: s.seeding === "manual" ? "manual" : "random",
       bestOf: s.bestOf, roundBestOf: { ...(s.roundBestOf ?? {}) }, mapPool: pool,
       readySeconds: clamp(s.readySeconds, L.readyMin, L.readyMax), autoAdvance: !!s.autoAdvance,
       advanceSeconds: clamp(s.advanceSeconds, 0, 600), spectatorDelay: clamp(s.spectatorDelay, L.delayMin, L.delayMax),
@@ -546,6 +614,7 @@ export class TournamentManager {
     for (const f of readdirSync(this.dir).filter((x) => x.endsWith(".json"))) {
       try {
         const t = JSON.parse(readFileSync(join(this.dir, f), "utf8")) as Tournament;
+        t.settings.format ??= "swiss";
         if (t.status === "running") {
           for (const s of this.current(t)?.series ?? []) {
             if (s.status === "playing") {

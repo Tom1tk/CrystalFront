@@ -34,7 +34,7 @@ function harness(dir: string | null = null) {
 const POOL = ["ironreed", "saltmarsh", "cinder"];
 
 function withPlayers(h: ReturnType<typeof harness>, n: number, settings: Record<string, unknown> = {}): Tournament {
-  const t = h.mgr.create("mgr", { name: "Cup", ...settings }, POOL);
+  const t = h.mgr.create("mgr", { name: "Cup", format: "swiss", ...settings }, POOL);
   for (let i = 1; i <= n; i++) h.mgr.join(t, `P${i}`, `tok${i}`);
   return t;
 }
@@ -148,7 +148,7 @@ describe("TournamentManager (tournament T2)", () => {
   });
 
   it("bot v bot starts at once; bots are always ready; duplicate bots are numbered", () => {
-    const t = h.mgr.create("mgr", { name: "Bots", rounds: 1 }, POOL);
+    const t = h.mgr.create("mgr", { name: "Bots", format: "swiss", rounds: 1 }, POOL);
     h.mgr.admin(t, "mgr", { op: "add_bot", bot: "hard" });
     h.mgr.admin(t, "mgr", { op: "add_bot", bot: "hard" });
     expect(t.entrants.map((e) => e.name)).toEqual(["Hard (0.9) #1", "Hard (0.9) #2"]);
@@ -255,6 +255,95 @@ describe("TournamentManager (tournament T2)", () => {
     expect(t.status).toBe("cancelled");
   });
 
+});
+
+describe("TournamentManager formats", () => {
+  let h: ReturnType<typeof harness>;
+  beforeEach(() => { h = harness(); });
+  /** Plays rounds until the tournament ends, advancing through the countdowns. */
+  const playOut = (t: Tournament) => {
+    for (let guard = 0; guard < 40 && t.status === "running"; guard++) {
+      playRound(h, t);
+      if (t.status === "running") h.advance(60_000);
+    }
+  };
+
+  it("defaults to single elimination", () => {
+    const t = h.mgr.create("mgr", { name: "Cup" }, POOL);
+    expect(t.settings.format).toBe("single");
+  });
+
+  it("single elimination: byes are walkovers, the bracket finishes with one champion", () => {
+    const t = withPlayers(h, 5, { format: "single" });
+    h.mgr.admin(t, "mgr", { op: "start" });
+    expect(t.settings.rounds).toBe(3);
+    // 8-slot bracket: seeds 1–3 walk over the empty seeds, so round 1 is 4 v 5 and already the 2 v 3 semi-final.
+    expect(current(t).series.map((s) => s.label)).toEqual(["Quarter-final", "Semi-final"]);
+    playOut(t);
+    expect(t.status).toBe("finished");
+    expect(t.rounds.length).toBe(3);
+    expect(t.rounds.map((r) => r.series.map((s) => s.label))).toEqual([["Quarter-final", "Semi-final"], ["Semi-final"], ["Final"]]);
+    const st = h.mgr.publicState(t).standings;
+    expect(st.map((s) => s.rank)).toEqual([1, 2, 3, 3, 5]);
+    expect(st[0].outIn).toBeUndefined();
+    expect(st[1].outIn).toBe("Final");
+    // Late joins and Swiss-only operations are refused.
+    expect(() => h.mgr.admin(t, "mgr", { op: "set_rounds", rounds: 5 })).toThrow(TournamentError);
+  });
+
+  it("double elimination: a grand final, with the reset only when the losers-bracket player wins it", () => {
+    const t = withPlayers(h, 4, { format: "double" });
+    h.mgr.admin(t, "mgr", { op: "start" });
+    playOut(t);
+    expect(t.status).toBe("finished");
+    const labels = t.rounds.flatMap((r) => r.series.map((s) => s.label));
+    expect(labels).toContain("Grand final");
+    // Blue always wins; the winners-bracket player is blue in the grand final, so no reset.
+    expect(labels).not.toContain("Grand final reset");
+    expect(h.mgr.publicState(t).standings.map((s) => s.rank)).toEqual([1, 2, 3, 4]);
+  });
+
+  it("elimination: a drawn series plays on until someone wins; draws can't be set by hand", () => {
+    const t = withPlayers(h, 2, { format: "single" });
+    h.mgr.admin(t, "mgr", { op: "start" });
+    readyAll(h, t);
+    const [m1] = [...h.live.keys()];
+    h.end(m1, null);
+    const s = current(t).series[0];
+    expect(s.status).toBe("ready_check");
+    expect(s.games.length).toBe(2);
+    expect(() => h.mgr.admin(t, "mgr", { op: "set_result", round: 1, slot: 0, result: "draw" })).toThrow(TournamentError);
+    readyAll(h, t);
+    const [m2] = [...h.live.keys()];
+    h.end(m2, s.games[1].blue);
+    expect(t.status).toBe("finished");
+  });
+
+  it("elimination: a withdrawn player's opponent walks over them", () => {
+    const t = withPlayers(h, 4, { format: "single" });
+    h.mgr.admin(t, "mgr", { op: "start" });
+    const loser = current(t).series[0].b!;
+    playRound(h, t);
+    const winner = current(t).series[1].a;
+    h.mgr.leave(t, tok(t, winner));
+    h.advance(60_000);
+    // The final opens with one player gone: walked over, the tournament ends.
+    expect(t.status).toBe("finished");
+    expect(h.mgr.publicState(t).standings.find((s) => s.id === loser)!.rank).toBeGreaterThan(1);
+  });
+
+  it("round robin: everyone plays everyone once, then standings", () => {
+    const t = withPlayers(h, 5, { format: "round_robin" });
+    h.mgr.admin(t, "mgr", { op: "start" });
+    expect(t.settings.rounds).toBe(5);
+    playOut(t);
+    expect(t.status).toBe("finished");
+    const pairs = t.rounds.flatMap((r) => r.series.filter((s) => s.b !== null).map((s) => [s.a, s.b].sort().join("-")));
+    expect(new Set(pairs).size).toBe(10);
+    expect(pairs.length).toBe(10);
+    expect(t.rounds.every((r) => r.series.filter((s) => s.b === null).length === 1)).toBe(true);
+    expect(() => h.mgr.join(t, "Late", "late")).toThrow(TournamentError);
+  });
 });
 
 describe("TournamentManager persistence", () => {

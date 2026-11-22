@@ -89,6 +89,35 @@ created (registration open) ── start ──▶ round 1 pairing ─▶ round 
   - a player joining late;
   - a fuzz test over many random tournaments.
 
+## 4a. Formats (added 2026-11-22)
+
+The manager picks the format when creating the tournament (or before the start); it is fixed once
+the tournament starts. **Single elimination is the default.** Tournaments saved before formats existed
+load as Swiss. Pairing code: `shared/src/bracket.ts` (round robin, brackets) and `swiss.ts`.
+
+| Format | Rounds | Ranking |
+|---|---|---|
+| Single elimination | ⌈log₂ N⌉ | how far each player got; players out in the same round share a rank |
+| Double elimination | winners and losers brackets, grand final, reset | as single elimination |
+| Round robin | N − 1 (N if odd: each player sits out once, scored as a bye) | the Swiss standings and tiebreaks |
+| Swiss | set by the manager (§4) | §4 |
+
+- **Brackets** are filled to a power of 2 with empty seeds, placed by standard seeding (1 v N, 2 in the
+  other half), so the top seeds get the byes. A bracket is a fixed list of nodes, each fed by a seed or
+  by the winner or loser of an earlier node. Each round plays every node whose two players are known,
+  so a player whose opponent is already decided can play ahead (with 5 players, the 2 v 3 semi-final is
+  in round 1).
+- **Walkovers:** a missing player (an empty seed, a withdrawal, a double no-show) gives the other a walkover:
+  no game, no bye shown. A withdrawn player ranks below the others knocked out in the same stage.
+- **Elimination series can't be drawn:** a series level after its length plays extra games (next pool
+  maps) until someone leads. The manager's result options in a bracket are a win or "both lose";
+  results of earlier bracket rounds can't be changed, since later rounds were paired from them.
+- **Double elimination:** losers of winners round 1 meet in losers round 1; each later winners round's
+  losers drop in against the losers-bracket survivors (in reverse order every other round, to put off
+  rematches). The grand final is the winners-bracket champion against the losers-bracket champion; if
+  the losers-bracket player wins it, a reset decides (both have then lost once).
+- **Swiss only:** late joins, changing the number of rounds, re-pairing a round.
+
 ## 5. Dashboard (`/t/<CODE>`, plus a "Tournaments" list on the main menu)
 
 Visible to every user of the site. No join is needed to watch.

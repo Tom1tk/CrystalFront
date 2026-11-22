@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Icon, IconBtn, PageTitle, Tabs, Toggle } from "../design/glass";
 import type { MapInfo } from "./MapPicker";
 import type { TournamentView, TournamentMatchReady } from "../hooks/useWebSocket";
-import type { TournamentSeries, TournamentSummary, TournamentSettings, TournamentEntrant, SeriesLength } from "@crystalfront/shared";
+import { FORMAT_LABEL, type TournamentSeries, type TournamentSummary, type TournamentSettings, type TournamentEntrant, type SeriesLength, type TournamentFormat, type TournamentStanding } from "@crystalfront/shared";
 
 interface BotChoice { id: string; name: string }
 
@@ -27,6 +27,15 @@ interface Props {
   /** Watch a live series (delayed by the spectator delay). */
   onSpectate: (slot: number) => void;
 }
+
+const FORMATS: TournamentFormat[] = ["single", "double", "round_robin", "swiss"];
+const FORMAT_HELP: Record<TournamentFormat, string> = {
+  single: "Lose a series and you're out. Byes for the top seeds when the field isn't a power of 2.",
+  double: "Out after two series losses: a winners and a losers bracket, then a grand final (with a reset if the losers-bracket player wins it).",
+  round_robin: "Everyone plays everyone once.",
+  swiss: "A set number of rounds; each round pairs players on the same score.",
+};
+const isBracket = (f: TournamentFormat) => f === "single" || f === "double";
 
 const STATUS_LABEL: Record<string, string> = { registering: "Registering", running: "Running", finished: "Finished", cancelled: "Cancelled" };
 
@@ -78,7 +87,7 @@ function List({ onOpen, onBack, send, maps, error }: Props) {
   return (
     <>
       <div style={{ padding: "18px 22px 0", display: "flex", flexDirection: "column", gap: 14 }}>
-        <PageTitle label="Swiss · beta rules" title="Tournaments" right={<IconBtn icon="back" title="Back" small onClick={onBack} />} />
+        <PageTitle label="Beta rules" title="Tournaments" right={<IconBtn icon="back" title="Back" small onClick={onBack} />} />
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button type="button" className="g-btn primary" onClick={() => setCreating(true)}><Icon name="flag" size={16} />Create</button>
           <input className="g-input" value={joinCode} maxLength={6} placeholder="CODE" aria-label="Tournament code"
@@ -96,10 +105,10 @@ function List({ onOpen, onBack, send, maps, error }: Props) {
             style={{ padding: "12px 14px", display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
             <span style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "flex-start" }}>
               <span className="g-card-name">{t.name}</span>
-              <span className="g-card-meta">{t.code} · {t.entrants} entrants · {new Date(t.createdAt).toLocaleDateString()}</span>
+              <span className="g-card-meta">{t.code} · {FORMAT_LABEL[t.format ?? "swiss"]} · {t.entrants} entrants · {new Date(t.createdAt).toLocaleDateString()}</span>
             </span>
             <span className="g-card-meta" style={{ color: t.status === "running" ? "var(--accent)" : undefined }}>
-              {STATUS_LABEL[t.status]}{t.status === "running" ? ` · round ${t.round}/${t.rounds}` : ""}
+              {STATUS_LABEL[t.status]}{t.status === "running" ? ` · round ${t.round}${isBracket(t.format ?? "swiss") ? "" : `/${t.rounds}`}` : ""}
             </span>
           </button>
         ))}
@@ -112,7 +121,7 @@ function CreateForm({ maps, error, onCancel, onCreate }: { maps: MapInfo[]; erro
   const pool = maps.filter((m) => m.pool);
   const [name, setName] = useState(`${savedName() || "Open"} Cup`);
   const [settings, setSettings] = useState<Omit<TournamentSettings, "name" | "roundBestOf">>({
-    rounds: 3, seeding: "random", bestOf: 1, mapPool: pool.map((m) => m.mapId),
+    format: "single", rounds: 3, seeding: "random", bestOf: 1, mapPool: pool.map((m) => m.mapId),
     readySeconds: 60, autoAdvance: true, advanceSeconds: 60, spectatorDelay: 45,
   });
   useEffect(() => { if (!settings.mapPool.length && pool.length) setSettings((s) => ({ ...s, mapPool: pool.map((m) => m.mapId) })); }, [pool.length]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -125,7 +134,7 @@ function CreateForm({ maps, error, onCancel, onCreate }: { maps: MapInfo[]; erro
         <label><span className="g-label">Name</span>
           <input className="g-input" style={{ marginTop: 6 }} value={name} maxLength={40} onChange={(e) => setName(e.target.value)} />
         </label>
-        <SettingsFields settings={settings} onChange={(p) => setSettings((s) => ({ ...s, ...p }))} maps={pool} withRounds withSeeding />
+        <SettingsFields settings={settings} onChange={(p) => setSettings((s) => ({ ...s, ...p }))} maps={pool} withFormat withSeeding />
         <p className="g-sub" style={{ margin: 0 }}>Games use the beta rules (Surges, 20:00 cap, draws). You manage the tournament from this browser; you can also enter it yourself.</p>
       </div>
       <div style={{ padding: "14px 22px 18px", borderTop: "1px solid var(--edge)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
@@ -140,15 +149,25 @@ function CreateForm({ maps, error, onCancel, onCreate }: { maps: MapInfo[]; erro
 
 type EditableSettings = Omit<TournamentSettings, "name" | "roundBestOf">;
 
-function SettingsFields({ settings, onChange, maps, withRounds, withSeeding }: {
-  settings: EditableSettings; onChange: (p: Partial<EditableSettings>) => void; maps: MapInfo[]; withRounds?: boolean; withSeeding?: boolean;
+function SettingsFields({ settings, onChange, maps, withFormat, withSeeding }: {
+  settings: EditableSettings; onChange: (p: Partial<EditableSettings>) => void; maps: MapInfo[]; withFormat?: boolean; withSeeding?: boolean;
 }) {
   const num = (v: string, lo: number, hi: number) => Math.max(lo, Math.min(hi, Math.round(Number(v) || lo)));
   const togglePool = (id: string) => onChange({ mapPool: settings.mapPool.includes(id) ? settings.mapPool.filter((m) => m !== id) : [...settings.mapPool, id] });
   return (
     <>
+      {withFormat && (
+        <div><span className="g-label">Format</span>
+          <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+            {FORMATS.map((f) => (
+              <button key={f} type="button" className={`g-btn small${settings.format === f ? " primary" : ""}`} onClick={() => onChange({ format: f })}>{FORMAT_LABEL[f]}</button>
+            ))}
+          </div>
+          <p className="g-sub" style={{ margin: "6px 0 0" }}>{FORMAT_HELP[settings.format]}</p>
+        </div>
+      )}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
-        {withRounds && (
+        {withFormat && settings.format === "swiss" && (
           <label><span className="g-label">Rounds</span>
             <input className="g-input" style={{ marginTop: 6 }} type="number" min={1} max={32} value={settings.rounds} onChange={(e) => onChange({ rounds: num(e.target.value, 1, 32) })} />
           </label>
@@ -242,7 +261,8 @@ function Dashboard({ code, view, error, ready, maps, onOpen, send, onPlay, onWat
         <PageTitle label={`${state.code} · ${STATUS_LABEL[state.status]}${state.paused ? " · paused" : ""}`} title={state.settings.name}
           right={<IconBtn icon="back" title="All tournaments" small onClick={() => onOpen(null)} />} />
         <div className="g-card-meta" style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-          <span>Round {state.rounds.length} / {state.settings.rounds}</span>
+          <span>{FORMAT_LABEL[state.settings.format]}</span>
+          <span>Round {state.rounds.length}{isBracket(state.settings.format) ? "" : ` / ${state.settings.rounds}`}</span>
           {round && <span>Map: {mapName(round.map)}</span>}
           <span>Bo{round?.bestOf ?? state.settings.bestOf}</span>
           <span>{state.entrants.filter((e) => !e.withdrawn).length} entrants</span>
@@ -269,7 +289,7 @@ function Dashboard({ code, view, error, ready, maps, onOpen, send, onPlay, onWat
                     <div key={s.slot} className="g-card" style={{ padding: "10px 12px", cursor: "default", display: "flex", alignItems: "center", gap: 10 }}>
                       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
                         <span className="g-card-name">{nameOf(s.a)} <span style={{ color: "var(--ink-dim)" }}>vs</span> {nameOf(s.b)}</span>
-                        <span className="g-card-meta">Game {s.games.length} · {mapName(s.games[s.games.length - 1]?.map ?? round.map)} · {seriesScore(s)}</span>
+                        <span className="g-card-meta">{s.label ? `${s.label} · ` : ""}Game {s.games.length} · {mapName(s.games[s.games.length - 1]?.map ?? round.map)} · {seriesScore(s)}</span>
                       </div>
                       <button type="button" className="g-btn small" title={`Watch, ${state.settings.spectatorDelay} s behind live`} onClick={() => onSpectate(s.slot)}>
                         <Icon name="play" size={12} />Spectate
@@ -296,7 +316,7 @@ function Dashboard({ code, view, error, ready, maps, onOpen, send, onPlay, onWat
                   <div className="g-card-meta">{mapName(shownRound.map)} · Bo{shownRound.bestOf}</div>
                   {shownRound.series.map((s) => (
                     <SeriesRow key={s.slot} s={s} nameOf={nameOf} mapName={mapName} onWatchReplay={onWatchReplay}
-                      manage={viewer.isManager && state.status === "running" ? (result) => {
+                      manage={viewer.isManager && state.status === "running" && (!isBracket(state.settings.format) || shownRound === round) ? (result) => {
                         if (result !== "replay" || window.confirm("Replay this series from the start?")) send("tournament_admin", { op: "set_result", round: shownRound.number, slot: s.slot, result });
                       } : undefined} />
                   ))}
@@ -329,6 +349,7 @@ function SeriesRow({ s, nameOf, mapName, onWatchReplay, manage }: {
   return (
     <div className="g-row" style={{ alignItems: "flex-start" }}>
       <div className="g-row-text" style={{ minWidth: 0 }}>
+        {s.label && <span className="g-label">{s.label}</span>}
         <span className="g-row-name">
           <span style={{ color: "var(--blue, #6aa7ff)" }}>{nameOf(s.a)}</span>
           {s.b !== null && <> <span style={{ color: "var(--ink-dim)" }}>vs</span> <span style={{ color: "var(--red, #ff7a6a)" }}>{nameOf(s.b)}</span></>}
@@ -354,9 +375,9 @@ function SeriesRow({ s, nameOf, mapName, onWatchReplay, manage }: {
             <option value="">Set result…</option>
             <option value="a">{nameOf(s.a)} wins</option>
             <option value="b">{nameOf(s.b)} wins</option>
-            <option value="draw">Draw</option>
+            {!s.node && <option value="draw">Draw</option>}
             <option value="both_lose">Both lose</option>
-            <option value="void">Void</option>
+            {!s.node && <option value="void">Void</option>}
             <option value="replay">Replay series</option>
           </select>
         )}
@@ -368,14 +389,27 @@ function SeriesRow({ s, nameOf, mapName, onWatchReplay, manage }: {
 function StandingsTable({ state, statusOf, meId }: { state: TournamentView["state"]; statusOf: (e: TournamentEntrant) => string; meId?: string }) {
   if (state.entrants.length === 0) return <div className="g-sub">Nobody has joined yet. Share the code <b style={{ fontFamily: "var(--mono)" }}>{state.code}</b>.</div>;
   const byId = new Map(state.entrants.map((e) => [e.id, e]));
-  const rows = state.standings.length ? state.standings : state.entrants.map((e, i) => ({ id: e.id, rank: i + 1, points: 0, wins: 0, draws: 0, losses: 0, buchholz: 0, sb: 0, gameDiff: 0 }));
+  const rows: TournamentStanding[] = state.standings.length ? state.standings : state.entrants.map((e, i) => ({ id: e.id, rank: i + 1, points: 0, wins: 0, draws: 0, losses: 0, buchholz: 0, sb: 0, gameDiff: 0 }));
   const th = { textAlign: "left" as const, padding: "6px 8px", fontWeight: 500 };
   const td = { padding: "7px 8px", borderTop: "1px solid rgba(255,255,255,0.06)" };
+  const bracket = isBracket(state.settings.format);
+  const finished = state.status === "finished";
+  // Elimination: a rank is final once the player is out (or the bracket is over).
+  const placed = (r: TournamentStanding) => finished || !!r.outIn;
+  const result = (r: TournamentStanding) => {
+    if (r.rank === 1 && finished) return "Champion";
+    if (r.outIn) return `Out: ${r.outIn}`;
+    return state.status === "running" ? "Still in" : "";
+  };
   return (
     <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "var(--ui)", fontSize: 13 }}>
       <thead className="g-card-meta"><tr>
-        <th style={th}>#</th><th style={th}>Name</th><th style={th}>Pts</th><th style={th}>W-D-L</th>
-        <th style={th} title="Buchholz Cut-1: opponents' points minus the lowest">Buch</th><th style={th} title="Sonneborn-Berger">SB</th><th style={th}>Status</th>
+        <th style={th}>#</th><th style={th}>Name</th>
+        {bracket ? <><th style={th}>W-L</th><th style={th}>Result</th></> : <>
+          <th style={th}>Pts</th><th style={th}>W-D-L</th>
+          <th style={th} title="Buchholz Cut-1: opponents' points minus the lowest">Buch</th><th style={th} title="Sonneborn-Berger">SB</th>
+        </>}
+        <th style={th}>Status</th>
       </tr></thead>
       <tbody>
         {rows.map((r) => {
@@ -383,12 +417,17 @@ function StandingsTable({ state, statusOf, meId }: { state: TournamentView["stat
           if (!e) return null;
           return (
             <tr key={r.id} style={{ color: e.withdrawn ? "var(--ink-faint)" : undefined, background: r.id === meId ? "rgba(255,255,255,0.06)" : undefined }}>
-              <td style={td}>{state.status === "registering" ? "" : r.rank}</td>
+              <td style={td}>{state.status === "registering" || (bracket && !placed(r)) ? "" : r.rank}</td>
               <td style={td}>{e.bot && <Icon name="bot" size={13} style={{ verticalAlign: -2, marginRight: 5 }} />}{e.name}{r.id === meId ? " (you)" : ""}</td>
-              <td style={td}>{r.points}</td>
-              <td style={td}>{r.wins}-{r.draws}-{r.losses}</td>
-              <td style={td}>{r.buchholz}</td>
-              <td style={td}>{r.sb}</td>
+              {bracket ? <>
+                <td style={td}>{r.wins}-{r.losses}</td>
+                <td style={td}>{result(r)}</td>
+              </> : <>
+                <td style={td}>{r.points}</td>
+                <td style={td}>{r.wins}-{r.draws}-{r.losses}</td>
+                <td style={td}>{r.buchholz}</td>
+                <td style={td}>{r.sb}</td>
+              </>}
               <td style={{ ...td, color: statusOf(e) === "playing" ? "var(--accent)" : "var(--ink-dim)" }}>{statusOf(e)}</td>
             </tr>
           );
@@ -407,7 +446,7 @@ function YourStatus({ state, me, series, ready, now, playing, nameOf, mapName, n
     <div className="g-glass flat" style={{ padding: "12px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap",
       background: hot ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.04)", borderColor: hot ? "var(--accent)" : undefined }}>{children}</div>
   );
-  const open = state.status === "registering" || state.status === "running";
+  const open = state.status === "registering" || (state.status === "running" && state.settings.format === "swiss");
   if (!me) {
     if (!open || state.locked) return null;
     return box(<>
@@ -427,12 +466,13 @@ function YourStatus({ state, me, series, ready, now, playing, nameOf, mapName, n
   const opp = nameOf(series.a === me.id ? series.b : series.a);
   const game = series.games[series.games.length - 1];
   if (series.b === null) return box(<span className="g-sub">You have a bye this round (1 point).</span>);
+  const stage = series.label ? `${series.label}: ` : "";
   if (series.status === "ready_check") {
     const mine = series.a === me.id ? series.ready.a : series.ready.b;
     const side = game?.blue === me.id ? "blue" : "red";
     return box(<>
       <span className="g-sub" style={{ color: "var(--ink)" }}>
-        Round {state.rounds.length}{series.bestOf > 1 ? `, game ${series.games.length}` : ""} vs <b>{opp}</b> on {mapName(game?.map ?? ready?.map ?? "")} as {side}
+        {stage}Round {state.rounds.length}{series.bestOf > 1 || series.games.length > 1 ? `, game ${series.games.length}` : ""} vs <b>{opp}</b> on {mapName(game?.map ?? ready?.map ?? "")} as {side}
         {series.deadline ? ` · ${clock(series.deadline - now)}` : ""}
       </span>
       {mine ? <span className="g-card-meta">Ready · waiting for {opp}</span>
@@ -461,6 +501,7 @@ function ManagerPanel({ state, maps, send }: { state: TournamentView["state"]; m
   useEffect(() => { void fetch("/api/tournaments").then((r) => r.json()).then((d) => { setBots(d.bots ?? []); setBot(d.bots?.[0]?.id ?? ""); }).catch(() => {}); }, []);
   useEffect(() => { setRounds(state.settings.rounds); }, [state.settings.rounds]);
   const reg = state.status === "registering", running = state.status === "running", open = reg || running;
+  const swiss = state.settings.format === "swiss";
   const round = state.rounds[state.rounds.length - 1];
   const roundBusy = !!round && round.series.some((s) => s.status !== "done");
   const canRepair = !!round && round.series.every((s) => s.b === null || s.games.length === 0 || s.status === "ready_check");
@@ -484,23 +525,23 @@ function ManagerPanel({ state, maps, send }: { state: TournamentView["state"]; m
           <button type="button" className="g-btn small" onClick={() => admin(state.locked ? "unlock" : "lock")}>{state.locked ? "Open registration" : "Lock registration"}</button>
           {running && <button type="button" className="g-btn small" onClick={() => admin(state.paused ? "resume" : "pause")}>{state.paused ? "Resume" : "Pause"}</button>}
           {running && !roundBusy && state.rounds.length < state.settings.rounds && <button type="button" className="g-btn small primary" onClick={() => admin("next_round")}>Start next round now</button>}
-          {running && canRepair && <button type="button" className="g-btn small" onClick={() => admin("repair")}>Re-pair this round</button>}
-          <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {running && swiss && canRepair && <button type="button" className="g-btn small" onClick={() => admin("repair")}>Re-pair this round</button>}
+          {swiss && <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
             <span className="g-sub">Rounds</span>
             <input className="g-input" type="number" min={Math.max(1, state.rounds.length)} max={32} value={rounds} style={{ width: 70 }} onChange={(e) => setRounds(Number(e.target.value))} />
             <button type="button" className="g-btn small" disabled={rounds === state.settings.rounds} onClick={() => admin("set_rounds", { rounds })}>Set</button>
-          </span>
+          </span>}
         </div>
       ))}
 
       {section("Entrants", (
         <>
-          <div style={{ display: "flex", gap: 8 }}>
+          {(reg || swiss) && <div style={{ display: "flex", gap: 8 }}>
             <select className="g-input" value={bot} onChange={(e) => setBot(e.target.value)} style={{ flex: 1 }} aria-label="Bot">
               {bots.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
             <button type="button" className="g-btn small" disabled={!bot} onClick={() => admin("add_bot", { bot })}><Icon name="bot" size={14} />Add bot</button>
-          </div>
+          </div>}
           {state.entrants.map((e) => {
             const i = active.indexOf(e);
             return (
@@ -531,8 +572,8 @@ function ManagerPanel({ state, maps, send }: { state: TournamentView["state"]; m
 
       {section("Settings for future rounds", (
         <>
-          <SettingsFields settings={settings} onChange={(p) => setSettings((s) => ({ ...s, ...p }))} maps={maps.filter((m) => m.pool)} withSeeding={reg} />
-          <div><button type="button" className="g-btn small primary" onClick={() => admin("settings", { settings: { ...settings, rounds: undefined } })}>Save settings</button></div>
+          <SettingsFields settings={settings} onChange={(p) => setSettings((s) => ({ ...s, ...p }))} maps={maps.filter((m) => m.pool)} withSeeding={reg} withFormat={reg} />
+          <div><button type="button" className="g-btn small primary" onClick={() => admin("settings", { settings: { ...settings, rounds: undefined, ...(reg ? {} : { format: undefined }) } })}>Save settings</button></div>
         </>
       ))}
 
