@@ -6,6 +6,9 @@
 //                       can be conditioned on (sites per building, orders per group, …)
 //   <prefix>.tail.onnx  heads' input, entity embeddings, chosen order and unit →
 //                       target and pointer logits (they depend on the chosen unit)
+// A model trained with the Outrider's own order slot (meta scoutSlot, action space 9)
+// also outputs scoutOrder logits, and its tail takes scout_order and returns
+// scoutTarget / scoutPtr; its seat then needs computeMasks(…, { scoutSlot: true }).
 // Sampling happens here and mirrors training/v2/model.py `Agent.policy` /
 // `masked_choice`: each head samples from its masked logits; a head that does
 // not apply to the choices before it, or whose mask is empty, plays 0.
@@ -14,7 +17,7 @@ import { readFileSync } from "node:fs";
 import { Rng } from "../../../server/src/match/engine/rng.js";
 import {
   BUILDINGS, ECON_ASSIGN0, ECON_BUILD0, ECON_RALLY, ECON_REPAIR, GROUPS, ORDERS, POINT_ORDERS, PTR_ORDERS, PTR_SIZE,
-  TRAIN_UNITS, N_ANCHOR_TARGETS, ANCHOR_TARGETS, NOOP_ACTION, type V2Action, type V2Masks,
+  TRAIN_UNITS, N_ANCHOR_TARGETS, ANCHOR_TARGETS, NOOP_ACTION, TARGET_NONE, type V2Action, type V2Masks,
 } from "./actions.js";
 import { ENTITY_F, GLOBAL_NAMES, MEMORY_F as MEM_F, NODE_F, NODE_ROWS, type ObsV2 } from "./observation.js";
 
@@ -30,16 +33,18 @@ export interface NeuralModel {
   tail: ort.InferenceSession;
   hidden: number;
   nOpp: number;
+  /** Trained with the scout slot: give its seat scout-slot masks. */
+  scoutSlot: boolean;
 }
 
 /** Load `<prefix>.main.onnx`, `<prefix>.tail.onnx` and `<prefix>.json`. One model serves any number of matches. */
 export async function loadModel(prefix: string, name = prefix): Promise<NeuralModel> {
-  const meta = JSON.parse(readFileSync(`${prefix}.json`, "utf8")) as { hidden: number; nOpp: number };
+  const meta = JSON.parse(readFileSync(`${prefix}.json`, "utf8")) as { hidden: number; nOpp: number; scoutSlot?: boolean };
   const opts: ort.InferenceSession.SessionOptions = { intraOpNumThreads: 1, interOpNumThreads: 1, graphOptimizationLevel: "all" };
   const [main, tail] = await Promise.all([
     ort.InferenceSession.create(`${prefix}.main.onnx`, opts), ort.InferenceSession.create(`${prefix}.tail.onnx`, opts),
   ]);
-  return { name, main, tail, hidden: meta.hidden, nOpp: meta.nOpp };
+  return { name, main, tail, hidden: meta.hidden, nOpp: meta.nOpp, scoutSlot: meta.scoutSlot === true };
 }
 
 export interface Decision {
@@ -140,16 +145,29 @@ export class NeuralPolicy {
       logp.unit = r ? r[1] : 0;
       if (r) { a.unit = r[0]; unitOn = 1; }
     }
+    // Scout slot (training/v2/model.py: after the army, from the heads' input with the scout group)
+    const slot = this.model.scoutSlot;
+    let so = 0;
+    if (slot) {
+      so = pick("scoutOrder", f("scoutOrder"), 0, ORDERS.length, row(m.scoutOrder));
+      a.scoutOrder = so;
+      a.scoutTarget = TARGET_NONE;
+      a.scoutPtr = 0;
+    }
     const isPoint = POINT.has(a.order), isPtr = PTRO.has(a.order);
-    if (isPoint || isPtr) {
+    const sPoint = POINT.has(so), sPtr = PTRO.has(so);
+    if (isPoint || isPtr || sPoint || sPtr) {
       const t = await this.model.tail.run({
         hh: o.hh, E: o.E,
         order: new T("int64", BigInt64Array.from([BigInt(a.order)]), [1]),
         unit: new T("int64", BigInt64Array.from([BigInt(a.unit)]), [1]),
         unit_on: new T("float32", Float32Array.from([unitOn]), [1]),
+        ...(slot ? { scout_order: new T("int64", BigInt64Array.from([BigInt(so)]), [1]) } : {}),
       });
       if (isPoint) a.target = pick("target", t.target.data as Float32Array, 0, m.target[a.order].length, row(m.target[a.order]));
-      else a.ptr = pick("ptr", t.ptr.data as Float32Array, 0, PTR_SIZE, ptrRow(m.ptr[a.order]));
+      else if (isPtr) a.ptr = pick("ptr", t.ptr.data as Float32Array, 0, PTR_SIZE, ptrRow(m.ptr[a.order]));
+      if (sPoint) a.scoutTarget = pick("scoutTarget", t.scoutTarget.data as Float32Array, 0, m.target[so].length, row(m.target[so]));
+      else if (sPtr) a.scoutPtr = pick("scoutPtr", t.scoutPtr.data as Float32Array, 0, PTR_SIZE, ptrRow(m.ptr[so]));
     }
     return { action: a, opp: Float32Array.from(f("opp")), logp };
   }

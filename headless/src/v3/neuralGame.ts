@@ -38,7 +38,7 @@ export async function playGame(model: NeuralModel, bot: string, map: string, see
   while (!st.terminated && !st.truncated) {
     for (const s of seats) V2.workerAutopilot(engine, match, s);
     const obs = [0, 1].map((i) => OBS.observe(match, seats[i], oss[i], { z: i === side ? 0 : opp.z ?? 0, cap }));
-    const masks = [V2.computeMasks(match, seats[0]), V2.computeMasks(match, seats[1])];
+    const masks = [0, 1].map((i) => V2.computeMasks(match, seats[i], { scoutSlot: i === side && model.scoutSlot }));
     const botAct = opp.decide(obs[b], masks[b]);
     const d = await pol.decide(obs[side], stat, masks[side]);
     let a = d.action;

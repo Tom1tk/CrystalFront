@@ -5,9 +5,12 @@
 //
 // Python → Node (newline-delimited JSON)
 //   { type: "reset_all", decision_interval?: 8, max_ticks?: 12000, critic?: true, packed?: false,
+//     scout_slot?: false, scout_teacher?: false,
 //     slots: [ { seed, map, blue, red, z?: {blue, red}, scenario?: null, save_replay?: false } ] }
 //       blue/red: "policy" | "bot:<name>" | "teach:<name>"
-//   { type: "step", actions: [ { blue?: {econ: [kind, site, econPtr, econTarget], army: [group, order, unit, target, ptr]}, red?: … } ] }
+//   { type: "step", actions: [ { blue?: {econ: [kind, site, econPtr, econTarget], army: [group, order, unit, target, ptr], scout?: [order, target, ptr]}, red?: … } ] }
+//       scout: the Outrider's own order (scout_slot: policy seats get masks for it, and the
+//       Outrider is then out of the `scout` group and the unit pointer; see actions.ts)
 //       action space v3 (actions.ts); heads that do not apply to the chosen kind/order are ignored
 //       one entry per slot; only "policy" seats need an action
 //   { type: "configure", slots: [ { index, …any slot field } ] }
@@ -23,9 +26,12 @@
 // and teacher choices; then the step applies both seats' actions together
 // (applyV2Pair, no first-mover edge) and runs `decision_interval` ticks.
 // `seats` holds one entry per policy or teach seat: { obs, masks, critic?,
-// oppLabels, teacher }. `teacher` is the bot's action chosen from that same obs.
+// oppLabels, teacher, scoutTeacher? }. `teacher` is the bot's action chosen from that same obs.
+// `scoutTeacher` (scout_teacher, policy seats): [order, target, ptr], what a scripted Outrider
+// (scout.ts, style careful) would order through the scout slot now; order 0 = keep going.
 // `rewards` (per policy/teach seat) covers the window just played: raw
-// components, see rewards.ts. On done or truncation `terminal` holds the final
+// components, see rewards.ts, plus shaped.intel: first sightings of enemy entities this window
+// (sightingWeight), mine minus the opponent's. On done or truncation `terminal` holds the final
 // { obs, critic, oppLabels } per policy/teach seat and the slot is autoreset:
 // `seats` is then the new episode's first decision, and `static` / `episode`
 // describe it. Slot settings persist across autoresets.
@@ -45,6 +51,7 @@ import * as V2 from "./actions.js";
 import * as OBS from "./observation.js";
 import { makeV2Bot, type V2Bot } from "./bots.js";
 import { botContext } from "./scripted.js";
+import { OutriderPlan } from "./scout.js";
 import { rewardSnapshot, windowRewards, type RewardSnapshot, type SeatRewards } from "./rewards.js";
 
 export const PLAYER_IDS = ["v2-blue", "v2-red"] as const;
@@ -87,7 +94,7 @@ export function strSeed(s: string): number {
 const bit = (b: boolean[]) => b.map((v) => (v ? 1 : 0));
 
 const b64 = (a: Float32Array | Uint8Array) => Buffer.from(a.buffer, a.byteOffset, a.byteLength).toString("base64");
-export const MASK_KEYS = ["econ", "site", "econPtr", "econTarget", "group", "order", "unit", "target", "ptr"] as const;
+export const MASK_KEYS = ["econ", "site", "econPtr", "econTarget", "group", "order", "unit", "target", "ptr", "scoutOrder"] as const;
 
 export function packObs(o: OBS.ObsV2) {
   const n = o.entities.length;
@@ -126,20 +133,24 @@ export function encodeMasks(m: V2.V2Masks) {
   return {
     econ: bit(m.econ), site: m.site.map(bit), econPtr: m.econPtr.map(bit), econTarget: bit(m.econTarget),
     group: bit(m.group), order: m.order.map(bit), unit: m.unit.map(bit), target: m.target.map(bit), ptr: m.ptr.map(bit),
+    scoutOrder: bit(m.scoutOrder),
   };
 }
 
-export interface WireAction { econ: [number, number, number, number]; army: [number, number, number, number, number] }
+export interface WireAction { econ: [number, number, number, number]; army: [number, number, number, number, number]; scout?: [number, number, number] }
 export const toWire = (a: V2.V2Action): WireAction => ({
   econ: [a.econ, a.site, a.econPtr, a.econTarget], army: [a.group, a.order, a.unit, a.target, a.ptr],
+  ...(a.scoutOrder !== undefined ? { scout: [a.scoutOrder, a.scoutTarget ?? V2.TARGET_NONE, a.scoutPtr ?? 0] as [number, number, number] } : {}),
 });
 
 export function fromWire(w: unknown): V2.V2Action | null {
   const a = w as WireAction | undefined;
   const ints = (x: unknown, n: number): x is number[] => Array.isArray(x) && x.length === n && x.every(Number.isInteger);
-  if (!a || !ints(a.econ, 4) || !ints(a.army, 5)) return null;
+  if (!a || !ints(a.econ, 4) || !ints(a.army, 5) || (a.scout !== undefined && !ints(a.scout, 3))) return null;
   const [econ, site, econPtr, econTarget] = a.econ, [group, order, unit, target, ptr] = a.army;
-  return { econ, site, econPtr, econTarget, group, order, unit, target, ptr };
+  const out: V2.V2Action = { econ, site, econPtr, econTarget, group, order, unit, target, ptr };
+  if (a.scout) [out.scoutOrder, out.scoutTarget, out.scoutPtr] = a.scout;
+  return out;
 }
 
 export interface RunnerOptions {
@@ -163,7 +174,15 @@ export interface V2Replay {
   v2: { obsSchemaVersion: number; actionSpaceVersion: number; k: number; cap: number; z: [number, number]; actions: Array<{ tick: number; blue: WireAction; red: WireAction }> };
 }
 
-interface Globals { k: number; cap: number; critic: boolean; packed: boolean }
+interface Globals { k: number; cap: number; critic: boolean; packed: boolean; scoutSlot: boolean; scoutTeacher: boolean }
+
+/** First-sighting weights for the intel reward: buildings (and the crystal) 1, army units 0.25, workers 0.1; per INTEL_SCALE. */
+export const INTEL_SCALE = 20;
+export function sightingWeight(e: { type: string }): number {
+  return e.type === "building" || e.type === "crystal" ? 1 : e.type === "worker" ? 0.1 : 0.25;
+}
+/** Scout teacher: an order the Outrider got through the slot within this many decisions still counts as carried out. */
+const SCOUT_TEACHER_REFRESH = 10;
 
 class Slot {
   cfg: SlotConfig;
@@ -191,6 +210,10 @@ class Slot {
   episodeSeed = 0;
   /** Strategy token in each seat's observation: the configured z, or a scripted bot's own z when none is configured. */
   zSeat: [number, number] = [0, 0];
+  /** scout_teacher: the scripted Outrider plan shadowing each policy seat. */
+  shadows: [OutriderPlan | null, OutriderPlan | null] = [null, null];
+  /** Enemy entity ids each seat has seen (intel reward). */
+  sighted: [Set<string>, Set<string>] = [new Set(), new Set()];
 
   constructor(cfg: SlotConfig, private idx: number, private g: Globals, private opts: RunnerOptions) {
     this.cfg = cfg;
@@ -225,6 +248,10 @@ class Slot {
       ? makeV2Bot(s.bot, mixSeed(this.episodeSeed, strSeed(s.bot)), botContext(this.match, this.seats[i], this.g.cap), cfg.z[SIDES[i]])
       : null)) as [V2Bot | null, V2Bot | null];
     this.zSeat = [0, 1].map((i) => cfg.z[SIDES[i]] || this.bots[i]?.z || 0) as [number, number];
+    this.shadows = [0, 1].map((i) => (this.g.scoutTeacher && this.specs[i].kind === "policy"
+      ? new OutriderPlan("careful", "never", botContext(this.match, this.seats[i], this.g.cap)) : null)) as [OutriderPlan | null, OutriderPlan | null];
+    this.sighted = [new Set(), new Set()];
+    this.sight();
     this.actions = [];
     this.illegal = [0, 0];
     this.botErrors = [0, 0];
@@ -246,8 +273,15 @@ class Slot {
     const critic = this.g.critic && this.learnerSides().length ? this.critic() : null;
     for (const i of [0, 1] as const) {
       const obs = OBS.observe(match, this.seats[i], this.oss[i], { z: this.zSeat[i], cap: this.g.cap });
-      this.masks[i] = V2.computeMasks(match, this.seats[i]);
+      this.masks[i] = V2.computeMasks(match, this.seats[i], { scoutSlot: this.g.scoutSlot && this.specs[i].kind === "policy" });
       this.chosen[i] = this.bots[i] ? this.botDecide(i, obs) : null;
+      const sh = this.shadows[i];
+      let scoutTeacher: [number, number, number] | null = null;
+      if (sh) {
+        const want = sh.shadow(obs, this.masks[i], this.seats[i].stats.decisions);
+        scoutTeacher = !want || V2.scoutCmdMatches(match, this.seats[i], want, SCOUT_TEACHER_REFRESH * this.g.k)
+          ? [0, V2.TARGET_NONE, 0] : [want.scoutOrder, want.scoutTarget, want.scoutPtr];
+      }
       if (this.specs[i].kind === "bot") continue;
       if (this.g.packed && !this.layout) this.layout = layout(obs, this.masks[i]);
       out[SIDES[i]] = {
@@ -256,9 +290,25 @@ class Slot {
         ...(critic ? { critic: this.g.packed ? packCritic(critic[i]) : critic[i] } : {}),
         oppLabels: OBS.oppLabels(match, this.seats[i]),
         teacher: this.specs[i].kind === "teach" ? toWire(this.chosen[i]!) : null,
+        ...(scoutTeacher ? { scoutTeacher } : {}),
       };
     }
     this.snap = rewardSnapshot(match);
+    return out;
+  }
+
+  /** New first sightings per seat since the last call (weighted, sightingWeight). */
+  private sight(): [number, number] {
+    const out: [number, number] = [0, 0];
+    for (const i of [0, 1] as const) {
+      const pid = PLAYER_IDS[i], vis = this.match.visibilityData?.get(pid), seen = this.sighted[i];
+      for (const e of this.match.entities.values()) {
+        if (e.ownerId === pid || e.health <= 0 || seen.has(e.id) || (vis && !vis.entityIds.has(e.id))) continue;
+        if (e.ownerId !== PLAYER_IDS[1 - i]) continue;
+        seen.add(e.id);
+        out[i] += sightingWeight(e);
+      }
+    }
     return out;
   }
 
@@ -329,8 +379,10 @@ class Slot {
     }
     const winnerSeat = st.terminated && match.result ? (match.result.winner === PLAYER_IDS[0] ? 0 : match.result.winner === PLAYER_IDS[1] ? 1 : null) : null;
     const rw = windowRewards(match, this.snap, winnerSeat);
-    const rewards: Record<string, SeatRewards> = {};
-    for (const i of this.learnerSides()) rewards[SIDES[i]] = rw[i];
+    const seen = this.sight();
+    const intel = Math.round(((seen[0] - seen[1]) / INTEL_SCALE) * 1e6) / 1e6;
+    const rewards: Record<string, SeatRewards & { shaped: { intel: number } }> = {};
+    for (const i of this.learnerSides()) rewards[SIDES[i]] = { ...rw[i], shaped: { ...rw[i].shaped, intel: i === 0 ? intel : -intel || 0 } };
 
     if (!st.terminated && !st.truncated) {
       return { seats: this.prepare(), rewards, done: false, truncated: false, terminal: null, info: {} };
@@ -389,7 +441,7 @@ function slotConfig(raw: Record<string, unknown>, i: number): SlotConfig {
 
 export class VecRunnerV2 {
   private slots: Slot[] = [];
-  private g: Globals = { k: V2.DECISION_TICKS, cap: TRAIN_MAX_TICKS, critic: true, packed: false };
+  private g: Globals = { k: V2.DECISION_TICKS, cap: TRAIN_MAX_TICKS, critic: true, packed: false, scoutSlot: false, scoutTeacher: false };
   constructor(private opts: RunnerOptions = {}) {}
 
   /** The live match of a slot (tests). */
@@ -404,6 +456,8 @@ export class VecRunnerV2 {
             cap: Number(msg.max_ticks ?? TRAIN_MAX_TICKS),
             critic: msg.critic === undefined ? true : Boolean(msg.critic),
             packed: Boolean(msg.packed),
+            scoutSlot: Boolean(msg.scout_slot),
+            scoutTeacher: Boolean(msg.scout_teacher),
           };
           if (!(this.g.k >= 1)) throw new Error("decision_interval must be ≥ 1");
           const raw = (msg.slots ?? []) as Record<string, unknown>[];

@@ -14,6 +14,9 @@ group → order → unit → target / pointer), so sampling stays in TypeScript
                    plus hh (the heads' input) and E (entity embeddings) for the tail.
   <out>.tail.onnx  hh, E, chosen order, chosen unit, unit_on → target (804), ptr (200)
                    (both depend on the chosen unit's embedding).
+Scout slot (v3, a checkpoint trained with one; meta scoutSlot): main also outputs
+scoutOrder (12); the tail also takes scout_order and returns scoutTarget (804) and
+scoutPtr (200).
 
 Entities are always padded to N = 200 (spaces.PTR) rows with ent_n the real count
 (the attention reshape does not trace with a dynamic N; padded rows are masked, as
@@ -37,9 +40,9 @@ from training.v2.model import Agent, load_weights
 
 
 class Main(nn.Module):
-    def __init__(self, a: Agent):
+    def __init__(self, a: Agent, scout: bool = False):
         super().__init__()
-        self.a = a
+        self.a, self.scout = a, scout
 
     def forward(self, globals_, z, ent, ent_n, nodes, memory, grid, h0, c0):
         a = self.a
@@ -55,7 +58,8 @@ class Main(nn.Module):
         econ_target = a.etgt(hh + a.eptr_emb.weight[1])                                     # (1, 804): rally only
         order = a.order(hh.unsqueeze(1) + a.group_emb.weight.unsqueeze(0))                  # (1, 11, 12)
         unit = ptr(a.unit_q(hh.unsqueeze(1) + a.order_emb.weight.unsqueeze(0)))             # (1, 12, 200)
-        return (h1, c1, a.opp_probs(opp), hh, E, a.econ(hh), site, econ_ptr, econ_target, a.group(hh), order, unit)
+        outs = (h1, c1, a.opp_probs(opp), hh, E, a.econ(hh), site, econ_ptr, econ_target, a.group(hh), order, unit)
+        return outs + (a.scout_order(hh + a.group_emb.weight[S.GROUP_SCOUT]),) if self.scout else outs
 
 
 class Tail(nn.Module):
@@ -71,10 +75,20 @@ class Tail(nn.Module):
         return a.target(hu), torch.einsum("bd,bnd->bn", a.ptr_q(hu), E) * sc
 
 
+class ScoutTail(Tail):
+    def forward(self, hh, E, order, unit, unit_on, scout_order):
+        a = self.a
+        target, ptr = super().forward(hh, E, order, unit, unit_on)
+        hs = hh + a.order_emb(scout_order)
+        sc = 1.0 / math.sqrt(a.d_ent)
+        return target, ptr, a.scout_target(hs), torch.einsum("bd,bnd->bn", a.scout_ptr_q(hs), E) * sc
+
+
 MAIN_IN = ["globals", "z", "ent", "ent_n", "nodes", "memory", "grid", "h0", "c0"]
 MAIN_OUT = ["h1", "c1", "opp", "hh", "E", "econ", "site", "econPtr", "econTarget", "group", "order", "unit"]
 TAIL_IN = ["hh", "E", "order", "unit", "unit_on"]
 TAIL_OUT = ["target", "ptr"]
+SCOUT_MAIN_OUT, SCOUT_TAIL_IN, SCOUT_TAIL_OUT = ["scoutOrder"], ["scout_order"], ["scoutTarget", "scoutPtr"]
 
 
 def dummy(n: int = 7):
@@ -85,25 +99,31 @@ def dummy(n: int = 7):
             torch.zeros(1, S.GRID_DYN_C + S.GRID_STATIC_C, S.GRID_ROWS, S.GRID_COLS), torch.zeros(1, d), torch.zeros(1, d))
 
 
-def load(path: str) -> Agent:
+def load(path: str) -> tuple[Agent, bool]:
+    """The agent, and whether its checkpoint was trained with the scout slot."""
     a = Agent()
-    load_weights(a, torch.load(path, map_location="cpu")["model"])
-    return a.eval()
+    sd = torch.load(path, map_location="cpu")["model"]
+    load_weights(a, sd)
+    return a.eval(), "scout_order.weight" in sd
 
 
 def export(ckpt: str, out: str) -> None:
     torch.backends.mha.set_fastpath_enabled(False)  # the fused encoder kernel has no ONNX export
-    a = load(ckpt)
+    a, scout = load(ckpt)
+    scout = scout and S.LAYOUT == "v3"
     Path(out).parent.mkdir(parents=True, exist_ok=True)
     args = dummy()
+    main_out = MAIN_OUT + (SCOUT_MAIN_OUT if scout else [])
+    tail_in, tail_out = TAIL_IN + (SCOUT_TAIL_IN if scout else []), TAIL_OUT + (SCOUT_TAIL_OUT if scout else [])
     with torch.no_grad():
-        torch.onnx.export(Main(a), args, f"{out}.main.onnx", input_names=MAIN_IN, output_names=MAIN_OUT, opset_version=17, dynamo=False)
-        outs = Main(a)(*args)
-        tail_args = (outs[3], outs[4], torch.tensor([1]), torch.tensor([2]), torch.tensor([1.0]))
-        torch.onnx.export(Tail(a), tail_args, f"{out}.tail.onnx", input_names=TAIL_IN, output_names=TAIL_OUT, opset_version=17, dynamo=False)
+        torch.onnx.export(Main(a, scout), args, f"{out}.main.onnx", input_names=MAIN_IN, output_names=main_out, opset_version=17, dynamo=False)
+        outs = Main(a, scout)(*args)
+        tail_args = (outs[3], outs[4], torch.tensor([1]), torch.tensor([2]), torch.tensor([1.0])) + ((torch.tensor([2]),) if scout else ())
+        torch.onnx.export(ScoutTail(a) if scout else Tail(a), tail_args, f"{out}.tail.onnx", input_names=tail_in, output_names=tail_out,
+                          opset_version=17, dynamo=False)
     meta = {"checkpoint": ckpt, "layout": S.LAYOUT,
-            "obsSchemaVersion": 7 if S.LAYOUT == "v3" else 5, "actionSpaceVersion": 8 if S.LAYOUT == "v3" else 7, "hidden": 384,
-            "nOpp": a.n_opp, "main": {"in": MAIN_IN, "out": MAIN_OUT}, "tail": {"in": TAIL_IN, "out": TAIL_OUT}}
+            "obsSchemaVersion": 7 if S.LAYOUT == "v3" else 5, "actionSpaceVersion": (9 if scout else 8) if S.LAYOUT == "v3" else 7, "hidden": 384,
+            "nOpp": a.n_opp, "scoutSlot": scout, "main": {"in": MAIN_IN, "out": main_out}, "tail": {"in": tail_in, "out": tail_out}}
     Path(f"{out}.json").write_text(json.dumps(meta, indent=1))
     print(f"wrote {out}.main.onnx, {out}.tail.onnx, {out}.json")
 

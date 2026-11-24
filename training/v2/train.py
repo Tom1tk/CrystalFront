@@ -30,7 +30,7 @@ from torch.utils.tensorboard import SummaryWriter
 from training.env.vec_env_v2 import VecEnvV2
 from training.v2 import spaces as S
 from training.v2.batch import pad_entities, stack_masks, stack_obs, static_grid
-from training.v2.model import HEADS, Agent, load_weights, opp_targets, teacher_actions, wire_actions
+from training.v2.model import HEADS, SCOUT_HEADS, Agent, load_weights, opp_targets, teacher_actions, wire_actions
 
 REPO = Path(__file__).resolve().parents[2]
 VALUE_HEADS = ("win", "shaped", "aux")
@@ -73,8 +73,11 @@ def parse() -> argparse.Namespace:
     ap.add_argument("--init", default="", help="start from these model weights (fresh optimiser and counters); with --kl-coef, also the frozen reference policy")
     ap.add_argument("--kl-coef", type=float, default=0.0, help="KL penalty toward the --init policy (k3 estimator on the taken actions)")
     ap.add_argument("--kl-anneal", type=float, default=0.5, help="fraction of the budget over which --kl-coef anneals linearly to 0")
-    ap.add_argument("--scout-teacher", default="", help="frozen checkpoint whose Outrider handling is distilled: where it picks the scout group, the policy gets cross-entropy on its army action")
-    ap.add_argument("--scout-coef", type=float, default=1.0, help="weight of the scout distillation loss (averaged over all decisions)")
+    ap.add_argument("--scout-teacher", action="store_true", help="distil the scripted Outrider (scout.ts, careful) through the scout slot: cross-entropy on its slot order every decision (none = keep going)")
+    ap.add_argument("--scout-coef", type=float, default=1.0, help="weight of the scout distillation loss at the start (averaged over all decisions)")
+    ap.add_argument("--scout-coef-end", type=float, default=0.1, help="... at the end of the budget (linear)")
+    ap.add_argument("--intel-w", type=float, default=0.0, help="weight of the first-sighting reward (shaped.intel, runner.ts) at the start")
+    ap.add_argument("--intel-anneal", type=float, default=0.5, help="fraction of the budget over which --intel-w anneals linearly to 0")
     ap.add_argument("--imitate", action="store_true", help="behaviour cloning: both seats are teach:<bot> from --opponents; policy heads learn the teacher's actions (cross-entropy), value heads the returns")
     ap.add_argument("--overfit", action="store_true", help="with --imitate: collect one rollout and train on it repeatedly (overfit probe: loss < 0.05)")
     a = ap.parse_args()
@@ -204,13 +207,6 @@ def main() -> None:
             ref.eval()
             for p_ in ref.parameters():
                 p_.requires_grad_(False)
-    teach = None
-    if a.scout_teacher:
-        teach = Agent().to(dev)
-        load_weights(teach, torch.load(a.scout_teacher, map_location=dev)["model"])
-        teach.eval()
-        for p_ in teach.parameters():
-            p_.requires_grad_(False)
     if a.resume:
         ck = torch.load(a.resume, map_location=dev)
         agent.load_state_dict(ck["model"])
@@ -225,7 +221,7 @@ def main() -> None:
     cur_opp = [d.pop("opp") for d in draws]           # opponent of each slot's current episode
     pending_opp: list[str | None] = [None] * n_slots  # ... of its next episode (configured, not started)
     frozen = Frozen([o[5:] for o in slots.opps if o.startswith("ckpt:")], n_slots, dev)
-    env = VecEnvV2(draws, n_procs=a.procs, max_ticks=a.max_ticks, packed=True)
+    env = VecEnvV2(draws, n_procs=a.procs, max_ticks=a.max_ticks, packed=True, scout_teacher=a.scout_teacher)
     cur = env.reset()
     S.check_layout(env.layout)
     statics = [static_grid(s) for s in env.static]
@@ -242,7 +238,6 @@ def main() -> None:
     ep_ret = np.zeros((B, 3))
     hc = agent.zero_state(B, dev)
     hc_ref = agent.zero_state(B, dev)
-    hc_teach = agent.zero_state(B, dev)
     first = np.ones(B, dtype=bool)  # the next observation starts an episode
 
     recent = deque(maxlen=200)
@@ -269,6 +264,8 @@ def main() -> None:
         mix = mix0 + (mix1 - mix0) * frac
         mix[1] = max(mix[1], 0.1)
         kl_coef = a.kl_coef * max(0.0, 1.0 - frac / a.kl_anneal) if ref is not None else 0.0
+        scout_coef = a.scout_coef + (a.scout_coef_end - a.scout_coef) * frac
+        intel_w = a.intel_w * max(0.0, 1.0 - frac / a.intel_anneal) if a.intel_anneal > 0 else 0.0
 
         # ── rollout ──────────────────────────────────────────────────────────
         T, L = a.rollout, a.seq
@@ -291,7 +288,6 @@ def main() -> None:
                 keep = torch.as_tensor(~first, device=dev).float().unsqueeze(1)
                 hc = (hc[0] * keep, hc[1] * keep)
                 hc_ref = (hc_ref[0] * keep, hc_ref[1] * keep)
-                hc_teach = (hc_teach[0] * keep, hc_teach[1] * keep)
                 if t % L == 0:
                     store["h0"].append(hc[0].cpu().numpy())
                     store["c0"].append(hc[1].cpu().numpy())
@@ -301,14 +297,24 @@ def main() -> None:
                     given = teacher_actions([s.teacher for s in ls], dev) if a.imitate else None
                     out, rows, lp, _ = agent.policy(h, E, valid, masks=to_t(masks, dev), given=given)
                     v = agent.values(h, ot["critic"])
-                    if ref is not None:
+                    if ref is not None:  # the KL leaves out the scout slot, which the reference never had
                         hr, Er, vr, hc_ref, _ = ref.trunk(ot, hc_ref)
-                        store["ref_lp"].append(ref.policy(hr, Er, vr, rows=rows, given=out)[2].cpu().numpy())
-                    if teach is not None:  # the teacher's own action on the same state (its rows are its masks)
-                        ht, Et, vt, hc_teach, _ = teach.trunk(ot, hc_teach)
-                        tout, trows, _, _ = teach.policy(ht, Et, vt, masks=to_t(masks, dev))
-                        store["t_rows"].append({k: r.cpu().numpy() for k, r in trows.items()})
-                        store["t_act"].append({k: tout[k].cpu().numpy() for k in HEADS})
+                        rh = {}
+                        rlp = ref.policy(hr, Er, vr, rows=rows, given=out, head_lp=rh)[2]
+                        store["ref_lp"].append((rlp - sum(rh.get(k, 0) for k in SCOUT_HEADS)).cpu().numpy())
+                if a.scout_teacher:  # the scripted Outrider's slot order, with its mask rows (illegal labels → none)
+                    lab = np.asarray([s.scout_teacher or [0, S.TARGET_NONE, 0] for s in ls], dtype=np.int64)
+                    ar_ = np.arange(B)
+                    so = lab[:, 0]
+                    is_pt, is_pr = np.isin(so, S.POINT_ORDERS), np.isin(so, S.PTR_ORDERS)
+                    ok = masks["scoutOrder"][ar_, so].astype(bool)
+                    ok &= ~is_pt | masks["target"][ar_, so, lab[:, 1]].astype(bool)
+                    ok &= ~is_pr | masks["ptr"][ar_, so, lab[:, 2]].astype(bool)
+                    lab[~ok] = (0, S.TARGET_NONE, 0)
+                    store["s_lab"].append(lab)
+                    store["s_bad"].append(~ok)
+                    store["s_rows"].append({"scoutOrder": masks["scoutOrder"], "scoutTarget": masks["target"][ar_, lab[:, 0]],
+                                            "scoutPtr": masks["ptr"][ar_, lab[:, 0]]})
                 acts = [None] * len(cur)
                 if not a.imitate:
                     for j, w in zip(lrn, wire_actions(out)):
@@ -334,7 +340,7 @@ def main() -> None:
                     r = tr.reward
                     minutes = ep_steps[j] * S.DECISION_TICKS / S.TICKS_PER_MINUTE
                     sh = np.asarray([r["shaped"][k] for k in S.SHAPED_KEYS], dtype=np.float32)
-                    rew[t, j] = (r["win"], float((sh * shaped_w).sum()) * 0.6 ** (minutes / 10), sh[0] + sh[1])
+                    rew[t, j] = (r["win"], float((sh * shaped_w).sum()) * 0.6 ** (minutes / 10) + intel_w * r["shaped"].get("intel", 0.0), sh[0] + sh[1])
                     ep_ret[j] += rew[t, j]
                     ep_steps[j] += 1
                     e = int(store["act"][-1]["econ"][j])
@@ -412,10 +418,10 @@ def main() -> None:
             f_act = {k: np.concatenate([x[k] for x in store["act"]]) for k in HEADS}
             f_lp = np.concatenate(store["lp"])
             f_ref = np.concatenate(store["ref_lp"]) if ref is not None else None
-            if teach is not None:
-                t_rows = {k: np.concatenate([r[k] for r in store["t_rows"]]) for k in store["t_rows"][0]}
-                t_act = {k: np.concatenate([x[k] for x in store["t_act"]]) for k in HEADS}
-                t_flag = t_act["group"] == S.GROUP_SCOUT
+            if a.scout_teacher:
+                s_lab = np.concatenate(store["s_lab"])
+                s_rows = {k: np.concatenate([r[k] for r in store["s_rows"]]) for k in SCOUT_HEADS}
+                s_bad = np.concatenate(store["s_bad"])
             f_opp = np.concatenate(store["opp"])
             f_first = firsts.reshape(N)
             h0, c0 = np.stack(store["h0"]), np.stack(store["c0"])  # (T / L, B, d)
@@ -462,20 +468,23 @@ def main() -> None:
                 ent_total = sum(e.mean() for e in ent.values())
                 ol = agent.opp_loss(opp_logits, torch.as_tensor(f_opp[idx], device=dev))
                 loss = pg + a.vf * vl.sum() - (0.0 if a.imitate else ent_coef) * ent_total + a.opp_coef * ol
-                if ref is not None:  # k3 estimator of KL(policy || reference) on the taken actions
-                    logr = (torch.as_tensor(f_ref[idx], device=dev) - lp).clamp(max=20.0)
+                if ref is not None:  # k3 estimator of KL(policy || reference) on the taken actions, scout slot left out
+                    lp_ns = lp - sum(head_lp[k] for k in SCOUT_HEADS)
+                    logr = (torch.as_tensor(f_ref[idx], device=dev) - lp_ns).clamp(max=20.0)
                     kl_ref = (logr.exp() - 1 - logr).mean()
                     loss = loss + kl_coef * kl_ref
                     logs["kl/ref"].append(kl_ref.item())
-                if teach is not None:  # scout distillation: cross-entropy on the teacher's army action where it scouts
+                if a.scout_teacher:  # scout distillation: cross-entropy on the scripted Outrider's slot order, every decision
                     tlp = {}
-                    agent.policy(h, E, valid, rows={k: torch.as_tensor(t_rows[k][idx], device=dev) for k in t_rows},
-                                 given={k: torch.as_tensor(t_act[k][idx], device=dev) for k in HEADS}, head_lp=tlp)
-                    fl = torch.as_tensor(t_flag[idx], device=dev).float()
-                    army = tlp["group"] + tlp["order"] + tlp["unit"] + tlp["target"] + tlp["ptr"]
-                    scout_ce = -(army * fl).sum() / fl.numel()
-                    loss = loss + a.scout_coef * scout_ce
-                    logs["scout/ce"].append((-(army * fl).sum() / fl.sum().clamp(min=1)).item())
+                    lab = torch.as_tensor(s_lab[idx], device=dev)
+                    agent.policy(h, E, valid, rows={**rows_t, **{k: torch.as_tensor(s_rows[k][idx], device=dev) for k in SCOUT_HEADS}},
+                                 given={**act_t, "scoutOrder": lab[:, 0], "scoutTarget": lab[:, 1], "scoutPtr": lab[:, 2]}, head_lp=tlp)
+                    s_lp = sum(tlp[k] for k in SCOUT_HEADS)
+                    scout_ce = -s_lp.mean()
+                    loss = loss + scout_coef * scout_ce
+                    logs["scout/ce"].append(scout_ce.item())
+                    act_ = lab[:, 0] > 0
+                    logs["scout/ce_orders"].append((-(s_lp * act_).sum() / act_.sum().clamp(min=1)).item())
                 opt.zero_grad()
                 loss.backward()
                 gn = torch.nn.utils.clip_grad_norm_(agent.parameters(), a.max_grad)
@@ -509,9 +518,12 @@ def main() -> None:
             writer.add_scalar(f"reward/mean_{k}", float(rew[..., i].mean()), step)
         writer.add_scalar("noop/econ", float((f_act["econ"] == 0).mean()), step)
         writer.add_scalar("noop/army_group", float((f_act["group"] == 0).mean()), step)
-        if teach is not None:
-            writer.add_scalar("scout/teacher_rate", float(t_flag.mean()), step)
-            writer.add_scalar("scout/policy_rate", float((f_act["group"] == S.GROUP_SCOUT).mean()), step)
+        writer.add_scalar("scout/policy_rate", float((f_act["scoutOrder"] > 0).mean()), step)
+        writer.add_scalar("reward/intel_w", intel_w, step)
+        if a.scout_teacher:
+            writer.add_scalar("scout/teacher_rate", float((s_lab[:, 0] > 0).mean()), step)
+            writer.add_scalar("scout/teacher_illegal", float(s_bad.mean()), step)
+            writer.add_scalar("sched/scout_coef", scout_coef, step)
         writer.add_scalar("perf/decisions_per_s", T * B / roll_s, step)
         writer.add_scalar("perf/env_share", t_env / roll_s, step)
         writer.add_scalar("perf/update_s", upd_s, step)

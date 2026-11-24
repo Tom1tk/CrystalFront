@@ -13,6 +13,8 @@ mem_out and opp_in start at zero, so a feed-forward checkpoint loads into this
 network and plays exactly as before until training moves them (`load_weights`).
     heads: econ kind → site | econ pointer | econ target
            group → order → unit pointer → point target | entity pointer
+           scout order → point target | entity pointer (the Outrider's own slot, action space 9;
+           warm-started from the army heads as the `scout` group when a checkpoint lacks them)
            (each masked and conditioned on the previous choices)
     value × 3 (win, shaped, aux) from h and the critic-state encoding (both seats' true globals)
 
@@ -91,6 +93,10 @@ class Agent(nn.Module):
         self.unit_proj = nn.Linear(d_ent, d_h)
         self.target = nn.Linear(d_h, S.TARGETS)
         self.ptr_q = nn.Linear(d_h, d_ent)
+        # Scout slot (the Outrider's own order); load_weights copies the army heads into these when missing
+        self.scout_order = nn.Linear(d_h, S.N_ORDERS)
+        self.scout_target = nn.Linear(d_h, S.TARGETS)
+        self.scout_ptr_q = nn.Linear(d_h, d_ent)
         # Memory and opponent model (residual, zero at init)
         self.lstm = nn.LSTMCell(d_h, d_h)
         self.mem_out = nn.Linear(d_h, d_h)
@@ -103,7 +109,7 @@ class Agent(nn.Module):
         # Critic
         self.critic = nn.Sequential(nn.Linear(2 * S.N_GLOBALS, 128), nn.ReLU())
         self.value = nn.Sequential(nn.Linear(d_h + 128, 256), nn.ReLU(), nn.Linear(256, 3))
-        for head in (self.econ, self.site, self.etgt, self.group, self.order, self.target):
+        for head in (self.econ, self.site, self.etgt, self.group, self.order, self.target, self.scout_order, self.scout_target):
             nn.init.orthogonal_(head.weight, 0.01)
             nn.init.zeros_(head.bias)
         # Kind-balanced starting priors (learnable biases): without them a near-uniform
@@ -111,7 +117,7 @@ class Agent(nn.Module):
         # the army to random grid cells instead of named anchors (idle probe run 1).
         with torch.no_grad():
             self.econ.bias[S.ECON_ASSIGN0:S.ECON_REPAIR] = -math.log(12.0)  # 48 assigns weigh like 4 actions
-            for head in (self.target, self.etgt):  # 750 grid cells weigh like the 53 named targets
+            for head in (self.target, self.etgt, self.scout_target):  # 750 grid cells weigh like the 53 named targets
                 head.bias[S.TARGET_GRID0:S.TARGET_NONE] = -math.log(S.GRID_CELLS / S.TARGET_GRID0)
             self.site.bias[S.NAMED_SITES:] = -math.log(S.GRID_CELLS / S.NAMED_SITES)  # 750 grid sites weigh like the 10 named
 
@@ -248,19 +254,47 @@ class Agent(nn.Module):
         for o_ in S.PTR_ORDERS:
             is_eptr |= oi == o_
         take("ptr", self._pointer(self.ptr_q(hu), E), pad_valid(row("ptr", "ptr", oi)), is_eptr)
+        # Scout slot (masks without the slot allow only `none`)
+        if "scoutOrder" not in (masks if rows is None else rows):  # v2 layout
+            out["scoutOrder"] = torch.zeros(b, dtype=torch.long, device=h.device)
+            out["scoutOrder_on"] = torch.zeros(b, dtype=torch.bool, device=h.device)
+            for k in ("scoutTarget", "scoutPtr"):
+                out[k], out[k + "_on"] = out["scoutOrder"].clone(), out["scoutOrder_on"].clone()
+            return out, R, lp, ent
+        hg = h + self.group_emb.weight[S.GROUP_SCOUT]
+        take("scoutOrder", self.scout_order(hg), masks["scoutOrder"] if rows is None else rows["scoutOrder"], on)
+        si = out["scoutOrder"]
+        hs = h + self.order_emb(si)
+        s_point = torch.zeros_like(on)
+        for o_ in S.POINT_ORDERS:
+            s_point |= si == o_
+        take("scoutTarget", self.scout_target(hs), row("scoutTarget", "target", si), s_point)
+        s_ptr = torch.zeros_like(on)
+        for o_ in S.PTR_ORDERS:
+            s_ptr |= si == o_
+        take("scoutPtr", self._pointer(self.scout_ptr_q(hs), E), pad_valid(row("scoutPtr", "ptr", si)), s_ptr)
         return out, R, lp, ent
 
 
-HEADS = ("econ", "site", "econPtr", "econTarget", "group", "order", "unit", "target", "ptr")
+HEADS = ("econ", "site", "econPtr", "econTarget", "group", "order", "unit", "target", "ptr", "scoutOrder", "scoutTarget", "scoutPtr")
+SCOUT_HEADS = ("scoutOrder", "scoutTarget", "scoutPtr")
 
 
 WIRE = {"econ": ("econ", 0), "site": ("econ", 1), "econPtr": ("econ", 2), "econTarget": ("econ", 3),
-        "group": ("army", 0), "order": ("army", 1), "unit": ("army", 2), "target": ("army", 3), "ptr": ("army", 4)}
+        "group": ("army", 0), "order": ("army", 1), "unit": ("army", 2), "target": ("army", 3), "ptr": ("army", 4),
+        "scoutOrder": ("scout", 0), "scoutTarget": ("scout", 1), "scoutPtr": ("scout", 2)}
+
+
+def scout_labels(labels: list, dev) -> dict[str, torch.Tensor]:
+    """Runner `scoutTeacher` labels [order, target, ptr] → per-head tensors (the `given` of the scout heads)."""
+    a = torch.tensor(labels, dtype=torch.long, device=dev)
+    return {"scoutOrder": a[:, 0], "scoutTarget": a[:, 1], "scoutPtr": a[:, 2]}
 
 
 def teacher_actions(teachers: list[dict], dev) -> dict[str, torch.Tensor]:
     """Teach-seat wire actions → per-head action tensors (the `given` argument of `policy`)."""
-    return {k: torch.tensor([t[w][i] for t in teachers], dtype=torch.long, device=dev) for k, (w, i) in WIRE.items()}
+    none = {"scout": [0, S.TARGET_NONE, 0]}
+    return {k: torch.tensor([t.get(w, none.get(w))[i] for t in teachers], dtype=torch.long, device=dev) for k, (w, i) in WIRE.items()}
 
 
 def wire_actions(out: dict[str, torch.Tensor]) -> list[dict]:
@@ -273,16 +307,24 @@ def wire_actions(out: dict[str, torch.Tensor]) -> list[dict]:
         res.append({
             "econ": [int(v["econ"][i]), f("site"), f("econPtr"), f("econTarget")],
             "army": [int(v["group"][i]), int(v["order"][i]), f("unit"), f("target", S.TARGET_NONE), f("ptr")],
+            "scout": [f("scoutOrder"), f("scoutTarget", S.TARGET_NONE), f("scoutPtr")],
         })
     return res
 
 
 NEW_PARAMS = ("lstm.", "mem_out.", "opp.", "opp_in.")
+SCOUT_FROM = {"scout_order.": "order.", "scout_target.": "target.", "scout_ptr_q.": "ptr_q."}
 
 
 def load_weights(agent: Agent, sd: dict) -> None:
     """Load a checkpoint's model weights. A feed-forward checkpoint (before memory and the
-    opponent model) may lack only the new modules, which keep their zero-output init."""
+    opponent model) may lack only the new modules, which keep their zero-output init. A checkpoint
+    from before the scout slot gets copies of its army order / target / pointer heads there, so its
+    Outrider starts out ordered as its `scout` group was."""
+    sd = dict(sd)
+    for new, old in SCOUT_FROM.items():
+        for k in [k for k in sd if k.startswith(old)]:
+            sd.setdefault(new + k[len(old):], sd[k].clone())
     missing, unexpected = agent.load_state_dict(sd, strict=False)
     bad = [k for k in missing if not k.startswith(NEW_PARAMS)] + list(unexpected)
     if bad:

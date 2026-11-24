@@ -56,6 +56,8 @@ def parse() -> argparse.Namespace:
     ap.add_argument("--greedy", action="store_true", help="argmax actions instead of sampling")
     ap.add_argument("--torch-seed", type=int, default=0)
     ap.add_argument("--out", default="", help="JSON results path")
+    ap.add_argument("--scout-slot", choices=("auto", "on", "off"), default="auto",
+                    help="give policy seats the Outrider's own order slot (auto: if the checkpoint was trained with one)")
     ap.add_argument("--save-replays", action="store_true", help="write every game to replays/ (watchable in the game's replay viewer)")
     return ap.parse_args()
 
@@ -72,10 +74,13 @@ def main() -> None:
     is_bot = a.checkpoint.startswith("bot:")
     me = "teach:" + a.checkpoint[4:] if is_bot else "policy"
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    slot = a.scout_slot == "on"
     if not is_bot:
         torch.manual_seed(a.torch_seed)
         agent = Agent().to(dev)
-        load_weights(agent, torch.load(a.checkpoint, map_location=dev)["model"])
+        sd = torch.load(a.checkpoint, map_location=dev)["model"]
+        slot = slot or (a.scout_slot == "auto" and "scout_order.weight" in sd)
+        load_weights(agent, sd)
         agent.eval()
     ckpts = [o[5:] for o in a.opponents.split(",") if o.startswith("ckpt:")]
     assert not (is_bot and ckpts), "a scripted bot cannot be evaluated against checkpoints"
@@ -90,7 +95,8 @@ def main() -> None:
     n = min(len(games), a.procs * a.slots)
     queue = [games[i::n] for i in range(n)]
     pos = [0] * n
-    env = VecEnvV2([cfg(q[0]) for q in queue], n_procs=a.procs, max_ticks=a.max_ticks, critic=False, packed=True)
+    env = VecEnvV2([cfg(q[0]) for q in queue], n_procs=a.procs, max_ticks=a.max_ticks, critic=False, packed=True, scout_slot=slot)
+    print(f"scout slot {'on' if slot else 'off'}", flush=True)
     cur = env.reset()
     statics = [static_grid(s) for s in env.static]
     frozen = Frozen(ckpts, n, dev)

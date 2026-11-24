@@ -29,7 +29,7 @@ import { PLACEMENT } from "@crystalfront/shared";
 
 export const DECISION_TICKS = 8;
 /** Action space version (wire format, head layout and what an action does). */
-export const ACTION_SPACE_VERSION = 8; // 8: Outrider (train, `scout` group), forward-builder role
+export const ACTION_SPACE_VERSION = 9; // 8: Outrider (train, `scout` group), forward-builder role; 9: scout order slot (policy seats)
 
 /** Own-frame grid (also the observation grid). 5000×900 → 50×15; smaller maps leave cells invalid. */
 export const GRID_CELL_W = 100;
@@ -103,10 +103,13 @@ const MIN_NODE_REMAINING = 5;
  * One decision. `site` applies to build, `econPtr` to repair/rally/cancel,
  * `econTarget` to rally, `unit` to group `unit`, `target` to point orders
  * (TARGET_NONE otherwise), `ptr` to focus/heal/cover. Heads that do not apply are ignored.
+ * `scoutOrder` / `scoutTarget` / `scoutPtr` (action space 9) are the Outrider's own order,
+ * given alongside the army's when the masks were computed with `scoutSlot`; absent = none.
  */
 export interface V2Action {
   econ: number; site: number; econPtr: number; econTarget: number;
   group: number; order: number; unit: number; target: number; ptr: number;
+  scoutOrder?: number; scoutTarget?: number; scoutPtr?: number;
 }
 
 export const NOOP_ACTION: V2Action = { econ: 0, site: 0, econPtr: 0, econTarget: 0, group: 0, order: 0, unit: 0, target: TARGET_NONE, ptr: 0 };
@@ -140,6 +143,11 @@ export interface SeatState {
   sealCache: { nav: unknown; version: number; ok: Map<number, boolean> };
   /** `contested`: economy actions cut short because the other seat wanted the same node slots or build spot this decision (applyV2Pair). */
   stats: { decisions: number; econIneffective: number; armyIneffective: number; autopilot: number; contested: number };
+  /**
+   * Scout slot: the last order the Outrider was given through it, and until when it is committed
+   * (tick; −1 none). While committed only `none` and `retreat` are open to the slot.
+   */
+  scoutCmd: { order: number; x: number; y: number; targetId: string | null; tick: number; until: number } | null;
 }
 
 export function createSeatState(match: MatchState, playerId: string): SeatState {
@@ -197,6 +205,7 @@ export function createSeatState(match: MatchState, playerId: string): SeatState 
     memory: new Array(MEMORY_SLOTS).fill(null),
     grid, gridSites, rows: [], sealCache: { nav: null, version: -1, ok: new Map() },
     stats: { decisions: 0, econIneffective: 0, armyIneffective: 0, autopilot: 0, contested: 0 },
+    scoutCmd: null,
   };
 }
 
@@ -486,10 +495,10 @@ function groupMembers(match: MatchState, s: SeatState, g: Group): MatchEntity[] 
   return out;
 }
 
-/** The own movable unit at pointer row `i`, if any. */
-function unitAt(match: MatchState, s: SeatState, i: number): MatchEntity | null {
+/** The own movable unit at pointer row `i`, if any (with the scout slot, not the Outrider). */
+function unitAt(match: MatchState, s: SeatState, i: number, scoutSlot = false): MatchEntity | null {
   const e = Number.isInteger(i) ? match.entities.get(s.rows[i] ?? "") : undefined;
-  return e && e.ownerId === s.playerId && MOVABLE.has(e.type) && e.health > 0 ? e : null;
+  return e && e.ownerId === s.playerId && MOVABLE.has(e.type) && e.health > 0 && !(scoutSlot && e.type === "outrider") ? e : null;
 }
 
 function isRetreating(e: MatchEntity, c: MatchEntity): boolean {
@@ -527,12 +536,43 @@ export interface V2Masks {
   unit: boolean[][];        // [O][PTR_SIZE] (group `unit`)
   target: boolean[][];      // [O][T]
   ptr: boolean[][];         // [O][PTR_SIZE]
+  scoutOrder: boolean[];    // [O] scout slot (target / pointer: `target[o]`, `ptr[o]`); `none` only without the slot
+}
+
+/** Scout slot commitment: an order holds for this many ticks unless released earlier (scoutRelease). */
+export const SCOUT_COMMIT_TICKS = 50;
+/** Released when the Outrider is this close to its point target (px)… */
+const SCOUT_ARRIVE = 120;
+/** …or a visible enemy combat unit or turret is this close to it (px). */
+const SCOUT_DANGER_R = 330;
+const SCOUT_COMMITTED = ORDERS.map((o) => o === "none" || o === "retreat");
+
+/** Whether the Outrider's commitment ends now: time up, arrived, idle, focus target gone, or danger near. */
+function scoutReleased(match: MatchState, s: SeatState, e: MatchEntity): boolean {
+  const c = s.scoutCmd;
+  if (!c || match.tick >= c.until) return true;
+  if (!(e.moveTarget || e.moveOrder || e.attackTargetId || e.guard)) return true;
+  if (c.targetId) { const t = match.entities.get(c.targetId); if (!t || t.health <= 0) return true; }
+  else if ((e.x - c.x) ** 2 + (e.y - c.y) ** 2 < SCOUT_ARRIVE ** 2) return true;
+  for (const id of s.rows) {
+    const o = match.entities.get(id);
+    if (!o || o.ownerId === s.playerId || o.health <= 0) continue;
+    if (!(COMBAT.has(o.type) || (o.type === "building" && o.buildingType === "turret"))) continue;
+    if ((o.x - e.x) ** 2 + (o.y - e.y) ** 2 < SCOUT_DANGER_R ** 2) return true;
+  }
+  return false;
+}
+
+export interface MaskOpts {
+  /** The Outrider takes orders only through the scout slot (not the `scout` group or the unit pointer). */
+  scoutSlot?: boolean;
 }
 
 const PRODUCERS = new Set(["barracks", "foundry", "outpost"]);
 const isProducer = (e: MatchEntity) => e.type === "crystal" || (e.type === "building" && PRODUCERS.has(e.buildingType ?? "") && e.constructionProgress >= 100);
 
-export function computeMasks(match: MatchState, s: SeatState): V2Masks {
+export function computeMasks(match: MatchState, s: SeatState, opts: MaskOpts = {}): V2Masks {
+  const scoutSlot = !!opts.scoutSlot;
   pruneArmies(match, s);
   const rowEnt = s.rows.map((id) => match.entities.get(id));
   const crystal = ownCrystal(match, s.playerId);
@@ -602,16 +642,23 @@ export function computeMasks(match: MatchState, s: SeatState): V2Masks {
     if (g === "none") row = ORDERS.map((o) => o === "none");
     else if (g === "unit") {
       rowEnt.forEach((e, i) => {
-        if (i >= PTR_SIZE || !unitAt(match, s, i)) return;
+        if (i >= PTR_SIZE || !unitAt(match, s, i, scoutSlot)) return;
         ORDERS.forEach((o, oi) => { unit[oi][i] = ptrOk(o) && memberAccepts(match, s, g, o, e!, crystal); });
       });
       row = unit.map((u) => u.some(Boolean));
-    } else {
+    } else if (g === "scout" && scoutSlot) row = ORDERS.map(() => false);
+    else {
       const members = groupMembers(match, s, g);
       row = ORDERS.map((o) => ptrOk(o) && members.some((e) => memberAccepts(match, s, g, o, e, crystal)));
     }
     order.push(row);
     group.push(row.some(Boolean));
+  }
+  const scoutOrder = ORDERS.map((o) => o === "none");
+  const rider = scoutSlot ? pickScout(match, s) : null;
+  if (rider) {
+    const free = scoutReleased(match, s, rider);
+    ORDERS.forEach((o, oi) => { if (oi > 0) scoutOrder[oi] = (free || SCOUT_COMMITTED[oi]) && ptrOk(o) && memberAccepts(match, s, "scout", o, rider, crystal); });
   }
 
   const noneOnly = new Array<boolean>(TARGET_SIZE).fill(false);
@@ -619,7 +666,7 @@ export function computeMasks(match: MatchState, s: SeatState): V2Masks {
   const target = ORDERS.map((o) => (POINT_ORDERS.has(o) ? points.slice() : noneOnly.slice()));
   const nothing = new Array<boolean>(PTR_SIZE).fill(false);
   const ptr = ORDERS.map((o) => (o === "focus" ? enemyRows.slice() : o === "heal" ? hurtRows.slice() : o === "cover" ? coverRows.slice() : nothing.slice()));
-  return { econ, site, econPtr, econTarget: points, group, order, unit, target, ptr };
+  return { econ, site, econPtr, econTarget: points, group, order, unit, target, ptr, scoutOrder };
 }
 
 /** True if the action is allowed by the masks (heads that do not apply are not checked). */
@@ -634,6 +681,11 @@ export function isLegal(m: V2Masks, a: V2Action): boolean {
   if (GROUPS[a.group] === "unit" && !m.unit[a.order]?.[a.unit]) return false;
   if (!m.target[a.order]?.[a.target]) return false;
   if (PTR_ORDERS.has(ORDERS[a.order]) && !m.ptr[a.order]?.[a.ptr]) return false;
+  const so = a.scoutOrder ?? 0;
+  if (so !== 0) {
+    if (!m.scoutOrder?.[so] || !m.target[so]?.[a.scoutTarget ?? TARGET_NONE]) return false;
+    if (PTR_ORDERS.has(ORDERS[so]) && !m.ptr[so]?.[a.scoutPtr ?? 0]) return false;
+  }
   return true;
 }
 
@@ -668,6 +720,21 @@ function targetPoint(s: SeatState, t: number): Pt | null {
 
 function rowEntity(match: MatchState, s: SeatState, i: number): MatchEntity | undefined {
   return Number.isInteger(i) ? match.entities.get(s.rows[i] ?? "") : undefined;
+}
+
+/**
+ * Whether the Outrider already carries out scout-slot order `a` (same order, point within 200 px or
+ * the same entity, given less than `maxAge` ticks ago, and not idle): the teacher then says `none`.
+ */
+export function scoutCmdMatches(match: MatchState, s: SeatState, a: { scoutOrder: number; scoutTarget: number; scoutPtr: number }, maxAge: number): boolean {
+  const c = s.scoutCmd, r = pickScout(match, s);
+  if (!c || !r || c.order !== a.scoutOrder || match.tick - c.tick >= maxAge) return false;
+  if (!(r.moveTarget || r.moveOrder || r.attackTargetId || r.guard)) return false;
+  const o = ORDERS[a.scoutOrder];
+  if (PTR_ORDERS.has(o)) return !!c.targetId && rowEntity(match, s, a.scoutPtr)?.id === c.targetId;
+  if (!POINT_ORDERS.has(o)) return true;
+  const p = targetPoint(s, a.scoutTarget);
+  return !!p && (p.x - c.x) ** 2 + (p.y - c.y) ** 2 < 200 ** 2;
 }
 
 function econCommands(match: MatchState, s: SeatState, a: EconAction, act: V2Action): Cmd[] {
@@ -772,6 +839,19 @@ function applyResolved(engine: MatchEngine, match: MatchState, s: SeatState, a: 
     const cmds = armyCommands(match, s, g, o, a);
     armyEffective = cmds === null || run(engine, match, s.playerId, cmds, accepted);
     if (!armyEffective) s.stats.armyIneffective++;
+  }
+  const so = ORDERS[a.scoutOrder ?? 0] ?? "none";
+  if (so !== "none") {
+    const sa = { ...a, target: a.scoutTarget ?? TARGET_NONE, ptr: a.scoutPtr ?? 0 };
+    const cmds = armyCommands(match, s, "scout", so, sa) ?? [];
+    if (run(engine, match, s.playerId, cmds, accepted)) {
+      const p = targetPoint(s, sa.target), t = PTR_ORDERS.has(so) ? rowEntity(match, s, sa.ptr) : undefined;
+      const r = pickScout(match, s);
+      s.scoutCmd = {
+        order: a.scoutOrder!, x: p?.x ?? r?.x ?? 0, y: p?.y ?? r?.y ?? 0, targetId: t?.id ?? null, tick: match.tick,
+        until: POINT_ORDERS.has(so) || PTR_ORDERS.has(so) ? match.tick + SCOUT_COMMIT_TICKS : -1,
+      };
+    }
   }
   return { accepted, econEffective, armyEffective };
 }

@@ -13,7 +13,7 @@
 import { UNIT_DEFS } from "@crystalfront/shared";
 import type { Pt } from "../../../server/src/match/engine/anchors.js";
 import {
-  ECON_TRAIN0, GRID_CELL_H, GRID_CELL_W, GRID_CELLS, GRID_COLS, GROUPS, ORDERS, TARGET_GRID0, TRAIN_UNITS,
+  ECON_TRAIN0, GRID_CELL_H, GRID_CELL_W, GRID_CELLS, GRID_COLS, GROUPS, ORDERS, TARGET_GRID0, TARGET_NONE, TRAIN_UNITS,
   type V2Action, type V2Masks,
 } from "./actions.js";
 import { ENTITY_FEATURES, GLOBAL_NAMES, NODE_FEATURES, type ObsV2 } from "./observation.js";
@@ -230,6 +230,20 @@ export class OutriderPlan {
       this.watchPt = pts.length ? pts[this.watchIdx++ % pts.length] : this.anchor(T_CENTRE0);
     }
     return this.watchPt;
+  }
+
+  /**
+   * Training teacher for a policy seat's scout slot (no dedupe; the caller compares with the order
+   * the Outrider already has). `m` holds the slot's masks; the plan sees them as the `scout` group.
+   * Returns the order the plan wants now as scout-slot fields, or null.
+   */
+  shadow(obs: ObsV2, m: V2Masks, decisions: number): { scoutOrder: number; scoutTarget: number; scoutPtr: number } | null {
+    const open = m.scoutOrder.some((v, i) => i > 0 && v);
+    const view: V2Masks = { ...m, group: m.group.map((v, i) => (i === GROUP_SCOUT ? open : v)), order: m.order.map((r, i) => (i === GROUP_SCOUT ? m.scoutOrder : r)) };
+    this.lastKey = "";
+    const r = this.order(obs, view, decisions);
+    if (!r || !r.a.order) return null;
+    return { scoutOrder: r.a.order, scoutTarget: r.a.target ?? TARGET_NONE, scoutPtr: r.a.ptr ?? 0 };
   }
 
   private goTo(m: V2Masks, p: Pt | null, decisions: number, order: number): { a: Partial<V2Action>; urgent: boolean } | null {

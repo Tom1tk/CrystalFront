@@ -28,13 +28,13 @@ TOL = 2e-3
 
 
 def given(action: dict) -> dict[str, torch.Tensor]:
-    e, ar = action["econ"], action["army"]
-    vals = dict(zip(HEADS, [*e, *ar]))
+    e, ar, sc = action["econ"], action["army"], action.get("scout", [0, S.TARGET_NONE, 0])
+    vals = dict(zip(HEADS, [*e, *ar, *sc]))
     return {k: torch.tensor([v]) for k, v in vals.items()}
 
 
 def run(ckpt: str, log: str) -> int:
-    agent = load(ckpt)
+    agent, _ = load(ckpt)
     worst, n, bad, games = 0.0, 0, 0, 0
     state = static = None
     cur = None
@@ -58,9 +58,12 @@ def run(ckpt: str, log: str) -> int:
             rows = {"econ": masks["econ"], "site": masks["site"][b, bi], "econPtr": masks["econPtr"][b, ki],
                     "econTarget": masks["econTarget"], "group": masks["group"], "order": masks["order"][b, g["group"]],
                     "unit": masks["unit"][b, g["order"]], "target": masks["target"][b, g["order"]], "ptr": masks["ptr"][b, g["order"]]}
+            if "scoutOrder" in masks:
+                so = g["scoutOrder"]
+                rows.update(scoutOrder=masks["scoutOrder"], scoutTarget=masks["target"][b, so], scoutPtr=masks["ptr"][b, so])
             head_lp: dict = {}
             agent.policy(h, E, valid, rows=rows, given=g, head_lp=head_lp)
-            for k in HEADS:
+            for k in [k for k in HEADS if k in head_lp]:
                 ref = float(head_lp[k][0])
                 ts = float(r["logp"].get(k, 0.0))
                 d = abs(ref - ts)

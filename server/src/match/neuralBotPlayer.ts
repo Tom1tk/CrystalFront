@@ -17,7 +17,7 @@ export const NEURAL_LEVELS = ["easy", "normal", "hard"] as const;
 export type NeuralLevel = typeof NEURAL_LEVELS[number];
 
 /** A loaded model and the code that drives it: "v2" = the 0.9 bots, "v3" = the beta bots. */
-export interface LoadedModel { model: NeuralModel; layout: "v2" | "v3"; checkpoint: string }
+export interface LoadedModel { model: NeuralModel | N3.NeuralModel; layout: "v2" | "v3"; checkpoint: string }
 
 const models = new Map<NeuralLevel, LoadedModel>();
 const betaModels = new Map<NeuralLevel, LoadedModel>();
@@ -31,7 +31,8 @@ export async function loadNeuralModels(root = process.cwd()): Promise<void> {
       try {
         const meta = JSON.parse(readFileSync(`${prefix}.json`, "utf8")) as { layout?: string; checkpoint?: string };
         if ((meta.layout ?? "v2") !== layout) throw new Error(`layout ${meta.layout ?? "v2"}, expected ${layout}`);
-        into.set(level, { model: await loadModel(prefix, `${dir}/policy-${level}`), layout, checkpoint: meta.checkpoint ?? "" });
+        const model = layout === "v3" ? await N3.loadModel(prefix, `${dir}/policy-${level}`) : await loadModel(prefix, `${dir}/policy-${level}`);
+        into.set(level, { model, layout, checkpoint: meta.checkpoint ?? "" });
       } catch (e) {
         console.error(`[neural bot] failed to load ${dir}/${level}: ${(e as Error).message}`);
       }
@@ -99,7 +100,7 @@ export class NeuralBotPlayer {
     if (!this.seat) {
       this.seat = V2.createSeatState(match, this.botPlayerId);
       this.os = OBS.createObsState(match, this.seat);
-      this.policy = new NeuralPolicy(this.loaded.model, (match.seed ^ 0x5eed) >>> 0);
+      this.policy = new NeuralPolicy(this.loaded.model as NeuralModel, (match.seed ^ 0x5eed) >>> 0);
       this.staticGrid = OBS.staticGrid(match).data;
     }
     const seat = this.seat, tick = match.tick;
@@ -128,14 +129,14 @@ export class NeuralBotPlayer {
     if (!this.seat3) {
       this.seat3 = V3.createSeatState(match, this.botPlayerId);
       this.os3 = OBS3.createObsState(match, this.seat3);
-      this.policy3 = new N3.NeuralPolicy(this.loaded.model, (match.seed ^ 0x5eed) >>> 0);
+      this.policy3 = new N3.NeuralPolicy(this.loaded.model as N3.NeuralModel, (match.seed ^ 0x5eed) >>> 0);
       this.staticGrid = OBS3.staticGrid(match).data;
     }
     const seat = this.seat3, tick = match.tick;
     this.lastDecision = tick;
     V3.workerAutopilot(this.engine, match, seat);
     const obs = OBS3.observe(match, seat, this.os3!, { z: 0, cap: TRAIN_MAX_TICKS });
-    const masks = V3.computeMasks(match, seat);
+    const masks = V3.computeMasks(match, seat, { scoutSlot: this.policy3!.model.scoutSlot });
     this.pending = true;
     this.policy3!.decide(obs, this.staticGrid, masks).then((d) => {
       this.pending = false;

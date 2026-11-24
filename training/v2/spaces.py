@@ -90,10 +90,10 @@ def check_layout(layout: dict) -> None:
         "entities": ENTITY_F,
         "econ": ECON, "site": (N_BUILDINGS, BUILD_SITES), "econPtr": (ECON_PTR_KINDS, PTR), "econTarget": TARGETS,
         "group": N_GROUPS, "order": (N_GROUPS, N_ORDERS), "unit": (N_ORDERS, PTR), "target": (N_ORDERS, TARGETS),
-        "ptr": (N_ORDERS, PTR),
+        "ptr": (N_ORDERS, PTR), **({"scoutOrder": N_ORDERS} if LAYOUT == "v3" else {}),
     }
     bad = {k: (got.get(k), want[k]) for k in want if got.get(k) != want[k]}
-    if [k for k, _ in layout["masks"]] != ["econ", "site", "econPtr", "econTarget", "group", "order", "unit", "target", "ptr"]:
+    if [k for k, _ in layout["masks"]] != ["econ", "site", "econPtr", "econTarget", "group", "order", "unit", "target", "ptr"] + (["scoutOrder"] if LAYOUT == "v3" else []):
         bad["mask order"] = [k for k, _ in layout["masks"]]
     if bad:
         raise RuntimeError(f"packed layout changed (got, expected): {bad} — update training/v2/spaces.py")
