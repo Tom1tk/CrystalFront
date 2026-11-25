@@ -1,0 +1,2214 @@
+{
+ "checkpoint": "checkpoints/v2/b3-main/cycle_2.pt",
+ "greedy": false,
+ "seeds": 1,
+ "seconds": 401,
+ "opponents": {
+  "backdoor": {
+   "n": 16,
+   "win": 7,
+   "loss": 9,
+   "draw": 0,
+   "win_ci": [
+    0.2309836333518552,
+    0.6682180439322347
+   ],
+   "loss_ci": [
+    0.33178195606776517,
+    0.7690163666481448
+   ],
+   "draw_ci": [
+    0.0,
+    0.19361341827271994
+   ],
+   "ticks": 4653.3125,
+   "winTypes": {
+    "combat": 7
+   },
+   "maps": {
+    "basalt-run": {
+     "n": 2,
+     "win": 1,
+     "loss": 1,
+     "draw": 0,
+     "win_ci": [
+      0.09452865480086614,
+      0.9054713451991339
+     ],
+     "loss_ci": [
+      0.09452865480086614,
+      0.9054713451991339
+     ],
+     "draw_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "ticks": 4079.0,
+     "winTypes": {
+      "combat": 1
+     }
+    },
+    "cinder-flats": {
+     "n": 2,
+     "win": 1,
+     "loss": 1,
+     "draw": 0,
+     "win_ci": [
+      0.09452865480086614,
+      0.9054713451991339
+     ],
+     "loss_ci": [
+      0.09452865480086614,
+      0.9054713451991339
+     ],
+     "draw_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "ticks": 5123.5,
+     "winTypes": {
+      "combat": 1
+     }
+    },
+    "glimmerfen": {
+     "n": 2,
+     "win": 0,
+     "loss": 2,
+     "draw": 0,
+     "win_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "loss_ci": [
+      0.34237195288961925,
+      1.0
+     ],
+     "draw_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "ticks": 3703.0,
+     "winTypes": {}
+    },
+    "hollow-crown": {
+     "n": 2,
+     "win": 1,
+     "loss": 1,
+     "draw": 0,
+     "win_ci": [
+      0.09452865480086614,
+      0.9054713451991339
+     ],
+     "loss_ci": [
+      0.09452865480086614,
+      0.9054713451991339
+     ],
+     "draw_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "ticks": 4471.5,
+     "winTypes": {
+      "combat": 1
+     }
+    },
+    "ironreed": {
+     "n": 2,
+     "win": 1,
+     "loss": 1,
+     "draw": 0,
+     "win_ci": [
+      0.09452865480086614,
+      0.9054713451991339
+     ],
+     "loss_ci": [
+      0.09452865480086614,
+      0.9054713451991339
+     ],
+     "draw_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "ticks": 5188.0,
+     "winTypes": {
+      "combat": 1
+     }
+    },
+    "saltmarsh": {
+     "n": 2,
+     "win": 1,
+     "loss": 1,
+     "draw": 0,
+     "win_ci": [
+      0.09452865480086614,
+      0.9054713451991339
+     ],
+     "loss_ci": [
+      0.09452865480086614,
+      0.9054713451991339
+     ],
+     "draw_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "ticks": 5697.5,
+     "winTypes": {
+      "combat": 1
+     }
+    },
+    "shardfall": {
+     "n": 2,
+     "win": 1,
+     "loss": 1,
+     "draw": 0,
+     "win_ci": [
+      0.09452865480086614,
+      0.9054713451991339
+     ],
+     "loss_ci": [
+      0.09452865480086614,
+      0.9054713451991339
+     ],
+     "draw_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "ticks": 4728.0,
+     "winTypes": {
+      "combat": 1
+     }
+    },
+    "twin-spires": {
+     "n": 2,
+     "win": 1,
+     "loss": 1,
+     "draw": 0,
+     "win_ci": [
+      0.09452865480086614,
+      0.9054713451991339
+     ],
+     "loss_ci": [
+      0.09452865480086614,
+      0.9054713451991339
+     ],
+     "draw_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "ticks": 4236.0,
+     "winTypes": {
+      "combat": 1
+     }
+    }
+   },
+   "sides": {
+    "blue": {
+     "n": 8,
+     "win": 1,
+     "loss": 7,
+     "draw": 0,
+     "win_ci": [
+      0.02241690886329617,
+      0.4708948057698615
+     ],
+     "loss_ci": [
+      0.5291051942301386,
+      0.9775830911367038
+     ],
+     "draw_ci": [
+      0.0,
+      0.3244156195108769
+     ],
+     "ticks": 4000.625,
+     "winTypes": {
+      "combat": 1
+     }
+    },
+    "red": {
+     "n": 8,
+     "win": 6,
+     "loss": 2,
+     "draw": 0,
+     "win_ci": [
+      0.40926987910258916,
+      0.9285223111419724
+     ],
+     "loss_ci": [
+      0.07147768885802763,
+      0.5907301208974108
+     ],
+     "draw_ci": [
+      0.0,
+      0.3244156195108769
+     ],
+     "ticks": 5306.0,
+     "winTypes": {
+      "combat": 6
+     }
+    }
+   }
+  },
+  "flank": {
+   "n": 16,
+   "win": 12,
+   "loss": 4,
+   "draw": 0,
+   "win_ci": [
+    0.5050123107060135,
+    0.8981809801576265
+   ],
+   "loss_ci": [
+    0.10181901984237346,
+    0.49498768929398645
+   ],
+   "draw_ci": [
+    0.0,
+    0.19361341827271994
+   ],
+   "ticks": 5922.3125,
+   "winTypes": {
+    "combat": 12
+   },
+   "maps": {
+    "basalt-run": {
+     "n": 2,
+     "win": 1,
+     "loss": 1,
+     "draw": 0,
+     "win_ci": [
+      0.09452865480086614,
+      0.9054713451991339
+     ],
+     "loss_ci": [
+      0.09452865480086614,
+      0.9054713451991339
+     ],
+     "draw_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "ticks": 6149.0,
+     "winTypes": {
+      "combat": 1
+     }
+    },
+    "cinder-flats": {
+     "n": 2,
+     "win": 1,
+     "loss": 1,
+     "draw": 0,
+     "win_ci": [
+      0.09452865480086614,
+      0.9054713451991339
+     ],
+     "loss_ci": [
+      0.09452865480086614,
+      0.9054713451991339
+     ],
+     "draw_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "ticks": 4654.0,
+     "winTypes": {
+      "combat": 1
+     }
+    },
+    "glimmerfen": {
+     "n": 2,
+     "win": 2,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.34237195288961925,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "draw_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "ticks": 5522.5,
+     "winTypes": {
+      "combat": 2
+     }
+    },
+    "hollow-crown": {
+     "n": 2,
+     "win": 2,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.34237195288961925,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "draw_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "ticks": 8039.0,
+     "winTypes": {
+      "combat": 2
+     }
+    },
+    "ironreed": {
+     "n": 2,
+     "win": 1,
+     "loss": 1,
+     "draw": 0,
+     "win_ci": [
+      0.09452865480086614,
+      0.9054713451991339
+     ],
+     "loss_ci": [
+      0.09452865480086614,
+      0.9054713451991339
+     ],
+     "draw_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "ticks": 5058.0,
+     "winTypes": {
+      "combat": 1
+     }
+    },
+    "saltmarsh": {
+     "n": 2,
+     "win": 1,
+     "loss": 1,
+     "draw": 0,
+     "win_ci": [
+      0.09452865480086614,
+      0.9054713451991339
+     ],
+     "loss_ci": [
+      0.09452865480086614,
+      0.9054713451991339
+     ],
+     "draw_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "ticks": 6392.0,
+     "winTypes": {
+      "combat": 1
+     }
+    },
+    "shardfall": {
+     "n": 2,
+     "win": 2,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.34237195288961925,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "draw_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "ticks": 5625.0,
+     "winTypes": {
+      "combat": 2
+     }
+    },
+    "twin-spires": {
+     "n": 2,
+     "win": 2,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.34237195288961925,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "draw_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "ticks": 5939.0,
+     "winTypes": {
+      "combat": 2
+     }
+    }
+   },
+   "sides": {
+    "blue": {
+     "n": 8,
+     "win": 6,
+     "loss": 2,
+     "draw": 0,
+     "win_ci": [
+      0.40926987910258916,
+      0.9285223111419724
+     ],
+     "loss_ci": [
+      0.07147768885802763,
+      0.5907301208974108
+     ],
+     "draw_ci": [
+      0.0,
+      0.3244156195108769
+     ],
+     "ticks": 5605.25,
+     "winTypes": {
+      "combat": 6
+     }
+    },
+    "red": {
+     "n": 8,
+     "win": 6,
+     "loss": 2,
+     "draw": 0,
+     "win_ci": [
+      0.40926987910258916,
+      0.9285223111419724
+     ],
+     "loss_ci": [
+      0.07147768885802763,
+      0.5907301208974108
+     ],
+     "draw_ci": [
+      0.0,
+      0.3244156195108769
+     ],
+     "ticks": 6239.375,
+     "winTypes": {
+      "combat": 6
+     }
+    }
+   }
+  },
+  "rush1": {
+   "n": 16,
+   "win": 16,
+   "loss": 0,
+   "draw": 0,
+   "win_ci": [
+    0.8063865817272802,
+    1.0
+   ],
+   "loss_ci": [
+    0.0,
+    0.19361341827271994
+   ],
+   "draw_ci": [
+    0.0,
+    0.19361341827271994
+   ],
+   "ticks": 5034.5625,
+   "winTypes": {
+    "combat": 16
+   },
+   "maps": {
+    "basalt-run": {
+     "n": 2,
+     "win": 2,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.34237195288961925,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "draw_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "ticks": 5822.5,
+     "winTypes": {
+      "combat": 2
+     }
+    },
+    "cinder-flats": {
+     "n": 2,
+     "win": 2,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.34237195288961925,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "draw_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "ticks": 4567.5,
+     "winTypes": {
+      "combat": 2
+     }
+    },
+    "glimmerfen": {
+     "n": 2,
+     "win": 2,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.34237195288961925,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "draw_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "ticks": 4571.5,
+     "winTypes": {
+      "combat": 2
+     }
+    },
+    "hollow-crown": {
+     "n": 2,
+     "win": 2,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.34237195288961925,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "draw_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "ticks": 5369.5,
+     "winTypes": {
+      "combat": 2
+     }
+    },
+    "ironreed": {
+     "n": 2,
+     "win": 2,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.34237195288961925,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "draw_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "ticks": 5211.0,
+     "winTypes": {
+      "combat": 2
+     }
+    },
+    "saltmarsh": {
+     "n": 2,
+     "win": 2,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.34237195288961925,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "draw_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "ticks": 5694.5,
+     "winTypes": {
+      "combat": 2
+     }
+    },
+    "shardfall": {
+     "n": 2,
+     "win": 2,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.34237195288961925,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "draw_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "ticks": 4866.5,
+     "winTypes": {
+      "combat": 2
+     }
+    },
+    "twin-spires": {
+     "n": 2,
+     "win": 2,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.34237195288961925,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "draw_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "ticks": 4173.5,
+     "winTypes": {
+      "combat": 2
+     }
+    }
+   },
+   "sides": {
+    "blue": {
+     "n": 8,
+     "win": 8,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.6755843804891231,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.3244156195108769
+     ],
+     "draw_ci": [
+      0.0,
+      0.3244156195108769
+     ],
+     "ticks": 5000.625,
+     "winTypes": {
+      "combat": 8
+     }
+    },
+    "red": {
+     "n": 8,
+     "win": 8,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.6755843804891231,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.3244156195108769
+     ],
+     "draw_ci": [
+      0.0,
+      0.3244156195108769
+     ],
+     "ticks": 5068.5,
+     "winTypes": {
+      "combat": 8
+     }
+    }
+   }
+  },
+  "swing": {
+   "n": 16,
+   "win": 16,
+   "loss": 0,
+   "draw": 0,
+   "win_ci": [
+    0.8063865817272802,
+    1.0
+   ],
+   "loss_ci": [
+    0.0,
+    0.19361341827271994
+   ],
+   "draw_ci": [
+    0.0,
+    0.19361341827271994
+   ],
+   "ticks": 6903.125,
+   "winTypes": {
+    "combat": 13,
+    "control": 2,
+    "time": 1
+   },
+   "maps": {
+    "basalt-run": {
+     "n": 2,
+     "win": 2,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.34237195288961925,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "draw_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "ticks": 7303.0,
+     "winTypes": {
+      "control": 2
+     }
+    },
+    "cinder-flats": {
+     "n": 2,
+     "win": 2,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.34237195288961925,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "draw_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "ticks": 5996.0,
+     "winTypes": {
+      "combat": 2
+     }
+    },
+    "glimmerfen": {
+     "n": 2,
+     "win": 2,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.34237195288961925,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "draw_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "ticks": 6910.0,
+     "winTypes": {
+      "combat": 2
+     }
+    },
+    "hollow-crown": {
+     "n": 2,
+     "win": 2,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.34237195288961925,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "draw_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "ticks": 8827.0,
+     "winTypes": {
+      "combat": 1,
+      "time": 1
+     }
+    },
+    "ironreed": {
+     "n": 2,
+     "win": 2,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.34237195288961925,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "draw_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "ticks": 7221.0,
+     "winTypes": {
+      "combat": 2
+     }
+    },
+    "saltmarsh": {
+     "n": 2,
+     "win": 2,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.34237195288961925,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "draw_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "ticks": 6664.0,
+     "winTypes": {
+      "combat": 2
+     }
+    },
+    "shardfall": {
+     "n": 2,
+     "win": 2,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.34237195288961925,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "draw_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "ticks": 5597.5,
+     "winTypes": {
+      "combat": 2
+     }
+    },
+    "twin-spires": {
+     "n": 2,
+     "win": 2,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.34237195288961925,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "draw_ci": [
+      0.0,
+      0.6576280471103807
+     ],
+     "ticks": 6706.5,
+     "winTypes": {
+      "combat": 2
+     }
+    }
+   },
+   "sides": {
+    "blue": {
+     "n": 8,
+     "win": 8,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.6755843804891231,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.3244156195108769
+     ],
+     "draw_ci": [
+      0.0,
+      0.3244156195108769
+     ],
+     "ticks": 5961.5,
+     "winTypes": {
+      "combat": 7,
+      "control": 1
+     }
+    },
+    "red": {
+     "n": 8,
+     "win": 8,
+     "loss": 0,
+     "draw": 0,
+     "win_ci": [
+      0.6755843804891231,
+      1.0
+     ],
+     "loss_ci": [
+      0.0,
+      0.3244156195108769
+     ],
+     "draw_ci": [
+      0.0,
+      0.3244156195108769
+     ],
+     "ticks": 7844.75,
+     "winTypes": {
+      "combat": 6,
+      "control": 1,
+      "time": 1
+     }
+    }
+   }
+  }
+ },
+ "games": [
+  {
+   "seed": 226241612,
+   "map": "glimmerfen",
+   "opp": "backdoor",
+   "side": "blue",
+   "result": "loss",
+   "winType": "combat",
+   "ticks": 2608,
+   "stats": {
+    "decisions": 326,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 114,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604005588-v2-0-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "basalt-run",
+   "opp": "backdoor",
+   "side": "blue",
+   "result": "loss",
+   "winType": "combat",
+   "ticks": 2775,
+   "stats": {
+    "decisions": 347,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 47,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604012184-v2-2-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "hollow-crown",
+   "opp": "backdoor",
+   "side": "blue",
+   "result": "loss",
+   "winType": "combat",
+   "ticks": 3017,
+   "stats": {
+    "decisions": 378,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 78,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604022057-v2-6-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "twin-spires",
+   "opp": "backdoor",
+   "side": "red",
+   "result": "loss",
+   "winType": "combat",
+   "ticks": 3243,
+   "stats": {
+    "decisions": 406,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 72,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604030054-v2-5-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "shardfall",
+   "opp": "backdoor",
+   "side": "blue",
+   "result": "loss",
+   "winType": "combat",
+   "ticks": 3441,
+   "stats": {
+    "decisions": 431,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 70,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604037601-v2-0-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "ironreed",
+   "opp": "flank",
+   "side": "red",
+   "result": "loss",
+   "winType": "combat",
+   "ticks": 3690,
+   "stats": {
+    "decisions": 462,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 110,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604046114-v2-5-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "twin-spires",
+   "opp": "rush1",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4151,
+   "stats": {
+    "decisions": 519,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 29,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604060671-v2-5-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "ironreed",
+   "opp": "rush1",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4146,
+   "stats": {
+    "decisions": 519,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 51,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604060633-v2-4-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "twin-spires",
+   "opp": "rush1",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4196,
+   "stats": {
+    "decisions": 525,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 144,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604062251-v2-4-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "glimmerfen",
+   "opp": "rush1",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4258,
+   "stats": {
+    "decisions": 533,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 35,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604064189-v2-0-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "saltmarsh",
+   "opp": "flank",
+   "side": "blue",
+   "result": "loss",
+   "winType": "combat",
+   "ticks": 4340,
+   "stats": {
+    "decisions": 543,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 77,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604067355-v2-2-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "cinder-flats",
+   "opp": "rush1",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4359,
+   "stats": {
+    "decisions": 545,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 82,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604067970-v2-7-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "cinder-flats",
+   "opp": "flank",
+   "side": "red",
+   "result": "loss",
+   "winType": "combat",
+   "ticks": 4379,
+   "stats": {
+    "decisions": 548,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 68,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604068972-v2-7-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "cinder-flats",
+   "opp": "backdoor",
+   "side": "blue",
+   "result": "loss",
+   "winType": "combat",
+   "ticks": 4677,
+   "stats": {
+    "decisions": 585,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 61,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604078862-v2-6-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "shardfall",
+   "opp": "rush1",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4732,
+   "stats": {
+    "decisions": 592,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 44,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604080588-v2-0-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "cinder-flats",
+   "opp": "rush1",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4776,
+   "stats": {
+    "decisions": 597,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 156,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604081939-v2-6-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "glimmerfen",
+   "opp": "backdoor",
+   "side": "red",
+   "result": "loss",
+   "winType": "combat",
+   "ticks": 4798,
+   "stats": {
+    "decisions": 600,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 56,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604083087-v2-1-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "ironreed",
+   "opp": "backdoor",
+   "side": "blue",
+   "result": "loss",
+   "winType": "combat",
+   "ticks": 4808,
+   "stats": {
+    "decisions": 601,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 301,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604083386-v2-4-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "glimmerfen",
+   "opp": "rush1",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4885,
+   "stats": {
+    "decisions": 611,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 50,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604086227-v2-1-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "ironreed",
+   "opp": "swing",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4914,
+   "stats": {
+    "decisions": 615,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 71,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604087080-v2-4-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "saltmarsh",
+   "opp": "swing",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4925,
+   "stats": {
+    "decisions": 616,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 72,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604087284-v2-3-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "cinder-flats",
+   "opp": "flank",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 4929,
+   "stats": {
+    "decisions": 617,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 47,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604087682-v2-6-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "glimmerfen",
+   "opp": "swing",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5003,
+   "stats": {
+    "decisions": 626,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 43,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604090471-v2-0-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "shardfall",
+   "opp": "rush1",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5001,
+   "stats": {
+    "decisions": 626,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 50,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604090490-v2-1-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "basalt-run",
+   "opp": "rush1",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5124,
+   "stats": {
+    "decisions": 641,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 135,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604096355-v2-3-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "twin-spires",
+   "opp": "backdoor",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5229,
+   "stats": {
+    "decisions": 654,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 54,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604099489-v2-4-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "basalt-run",
+   "opp": "swing",
+   "side": "blue",
+   "result": "win",
+   "winType": "control",
+   "ticks": 5257,
+   "stats": {
+    "decisions": 658,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 134,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604100609-v2-2-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "hollow-crown",
+   "opp": "rush1",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5311,
+   "stats": {
+    "decisions": 664,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 40,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604101873-v2-6-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "saltmarsh",
+   "opp": "rush1",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5324,
+   "stats": {
+    "decisions": 666,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 63,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604102244-v2-3-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "cinder-flats",
+   "opp": "swing",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5342,
+   "stats": {
+    "decisions": 668,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 88,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604102997-v2-6-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "basalt-run",
+   "opp": "backdoor",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5383,
+   "stats": {
+    "decisions": 673,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 30,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604104056-v2-3-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "hollow-crown",
+   "opp": "rush1",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5428,
+   "stats": {
+    "decisions": 679,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 230,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604105595-v2-7-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "glimmerfen",
+   "opp": "flank",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5453,
+   "stats": {
+    "decisions": 682,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 58,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604106370-v2-0-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "saltmarsh",
+   "opp": "backdoor",
+   "side": "blue",
+   "result": "loss",
+   "winType": "combat",
+   "ticks": 5450,
+   "stats": {
+    "decisions": 682,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 152,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604106402-v2-2-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "shardfall",
+   "opp": "swing",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5518,
+   "stats": {
+    "decisions": 690,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 128,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604107970-v2-0-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "ironreed",
+   "opp": "backdoor",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5568,
+   "stats": {
+    "decisions": 696,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 41,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604109616-v2-5-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "shardfall",
+   "opp": "flank",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5571,
+   "stats": {
+    "decisions": 697,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 43,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604109766-v2-0-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "cinder-flats",
+   "opp": "backdoor",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5570,
+   "stats": {
+    "decisions": 697,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 48,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604109854-v2-7-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "glimmerfen",
+   "opp": "flank",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5592,
+   "stats": {
+    "decisions": 699,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 96,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604110457-v2-1-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "basalt-run",
+   "opp": "flank",
+   "side": "blue",
+   "result": "loss",
+   "winType": "control",
+   "ticks": 5612,
+   "stats": {
+    "decisions": 702,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 209,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604110976-v2-2-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "hollow-crown",
+   "opp": "swing",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5654,
+   "stats": {
+    "decisions": 707,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 186,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604112207-v2-6-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "shardfall",
+   "opp": "flank",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5679,
+   "stats": {
+    "decisions": 710,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 49,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604112739-v2-1-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "shardfall",
+   "opp": "swing",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5677,
+   "stats": {
+    "decisions": 710,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 55,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604112757-v2-1-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "twin-spires",
+   "opp": "swing",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5812,
+   "stats": {
+    "decisions": 727,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 70,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604116221-v2-5-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "twin-spires",
+   "opp": "flank",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5890,
+   "stats": {
+    "decisions": 737,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 279,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604119587-v2-4-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "hollow-crown",
+   "opp": "backdoor",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5926,
+   "stats": {
+    "decisions": 741,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 64,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604120865-v2-7-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "saltmarsh",
+   "opp": "backdoor",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5945,
+   "stats": {
+    "decisions": 744,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 101,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604121623-v2-3-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "twin-spires",
+   "opp": "flank",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 5988,
+   "stats": {
+    "decisions": 749,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 141,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604122678-v2-5-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "shardfall",
+   "opp": "backdoor",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6015,
+   "stats": {
+    "decisions": 752,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 223,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604123414-v2-1-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "saltmarsh",
+   "opp": "rush1",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6065,
+   "stats": {
+    "decisions": 759,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 72,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604125102-v2-2-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "ironreed",
+   "opp": "rush1",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6276,
+   "stats": {
+    "decisions": 785,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 63,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604131189-v2-5-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "ironreed",
+   "opp": "flank",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6426,
+   "stats": {
+    "decisions": 804,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 212,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604135671-v2-4-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "basalt-run",
+   "opp": "rush1",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6521,
+   "stats": {
+    "decisions": 816,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 241,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604138398-v2-2-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "hollow-crown",
+   "opp": "flank",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6621,
+   "stats": {
+    "decisions": 828,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 310,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604141550-v2-6-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "cinder-flats",
+   "opp": "swing",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6650,
+   "stats": {
+    "decisions": 832,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 48,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604142448-v2-7-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "basalt-run",
+   "opp": "flank",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 6686,
+   "stats": {
+    "decisions": 836,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 154,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604143761-v2-3-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "twin-spires",
+   "opp": "swing",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 7601,
+   "stats": {
+    "decisions": 951,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 224,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604171054-v2-4-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "saltmarsh",
+   "opp": "swing",
+   "side": "blue",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 8403,
+   "stats": {
+    "decisions": 1051,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 76,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604197538-v2-2-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "saltmarsh",
+   "opp": "flank",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 8444,
+   "stats": {
+    "decisions": 1056,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 95,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604198674-v2-3-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "glimmerfen",
+   "opp": "swing",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 8817,
+   "stats": {
+    "decisions": 1103,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 396,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604211591-v2-1-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "basalt-run",
+   "opp": "swing",
+   "side": "red",
+   "result": "win",
+   "winType": "control",
+   "ticks": 9349,
+   "stats": {
+    "decisions": 1169,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 414,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604229075-v2-3-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "hollow-crown",
+   "opp": "flank",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 9457,
+   "stats": {
+    "decisions": 1183,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 642,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604232519-v2-7-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "ironreed",
+   "opp": "swing",
+   "side": "red",
+   "result": "win",
+   "winType": "combat",
+   "ticks": 9528,
+   "stats": {
+    "decisions": 1191,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 670,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604234581-v2-5-0"
+  },
+  {
+   "seed": 226241612,
+   "map": "hollow-crown",
+   "opp": "swing",
+   "side": "red",
+   "result": "win",
+   "winType": "time",
+   "ticks": 12000,
+   "stats": {
+    "decisions": 1500,
+    "econIneffective": 0,
+    "armyIneffective": 0,
+    "autopilot": 467,
+    "contested": 0,
+    "illegal": 0,
+    "botErrors": 0
+   },
+   "replayId": "1795604328781-v2-7-0"
+  }
+ ]
+}
