@@ -49,7 +49,7 @@ def stack_obs(obs_list: list[dict], statics: list[np.ndarray], critics: list[dic
     }
 
 
-MASK_KEYS = ("econ", "site", "econPtr", "econTarget", "group", "order", "unit", "target", "ptr") + (("scoutOrder",) if S.LAYOUT == "v3" else ())
+MASK_KEYS = ("econ", "site", "econPtr", "econTarget", "group", "order", "unit", "target", "ptr") + (("scoutOrder",) if S.SCOUT_SLOT else ())
 
 
 MASK_SHAPES = {

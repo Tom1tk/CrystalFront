@@ -32,10 +32,13 @@ PTR_ORDERS = (6, 7, 11)        # focus, heal, cover
 # Mainline 0.10 (beta ruleset): observation v3 (schema 7) / action space v8 from headless/src/v3,
 # selected with CF_LAYOUT=v3 before anything imports this module. Adds the Outrider (a unit type,
 # a train action, an opponent-model unit) and the Surge globals; see training/v3_surgery.py.
+# Rebuild R1 (docs/REBUILD_R1_PLAN.md): observation schema 8 / action space 10 from headless/src/v4
+# with CF_LAYOUT=v4, a v3 superset (training/v4_surgery.py).
 LAYOUT = os.environ.get("CF_LAYOUT", "v2")
-if LAYOUT not in ("v2", "v3"):
-    raise RuntimeError(f"CF_LAYOUT={LAYOUT!r}: expected v2 or v3")
-if LAYOUT == "v3":
+if LAYOUT not in ("v2", "v3", "v4"):
+    raise RuntimeError(f"CF_LAYOUT={LAYOUT!r}: expected v2, v3 or v4")
+SCOUT_SLOT = LAYOUT in ("v3", "v4")  # the masks carry the scout order slot (action space 9+)
+if LAYOUT in ("v3", "v4"):
     N_GLOBALS, ENTITY_F, ECON = 68, 37, 64
     ECON_BUILD0, ECON_ASSIGN0, ECON_REPAIR, ECON_RALLY = 8, 13, 61, 62
 
@@ -46,7 +49,7 @@ TRAIN_MAPS = ("shardfall", "basalt-run", "twin-spires", "hollow-crown", "glimmer
 
 # Opponent-model labels (observation.ts oppLabels): counts binned 0, 1, 2, 3-4, 5-8, 9+;
 # army location as the nearest of the 37 anchor targets, or 37 = none seen.
-OPP_UNITS, OPP_BUILDINGS = (7 if LAYOUT == "v3" else 6), 5
+OPP_UNITS, OPP_BUILDINGS = (7 if LAYOUT != "v2" else 6), 5
 OPP_BINS = 6
 N_ANCHORS = 37
 
@@ -90,10 +93,10 @@ def check_layout(layout: dict) -> None:
         "entities": ENTITY_F,
         "econ": ECON, "site": (N_BUILDINGS, BUILD_SITES), "econPtr": (ECON_PTR_KINDS, PTR), "econTarget": TARGETS,
         "group": N_GROUPS, "order": (N_GROUPS, N_ORDERS), "unit": (N_ORDERS, PTR), "target": (N_ORDERS, TARGETS),
-        "ptr": (N_ORDERS, PTR), **({"scoutOrder": N_ORDERS} if LAYOUT == "v3" else {}),
+        "ptr": (N_ORDERS, PTR), **({"scoutOrder": N_ORDERS} if SCOUT_SLOT else {}),
     }
     bad = {k: (got.get(k), want[k]) for k in want if got.get(k) != want[k]}
-    if [k for k, _ in layout["masks"]] != ["econ", "site", "econPtr", "econTarget", "group", "order", "unit", "target", "ptr"] + (["scoutOrder"] if LAYOUT == "v3" else []):
+    if [k for k, _ in layout["masks"]] != ["econ", "site", "econPtr", "econTarget", "group", "order", "unit", "target", "ptr"] + (["scoutOrder"] if SCOUT_SLOT else []):
         bad["mask order"] = [k for k, _ in layout["masks"]]
     if bad:
         raise RuntimeError(f"packed layout changed (got, expected): {bad} — update training/v2/spaces.py")
