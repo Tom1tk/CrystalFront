@@ -131,6 +131,13 @@ export interface OppLabels {
   queued: number[];     // enemy units in production per TRAIN_UNITS type
   /** Own-frame anchor target index nearest the enemy army's centre, or N_ANCHOR_TARGETS (none). */
   armyAnchor: number;
+  /** Schema 8 (S4): true enemy buildings (any state) and combat units within NEAR_BASE of the own crystal. */
+  nearBuildings: number;
+  nearCombat: number;
+  /** Schema 8: true enemy workers outside their own half. */
+  workersOut: number;
+  /** Schema 8: anchor nearest the near-base enemy building closest to the own crystal, or N_ANCHOR_TARGETS. */
+  nearAnchor: number;
 }
 
 interface MemEntry {
@@ -774,16 +781,27 @@ export function oppLabels(match: MatchState, s: SeatState): OppLabels {
   const buildings = BUILDINGS.map((b) => enemy.filter((v) => v.type === b).length);
   const queued = TRAIN_UNITS.map((u) => enemy.reduce((n, v) => n + v.e.productionQueue.filter((it) => it.unitType === u).length, 0));
   const army = enemy.filter((v) => COMBAT_SET.has(v.type));
-  let armyAnchor = N_ANCHOR_TARGETS;
-  if (army.length) {
-    const cx = army.reduce((a, v) => a + v.x, 0) / army.length * d.W, cy = army.reduce((a, v) => a + v.y, 0) / army.length * d.H;
-    let bd = Infinity;
+  const nearestAnchor = (cx: number, cy: number) => {
+    let bd = Infinity, best = N_ANCHOR_TARGETS;
     for (let i = 0; i < N_ANCHOR_TARGETS; i++) {
       if (!s.targetValid[i]) continue;
       const p = ownPos(s, d, s.targets[i]);
       const dd = (p.x * d.W - cx) ** 2 + (p.y * d.H - cy) ** 2;
-      if (dd < bd) { bd = dd; armyAnchor = i; }
+      if (dd < bd) { bd = dd; best = i; }
     }
+    return best;
+  };
+  let armyAnchor = N_ANCHOR_TARGETS;
+  if (army.length) {
+    const cx = army.reduce((a, v) => a + v.x, 0) / army.length * d.W, cy = army.reduce((a, v) => a + v.y, 0) / army.length * d.H;
+    armyAnchor = nearestAnchor(cx, cy);
   }
-  return { units, buildings, queued, armyAnchor };
+  // Near-base threats, measured in world px from the own crystal.
+  const crystal = [...match.entities.values()].find((e) => e.type === "crystal" && e.ownerId === s.playerId);
+  const from = (v: Seen) => (crystal ? Math.hypot(v.e.x - crystal.x, v.e.y - crystal.y) : Infinity);
+  const nearB = enemy.filter((v) => BUILDINGS.includes(v.type as never) && from(v) <= NEAR_BASE).sort((a, b) => from(a) - from(b));
+  const nearCombat = army.filter((v) => from(v) <= NEAR_BASE).length;
+  const workersOut = enemy.filter((v) => v.type === "worker" && v.x < 0.5).length;
+  const nearAnchor = nearB.length ? nearestAnchor(nearB[0].x * d.W, nearB[0].y * d.H) : N_ANCHOR_TARGETS;
+  return { units, buildings, queued, armyAnchor, nearBuildings: nearB.length, nearCombat, workersOut, nearAnchor };
 }

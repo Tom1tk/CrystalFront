@@ -31,3 +31,9 @@ training with `CF_LAYOUT=v4`.
   is seen back in its own half. New columns: heading x/y (own frame) and the lone flag.
 - **Targets:** memory 37..60, grid 61..810, none 811 (812 in all). Teacher labels therefore differ
   from v3's by +8 for grid targets; tests/v4.ts compares them in v3 numbering.
+
+## Opponent-model labels (S4, training only)
+
+`oppLabels` adds the true `nearBuildings` and `nearCombat` (enemy buildings in any state and
+combat units within 900 px of the own crystal), `workersOut` (enemy workers outside their own half)
+and `nearAnchor` (the anchor nearest the near-base building closest to the crystal, or 37 = none).

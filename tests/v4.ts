@@ -347,7 +347,53 @@ function memoryTests(): void {
   }
 }
 
+// ---- S4: opponent-model labels (near-base threats) ----
+
+function oppLabelTests(): void {
+  console.log("\nv4 opponent-model labels");
+  const COMBAT = new Set(["skirmisher", "gunner", "bruiser", "medic", "bulwark"]);
+  const BLD = new Set(["barracks", "foundry", "supply_depot", "turret", "outpost"]);
+  for (const [attacker, map, seed] of [["backdoor", "shardfall", 21], ["rush_post", "ironreed", 22]] as const) {
+    const r = new Runner4({});
+    let res: R = r.handle({ type: "reset_all", max_ticks: 7000, critic: false, slots: [{ seed, map, blue: `teach:${attacker}`, red: "teach:macro" }] });
+    let ok = true, decisions = 0, maxNearB = 0, maxNearC = 0, maxOut = 0, anchors = 0, why = "";
+    for (let d = 0; d < 7000 / 8 && res.type !== "error" && !res.slots?.[0]?.done; d++) {
+      const match = (r as any).slots[0].match as MatchState;
+      for (const [k, side] of [[0, "blue"], [1, "red"]] as const) {
+        const lab = res.slots[0].seats[side]?.oppLabels;
+        if (!lab) continue;
+        const me = IDS[k];
+        const cr = [...match.entities.values()].find((e) => e.type === "crystal" && e.ownerId === me)!;
+        const leftSide = cr.x < match.config.mapWidth / 2;
+        let nb = 0, nc = 0, wo = 0;
+        for (const e of match.entities.values()) {
+          if (e.ownerId === me || !e.ownerId || e.ownerId === "neutral") continue;
+          const alive = e.health > 0 || (e.type === "building" && e.constructionProgress < 100);
+          if (!alive) continue;
+          const dist = Math.hypot(e.x - cr.x, e.y - cr.y);
+          if (e.type === "building" && BLD.has(e.buildingType!) && dist <= 900) nb++;
+          if (COMBAT.has(e.type) && dist <= 900) nc++;
+          if (e.type === "worker" && (leftSide ? e.x < match.config.mapWidth / 2 : e.x > match.config.mapWidth / 2)) wo++;
+        }
+        decisions++;
+        if (lab.nearBuildings !== nb || lab.nearCombat !== nc || lab.workersOut !== wo || (nb === 0) !== (lab.nearAnchor === A4.N_ANCHOR_TARGETS)) {
+          if (ok) why = `tick ${match.tick} ${side}: ${JSON.stringify([lab.nearBuildings, lab.nearCombat, lab.workersOut, lab.nearAnchor])} vs ${JSON.stringify([nb, nc, wo])}`;
+          ok = false;
+        }
+        maxNearB = Math.max(maxNearB, nb); maxNearC = Math.max(maxNearC, nc); maxOut = Math.max(maxOut, wo);
+        if (nb > 0) anchors++;
+      }
+      res = r.handle({ type: "step", actions: [{}] });
+    }
+    check(ok && decisions > 500, `${attacker} on ${map}: labels match a hand count (${decisions} seat-decisions)`, why);
+    const busy = attacker === "backdoor" ? maxNearB > 0 && maxOut > 0 && anchors > 0 : maxNearC > 0;
+    check(busy, `${attacker} on ${map}: the labels are not all zero (${attacker === "backdoor" ? "near-base buildings, workers out" : "combat units near base"})`,
+      `max ${maxNearB} buildings, ${maxNearC} combat, ${maxOut} workers`);
+  }
+}
+
 schemaTests();
+oppLabelTests();
 memoryTests();
 if (!process.env.V4_QUICK) equivalenceTests();
 console.log(`\nv4: ${passed} passed, ${failed} failed\n`);
