@@ -118,7 +118,17 @@ export function packMasks(m: V2.V2Masks): string {
   return b64(out);
 }
 
-const packCritic = (c: OBS.CriticV2) => b64(Float32Array.from([...c.self.globals, ...c.enemy.globals]));
+/**
+ * Full critic state (rebuild R1, S5; training only): both seats' true globals, then this seat's unfogged
+ * nodes, dynamic grid and entity rows (`n` rows, the observation's row priority), all in its own frame.
+ */
+export function packCritic(c: OBS.CriticV2) {
+  const parts = [c.self.globals, c.enemy.globals, ...c.self.nodes, c.self.grid, ...c.self.entities];
+  const f = new Float32Array(parts.reduce((s, p) => s + p.length, 0));
+  let k = 0;
+  for (const p of parts) { f.set(p, k); k += p.length; }
+  return { n: c.self.entities.length, f: b64(f) };
+}
 
 /** Shapes Python checks before trusting packed messages. */
 function layout(o: OBS.ObsV2, m: V2.V2Masks) {

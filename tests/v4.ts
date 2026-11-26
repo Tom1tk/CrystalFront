@@ -1,7 +1,7 @@
 // Layout v4 tests (docs/REBUILD_R1_PLAN.md). Run by `npm test` after tests/index.ts.
 //   npx tsx tests/v4.ts
 import { VecRunnerV2 as Runner3 } from "../headless/src/v3/runner.js";
-import { VecRunnerV2 as Runner4 } from "../headless/src/v4/runner.js";
+import { VecRunnerV2 as Runner4, packCritic } from "../headless/src/v4/runner.js";
 import { MatchEngine } from "../server/src/match/matchEngine.js";
 import { DEFAULT_CONFIG, type MatchEntity, type MatchState, type PlayerSlot } from "../server/src/match/types.js";
 import { computeVisibility } from "../server/src/match/engine/visibility.js";
@@ -392,7 +392,57 @@ function oppLabelTests(): void {
   }
 }
 
+const unb64 = (s: string) => { const b = Buffer.from(s, "base64"); return Array.from(new Float32Array(b.buffer, b.byteOffset, b.length / 4)); };
+
+function criticTests(): void {
+  console.log("\nv4 full critic state (S5)");
+  const size = (n: number) => 2 * O4.GLOBAL_NAMES.length + 20 * O4.NODE_F + O4.DYN_CHANNELS.length * PLANE + n * O4.ENTITY_F;
+  // Round trip: the packed block is both globals, then own nodes, dynamic grid and entity rows.
+  {
+    const m = fresh("shardfall");
+    const seats = [A4.createSeatState(m, IDS[0]), A4.createSeatState(m, IDS[1])];
+    const oss = seats.map((s) => O4.createObsState(m, s));
+    spawn(m, IDS[1], "bruiser", 1400, 600);
+    computeVisibility(m);
+    const c = O4.criticState(m, seats[0], oss[0], seats[1], oss[1]);
+    const p = packCritic(c), f = unb64(p.f);
+    const want = [...c.self.globals, ...c.enemy.globals, ...c.self.nodes.flat(), ...c.self.grid, ...c.self.entities.flat()];
+    check(p.n === c.self.entities.length && f.length === size(p.n), "packed critic has the expected size", `${f.length} vs ${size(p.n)}`);
+    check(f.every((v, i) => Math.fround(want[i]) === v), "packed critic round-trips");
+    const obs = O4.observe(m, seats[0], O4.createObsState(m, seats[0]));
+    check(c.self.entities.length > obs.entities.length, "critic sees more entities than the fogged observation", `${c.self.entities.length} vs ${obs.entities.length}`);
+  }
+  // Runner: packed critic on the wire with the documented size.
+  {
+    const r = new Runner4({});
+    const res: R = r.handle({ type: "reset_all", max_ticks: 600, critic: true, packed: true, slots: [{ seed: 3, map: "ironreed", blue: "policy", red: "policy" }] });
+    const seat: R = Object.values(res.slots[0].seats)[0] as R;
+    check(typeof seat.critic?.f === "string" && unb64(seat.critic.f).length === size(seat.critic.n), "runner sends the packed critic", JSON.stringify(Object.keys(seat.critic ?? {})));
+  }
+  // Mirror: the same own-frame situation for both seats gives the same critic block.
+  for (const map of ["shardfall", "ironreed", "glimmerfen"]) {
+    const m = fresh(map);
+    const seats = [A4.createSeatState(m, IDS[0]), A4.createSeatState(m, IDS[1])];
+    const oss = seats.map((s) => O4.createObsState(m, s));
+    for (const k of [0, 1]) {
+      const s = seats[k], c = crystalOwn(m, s, IDS[k]);
+      const a = fromOwnFrame(s.frame, { x: c.x + 1500, y: c.y + 40 }), b = fromOwnFrame(s.frame, { x: c.x + 600, y: c.y - 80 });
+      spawn(m, IDS[1 - k], "bruiser", a.x, a.y);
+      spawn(m, IDS[k], "gunner", b.x, b.y);
+    }
+    computeVisibility(m);
+    const cs = [O4.criticState(m, seats[0], oss[0], seats[1], oss[1]), O4.criticState(m, seats[1], oss[1], seats[0], oss[0])];
+    const rows = (e: number[][]) => e.map((r) => JSON.stringify(r.map((v) => Math.round(v * 500)))).sort();
+    const g0 = [...cs[0].self.globals, ...cs[0].enemy.globals], g1 = [...cs[1].self.globals, ...cs[1].enemy.globals];
+    check(g0.every((v, i) => near(v, g1[i])), `${map}: same critic globals for both seats`);
+    check(cs[0].self.nodes.flat().every((v, i) => near(v, cs[1].self.nodes.flat()[i])), `${map}: same critic nodes for both seats`);
+    check(cs[0].self.grid.every((v, i) => near(v, cs[1].self.grid[i])), `${map}: same critic grid for both seats`);
+    check(JSON.stringify(rows(cs[0].self.entities)) === JSON.stringify(rows(cs[1].self.entities)), `${map}: same critic entity rows for both seats`);
+  }
+}
+
 schemaTests();
+criticTests();
 oppLabelTests();
 memoryTests();
 if (!process.env.V4_QUICK) equivalenceTests();

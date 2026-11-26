@@ -33,13 +33,36 @@ def stack_obs(obs_list: list[dict], statics: list[np.ndarray], critics: list[dic
     dyn = np.asarray([o["grid"] for o in obs_list], dtype=np.float32).reshape(b, S.GRID_DYN_C, S.GRID_ROWS, S.GRID_COLS)
     grid = np.concatenate([dyn, np.stack(statics)], axis=1)
     critic = np.zeros((b, 2 * S.N_GLOBALS), dtype=np.float32)
-    for i, c in enumerate(critics):
-        if isinstance(c, np.ndarray):  # packed: [own globals | enemy globals]
-            critic[i] = c
-        elif c is not None:
-            critic[i, :S.N_GLOBALS] = c["self"]["globals"]
-            critic[i, S.N_GLOBALS:] = c["enemy"]["globals"]
-    return {
+    full = {}
+    if S.FULL_CRITIC:
+        # Packed: {globals (2 × N_GLOBALS), nodes, grid, entities}; JSON: the runner's {self, enemy} blocks.
+        cs = [None if c is None else c if "globals" in c else
+              {"globals": np.concatenate([c["self"]["globals"], c["enemy"]["globals"]]), "nodes": c["self"]["nodes"],
+               "grid": c["self"]["grid"], "entities": c["self"]["entities"]} for c in critics]
+        nc = max([1] + [len(c["entities"]) for c in cs if c is not None])
+        c_ent = np.zeros((b, nc, S.ENTITY_F), dtype=np.float32)
+        c_ent_n = np.zeros(b, dtype=np.int64)
+        c_nodes = np.zeros((b, S.N_NODES, S.NODE_F), dtype=np.float32)
+        c_dyn = np.zeros((b, S.GRID_DYN_C, S.GRID_ROWS, S.GRID_COLS), dtype=np.float32)
+        for i, c in enumerate(cs):
+            if c is None:
+                continue
+            critic[i] = c["globals"]
+            n = len(c["entities"])
+            if n:
+                c_ent[i, :n] = c["entities"]
+            c_ent_n[i] = n
+            c_nodes[i] = c["nodes"]
+            c_dyn[i] = np.asarray(c["grid"], dtype=np.float32).reshape(S.GRID_DYN_C, S.GRID_ROWS, S.GRID_COLS)
+        full = {"c_ent": c_ent, "c_ent_n": c_ent_n, "c_nodes": c_nodes, "c_grid": np.concatenate([c_dyn, np.stack(statics)], axis=1)}
+    else:
+        for i, c in enumerate(critics):
+            if isinstance(c, np.ndarray):  # packed: [own globals | enemy globals]
+                critic[i] = c
+            elif c is not None:
+                critic[i, :S.N_GLOBALS] = c["self"]["globals"]
+                critic[i, S.N_GLOBALS:] = c["enemy"]["globals"]
+    return {**full,
         "globals": np.asarray([o["globals"] for o in obs_list], dtype=np.float32),
         "z": np.asarray([o["z"] for o in obs_list], dtype=np.int64),
         "ent": ent, "ent_n": ent_n,

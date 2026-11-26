@@ -296,8 +296,18 @@ class VecEnvV2:
         out["obs"] = obs
         if "masks" in s:
             out["masks"] = np.frombuffer(base64.b64decode(s["masks"]), dtype=np.uint8)
-        if s.get("critic") is not None:
-            out["critic"] = np.frombuffer(base64.b64decode(s["critic"]), dtype=np.float32)
+        c = s.get("critic")
+        if isinstance(c, dict):  # v4: full critic state (both globals, own unfogged nodes, dynamic grid, entities)
+            f = np.frombuffer(base64.b64decode(c["f"]), dtype=np.float32)
+            k, crit = 0, {}
+            for key, shape in (("globals", (2 * L["globals"],)), ("nodes", tuple(L["nodes"])), ("grid", (L["grid"],))):
+                n = int(np.prod(shape))
+                crit[key] = f[k:k + n].reshape(shape)
+                k += n
+            crit["entities"] = f[k:].reshape(c["n"], L["entityF"])
+            out["critic"] = crit
+        elif c is not None:
+            out["critic"] = np.frombuffer(base64.b64decode(c), dtype=np.float32)
         return out
 
     def step(self, actions: list[dict | None]) -> StepOut:

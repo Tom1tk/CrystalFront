@@ -323,7 +323,7 @@ def main() -> None:
                     if fz:
                         for j, w in frozen.act(fz, statics, [o[5:] if o.startswith("ckpt:") else None for o in cur_opp]).items():
                             acts[j] = w
-                store["obs"].append({k: (x.astype(np.float16) if k in ("grid", "ent") else x) for k, x in obs.items()})
+                store["obs"].append({k: (x.astype(np.float16) if k in ("grid", "ent", "c_grid", "c_ent") else x) for k, x in obs.items()})
                 store["opp"].append(opp_targets([s.opp_labels for s in ls]))
                 store["rows"].append({k: r.cpu().numpy() for k, r in rows.items()})
                 store["act"].append({k: out[k].cpu().numpy() for k in HEADS})
@@ -410,7 +410,7 @@ def main() -> None:
             N = T * B
             flat = {}
             for k in store["obs"][0]:
-                if k == "ent":
+                if k in ("ent", "c_ent"):
                     flat[k] = pad_entities([o[k] for o in store["obs"]])
                 else:
                     flat[k] = np.concatenate([o[k] for o in store["obs"]])
@@ -447,6 +447,8 @@ def main() -> None:
                 o["grid"], o["ent"] = o["grid"].float(), o["ent"].float()
                 n_used = int(o["ent_n"].max().clamp(min=1))
                 o["ent"] = o["ent"][:, :n_used]
+                if "c_ent" in o:  # full critic (v4)
+                    o["c_grid"], o["c_ent"] = o["c_grid"].float(), o["c_ent"].float()[:, :int(o["c_ent_n"].max().clamp(min=1))]
                 rows_t = {k: torch.as_tensor(f_rows[k][idx], device=dev) for k in f_rows}
                 act_t = {k: torch.as_tensor(f_act[k][idx], device=dev) for k in HEADS}
                 st = (torch.as_tensor(h0[ch, bb], device=dev), torch.as_tensor(c0[ch, bb], device=dev))

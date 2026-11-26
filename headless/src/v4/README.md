@@ -37,3 +37,14 @@ training with `CF_LAYOUT=v4`.
 `oppLabels` adds the true `nearBuildings` and `nearCombat` (enemy buildings in any state and
 combat units within 900 px of the own crystal), `workersOut` (enemy workers outside their own half)
 and `nearAnchor` (the anchor nearest the near-base building closest to the crystal, or 37 = none).
+
+## Full critic state (S5, training only)
+
+With `critic` on, each seat's message carries the unfogged state from `criticState()`. In packed mode
+`packCritic` sends `{n, f}`, where `f` is float32 holding both seats' globals (own first), then the
+seat's own nodes (20 × 13), dynamic grid (7 × 15 × 50) and `n` entity rows (× 48, the observation's
+row priority). Python stacks it as `critic` (globals) plus `c_nodes`, `c_grid` (with the static
+channels) and `c_ent`/`c_ent_n`, and the rollout stores `c_grid`/`c_ent` as float16.
+
+Env-only cost (16 policy-vs-policy slots, 4 processes, no-op actions): 1135 → 854 decisions/s with
+the critic on, against 1290 → 1180 for v3's globals-only critic.
