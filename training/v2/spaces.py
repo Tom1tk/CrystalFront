@@ -41,6 +41,9 @@ SCOUT_SLOT = LAYOUT in ("v3", "v4")  # the masks carry the scout order slot (act
 if LAYOUT in ("v3", "v4"):
     N_GLOBALS, ENTITY_F, ECON = 68, 37, 64
     ECON_BUILD0, ECON_ASSIGN0, ECON_REPAIR, ECON_RALLY = 8, 13, 61, 62
+if LAYOUT == "v4":
+    # Schema 8 (S2): 10 threat/army globals, 11 unit-fact/relation entity columns, threat and coverage grid planes.
+    N_GLOBALS, ENTITY_F, GRID_DYN_C = 78, 48, 7
 
 # Maps (server/src/match/pool/manifest.json). The held-out maps must never be
 # used for imitation data, training or hyperparameter selection.
