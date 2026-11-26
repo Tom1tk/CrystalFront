@@ -14,13 +14,14 @@ group → order → unit → target / pointer), so sampling stays in TypeScript
                    plus hh (the heads' input) and E (entity embeddings) for the tail.
   <out>.tail.onnx  hh, E, chosen order, chosen unit, unit_on → target (804), ptr (200)
                    (both depend on the chosen unit's embedding).
-Scout slot (v3, a checkpoint trained with one; meta scoutSlot): main also outputs
+Scout slot (v3/v4, a checkpoint trained with one; meta scoutSlot): main also outputs
 scoutOrder (12); the tail also takes scout_order and returns scoutTarget (804) and
 scoutPtr (200).
 
 Entities are always padded to N = 200 (spaces.PTR) rows with ent_n the real count
 (the attention reshape does not trace with a dynamic N; padded rows are masked, as
 in training). Pointer logits cover all 200 rows; the caller masks rows ≥ ent_n.
+v4 (CF_LAYOUT=v4): the same graphs; the attention pool is part of the main graph, the critic is not exported.
 
 Usage:
     python -m training.v2.export_onnx --checkpoint checkpoints/v2/lg2-main/cycle_3.pt --out models/policy-v0.9.0-ML
@@ -110,7 +111,7 @@ def load(path: str) -> tuple[Agent, bool]:
 def export(ckpt: str, out: str) -> None:
     torch.backends.mha.set_fastpath_enabled(False)  # the fused encoder kernel has no ONNX export
     a, scout = load(ckpt)
-    scout = scout and S.LAYOUT == "v3"
+    scout = scout and S.LAYOUT in ("v3", "v4")
     Path(out).parent.mkdir(parents=True, exist_ok=True)
     args = dummy()
     main_out = MAIN_OUT + (SCOUT_MAIN_OUT if scout else [])
@@ -122,7 +123,8 @@ def export(ckpt: str, out: str) -> None:
         torch.onnx.export(ScoutTail(a) if scout else Tail(a), tail_args, f"{out}.tail.onnx", input_names=tail_in, output_names=tail_out,
                           opset_version=17, dynamo=False)
     meta = {"checkpoint": ckpt, "layout": S.LAYOUT,
-            "obsSchemaVersion": 7 if S.LAYOUT == "v3" else 5, "actionSpaceVersion": (9 if scout else 8) if S.LAYOUT == "v3" else 7, "hidden": 384,
+            "obsSchemaVersion": {"v2": 5, "v3": 7, "v4": 8}[S.LAYOUT],
+            "actionSpaceVersion": {"v2": 7, "v3": 9 if scout else 8, "v4": 10}[S.LAYOUT], "hidden": 384,
             "nOpp": a.n_opp, "scoutSlot": scout, "main": {"in": MAIN_IN, "out": main_out}, "tail": {"in": tail_in, "out": tail_out}}
     Path(f"{out}.json").write_text(json.dumps(meta, indent=1))
     print(f"wrote {out}.main.onnx, {out}.tail.onnx, {out}.json")

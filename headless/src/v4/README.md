@@ -48,3 +48,19 @@ channels) and `c_ent`/`c_ent_n`, and the rollout stores `c_grid`/`c_ent` as floa
 
 Env-only cost (16 policy-vs-policy slots, 4 processes, no-op actions): 1135 → 854 decisions/s with
 the critic on, against 1290 → 1180 for v3's globals-only critic.
+
+## Network and export (S6)
+
+`training/v2/model.py` with `CF_LAYOUT=v4` adds an attention pool to the trunk: 4 learned queries
+over the entity embeddings and the 24 memory tokens (Linear 18 → 128 plus a slot embedding), and 2
+more over enemy rows and filled memory slots only, with an always-valid null token. Its 256 outputs
+are new core inputs whose `core[0]` columns start at zero. The opponent model adds the near-base and
+workers-out bins and the near-base anchor (focal loss, γ 2); `nOpp` becomes 166. The critic adds the
+unfogged entities (1 transformer layer, 64-d, 2-query pool), the grid (2-conv CNN) and the nodes next
+to the true globals. It is training only and never exported.
+
+`export_onnx.py` exports v4 with the same two graphs and input names (meta `layout: "v4"`, schema 8,
+action space 10). `neural.ts` here feeds 24 memory rows and 12 grid channels. Parity (random v4
+weights with the pool, memory and opponent feedback switched on, 4 games, 600 decisions):
+worst head log-prob |Δ| 7.2e-7. The server's `neuralBotPlayer.ts` accepts a v4 model in `models/beta`,
+but none is shipped.

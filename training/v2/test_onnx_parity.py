@@ -10,6 +10,7 @@ the LSTM state hand-off, and the TS masking / autoregressive chain.
 
     npx tsx headless/src/v2/neuralGame.ts --model models/policy-hard --bots rush2,turtle --seeds 1 --log /tmp/parity.jsonl
     python3 -m training.v2.test_onnx_parity --checkpoint checkpoints/v2/lg2-main/cycle_3.pt --log /tmp/parity.jsonl
+v3 / v4: the same with headless/src/v3|v4/neuralGame.ts and CF_LAYOUT=v3|v4 (v4: --tol 1e-4).
 """
 from __future__ import annotations
 
@@ -33,7 +34,7 @@ def given(action: dict) -> dict[str, torch.Tensor]:
     return {k: torch.tensor([v]) for k, v in vals.items()}
 
 
-def run(ckpt: str, log: str) -> int:
+def run(ckpt: str, log: str, tol: float = TOL) -> int:
     agent, _ = load(ckpt)
     worst, n, bad, games = 0.0, 0, 0, 0
     state = static = None
@@ -68,12 +69,12 @@ def run(ckpt: str, log: str) -> int:
                 ts = float(r["logp"].get(k, 0.0))
                 d = abs(ref - ts)
                 worst = max(worst, d)
-                if d > TOL:
+                if d > tol:
                     bad += 1
                     if bad <= 10:
                         print(f"game {cur} step {r['step']} head {k}: torch {ref:.5f} ts {ts:.5f}")
             n += 1
-    print(f"{games} games, {n} decisions, {n * len(HEADS)} head log-probs; worst |Δ| {worst:.2e}; {bad} over {TOL}")
+    print(f"{games} games, {n} decisions, {n * len(HEADS)} head log-probs; worst |Δ| {worst:.2e}; {bad} over {tol}")
     return 1 if bad or n == 0 else 0
 
 
@@ -81,5 +82,6 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--checkpoint", required=True)
     ap.add_argument("--log", required=True)
+    ap.add_argument("--tol", type=float, default=TOL)
     a = ap.parse_args()
-    sys.exit(run(a.checkpoint, a.log))
+    sys.exit(run(a.checkpoint, a.log, a.tol))

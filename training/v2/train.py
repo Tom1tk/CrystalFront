@@ -296,7 +296,7 @@ def main() -> None:
                     h, E, valid, hc, _ = agent.trunk(ot, hc)
                     given = teacher_actions([s.teacher for s in ls], dev) if a.imitate else None
                     out, rows, lp, _ = agent.policy(h, E, valid, masks=to_t(masks, dev), given=given)
-                    v = agent.values(h, ot["critic"])
+                    v = agent.values(h, ot)
                     if ref is not None:  # the KL leaves out the scout slot, which the reference never had
                         hr, Er, vr, hc_ref, _ = ref.trunk(ot, hc_ref)
                         rh = {}
@@ -369,7 +369,7 @@ def main() -> None:
                     with torch.no_grad():
                         ot = to_t(tobs, dev)
                         hb, _, _, _, _ = agent.trunk(ot, (hc[0][ti], hc[1][ti]))
-                        boot[t, term_idx] = agent.values(hb, ot["critic"]).cpu().numpy()
+                        boot[t, term_idx] = agent.values(hb, ot).cpu().numpy()
                 first[:] = False
                 for i in res.new_episodes:
                     statics[i] = static_grid(env.static[i])
@@ -390,7 +390,7 @@ def main() -> None:
                 ot = to_t(obs, dev)
                 keep = torch.as_tensor(~first, device=dev).float().unsqueeze(1)
                 hl, _, _, _, _ = agent.trunk(ot, (hc[0] * keep, hc[1] * keep))
-                last_v = agent.values(hl, ot["critic"]).cpu().numpy()
+                last_v = agent.values(hl, ot).cpu().numpy()
             roll_s = time.time() - t_roll
 
             # ── GAE per value head ───────────────────────────────────────────────
@@ -455,7 +455,7 @@ def main() -> None:
                 h, E, valid, opp_logits = agent.trunk_seq(o, st, torch.as_tensor(f_first[idx], device=dev), L)
                 head_lp = {}
                 po, _, lp, ent = agent.policy(h, E, valid, rows=rows_t, given=act_t, head_lp=head_lp)
-                v = agent.values(h, o["critic"])
+                v = agent.values(h, o)
                 old_lp = torch.as_tensor(f_lp[idx], device=dev)
                 ratio = (lp - old_lp).exp()
                 if a.imitate:  # behaviour cloning: cross-entropy on the teacher's actions

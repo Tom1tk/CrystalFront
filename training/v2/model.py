@@ -18,6 +18,14 @@ network and plays exactly as before until training moves them (`load_weights`).
            (each masked and conditioned on the previous choices)
     value × 3 (win, shaped, aux) from h and the critic-state encoding (both seats' true globals)
 
+Layout v4 (rebuild R1, docs/REBUILD_R1_PLAN.md S6) adds:
+    attention pool: 4 learned queries over entity embeddings + memory tokens + a null token, 2 more
+        over enemy rows and filled memory slots only → Linear → new (zero-initialised) core inputs
+    opponent model: near-base buildings / combat units and workers out (bins), near-base anchor
+        (focal loss, the labels are rare)
+    critic: the unfogged entities (1 transformer layer, attention pool), grid (CNN) and nodes next to
+        the true globals (training only; never exported)
+
 A head that does not apply to the chosen action (e.g. site when not building)
 contributes nothing to the log-probability or entropy.
 """
@@ -34,6 +42,30 @@ import torch.nn.functional as F
 from training.v2 import spaces as S
 
 NEG = -1e9
+V4 = S.LAYOUT == "v4"
+N_POOL_ALL, N_POOL_ENEMY = 4, 2
+OPP_NEW_COUNTS = ("nearBuildings", "nearCombat", "workersOut")  # v4 opponent-model groups (binned), then nearAnchor
+
+
+class AttnPool(nn.Module):
+    """Learned queries over a token set plus an always-valid null token (so an empty set cannot give NaN).
+    `allowed` is one (B, T) bool mask per query group; returns (B, n_queries, d)."""
+
+    def __init__(self, d: int, groups: tuple[int, ...], heads: int = 4):
+        super().__init__()
+        self.groups, self.heads = groups, heads
+        self.q = nn.Parameter(torch.randn(sum(groups), d) * 0.02)
+        self.null = nn.Parameter(torch.zeros(1, 1, d))
+        self.attn = nn.MultiheadAttention(d, heads, dropout=0.0, batch_first=True)
+
+    def forward(self, tokens: torch.Tensor, allowed: list[torch.Tensor]) -> torch.Tensor:
+        b = tokens.shape[0]
+        kv = torch.cat([tokens, self.null.expand(b, 1, -1)], 1)
+        one = torch.ones(b, 1, dtype=torch.bool, device=tokens.device)
+        block = torch.cat([torch.cat([a, one], 1).unsqueeze(1).expand(-1, n, -1) for a, n in zip(allowed, self.groups)], 1)  # (B, Q, T + 1)
+        mask = (~block).repeat_interleave(self.heads, 0)
+        out, _ = self.attn(self.q.unsqueeze(0).expand(b, -1, -1), kv, kv, attn_mask=mask, need_weights=False)
+        return out
 
 
 def masked_choice(logits, mask, active, given=None, greedy=False):
@@ -74,10 +106,19 @@ class Agent(nn.Module):
         with torch.no_grad():
             n_cnn = self.cnn(torch.zeros(1, c, S.GRID_ROWS, S.GRID_COLS)).shape[1]
         self.grid = nn.Sequential(nn.Linear(n_cnn, 256), nn.ReLU())
+        n_core = d_ent + 128 * 3 + 256
+        if V4:  # attention pool over entities and memory tokens; its core columns start at zero
+            self.mem_tok = nn.Linear(S.MEMORY_F, d_ent)
+            self.slot_emb = nn.Embedding(S.N_MEMORY, d_ent)
+            self.pool = AttnPool(d_ent, (N_POOL_ALL, N_POOL_ENEMY))
+            self.pool_out = nn.Sequential(nn.Linear((N_POOL_ALL + N_POOL_ENEMY) * d_ent, 256), nn.ReLU())
         self.core = nn.Sequential(
-            nn.Linear(d_ent + 128 * 3 + 256, 512), nn.LayerNorm(512), nn.ReLU(),
+            nn.Linear(n_core + (256 if V4 else 0), 512), nn.LayerNorm(512), nn.ReLU(),
             nn.Linear(512, d_h), nn.ReLU(),
         )
+        if V4:
+            with torch.no_grad():
+                self.core[0].weight[:, n_core:] = 0.0
         # Policy heads
         self.econ = nn.Linear(d_h, S.ECON)
         self.build_emb = nn.Embedding(S.N_BUILDINGS, d_h)
@@ -101,6 +142,8 @@ class Agent(nn.Module):
         self.lstm = nn.LSTMCell(d_h, d_h)
         self.mem_out = nn.Linear(d_h, d_h)
         self.n_opp = (S.OPP_UNITS + S.OPP_BUILDINGS) * S.OPP_BINS + S.N_ANCHORS + 1
+        if V4:
+            self.n_opp += len(OPP_NEW_COUNTS) * S.OPP_BINS + S.N_ANCHORS + 1
         self.opp = nn.Linear(d_h, self.n_opp)
         self.opp_in = nn.Linear(self.n_opp, d_h)
         for m in (self.mem_out, self.opp_in):
@@ -108,7 +151,21 @@ class Agent(nn.Module):
             nn.init.zeros_(m.bias)
         # Critic
         self.critic = nn.Sequential(nn.Linear(2 * S.N_GLOBALS, 128), nn.ReLU())
-        self.value = nn.Sequential(nn.Linear(d_h + 128, 256), nn.ReLU(), nn.Linear(256, 3))
+        if V4:  # the unfogged state: entities (64-d, 1 layer, 2-query pool), grid CNN, nodes → 128 more
+            self.c_ent_proj = nn.Linear(S.ENTITY_F, 64)
+            c_layer = nn.TransformerEncoderLayer(64, 4, 128, dropout=0.0, batch_first=True, norm_first=True)
+            self.c_ent_enc = nn.TransformerEncoder(c_layer, 1, enable_nested_tensor=False)
+            self.c_pool = AttnPool(64, (2,))
+            self.c_ent_out = nn.Sequential(nn.Linear(2 * 64, 64), nn.ReLU())
+            self.c_cnn = nn.Sequential(
+                nn.Conv2d(c, 16, 3, stride=2, padding=1), nn.ReLU(),
+                nn.Conv2d(16, 32, 3, stride=2, padding=1), nn.ReLU(), nn.Flatten(),
+            )
+            with torch.no_grad():
+                n_ccnn = self.c_cnn(torch.zeros(1, c, S.GRID_ROWS, S.GRID_COLS)).shape[1]
+            self.c_grid = nn.Sequential(nn.Linear(n_ccnn, 32), nn.ReLU())
+            self.c_nodes = nn.Sequential(nn.Linear(S.N_NODES * S.NODE_F, 32), nn.ReLU())
+        self.value = nn.Sequential(nn.Linear(d_h + (256 if V4 else 128), 256), nn.ReLU(), nn.Linear(256, 3))
         for head in (self.econ, self.site, self.etgt, self.group, self.order, self.target, self.scout_order, self.scout_target):
             nn.init.orthogonal_(head.weight, 0.01)
             nn.init.zeros_(head.bias)
@@ -155,16 +212,29 @@ class Agent(nn.Module):
     def opp_probs(self, opp: torch.Tensor) -> torch.Tensor:
         """Logits → per-group softmax probabilities (same layout)."""
         nb = (S.OPP_UNITS + S.OPP_BUILDINGS) * S.OPP_BINS
+        na = nb + S.N_ANCHORS + 1
         counts = F.softmax(opp[:, :nb].view(-1, S.OPP_UNITS + S.OPP_BUILDINGS, S.OPP_BINS), -1).flatten(1)
-        return torch.cat([counts, F.softmax(opp[:, nb:], -1)], -1)
+        out = [counts, F.softmax(opp[:, nb:na], -1)]
+        if V4:
+            nn_ = na + len(OPP_NEW_COUNTS) * S.OPP_BINS
+            out += [F.softmax(opp[:, na:nn_].view(-1, len(OPP_NEW_COUNTS), S.OPP_BINS), -1).flatten(1), F.softmax(opp[:, nn_:], -1)]
+        return torch.cat(out, -1)
 
     def opp_loss(self, opp: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
-        """Cross-entropy per prediction, averaged. labels (B, OPP_UNITS + OPP_BUILDINGS + 1): bin per count, then anchor."""
+        """Loss per prediction, averaged. labels (B, OPP_UNITS + OPP_BUILDINGS + 1 [+ 4 in v4]): bin per count, then
+        anchor (cross-entropy); v4 then the near-base / workers-out bins and the near-base anchor (focal, γ 2)."""
         k = S.OPP_UNITS + S.OPP_BUILDINGS
         nb = k * S.OPP_BINS
+        na = nb + S.N_ANCHORS + 1
         lc = F.cross_entropy(opp[:, :nb].reshape(-1, S.OPP_BINS), labels[:, :k].reshape(-1))
-        la = F.cross_entropy(opp[:, nb:], labels[:, k])
-        return (lc * k + la) / (k + 1)
+        la = F.cross_entropy(opp[:, nb:na], labels[:, k])
+        if not V4:
+            return (lc * k + la) / (k + 1)
+        kn = len(OPP_NEW_COUNTS)
+        nn_ = na + kn * S.OPP_BINS
+        ln = focal_loss(opp[:, na:nn_].reshape(-1, S.OPP_BINS), labels[:, k + 1:k + 1 + kn].reshape(-1))
+        lna = focal_loss(opp[:, nn_:], labels[:, k + 1 + kn])
+        return (lc * k + la + ln * kn + lna) / (k + 1 + kn + 1)
 
     def encode(self, o: dict[str, torch.Tensor]):
         """Per-decision encoder (before memory): x (B, d_h), E (B, N, d_ent), valid (B, N)."""
@@ -176,18 +246,35 @@ class Agent(nn.Module):
         E = self.ent_enc(self.ent_proj(ent), src_key_padding_mask=~safe)
         vf = valid.unsqueeze(-1).float()
         pooled = (E * vf).sum(1) / vf.sum(1).clamp(min=1.0)
-        x = torch.cat([
+        parts = [
             pooled,
             self.nodes(o["nodes"].flatten(1)),
             self.memory(o["memory"].flatten(1)),
             self.glob(torch.cat([o["globals"], self.z_emb(o["z"].clamp(0, S.N_Z - 1))], -1)),
             self.grid(self.cnn(o["grid"])),
-        ], -1)
-        return self.core(x), E, valid
+        ]
+        if V4:
+            mem = o["memory"]
+            slots = torch.arange(S.N_MEMORY, device=mem.device)
+            tok = torch.cat([E, self.mem_tok(mem) + self.slot_emb(slots).unsqueeze(0)], 1)
+            filled = mem[:, :, 0] > 0.5
+            enemy = valid & (ent[:, :, 1] > 0.5)
+            pool = self.pool(tok, [torch.cat([valid, filled], 1), torch.cat([enemy, filled], 1)])
+            parts.append(self.pool_out(pool.flatten(1)))
+        return self.core(torch.cat(parts, -1)), E, valid
 
-    def values(self, h: torch.Tensor, critic: torch.Tensor) -> torch.Tensor:
-        """(B, 3): win, shaped, aux."""
-        return self.value(torch.cat([h, self.critic(critic)], -1))
+    def values(self, h: torch.Tensor, o: dict[str, torch.Tensor]) -> torch.Tensor:
+        """(B, 3): win, shaped, aux. `o` is the batch (stack_obs): `critic` holds both seats' true globals; in v4 also
+        `c_ent` / `c_ent_n` / `c_nodes` / `c_grid`, this seat's unfogged state."""
+        enc = [self.critic(o["critic"])]
+        if V4:
+            ce = o["c_ent"]
+            cv = torch.arange(ce.shape[1], device=ce.device).unsqueeze(0) < o["c_ent_n"].unsqueeze(1)
+            safe = cv.clone()
+            safe[:, 0] = True
+            CE = self.c_ent_enc(self.c_ent_proj(ce), src_key_padding_mask=~safe)
+            enc += [self.c_ent_out(self.c_pool(CE, [cv]).flatten(1)), self.c_grid(self.c_cnn(o["c_grid"])), self.c_nodes(o["c_nodes"].flatten(1))]
+        return self.value(torch.cat([h] + enc, -1))
 
     def _pointer(self, q: torch.Tensor, E: torch.Tensor) -> torch.Tensor:
         logits = torch.einsum("bd,bnd->bn", q, E) / math.sqrt(self.d_ent)
@@ -313,6 +400,8 @@ def wire_actions(out: dict[str, torch.Tensor]) -> list[dict]:
 
 
 NEW_PARAMS = ("lstm.", "mem_out.", "opp.", "opp_in.")
+# v4 modules a v4 checkpoint may lack (they keep their init): attention pool, critic encoder
+V4_PARAMS = ("mem_tok.", "slot_emb.", "pool.", "pool_out.", "c_ent_proj.", "c_ent_enc.", "c_pool.", "c_ent_out.", "c_cnn.", "c_grid.", "c_nodes.")
 SCOUT_FROM = {"scout_order.": "order.", "scout_target.": "target.", "scout_ptr_q.": "ptr_q."}
 
 
@@ -326,7 +415,7 @@ def load_weights(agent: Agent, sd: dict) -> None:
         for k in [k for k in sd if k.startswith(old)]:
             sd.setdefault(new + k[len(old):], sd[k].clone())
     missing, unexpected = agent.load_state_dict(sd, strict=False)
-    bad = [k for k in missing if not k.startswith(NEW_PARAMS)] + list(unexpected)
+    bad = [k for k in missing if not k.startswith(NEW_PARAMS + (V4_PARAMS if V4 else ()))] + list(unexpected)
     if bad:
         raise RuntimeError(f"checkpoint does not match the model: {bad[:5]}")
 
@@ -336,9 +425,18 @@ def bin_counts(x: np.ndarray) -> np.ndarray:
     return np.digitize(x, [1, 2, 3, 5, 9])
 
 
+def focal_loss(logits: torch.Tensor, y: torch.Tensor, gamma: float = 2.0) -> torch.Tensor:
+    """Mean focal loss (1 - p_y)^γ · -log p_y."""
+    lp = F.log_softmax(logits, -1).gather(-1, y.unsqueeze(-1)).squeeze(-1)
+    return (-(1 - lp.exp()).pow(gamma) * lp).mean()
+
+
 def opp_targets(labels: list[dict]) -> np.ndarray:
-    """Runner oppLabels → (B, OPP_UNITS + OPP_BUILDINGS + 1) int64 class targets."""
+    """Runner oppLabels → (B, OPP_UNITS + OPP_BUILDINGS + 1 [+ 4 in v4]) int64 class targets."""
     u = np.asarray([l["units"] for l in labels])
     b = np.asarray([l["buildings"] for l in labels])
     a = np.asarray([l["armyAnchor"] for l in labels])[:, None]
-    return np.concatenate([bin_counts(u), bin_counts(b), a], 1).astype(np.int64)
+    parts = [bin_counts(u), bin_counts(b), a]
+    if V4:
+        parts += [bin_counts(np.asarray([[l[k] for k in OPP_NEW_COUNTS] for l in labels])), np.asarray([l["nearAnchor"] for l in labels])[:, None]]
+    return np.concatenate(parts, 1).astype(np.int64)
