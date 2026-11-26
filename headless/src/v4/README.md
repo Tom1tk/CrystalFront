@@ -96,3 +96,12 @@ In `training/v2/train.py`:
 
 Tests: `tests/v4.ts` (S7 block) and `training/test_r1.py` (UPGO by hand, ROA, `opp_ce`). The R1 flag
 test in `test_vec_env_v2.py` runs on v4.
+
+## Surgery from b3 (S8)
+
+`training/v4_surgery.py <v3.pt> <v4.pt> --check` maps a v3 checkpoint onto this layout. Input columns are copied
+by name from the TypeScript layouts, and new inputs and branches (attention pool, critic encoder, the opponent
+model's new groups) come in through zero columns. The point-target rows for grid and `none` move from 53 to 61.
+The new memory rows 53..60 get bias −10. `--check` replays 200 states from scripted games in a v3 process and in
+this one. Every head, the LSTM state and the old opponent-model groups must match within 1e-5. For b3 cycle 2 the
+largest difference is 3.8e-6.
