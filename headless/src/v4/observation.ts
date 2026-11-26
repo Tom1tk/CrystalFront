@@ -8,7 +8,8 @@
 // Blocks (sizes are exported for the Python side):
 //   globals   GLOBAL_NAMES.length numbers
 //   entities  own + currently visible enemy entities, ENTITY_F numbers each, at most MAX_ENTITIES rows
-//   memory    MEMORY_SLOTS rows of MEMORY_F (slot 0: last-seen enemy army; 1..15: enemy buildings ever seen)
+//   memory    MEMORY_SLOTS rows of MEMORY_F (slot 0: last-seen enemy army; 1..15: enemy buildings ever seen;
+//             16..18: enemy army clusters; 19..23: lone enemy units last seen outside their own half)
 //   nodes     NODE_ROWS rows of NODE_F (own safe, enemy safe, contested)
 //   grid      DYN_CHANNELS × rows × cols, channel-major, row-major; static channels come once per episode (`staticGrid`)
 //
@@ -89,6 +90,8 @@ export const MAX_ENTITIES = PTR_SIZE;
 
 export const MEMORY_FEATURES: string[] = [
   "valid", "army", ...MEMORY_TYPES.map((t) => `type_${t}`), "x", "y", "hp", "age", "destroyed", "count", "built",
+  // Schema 8: heading (own frame, unit vector; 0 when not seen moving) and the lone-unit flag.
+  "heading_x", "heading_y", "lone",
 ];
 export const MEMORY_F = MEMORY_FEATURES.length;
 
@@ -131,12 +134,14 @@ export interface OppLabels {
 }
 
 interface MemEntry {
-  id: string | null; // null: the army cluster
+  id: string | null; // null: an army cluster (slot 0, 16..18)
   type: string;
   x: number; y: number; // own frame, normalised and rounded
   hp: number; built: number; count: number;
   tick: number;
   destroyed: boolean;
+  /** Schema 8: heading (own frame, unit vector) and the lone-unit flag (slots 19..23). */
+  hx?: number; hy?: number; lone?: boolean;
 }
 
 export interface ObsState {
@@ -427,8 +432,6 @@ export const NEAR_BASE = 900;
 const RAID_GAP = 300;
 /** Enemy workers seen outside their own half count for this many ticks (60 s). */
 const WORKERS_OUT_TICKS = 600;
-/** Memory slots that hold buildings (1..15; slot 0 is the army). */
-const BUILDING_SLOTS = 16;
 const TICKS_PER_S = 10;
 
 /** Effective weapon range (px, as the engine checks it: attacker centre to target edge) and damage per second; 0 when the entity cannot attack. */
@@ -554,6 +557,112 @@ function relations(match: MatchState, s: SeatState, d: Dims, seen: Seen[], os: O
   return { ent, glob, threat, cover };
 }
 
+// ---- Schema 8: army clusters and lone units in memory (rebuild R1, S3) ----
+
+/** Memory slots that hold buildings end here (1..15; slot 0 is the army). */
+const BUILDING_SLOTS = 16;
+export const CLUSTER_SLOT0 = 16, N_CLUSTER_SLOTS = 3, LONE_SLOT0 = 19, N_LONE_SLOTS = 5;
+/** Combat units within this distance (px) of a cluster's seed join it; clusters have at least 3 units. */
+const CLUSTER_RADIUS = 500, CLUSTER_MIN = 3;
+/** A remembered cluster seen again within this distance (px) keeps its slot. */
+const CLUSTER_MATCH = 800;
+/** Cluster and lone-unit slots are cleared after 120 s. */
+const TRACK_TTL = 1200;
+/** Moves shorter than this (px) keep the previous heading. */
+const HEADING_MIN = 4;
+
+/** Deterministic greedy clusters of visible enemy combat units (independent of row order), largest first. */
+export function clusterUnits(units: { id: string; x: number; y: number }[], radius = CLUSTER_RADIUS): { id: string; x: number; y: number }[][] {
+  const order = [...units].sort((a, b) => a.x - b.x || a.y - b.y || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const used = new Set<string>(), out: { id: string; x: number; y: number }[][] = [];
+  for (const seed of order) {
+    if (used.has(seed.id)) continue;
+    const c = order.filter((u) => !used.has(u.id) && Math.hypot(u.x - seed.x, u.y - seed.y) <= radius);
+    for (const u of c) used.add(u.id);
+    out.push(c);
+  }
+  return out.map((c, i) => ({ c, i })).sort((a, b) => b.c.length - a.c.length || a.i - b.i).map((v) => v.c);
+}
+
+function heading(prev: MemEntry | null, x: number, y: number, d: Dims): { hx: number; hy: number } {
+  if (!prev) return { hx: 0, hy: 0 };
+  const dx = (x - prev.x) * d.W, dy = (y - prev.y) * d.H, n = Math.hypot(dx, dy);
+  return n < HEADING_MIN ? { hx: prev.hx ?? 0, hy: prev.hy ?? 0 } : { hx: q(dx / n), hy: q(dy / n) };
+}
+
+/** Clusters (16..18) and lone units (19..23): update from what the seat sees, then clear stale slots. */
+function updateTracks(match: MatchState, s: SeatState, d: Dims, enemy: Seen[], os: ObsState): void {
+  const tick = match.tick, vis = match.visibilityData?.get(s.playerId), vg = visionGridOf(match.terrain);
+  const px = (v: Seen) => ({ id: v.e.id, x: v.x * d.W, y: v.y * d.H });
+  const byId = new Map(enemy.map((v) => [v.e.id, v]));
+  const clusters = clusterUnits(enemy.filter((v) => COMBAT_SET.has(v.type)).map(px));
+  // Clusters: the 3 largest (of at least 3 units) take the nearest remembered cluster's slot, else a free or the oldest one.
+  const big = clusters.filter((c) => c.length >= CLUSTER_MIN).slice(0, N_CLUSTER_SLOTS);
+  const taken = new Set<number>();
+  for (const c of big) {
+    const cx = c.reduce((a, u) => a + u.x, 0) / c.length, cy = c.reduce((a, u) => a + u.y, 0) / c.length;
+    const x = q(cx / d.W), y = q(cy / d.H);
+    let slot = -1, best = CLUSTER_MATCH;
+    for (let k = CLUSTER_SLOT0; k < CLUSTER_SLOT0 + N_CLUSTER_SLOTS; k++) {
+      const m = os.mem[k];
+      if (!m || taken.has(k)) continue;
+      const dd = Math.hypot(m.x * d.W - cx, m.y * d.H - cy);
+      if (dd <= best) { best = dd; slot = k; }
+    }
+    const prev = slot >= 0 ? os.mem[slot] : null;
+    if (slot < 0) slot = freeOrOldest(os, CLUSTER_SLOT0, N_CLUSTER_SLOTS, taken);
+    if (slot < 0) continue;
+    taken.add(slot);
+    const hp = q(c.reduce((a, u) => a + byId.get(u.id)!.e.health / byId.get(u.id)!.e.maxHealth, 0) / c.length);
+    os.mem[slot] = { id: null, type: "army", x, y, hp, built: 1, count: c.length, tick, destroyed: false, ...heading(prev, x, y, d) };
+  }
+  // Lone units: enemy workers and Outriders, and combat units outside the big clusters, seen outside their own half.
+  const inBig = new Set(big.flat().map((u) => u.id));
+  const lone = enemy
+    .filter((v) => v.type === "worker" || v.type === "outrider" || (COMBAT_SET.has(v.type) && !inBig.has(v.e.id)))
+    .sort((a, b) => a.x - b.x || a.y - b.y || (a.e.id < b.e.id ? -1 : 1));
+  const slotOf = new Map<string, number>();
+  for (let k = LONE_SLOT0; k < LONE_SLOT0 + N_LONE_SLOTS; k++) { const m = os.mem[k]; if (m?.id) slotOf.set(m.id, k); }
+  const kept = new Set<number>();
+  const put = (v: Seen, slot: number, prev: MemEntry | null) => {
+    kept.add(slot);
+    os.mem[slot] = { id: v.e.id, type: v.type, x: v.x, y: v.y, hp: q(v.e.health / v.e.maxHealth), built: 1, count: 1, tick, destroyed: false, lone: true, ...heading(prev, v.x, v.y, d) };
+  };
+  // Tracked units first (so a new one never evicts a unit seen now), then new ones.
+  for (const v of lone) {
+    const k0 = slotOf.get(v.e.id);
+    if (k0 === undefined) continue;
+    if (v.x >= 0.5) os.mem[k0] = null; // back in its own half
+    else put(v, k0, os.mem[k0]);
+  }
+  for (const v of lone) {
+    if (slotOf.has(v.e.id) || v.x >= 0.5) continue;
+    const slot = freeOrOldest(os, LONE_SLOT0, N_LONE_SLOTS, kept);
+    if (slot >= 0) put(v, slot, null);
+  }
+  // Stale: older than 120 s, or the last position is in sight (not brush) and the unit or cluster is not there now.
+  for (let k = CLUSTER_SLOT0; k < LONE_SLOT0 + N_LONE_SLOTS; k++) {
+    const m = os.mem[k];
+    if (!m || m.tick === tick) continue;
+    if (tick - m.tick > TRACK_TTL) { os.mem[k] = null; continue; }
+    if (!vis) continue;
+    const w = fromOwnFrame(s.frame, { x: m.x * d.W, y: m.y * d.H });
+    if (terrainAt(match.terrain, w.x, w.y) === T_BRUSH) continue;
+    if (vis.cells[visionCellOf(vg, w.x, w.y)]) os.mem[k] = null;
+  }
+}
+
+function freeOrOldest(os: ObsState, k0: number, n: number, taken: Set<number>): number {
+  let best = -1;
+  for (let k = k0; k < k0 + n; k++) {
+    if (taken.has(k)) continue;
+    const m = os.mem[k];
+    if (!m) return k;
+    if (best < 0 || m.tick < os.mem[best]!.tick) best = k;
+  }
+  return best;
+}
+
 /** Update the enemy memory from what the seat sees now; mirror valid positions into `s.memory` (world) for targets. */
 function updateMemory(match: MatchState, s: SeatState, d: Dims, seen: Seen[], os: ObsState): void {
   const vis = match.visibilityData?.get(s.playerId);
@@ -585,12 +694,12 @@ function updateMemory(match: MatchState, s: SeatState, d: Dims, seen: Seen[], os
     };
     if (i !== undefined) { os.mem[i] = entry; continue; }
     let slot = -1;
-    for (let k = 1; k < MEMORY_SLOTS; k++) if (!os.mem[k]) { slot = k; break; }
+    for (let k = 1; k < BUILDING_SLOTS; k++) if (!os.mem[k]) { slot = k; break; }
     if (slot < 0) {
       // Full: replace the oldest destroyed entry, else the oldest entry.
       let best = -1;
       for (const destroyedOnly of [true, false]) {
-        for (let k = 1; k < MEMORY_SLOTS; k++) {
+        for (let k = 1; k < BUILDING_SLOTS; k++) {
           const m = os.mem[k]!;
           if (visibleIds.has(m.id!) || (destroyedOnly && !m.destroyed)) continue;
           if (best < 0 || m.tick < os.mem[best]!.tick) best = k;
@@ -604,13 +713,14 @@ function updateMemory(match: MatchState, s: SeatState, d: Dims, seen: Seen[], os
     bySlot.set(v.e.id, slot);
   }
   // Known buildings not visible where the seat can see the spot (and not hidden in brush): destroyed.
-  for (let k = 1; k < MEMORY_SLOTS; k++) {
+  for (let k = 1; k < BUILDING_SLOTS; k++) {
     const m = os.mem[k];
     if (!m || m.destroyed || visibleIds.has(m.id!) || !vis) continue;
     const w = fromOwnFrame(s.frame, { x: m.x * d.W, y: m.y * d.H });
     if (terrainAt(match.terrain, m.x * d.W, m.y * d.H) === T_BRUSH) continue;
     if (vis.cells[visionCellOf(vg, w.x, w.y)]) m.destroyed = true;
   }
+  updateTracks(match, s, d, enemy, os);
   for (let k = 0; k < MEMORY_SLOTS; k++) {
     const m = os.mem[k];
     s.memory[k] = m && !m.destroyed ? fromOwnFrame(s.frame, { x: m.x * d.W, y: m.y * d.H }) : null;
@@ -620,7 +730,7 @@ function updateMemory(match: MatchState, s: SeatState, d: Dims, seen: Seen[], os
 function memoryRows(match: MatchState, os: ObsState): number[][] {
   return os.mem.map((m) => m
     ? [1, +(m.id === null), ...MEMORY_TYPES.map((t) => +(t === m.type)), m.x, m.y, m.hp,
-       q(cap1((match.tick - m.tick) / AGE_SCALE)), +m.destroyed, q(m.count / 20), m.built]
+       q(cap1((match.tick - m.tick) / AGE_SCALE)), +m.destroyed, q(m.count / 20), m.built, m.hx ?? 0, m.hy ?? 0, +!!m.lone]
     : new Array(MEMORY_F).fill(0));
 }
 

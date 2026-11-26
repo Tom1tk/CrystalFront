@@ -21,3 +21,13 @@ training with `CF_LAYOUT=v4`.
   the last 60 s, time since the first near-base building and the raid timer (minutes, capped at 1),
   nearest enemy to the crystal, own combat units near it and the own army's share at home and in the
   enemy half.
+
+## Memory v2 and action space 10 (S3)
+
+- **Slots 24 × 18:** 0–15 as in v3; 16–18 enemy army clusters (greedy, order-independent: combat
+  units within 500 px of a seed, at least 3, the 3 largest), 19–23 lone enemy units (workers,
+  Outriders, combat units outside a cluster) last seen outside their own half. Cluster and lone
+  slots clear after 120 s, once their last position is in sight and empty, or (lone) when the unit
+  is seen back in its own half. New columns: heading x/y (own frame) and the lone flag.
+- **Targets:** memory 37..60, grid 61..810, none 811 (812 in all). Teacher labels therefore differ
+  from v3's by +8 for grid targets; tests/v4.ts compares them in v3 numbering.

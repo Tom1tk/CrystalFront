@@ -21,26 +21,35 @@ function check(ok: boolean, name: string, detail = ""): void {
 type R = Record<string, any>;
 
 /** Play one slot to the end in a runner; returns the replay's command log, outcome and the per-decision teacher labels. */
-function play(Runner: typeof Runner3 | typeof Runner4, slot: R, cap: number, extra: R = {}): { log: string; outcome: string; labels: string } {
+function play(Runner: typeof Runner3 | typeof Runner4, slot: R, cap: number, extra: R = {}): { log: string; outcome: string; labels: string; memory: string } {
   let replay: R | null = null;
+  const none = Runner === Runner3 ? A3.TARGET_NONE : A4.TARGET_NONE;
   const r = new Runner({ onReplay: (_i, rp) => { replay ??= rp as R; } });
-  const labels: unknown[] = [];
+  const labels: unknown[] = [], memory: unknown[] = [];
+  // Teacher labels in v3 target numbering (v4 adds 8 memory slots before the grid: 53..60 have no v3 index).
+  const t3 = (t: number) => (Runner === Runner3 || t < 53 ? t : t >= 61 ? t - 8 : -1);
+  const v3Labels = (w: R | null | undefined) => w && {
+    econ: [w.econ[0], w.econ[1], w.econ[2], t3(w.econ[3])], army: [...w.army.slice(0, 3), t3(w.army[3]), w.army[4]],
+    ...(w.scout ? { scout: [w.scout[0], t3(w.scout[1]), w.scout[2]] } : {}),
+  };
   let res: R = r.handle({ type: "reset_all", max_ticks: cap, critic: false, slots: [slot], ...extra });
   if (res.type === "error") throw new Error(res.message);
   let seats: R = res.slots[0].seats;
   for (let d = 0; d < cap && !replay; d++) {
     const act: R = {};
     for (const [side, s] of Object.entries(seats)) {
-      labels.push([side, s.teacher, s.scoutTeacher ?? null]);
-      if (s.teacher === null) act[side] = { econ: [0, 0, 0, 0], army: [0, 0, 0, 803, 0] };
+      labels.push([side, v3Labels(s.teacher), s.scoutTeacher ? [s.scoutTeacher[0], t3(s.scoutTeacher[1]), s.scoutTeacher[2]] : null]);
+      if (s.teacher === null) act[side] = { econ: [0, 0, 0, 0], army: [0, 0, 0, none, 0] };
     }
     res = r.handle({ type: "step", actions: [act] });
     if (res.type === "error") throw new Error(res.message);
     seats = res.slots[0].seats;
+    // The v3 memory slots (0..15) must match v3's exactly.
+    memory.push(((r as any).slots[0].oss as { mem: unknown[] }[]).map((o) => o.mem.slice(0, 16)));
   }
   if (!replay) throw new Error("episode did not end");
   const rp = replay as R;
-  return { log: JSON.stringify(rp.commandLog), outcome: JSON.stringify(rp.outcome), labels: JSON.stringify(labels) };
+  return { log: JSON.stringify(rp.commandLog), outcome: JSON.stringify(rp.outcome), labels: JSON.stringify(labels), memory: JSON.stringify(memory) };
 }
 
 function equivalenceTests(): void {
@@ -57,7 +66,8 @@ function equivalenceTests(): void {
     const name = `${slot.blue} v ${slot.red} on ${slot.map} (${cap} ticks)`;
     check(a.log === b.log && a.log.length > 1000, `${name}: same command log`, `${a.log.length} vs ${b.log.length} chars`);
     check(a.outcome === b.outcome, `${name}: same outcome`, `${a.outcome} vs ${b.outcome}`);
-    check(a.labels === b.labels, `${name}: same teacher labels`);
+    check(a.labels === b.labels, `${name}: same teacher labels (v3 target numbering)`);
+    check(a.memory === b.memory, `${name}: same memory slots 0..15`);
   }
 }
 
@@ -126,7 +136,7 @@ function schemaTests(): void {
     const same = JSON.stringify(o4.globals.slice(0, N_OLD_G)) === JSON.stringify(o3.globals)
       && JSON.stringify(o4.entities.map((r) => r.slice(0, N_OLD_F))) === JSON.stringify(o3.entities)
       && JSON.stringify(o4.grid.slice(0, 5 * PLANE)) === JSON.stringify(o3.grid)
-      && JSON.stringify(o4.memory) === JSON.stringify(o3.memory) && JSON.stringify(o4.nodes) === JSON.stringify(o3.nodes);
+      && JSON.stringify(o4.memory.slice(0, 16).map((r) => r.slice(0, 15))) === JSON.stringify(o3.memory) && JSON.stringify(o4.nodes) === JSON.stringify(o3.nodes);
     check(same, `${map}: v3 features unchanged (schema 8 only appends)`);
   }
 
@@ -237,7 +247,108 @@ function schemaTests(): void {
   }
 }
 
+// ---- S3: memory v2 (army clusters, lone units) and action space 10 ----
+
+function memoryTests(): void {
+  console.log("\nv4 memory v2 and action space 10");
+  const M = (n: string) => O4.MEMORY_FEATURES.indexOf(n);
+  check(A4.MEMORY_SLOTS === 24 && O4.MEMORY_F === 18 && A4.TARGET_MEMORY0 === 37 && A4.TARGET_GRID0 === 61 && A4.TARGET_NONE === 811 && A4.TARGET_SIZE === 812,
+    "sizes: 24 slots × 18, memory targets 37..60, grid from 61, none 811");
+
+  // Clusters do not depend on row order.
+  {
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 32);
+    const pts = Array.from({ length: 30 }, (_, i) => ({ id: `u${i}`, x: rnd() * 3000, y: rnd() * 900 }));
+    const canon = (cs: { id: string }[][]) => JSON.stringify(cs.map((c) => c.map((u) => u.id).sort()));
+    const ref = canon(O4.clusterUnits(pts));
+    let stable = true;
+    for (let k = 0; k < 20; k++) {
+      const sh = [...pts].sort(() => rnd() - 0.5);
+      if (canon(O4.clusterUnits(sh)) !== ref) stable = false;
+    }
+    check(stable, "clusters are stable under row order");
+  }
+
+  const m = fresh("shardfall");
+  const s = A4.createSeatState(m, IDS[0]), os = O4.createObsState(m, s);
+  const W = m.config.mapWidth, H = m.config.mapHeight;
+  const at = (x: number, y: number) => fromOwnFrame(s.frame, { x, y });
+  // A builder crossing the edge (own half, moving towards the own base), with a spotter; an army of 4 further on.
+  const w0 = at(0.4 * W, 0.1 * H);
+  const worker = spawn(m, IDS[1], "worker", w0.x, w0.y);
+  const eye = at(0.4 * W + 60, 0.1 * H + 40);
+  const spotter = spawn(m, IDS[0], "outrider", eye.x, eye.y);
+  const army = [0, 1, 2, 3].map((k) => { const p = at(0.3 * W + 30 * k, 0.6 * H); return spawn(m, IDS[1], "skirmisher", p.x, p.y); });
+  const eye2 = at(0.3 * W + 40, 0.6 * H + 60);
+  const spotter2 = spawn(m, IDS[0], "outrider", eye2.x, eye2.y);
+  computeVisibility(m);
+  O4.observe(m, s, os);
+  const w1 = at(0.4 * W - 30, 0.1 * H);
+  worker.x = w1.x; worker.y = w1.y;
+  for (const e of army) e.x += s.frame.seat === 0 ? -20 : 20;
+  m.tick += 8;
+  computeVisibility(m);
+  let o = O4.observe(m, s, os);
+  const loneSlot = () => o.memory.findIndex((r, k) => k >= 19 && r[M("valid")] === 1 && r[M("lone")] === 1);
+  const k = loneSlot();
+  check(k >= 19 && near(o.memory[k][M("x")], (0.4 * W - 30) / W, 2e-4), "the builder outside its half takes a lone slot", `slot ${k}`);
+  if (k >= 0) check(near(o.memory[k][M("heading_x")], -1) && near(o.memory[k][M("heading_y")], 0), "with its heading", `${o.memory[k][M("heading_x")]} ${o.memory[k][M("heading_y")]}`);
+  const c = o.memory.findIndex((r, i) => i >= 16 && i < 19 && r[M("valid")] === 1);
+  check(c === 16 && near(o.memory[c][M("count")], 4 / 20) && near(o.memory[c][M("heading_x")], -1) && o.memory[c][M("army")] === 1, "the army of 4 is a cluster with its heading");
+  check(o.memory.slice(19).filter((r) => r[M("valid")]).length === 1, "clustered units are not lone units");
+
+  // Targets: every filled slot is a legal point target at its remembered position; empty slots are not.
+  {
+    const masks = A4.computeMasks(m, s);
+    const om = A4.ORDERS.indexOf("move");
+    let ok = true;
+    for (let j = 0; j < A4.MEMORY_SLOTS; j++) {
+      const filled = o.memory[j][M("valid")] === 1 && o.memory[j][M("destroyed")] === 0;
+      if (masks.target[om][A4.TARGET_MEMORY0 + j] !== filled) ok = false;
+      if (filled) {
+        const pt = toOwnFrame(s.frame, s.memory[j]!);
+        if (!near(pt.x / W, o.memory[j][M("x")], 2e-4) || !near(pt.y / H, o.memory[j][M("y")], 2e-4)) ok = false;
+      }
+    }
+    check(ok, "memory target ↔ point for every slot (mask only when filled)");
+  }
+
+  // Lost from sight: the slot stays, ages, and clears after 120 s.
+  m.entities.delete(spotter.id); m.entities.delete(spotter2.id);
+  m.tick += 8;
+  computeVisibility(m);
+  o = O4.observe(m, s, os);
+  check(loneSlot() === k && o.memory[k][M("age")] > 0 && near(o.memory[k][M("heading_x")], -1), "lost from sight: kept with heading");
+  check(o.memory[16][M("valid")] === 1, "lost army cluster kept");
+  m.tick += 1200;
+  computeVisibility(m);
+  o = O4.observe(m, s, os);
+  check(o.memory.slice(16).every((r) => r[M("valid")] === 0), "cleared after 120 s");
+
+  // Seen empty: the last position is in sight and the builder is gone.
+  {
+    const m2 = fresh("ironreed");
+    const s2 = A4.createSeatState(m2, IDS[1]), os2 = O4.createObsState(m2, s2);
+    const W2 = m2.config.mapWidth, H2 = m2.config.mapHeight;
+    const at2 = (x: number, y: number) => fromOwnFrame(s2.frame, { x, y });
+    const p = at2(0.35 * W2, 0.2 * H2), e = at2(0.35 * W2 + 50, 0.2 * H2);
+    const wk = spawn(m2, IDS[0], "worker", p.x, p.y);
+    const sp = spawn(m2, IDS[1], "skirmisher", e.x, e.y);
+    computeVisibility(m2);
+    let o2 = O4.observe(m2, s2, os2);
+    const filled = o2.memory.slice(19).some((r) => r[M("valid")] === 1);
+    m2.entities.delete(wk.id);
+    m2.tick += 8;
+    computeVisibility(m2);
+    o2 = O4.observe(m2, s2, os2);
+    check(filled && o2.memory.slice(19).every((r) => r[M("valid")] === 0), "seat 1: cleared once its last position is seen empty");
+    void sp;
+  }
+}
+
 schemaTests();
+memoryTests();
 if (!process.env.V4_QUICK) equivalenceTests();
 console.log(`\nv4: ${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);

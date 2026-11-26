@@ -84,11 +84,12 @@ export const ANCHOR_TARGETS = [
   ["enemy_safe", ANCHOR_MAX.safeNodes],
 ] as const;
 export const N_ANCHOR_TARGETS = ANCHOR_TARGETS.reduce((s, [, n]) => s + n, 0); // 37
-export const MEMORY_SLOTS = 16;
+/** Enemy memory (observation v4): 0 army, 1..15 buildings, 16..18 army clusters, 19..23 lone units. */
+export const MEMORY_SLOTS = 24;
 export const TARGET_MEMORY0 = N_ANCHOR_TARGETS;
-export const TARGET_GRID0 = N_ANCHOR_TARGETS + MEMORY_SLOTS; // 53
-export const TARGET_NONE = TARGET_GRID0 + GRID_CELLS; // 803
-export const TARGET_SIZE = TARGET_NONE + 1; // 804
+export const TARGET_GRID0 = N_ANCHOR_TARGETS + MEMORY_SLOTS; // 61
+export const TARGET_NONE = TARGET_GRID0 + GRID_CELLS; // 811
+export const TARGET_SIZE = TARGET_NONE + 1; // 812
 
 const COMBAT = new Set(["skirmisher", "gunner", "bruiser", "medic", "bulwark"]);
 const MOVABLE = new Set(["worker", "skirmisher", "gunner", "bruiser", "medic", "bulwark", "outrider"]);

@@ -44,6 +44,9 @@ if LAYOUT in ("v3", "v4"):
 if LAYOUT == "v4":
     # Schema 8 (S2): 10 threat/army globals, 11 unit-fact/relation entity columns, threat and coverage grid planes.
     N_GLOBALS, ENTITY_F, GRID_DYN_C = 78, 48, 7
+    # Memory v2 (S3): slots 16..18 army clusters, 19..23 lone units; heading and lone flag. Targets shift by 8.
+    N_MEMORY, MEMORY_F = 24, 18
+    TARGETS, TARGET_NONE, TARGET_GRID0 = 812, 811, 61
 
 # Maps (server/src/match/pool/manifest.json). The held-out maps must never be
 # used for imitation data, training or hyperparameter selection.
