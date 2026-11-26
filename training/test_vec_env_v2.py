@@ -165,6 +165,43 @@ def test_throughput(procs: int, slots: int, steps: int) -> None:
         env.close()
 
 
+def test_r1_flags() -> None:
+    """Rebuild R1 S7 (v4): switch_cost and defence_teacher add fields only when on, and do not change the game."""
+    print("R1 flags (v4)")
+    slots = [{"seed": 41, "map": "shardfall", "blue": "policy", "red": "teach:backdoor"},
+             {"seed": 42, "map": "ironreed", "blue": "policy", "red": "bot:flank"}]
+    envs = [VecEnvV2(slots, n_procs=2, max_ticks=3000),
+            VecEnvV2(slots, n_procs=2, max_ticks=3000, scout_lock=False, switch_cost=True, defence_teacher=True)]
+    try:
+        cur = [e.reset() for e in envs]
+        rng = random.Random(5)
+        fields_off = fields_on = True
+        same, switches, lists = True, 0, 0
+        for _ in range(80):
+            pol = [[x for x in c if x.role != "teach"] for c in cur]
+            fields_off &= all(x.defence_teacher is None for x in pol[0])
+            fields_on &= all(isinstance(x.defence_teacher, list) for x in pol[1])
+            lists += sum(len(x.defence_teacher) in (0, 4) for x in pol[1])
+            acts = act_all(rng, cur[0])  # no scout-slot orders, so the lock does not matter
+            outs = [e.step(acts) for e in envs]
+            for ta, tb in zip(outs[0].transitions, outs[1].transitions):
+                if ta.role == "teach":
+                    continue
+                fields_off &= "switch" not in ta.reward["shaped"]
+                fields_on &= "switch" in tb.reward["shaped"]
+                switches += tb.reward["shaped"].get("switch", 0)
+                sb = {k: v for k, v in tb.reward["shaped"].items() if k != "switch"}
+                same &= ta.reward["win"] == tb.reward["win"] and ta.reward["shaped"] == sb
+            cur = [o.current for o in outs]
+        check(fields_off, "flags off: no defence_teacher, no shaped.switch")
+        check(fields_on and lists > 0, "flags on: defence_teacher is a list (empty or a 4-label), shaped.switch present")
+        check(switches > 0, f"random orders switch ({switches} switch events)")
+        check(same, "the other rewards are unchanged")
+    finally:
+        for e in envs:
+            e.close()
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--procs", type=int, default=4)
@@ -173,6 +210,9 @@ def main() -> None:
     args = ap.parse_args()
     test_autoreset()
     test_packed_parity()
+    from training.v2 import spaces as S
+    if S.LAYOUT == "v4":
+        test_r1_flags()
     test_throughput(args.procs, args.slots, args.steps)
     if FAILED:
         print(f"{len(FAILED)} FAILED")

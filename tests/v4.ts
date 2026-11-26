@@ -1,7 +1,8 @@
 // Layout v4 tests (docs/REBUILD_R1_PLAN.md). Run by `npm test` after tests/index.ts.
 //   npx tsx tests/v4.ts
 import { VecRunnerV2 as Runner3 } from "../headless/src/v3/runner.js";
-import { VecRunnerV2 as Runner4, packCritic } from "../headless/src/v4/runner.js";
+import { VecRunnerV2 as Runner4, packCritic, toWire } from "../headless/src/v4/runner.js";
+import { makeV2Bot } from "../headless/src/v4/bots.js";
 import { MatchEngine } from "../server/src/match/matchEngine.js";
 import { DEFAULT_CONFIG, type MatchEntity, type MatchState, type PlayerSlot } from "../server/src/match/types.js";
 import { computeVisibility } from "../server/src/match/engine/visibility.js";
@@ -12,6 +13,8 @@ import * as O3 from "../headless/src/v3/observation.js";
 import * as A4 from "../headless/src/v4/actions.js";
 import * as O4 from "../headless/src/v4/observation.js";
 import { fromOwnFrame, toOwnFrame } from "../headless/src/v4/frame.js";
+import { botContext } from "../headless/src/v4/scripted.js";
+import { defenceLabel } from "../headless/src/v4/defence.js";
 
 let passed = 0, failed = 0;
 function check(ok: boolean, name: string, detail = ""): void {
@@ -441,8 +444,123 @@ function criticTests(): void {
   }
 }
 
+// ---- S7: trainer-side hooks (defence teacher, switch cost, scout lock) ----
+
+function s7Tests(): void {
+  console.log("\nv4 R1 trainer hooks (S7)");
+  const g = (n: string) => A4.GROUPS.indexOf(n as never), o = (n: string) => A4.ORDERS.indexOf(n as never);
+  const setup = (map = "shardfall") => {
+    const m = fresh(map);
+    const s = A4.createSeatState(m, IDS[0]), os = O4.createObsState(m, s);
+    const c = crystalOwn(m, s, IDS[0]);
+    const at = (dx: number, dy: number) => fromOwnFrame(s.frame, { x: c.x + dx, y: c.y + dy });
+    const look = () => { computeVisibility(m); const obs = O4.observe(m, s, os); return { obs, masks: A4.computeMasks(m, s, { scoutSlot: true }) }; };
+    return { m, s, at, look, ctx: () => botContext(m, s, 20000) };
+  };
+
+  // Defence labels on hand-made states.
+  {
+    const { m, s, at, look, ctx } = setup();
+    for (let k = 0; k < 4; k++) { const p = at(1400 + 30 * k, 0); spawn(m, IDS[0], "gunner", p.x, p.y); }
+    let { obs, masks } = look();
+    check(defenceLabel(obs, masks, ctx()) === null, "no threat, no raid: no defence label");
+    const b = at(250, 40);
+    const brute = spawn(m, IDS[1], "bruiser", b.x, b.y);
+    ({ obs, masks } = look());
+    const lab = defenceLabel(obs, masks, ctx());
+    check(JSON.stringify(lab) === JSON.stringify([g("all_combat"), o("attack_move"), 0, 0]), "threat with the army away: all_combat attack-moves home", JSON.stringify(lab));
+    check(JSON.stringify(defenceLabel(obs, masks, ctx())) === JSON.stringify(lab), "the label is pure (same inputs, same label)");
+    // The army home: the threat needs no recall.
+    for (const e of m.entities.values()) if (e.ownerId === IDS[0] && e.type === "gunner") { const p = at(150, 0); e.x = p.x; e.y = p.y; }
+    ({ obs, masks } = look());
+    check(defenceLabel(obs, masks, ctx()) === null, "threat with the army home: no recall label");
+    m.entities.delete(brute.id);
+    // An Outrider at the workers: one combat unit guards.
+    const w = [...m.entities.values()].find((e) => e.type === "worker" && e.ownerId === IDS[0])!;
+    spawn(m, IDS[1], "outrider", w.x + 60, w.y);
+    ({ obs, masks } = look());
+    const r = defenceLabel(obs, masks, ctx());
+    const ok = !!r && r[0] === g("unit") && r[1] === o("guard") && masks.unit[r[1]][r[2]] && masks.target[r[1]][r[3]] &&
+      m.entities.get(s.rows[r[2]])?.type === "gunner";
+    check(ok, "a raid at the workers: a gunner guards (legal unit and target)", JSON.stringify(r));
+  }
+
+  // Switch counting on a scripted sequence.
+  {
+    const { m, s, look } = setup();
+    look();
+    const far = s.targets.findIndex((p, t) => t > 0 && s.targetValid[t] && Math.hypot(p.x - s.targets[0].x, p.y - s.targets[0].y) > 600);
+    const am = (target: number, group = g("all_combat")) => ({ ...A4.NOOP_ACTION, group, order: o("attack_move"), target });
+    const log: A4.OrderLog = new Map();
+    const seq: [number, A4.V2Action, number][] = [
+      [0, am(0), 0],                                         // first order: nothing to switch from
+      [8, am(0), 0],                                         // the same order again
+      [16, am(far), 1],                                      // a far target within the window
+      [24, { ...am(far), order: o("move") }, 1],              // another order
+      [32, am(far, g("army_a")), 0],                          // another group has its own history
+      [32 + 6 * 8 + 1, am(0), 0],                             // after the window
+      [32 + 6 * 8 + 9, { ...A4.NOOP_ACTION }, 0],             // no order
+    ];
+    let ok = true, why = "";
+    for (const [tick, a, want] of seq) {
+      m.tick = tick;
+      const n = A4.countSwitches(m, s, a, log, A4.SWITCH_DECISIONS * 8);
+      if (n !== want && ok) { ok = false; why = `tick ${tick}: ${n} vs ${want}`; }
+    }
+    check(far > 0 && ok, "switches: counted for a new order or a far target within 6 decisions, per group", why || `far ${far}`);
+  }
+
+  // Scout lock: a committed Outrider order closes the slot unless the lock is off.
+  {
+    const { m, s, at, look } = setup();
+    const q = at(2000, 0);
+    const rider = [...m.entities.values()].find((e) => e.type === "outrider" && e.ownerId === IDS[0])!;  // the starting Outrider
+    rider.moveTarget = { x: q.x, y: q.y };
+    look();
+    s.scoutCmd = { order: o("move"), x: q.x, y: q.y, targetId: null, tick: m.tick, until: m.tick + A4.SCOUT_COMMIT_TICKS };
+    const open = (lock: boolean) => A4.computeMasks(m, s, { scoutSlot: true, scoutLock: lock }).scoutOrder.filter(Boolean).length;
+    check(open(true) < open(false) && open(false) > 2, "scout lock on: the committed slot is narrowed; off: every order open", `${open(true)} vs ${open(false)}`);
+  }
+
+  // Runner flags: labels and the switch reward only when asked for; the game itself does not change.
+  // The policy seat is played by the scripted flank bot (from this test) against the backdoor bot.
+  {
+    const slot = { seed: 31, map: "shardfall", blue: "policy", red: "teach:backdoor" };
+    const run = (extra: R) => {
+      const r = new Runner4({});
+      let res: R = r.handle({ type: "reset_all", max_ticks: 9000, critic: false, slots: [slot], ...extra });
+      const sl = (r as any).slots[0];
+      const bot = makeV2Bot("flank", 31, botContext(sl.match, sl.seats[0], 9000));
+      let labels = 0, recalls = 0, guards = 0, legal = true, hasD = false, hasSw = false;
+      for (let d = 0; d < 9000 / 8 && res.type !== "error" && !res.slots[0].done; d++) {
+        const st = res.slots[0].seats.blue, mk = sl.masks[0] as A4.V2Masks;
+        if ("defenceTeacher" in st) hasD = true;
+        if (st.defenceTeacher) {
+          labels++;
+          const [gg, oo, uu, tt] = st.defenceTeacher;
+          if (gg === g("unit")) guards++; else recalls++;
+          if (!mk.group[gg] || !mk.order[gg][oo] || (gg === g("unit") && !mk.unit[oo][uu]) || !mk.target[oo][tt]) legal = false;
+        }
+        res = r.handle({ type: "step", actions: [{ blue: toWire(bot.decide(st.obs, mk)) }] });
+        if (res.type === "error") throw new Error(res.message);
+        const rw = res.slots[0].rewards?.blue;
+        if (rw && "switch" in rw.shaped) hasSw = true;
+      }
+      const m = sl.match as MatchState;
+      const log = [m.tick, ...[...m.entities.values()].map((e) => [e.id, Math.round(e.x), Math.round(e.y), e.health])];
+      return { labels, recalls, guards, legal, hasD, hasSw, log: JSON.stringify(log) };
+    };
+    const off = run({}), on = run({ defence_teacher: true, switch_cost: true });
+    check(!off.hasD && !off.hasSw, "flags off: no defenceTeacher field, no shaped.switch");
+    check(on.hasD && on.hasSw, "flags on: defenceTeacher field and shaped.switch present");
+    check(on.labels > 0 && on.legal, `flank (as policy) v backdoor: defence labels appear and are legal (${on.recalls} recalls, ${on.guards} guards)`);
+    check(on.log === off.log, "the flags do not change the game");
+  }
+}
+
 schemaTests();
 criticTests();
+s7Tests();
 oppLabelTests();
 memoryTests();
 if (!process.env.V4_QUICK) equivalenceTests();

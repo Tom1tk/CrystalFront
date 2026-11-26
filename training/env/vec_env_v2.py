@@ -92,6 +92,7 @@ class Stream:
     opp_labels: dict
     teacher: dict | None         # {"econ": [kind, site, econPtr, econTarget], "army": [group, order, unit, target, ptr]} for teach seats
     scout_teacher: list | None = None  # scout_teacher: [order, target, ptr], the scripted Outrider's scout-slot order (0 = keep going)
+    defence_teacher: list | None = None  # defence_teacher: [group, order, unit, target] while a defence rule holds, [] when none does; None with the flag off
 
 
 @dataclass
@@ -184,6 +185,9 @@ class VecEnvV2:
         packed: bool = False,
         scout_slot: bool = True,
         scout_teacher: bool = False,
+        scout_lock: bool = True,
+        switch_cost: bool = False,
+        defence_teacher: bool = False,
     ) -> None:
         if not slots:
             raise ValueError("need at least one slot")
@@ -194,6 +198,7 @@ class VecEnvV2:
         self.packed = packed
         self.scout_slot = scout_slot
         self.scout_teacher = scout_teacher
+        self.scout_lock, self.switch_cost, self.defence_teacher = scout_lock, switch_cost, defence_teacher
         self.layout: dict | None = None
         self.cfg = [dict(s) for s in slots]
         # Slot i lives in process owner[i] at local index local[i] (contiguous blocks).
@@ -234,6 +239,7 @@ class VecEnvV2:
                 "type": "reset_all", "decision_interval": self.decision_interval,
                 "max_ticks": self.max_ticks, "critic": self.critic, "packed": self.packed,
                 "scout_slot": self.scout_slot, "scout_teacher": self.scout_teacher,
+                "scout_lock": self.scout_lock, "switch_cost": self.switch_cost, "defence_teacher": self.defence_teacher,
                 "slots": [self._wire_cfg(c) for i, c in enumerate(self.cfg) if self.owner[i] == p],
             })
         per_slot: list[dict] = []
@@ -276,7 +282,8 @@ class VecEnvV2:
                     s = seats[side]
                     if self.packed:
                         s = self._unpack(s)
-                    cur.append(Stream(i, side, roles[side], s["obs"], s["masks"], s.get("critic"), s["oppLabels"], s["teacher"], s.get("scoutTeacher")))
+                    cur.append(Stream(i, side, roles[side], s["obs"], s["masks"], s.get("critic"), s["oppLabels"], s["teacher"], s.get("scoutTeacher"),
+                                      (s["defenceTeacher"] or []) if "defenceTeacher" in s else None))
         self.streams = [(s.slot, s.side, s.role) for s in cur]
         return cur
 

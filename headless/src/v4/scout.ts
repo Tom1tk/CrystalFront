@@ -82,16 +82,7 @@ export class OutriderPlan {
     return this.ctx.targetValid[t] ? { x: this.ctx.targets[t].x / this.ctx.W, y: this.ctx.targets[t].y / this.ctx.H } : null;
   }
   /** The legal move target (grid cell) nearest `p`; −1 if none. */
-  private cellNear(m: V2Masks, order: number, p: Pt): number {
-    let best = -1, bd = Infinity;
-    for (let g = 0; g < GRID_CELLS; g++) {
-      if (!m.target[order][TARGET_GRID0 + g]) continue;
-      const c = { x: ((g % GRID_COLS) * GRID_CELL_W + GRID_CELL_W / 2) / this.ctx.W, y: (Math.floor(g / GRID_COLS) * GRID_CELL_H + GRID_CELL_H / 2) / this.ctx.H };
-      const d = this.dist(c, p);
-      if (d < bd) { bd = d; best = g; }
-    }
-    return best < 0 ? -1 : TARGET_GRID0 + best;
-  }
+  private cellNear(m: V2Masks, order: number, p: Pt): number { return cellNear(this.ctx, m, order, p); }
   /** Waypoints round the enemy crystal on its open side, top to bottom. */
   private circle(): Pt[] {
     const base = this.anchor(T_ENEMY_BASE);
@@ -266,27 +257,56 @@ export class OutriderPlan {
    * bot's main order should then go out again to take the unit back).
    */
   guardWorkers(obs: ObsV2, m: V2Masks, tick: number, decisions: number): { a: Partial<V2Action> | null; ended: boolean } {
-    const workers = obs.entities.filter((e) => e[F.own] && e[F.type_worker]);
-    const raider = obs.entities.find((e) => e[F.enemy] && e[F.type_outrider] && workers.some((w) => this.dist(OutriderPlan.at(w), OutriderPlan.at(e)) < HARASS_R));
+    const raider = workerRaider(obs, this.ctx);
     if (raider) {
       if (this.guardEnd < 0) this.guardEnd = tick + GUARD_TICKS;
     } else if (this.guardEnd >= 0 && tick >= this.guardEnd) {
       this.guardEnd = -1;
       return { a: null, ended: true };
     }
-    if (this.guardEnd < 0 || !raider || decisions - this.guardAt < GUARD_GAP || !m.order[GROUP_UNIT][O_GUARD]) return { a: null, ended: false };
-    const spot = OutriderPlan.at(raider);
-    let best = -1, bd = Infinity;
-    obs.entities.forEach((e, i) => {
-      if (!e[F.own] || e[F.type_bulwark] || e[F.type_medic] || !COMBAT.some((u) => e[F[`type_${u}`]]) || !m.unit[O_GUARD][i]) return;
-      const d = this.dist(OutriderPlan.at(e), spot);
-      if (d < bd) { bd = d; best = i; }
-    });
-    const t = best >= 0 ? this.cellNear(m, O_GUARD, spot) : -1;
-    if (t < 0) return { a: null, ended: false };
+    if (this.guardEnd < 0 || !raider || decisions - this.guardAt < GUARD_GAP) return { a: null, ended: false };
+    const a = guardOrder(obs, m, raider, this.ctx);
+    if (!a) return { a: null, ended: false };
     this.guardAt = decisions;
-    return { a: { group: GROUP_UNIT, order: O_GUARD, unit: best, target: t }, ended: false };
+    return { a, ended: false };
   }
+}
+
+// ---- pure rules (shared with the runner's defence teacher, defence.ts) ----
+
+const at = (e: number[]): Pt => ({ x: e[F.x], y: e[F.y] });
+const distPx = (ctx: BotContext, a: Pt, b: Pt) => Math.hypot((a.x - b.x) * ctx.W, (a.y - b.y) * ctx.H);
+
+/** The legal target (grid cell) for `order` nearest the own-frame point `p`; −1 if none. */
+export function cellNear(ctx: BotContext, m: V2Masks, order: number, p: Pt): number {
+  let best = -1, bd = Infinity;
+  for (let g = 0; g < GRID_CELLS; g++) {
+    if (!m.target[order][TARGET_GRID0 + g]) continue;
+    const c = { x: ((g % GRID_COLS) * GRID_CELL_W + GRID_CELL_W / 2) / ctx.W, y: (Math.floor(g / GRID_COLS) * GRID_CELL_H + GRID_CELL_H / 2) / ctx.H };
+    const d = distPx(ctx, c, p);
+    if (d < bd) { bd = d; best = g; }
+  }
+  return best < 0 ? -1 : TARGET_GRID0 + best;
+}
+
+/** A visible enemy Outrider within HARASS_R of an own worker (its entity row), if any. */
+export function workerRaider(obs: ObsV2, ctx: BotContext): number[] | undefined {
+  const workers = obs.entities.filter((e) => e[F.own] && e[F.type_worker]);
+  return obs.entities.find((e) => e[F.enemy] && e[F.type_outrider] && workers.some((w) => distPx(ctx, at(w), at(e)) < HARASS_R));
+}
+
+/** The worker guard against `raider`: the nearest own fighting unit (not a bulwark or medic) guards its spot; null if not legal. */
+export function guardOrder(obs: ObsV2, m: V2Masks, raider: number[], ctx: BotContext): { group: number; order: number; unit: number; target: number } | null {
+  if (!m.order[GROUP_UNIT][O_GUARD]) return null;
+  const spot = at(raider);
+  let best = -1, bd = Infinity;
+  obs.entities.forEach((e, i) => {
+    if (!e[F.own] || e[F.type_bulwark] || e[F.type_medic] || !COMBAT.some((u) => e[F[`type_${u}`]]) || !m.unit[O_GUARD][i]) return;
+    const d = distPx(ctx, at(e), spot);
+    if (d < bd) { bd = d; best = i; }
+  });
+  const t = best >= 0 ? cellNear(ctx, m, O_GUARD, spot) : -1;
+  return t < 0 ? null : { group: GROUP_UNIT, order: O_GUARD, unit: best, target: t };
 }
 
 /** What the bot's Outriders (and the rest of its army) have seen of the enemy, from the observation's last-seen counts. */

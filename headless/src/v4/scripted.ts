@@ -448,6 +448,19 @@ const SLOT_CONTESTED0 = 4;
 /** Re-issue an unchanged army order after this many decisions. */
 const ORDER_REFRESH = 6;
 const THREAT_RADIUS = 600;
+
+/** Own crystal position (own frame, normalised; the last own crystal row, else the left edge's middle). */
+export function ownCrystalAt(obs: ObsV2): Pt {
+  let crystal: Pt = { x: 0, y: 0.5 };
+  for (const e of obs.entities) if (e[F.own] && e[F.type_crystal]) crystal = { x: e[F.x], y: e[F.y] };
+  return crystal;
+}
+
+/** The scripted threat rule: a visible enemy combat unit within THREAT_RADIUS (px) of the own crystal. Shared with defence.ts. */
+export function crystalThreat(obs: ObsV2, ctx: BotContext): boolean {
+  const c = ownCrystalAt(obs);
+  return obs.entities.some((e) => !e[F.own] && COMBAT.some((u) => e[F[`type_${u}`]]) && Math.hypot((e[F.x] - c.x) * ctx.W, (e[F.y] - c.y) * ctx.H) < THREAT_RADIUS);
+}
 const CONTROL_PATIENCE = 1500;
 /** Enemy bulwarks stopping more than this share of own shots (recent peak) turn half of new production to melee. */
 const SHIELD_REACT = 0.2;
@@ -637,15 +650,14 @@ export class ScriptedV2Bot {
     const supply = Math.round(g[G.supply] * 50), maxSupply = Math.round(g[G.max_supply] * 50);
     const army: number[][] = [];
     let crystal: Pt = { x: 0, y: 0.5 };
-    const enemyCombat: number[][] = [];
     for (const e of obs.entities) {
       if (e[F.own]) {
         if (e[F.type_crystal]) crystal = { x: e[F.x], y: e[F.y] };
         // Backdoor skirmishers fight on their own beside the enemy crystal: they are not part of the army the template leads.
         else if (COMBAT.some((u) => e[F[`type_${u}`]]) && !(this.t.post?.mode === "backdoor" && e[F.type_skirmisher])) army.push(e);
-      } else if (COMBAT.some((u) => e[F[`type_${u}`]])) enemyCombat.push(e);
+      }
     }
-    const threat = enemyCombat.some((e) => this.dist({ x: e[F.x], y: e[F.y] }, crystal) < THREAT_RADIUS);
+    const threat = crystalThreat(obs, this.ctx);
     let contestedWorkers = 0;
     for (let r = NODE_ROW_CONTESTED0; r < obs.nodes.length; r++) contestedWorkers += Math.round(obs.nodes[r][N.own_workers] * 3);
     return {

@@ -64,3 +64,35 @@ action space 10). `neural.ts` here feeds 24 memory rows and 12 grid channels. Pa
 weights with the pool, memory and opponent feedback switched on, 4 games, 600 decisions):
 worst head log-prob |Δ| 7.2e-7. The server's `neuralBotPlayer.ts` accepts a v4 model in `models/beta`,
 but none is shipped.
+
+## Trainer hooks (S7)
+
+All off by default, so old runs reproduce. In the runner (`reset_all`):
+
+- `defence_teacher`: each policy seat's message carries `defenceTeacher`, from `defence.ts`, which
+  reuses the scripted bots' own rules. It is `[group, order, unit, target]` or null:
+  - **Recall:** an enemy combat unit within 600 px of the own crystal (`crystalThreat`, scripted.ts),
+    and the largest of all_combat / army_a / army_b more than 900 px from home. That group
+    attack-moves to the own base.
+  - **Guard:** otherwise, an enemy Outrider at the own workers (`workerRaider`, scout.ts). One combat
+    unit guards that spot (`guardOrder`, the scout teacher's worker guard).
+  - Only legal labels are sent. Scripted play does not change; golden hashes and the v3 equivalence
+    games still match.
+- `switch_cost`: `rewards[side].shaped.switch` counts this decision's order switches
+  (`countSwitches`). A switch is a new order, or a point target more than 300 px from the last one,
+  to the same group, unit or the scout slot within 6 decisions.
+- `scout_lock` (default on): with it off, the scout slot's 50-tick commitment is gone and every order
+  stays open.
+
+In `training/v2/train.py`:
+
+| Flag | What it does |
+|---|---|
+| `--value-warmup N` | For the first N updates of each run, only parameters under `value.`, `critic.`, `c_*` and `opp.` move. pg, entropy, KL, UPGO and the teacher losses are off. |
+| `--upgo-coef` | UPGO policy loss (r1.py `upgo_returns`, per value head, normalised and mixed like the PPO advantage). |
+| `--switch-w` | Cost per switch on the shaped head. |
+| `--scout-reward roa --scout-w --scout-anneal` | Reward on the shaped head for new lows of the frozen reference's opponent-model cross-entropy H, over the last 38 decisions (~30 s). H is `Agent.opp_ce` with the near-base groups weighted 3×. Needs `--init`. |
+| `--defence-teacher --defence-coef --defence-coef-end` | CE on the label's group, order, unit and target heads where a label applies. The army heads are left out of the KL there. |
+
+Tests: `tests/v4.ts` (S7 block) and `training/test_r1.py` (UPGO by hand, ROA, `opp_ce`). The R1 flag
+test in `test_vec_env_v2.py` runs on v4.

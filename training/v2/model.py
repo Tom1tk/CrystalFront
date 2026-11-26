@@ -236,6 +236,26 @@ class Agent(nn.Module):
         lna = focal_loss(opp[:, nn_:], labels[:, k + 1 + kn])
         return (lc * k + la + ln * kn + lna) / (k + 1 + kn + 1)
 
+    def opp_ce(self, opp: torch.Tensor, labels: torch.Tensor, near_w: float = 3.0) -> torch.Tensor:
+        """(B,) weighted mean cross-entropy over the opponent-model groups (the ROA scouting reward's H, R1 S7).
+        v4: the near-base groups (nearBuildings, nearCombat, nearAnchor) weigh `near_w`, the others 1."""
+        k = S.OPP_UNITS + S.OPP_BUILDINGS
+        nb = k * S.OPP_BINS
+        na = nb + S.N_ANCHORS + 1
+        ce = lambda lg, y: F.cross_entropy(lg, y, reduction="none")  # noqa: E731
+        b = opp.shape[0]
+        lc = ce(opp[:, :nb].reshape(-1, S.OPP_BINS), labels[:, :k].reshape(-1)).view(b, k)
+        terms, w = [lc, ce(opp[:, nb:na], labels[:, k]).unsqueeze(1)], [torch.ones(k + 1, device=opp.device)]
+        if V4:
+            kn = len(OPP_NEW_COUNTS)
+            nn_ = na + kn * S.OPP_BINS
+            terms += [ce(opp[:, na:nn_].reshape(-1, S.OPP_BINS), labels[:, k + 1:k + 1 + kn].reshape(-1)).view(b, kn),
+                      ce(opp[:, nn_:], labels[:, k + 1 + kn]).unsqueeze(1)]
+            w += [torch.tensor([near_w if n.startswith("near") else 1.0 for n in OPP_NEW_COUNTS], device=opp.device),
+                  torch.tensor([near_w], device=opp.device)]
+        t, w = torch.cat(terms, 1), torch.cat(w)
+        return (t * w).sum(1) / w.sum()
+
     def encode(self, o: dict[str, torch.Tensor]):
         """Per-decision encoder (before memory): x (B, d_h), E (B, N, d_ent), valid (B, N)."""
         ent = o["ent"]

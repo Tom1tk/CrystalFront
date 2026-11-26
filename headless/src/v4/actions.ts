@@ -567,6 +567,8 @@ function scoutReleased(match: MatchState, s: SeatState, e: MatchEntity): boolean
 export interface MaskOpts {
   /** The Outrider takes orders only through the scout slot (not the `scout` group or the unit pointer). */
   scoutSlot?: boolean;
+  /** Scout slot commitment (SCOUT_COMMIT_TICKS); default on. Off (R1 S7): every order stays open, the switch cost replaces the lock. */
+  scoutLock?: boolean;
 }
 
 const PRODUCERS = new Set(["barracks", "foundry", "outpost"]);
@@ -658,7 +660,7 @@ export function computeMasks(match: MatchState, s: SeatState, opts: MaskOpts = {
   const scoutOrder = ORDERS.map((o) => o === "none");
   const rider = scoutSlot ? pickScout(match, s) : null;
   if (rider) {
-    const free = scoutReleased(match, s, rider);
+    const free = opts.scoutLock === false || scoutReleased(match, s, rider);
     ORDERS.forEach((o, oi) => { if (oi > 0) scoutOrder[oi] = (free || SCOUT_COMMITTED[oi]) && ptrOk(o) && memberAccepts(match, s, "scout", o, rider, crystal); });
   }
 
@@ -721,6 +723,35 @@ function targetPoint(s: SeatState, t: number): Pt | null {
 
 function rowEntity(match: MatchState, s: SeatState, i: number): MatchEntity | undefined {
   return Number.isInteger(i) ? match.entities.get(s.rows[i] ?? "") : undefined;
+}
+
+/** Deliberation cost (R1 S7): per order key (army group, `unit:<id>`, `scout`), the last order given to it. */
+export type OrderLog = Map<string, { tick: number; order: number; pt: Pt | null; id: string | null }>;
+/** A switch replaces a different order given to the same key at most this many decisions before; points this far apart (px) differ. */
+export const SWITCH_DECISIONS = 6, SWITCH_FAR = 300;
+
+/**
+ * Switch events in decision `a` (legal, about to be applied): an order to an army group or the scout
+ * slot that replaces a different order (another order, a point target more than SWITCH_FAR px away, or
+ * another entity) given to the same key within `windowTicks`. Records `a`'s orders in `log`. No order is free.
+ */
+export function countSwitches(match: MatchState, s: SeatState, a: V2Action, log: OrderLog, windowTicks: number): number {
+  const parts: Array<[string, number, number, number]> = [];
+  if (a.group > 0 && a.order > 0) parts.push([GROUPS[a.group] === "unit" ? `unit:${s.rows[a.unit] ?? "?"}` : GROUPS[a.group], a.order, a.target, a.ptr]);
+  if ((a.scoutOrder ?? 0) > 0) parts.push(["scout", a.scoutOrder!, a.scoutTarget ?? TARGET_NONE, a.scoutPtr ?? 0]);
+  let n = 0;
+  for (const [key, order, target, ptr] of parts) {
+    const o = ORDERS[order];
+    const pt = POINT_ORDERS.has(o) ? targetPoint(s, target) : null;
+    const id = PTR_ORDERS.has(o) ? rowEntity(match, s, ptr)?.id ?? null : null;
+    const prev = log.get(key);
+    if (prev && match.tick - prev.tick <= windowTicks) {
+      const far = !!pt !== !!prev.pt || (!!pt && !!prev.pt && Math.hypot(pt.x - prev.pt.x, pt.y - prev.pt.y) > SWITCH_FAR);
+      if (prev.order !== order || far || prev.id !== id) n++;
+    }
+    log.set(key, { tick: match.tick, order, pt, id });
+  }
+  return n;
 }
 
 /**

@@ -31,9 +31,14 @@ from training.env.vec_env_v2 import VecEnvV2
 from training.v2 import spaces as S
 from training.v2.batch import pad_entities, stack_masks, stack_obs, static_grid
 from training.v2.model import HEADS, SCOUT_HEADS, Agent, load_weights, opp_targets, teacher_actions, wire_actions
+from training.v2.r1 import RoaReward, upgo_returns
 
 REPO = Path(__file__).resolve().parents[2]
 VALUE_HEADS = ("win", "shaped", "aux")
+ARMY_HEADS = ("group", "order", "unit", "target", "ptr")
+DEFENCE_HEADS = ("group", "order", "unit", "target")
+# Trained during --value-warmup (everything else, the policy's trunk and heads, is held still).
+WARMUP_PREFIXES = ("value.", "critic.", "c_", "opp.")
 
 
 def parse() -> argparse.Namespace:
@@ -78,9 +83,24 @@ def parse() -> argparse.Namespace:
     ap.add_argument("--scout-coef-end", type=float, default=0.1, help="... at the end of the budget (linear)")
     ap.add_argument("--intel-w", type=float, default=0.0, help="weight of the first-sighting reward (shaped.intel, runner.ts) at the start")
     ap.add_argument("--intel-anneal", type=float, default=0.5, help="fraction of the budget over which --intel-w anneals linearly to 0")
+    # Rebuild R1 S7 (docs/REBUILD_R1_PLAN.md); all off by default.
+    ap.add_argument("--value-warmup", type=int, default=0, help="for the first N updates train only the value, critic and opponent-model losses (policy held still)")
+    ap.add_argument("--upgo-coef", type=float, default=0.0, help="weight of the UPGO policy loss (AlphaStar; per value head, mixed like the PPO advantage)")
+    ap.add_argument("--switch-w", type=float, default=0.0, help="cost per order switch (shaped.switch, runner.ts) on the shaped head, own seat only (v4)")
+    ap.add_argument("--scout-lock", type=int, default=1, choices=(0, 1), help="the scout slot's 50-tick commitment (v4: 0 turns it off)")
+    ap.add_argument("--scout-reward", default="none", choices=("none", "roa"), help="roa: reward new lows of the reference model's opponent-model cross-entropy (30 s window, near-base groups x3)")
+    ap.add_argument("--scout-w", type=float, default=0.0, help="weight of the --scout-reward at the start (shaped head)")
+    ap.add_argument("--scout-anneal", type=float, default=0.5, help="fraction of the budget over which --scout-w anneals linearly to 0")
+    ap.add_argument("--defence-teacher", action="store_true", help="cross-entropy on the scripted defence order (defence.ts) while a defence rule holds (v4)")
+    ap.add_argument("--defence-coef", type=float, default=0.5, help="weight of the defence teacher loss at the start")
+    ap.add_argument("--defence-coef-end", type=float, default=0.05, help="... at the end of the budget (linear)")
     ap.add_argument("--imitate", action="store_true", help="behaviour cloning: both seats are teach:<bot> from --opponents; policy heads learn the teacher's actions (cross-entropy), value heads the returns")
     ap.add_argument("--overfit", action="store_true", help="with --imitate: collect one rollout and train on it repeatedly (overfit probe: loss < 0.05)")
     a = ap.parse_args()
+    if (a.switch_w > 0 or a.defence_teacher or not a.scout_lock) and S.LAYOUT != "v4":
+        raise SystemExit("--switch-w, --defence-teacher and --scout-lock 0 need CF_LAYOUT=v4")
+    if a.scout_reward == "roa" and not a.init:
+        raise SystemExit("--scout-reward roa needs --init (the frozen reference model)")
     for maps in a.maps.split(","):
         if maps in S.HELD_OUT_MAPS:
             raise SystemExit(f"{maps} is a held-out map and must not be used for training")
@@ -201,7 +221,7 @@ def main() -> None:
     ref = None
     if a.init:
         load_weights(agent, torch.load(a.init, map_location=dev)["model"])
-        if a.kl_coef > 0:
+        if a.kl_coef > 0 or a.scout_reward == "roa":
             ref = Agent().to(dev)
             ref.load_state_dict(agent.state_dict())
             ref.eval()
@@ -221,7 +241,8 @@ def main() -> None:
     cur_opp = [d.pop("opp") for d in draws]           # opponent of each slot's current episode
     pending_opp: list[str | None] = [None] * n_slots  # ... of its next episode (configured, not started)
     frozen = Frozen([o[5:] for o in slots.opps if o.startswith("ckpt:")], n_slots, dev)
-    env = VecEnvV2(draws, n_procs=a.procs, max_ticks=a.max_ticks, packed=True, scout_teacher=a.scout_teacher)
+    env = VecEnvV2(draws, n_procs=a.procs, max_ticks=a.max_ticks, packed=True, scout_teacher=a.scout_teacher,
+                   scout_lock=bool(a.scout_lock), switch_cost=a.switch_w > 0, defence_teacher=a.defence_teacher)
     cur = env.reset()
     S.check_layout(env.layout)
     statics = [static_grid(s) for s in env.static]
@@ -239,6 +260,7 @@ def main() -> None:
     hc = agent.zero_state(B, dev)
     hc_ref = agent.zero_state(B, dev)
     first = np.ones(B, dtype=bool)  # the next observation starts an episode
+    roa = RoaReward(B)
 
     recent = deque(maxlen=200)
     t_start = time.time()
@@ -263,9 +285,12 @@ def main() -> None:
         ent_coef = a.ent + (a.ent_end - a.ent) * frac
         mix = mix0 + (mix1 - mix0) * frac
         mix[1] = max(mix[1], 0.1)
-        kl_coef = a.kl_coef * max(0.0, 1.0 - frac / a.kl_anneal) if ref is not None else 0.0
+        kl_coef = a.kl_coef * max(0.0, 1.0 - frac / a.kl_anneal) if a.kl_coef > 0 and ref is not None else 0.0
         scout_coef = a.scout_coef + (a.scout_coef_end - a.scout_coef) * frac
         intel_w = a.intel_w * max(0.0, 1.0 - frac / a.intel_anneal) if a.intel_anneal > 0 else 0.0
+        scout_w = a.scout_w * max(0.0, 1.0 - frac / a.scout_anneal) if a.scout_reward == "roa" and a.scout_anneal > 0 else 0.0
+        defence_coef = a.defence_coef + (a.defence_coef_end - a.defence_coef) * frac
+        warm = update < a.value_warmup  # update counts from 0 with --init, so each cycle warms up its fresh critic
 
         # ── rollout ──────────────────────────────────────────────────────────
         T, L = a.rollout, a.seq
@@ -282,6 +307,7 @@ def main() -> None:
                 ls = [cur[j] for j in lrn]
                 obs = stack_obs([s.obs for s in ls], [statics[s.slot] for s in ls], [s.critic for s in ls])
                 masks = stack_masks([s.masks for s in ls])
+                opp_t = opp_targets([s.opp_labels for s in ls])
                 if a.imitate:  # teachers carry their template's z; evaluation plays z = 0, so half the samples see 0
                     obs["z"][np.random.rand(B) < 0.5] = 0
                 firsts[t] = first
@@ -298,10 +324,16 @@ def main() -> None:
                     out, rows, lp, _ = agent.policy(h, E, valid, masks=to_t(masks, dev), given=given)
                     v = agent.values(h, ot)
                     if ref is not None:  # the KL leaves out the scout slot, which the reference never had
-                        hr, Er, vr, hc_ref, _ = ref.trunk(ot, hc_ref)
+                        hr, Er, vr, hc_ref, ropp = ref.trunk(ot, hc_ref)
                         rh = {}
                         rlp = ref.policy(hr, Er, vr, rows=rows, given=out, head_lp=rh)[2]
                         store["ref_lp"].append((rlp - sum(rh.get(k, 0) for k in SCOUT_HEADS)).cpu().numpy())
+                        if a.defence_teacher:  # army heads, left out of the KL where the defence label applies
+                            store["ref_army"].append(sum(rh[k] for k in ARMY_HEADS).cpu().numpy())
+                        if a.scout_reward == "roa":  # H_t: the reference's opponent-model cross-entropy on the true labels
+                            H = ref.opp_ce(ropp, torch.as_tensor(opp_t, device=dev)).cpu().numpy()
+                            store["roa"].append(roa.step(H, firsts[t]))
+                            store["roa_H"].append(H)
                 if a.scout_teacher:  # the scripted Outrider's slot order, with its mask rows (illegal labels → none)
                     lab = np.asarray([s.scout_teacher or [0, S.TARGET_NONE, 0] for s in ls], dtype=np.int64)
                     ar_ = np.arange(B)
@@ -315,6 +347,29 @@ def main() -> None:
                     store["s_bad"].append(~ok)
                     store["s_rows"].append({"scoutOrder": masks["scoutOrder"], "scoutTarget": masks["target"][ar_, lab[:, 0]],
                                             "scoutPtr": masks["ptr"][ar_, lab[:, 0]]})
+                if a.defence_teacher:  # the scripted defence order while a rule holds; elsewhere the taken action (unused)
+                    ar_ = np.arange(B)
+                    tk = {k: out[k].cpu().numpy() for k in DEFENCE_HEADS}
+                    lab = np.stack([tk[k] for k in DEFENCE_HEADS], 1).astype(np.int64)
+                    don = np.zeros(B, dtype=bool)
+                    for b_, s in enumerate(ls):
+                        if s.defence_teacher:
+                            lab[b_] = s.defence_teacher
+                            don[b_] = True
+                    g_, o_, u_, t_ = lab.T
+                    ok = masks["group"][ar_, g_].astype(bool) & masks["order"][ar_, g_, o_].astype(bool)
+                    ok &= (g_ != S.GROUP_UNIT) | masks["unit"][ar_, o_, u_].astype(bool)
+                    ok &= ~np.isin(o_, S.POINT_ORDERS) | masks["target"][ar_, o_, t_].astype(bool)
+                    bad = don & ~ok
+                    don &= ok
+                    lab[~don] = np.stack([tk[k] for k in DEFENCE_HEADS], 1)[~don]
+                    rows_np = {k: rows[k].cpu().numpy() for k in DEFENCE_HEADS}
+                    m_rows = {"group": masks["group"], "order": masks["order"][ar_, lab[:, 0]], "unit": masks["unit"][ar_, lab[:, 1]],
+                              "target": masks["target"][ar_, lab[:, 1]]}
+                    store["d_lab"].append(lab)
+                    store["d_on"].append(don)
+                    store["d_bad"].append(bad)
+                    store["d_rows"].append({k: np.where(don.reshape(-1, *[1] * (m_rows[k].ndim - 1)), m_rows[k], rows_np[k]) for k in DEFENCE_HEADS})
                 acts = [None] * len(cur)
                 if not a.imitate:
                     for j, w in zip(lrn, wire_actions(out)):
@@ -324,7 +379,7 @@ def main() -> None:
                         for j, w in frozen.act(fz, statics, [o[5:] if o.startswith("ckpt:") else None for o in cur_opp]).items():
                             acts[j] = w
                 store["obs"].append({k: (x.astype(np.float16) if k in ("grid", "ent", "c_grid", "c_ent") else x) for k, x in obs.items()})
-                store["opp"].append(opp_targets([s.opp_labels for s in ls]))
+                store["opp"].append(opp_t)
                 store["rows"].append({k: r.cpu().numpy() for k, r in rows.items()})
                 store["act"].append({k: out[k].cpu().numpy() for k in HEADS})
                 store["lp"].append(lp.cpu().numpy())
@@ -340,7 +395,13 @@ def main() -> None:
                     r = tr.reward
                     minutes = ep_steps[j] * S.DECISION_TICKS / S.TICKS_PER_MINUTE
                     sh = np.asarray([r["shaped"][k] for k in S.SHAPED_KEYS], dtype=np.float32)
-                    rew[t, j] = (r["win"], float((sh * shaped_w).sum()) * 0.6 ** (minutes / 10) + intel_w * r["shaped"].get("intel", 0.0), sh[0] + sh[1])
+                    shaped_r = float((sh * shaped_w).sum()) * 0.6 ** (minutes / 10) + intel_w * r["shaped"].get("intel", 0.0)
+                    shaped_r -= a.switch_w * r["shaped"].get("switch", 0.0)
+                    if a.switch_w > 0:
+                        store["switch"].append(r["shaped"].get("switch", 0.0))
+                    if scout_w:
+                        shaped_r += scout_w * float(store["roa"][-1][j])
+                    rew[t, j] = (r["win"], shaped_r, sh[0] + sh[1])
                     ep_ret[j] += rew[t, j]
                     ep_steps[j] += 1
                     e = int(store["act"][-1]["econ"][j])
@@ -405,6 +466,10 @@ def main() -> None:
                 last = delta + gamma * lam * nonterm * last
                 adv[t] = last
             ret = adv + vals
+            if a.upgo_coef > 0:
+                up = upgo_returns(rew, vals, ended, boot, last_v, gamma) - vals
+                f_up = up.reshape(T * B, 3)
+                upgo_mixed = (((f_up - f_up.mean(0)) / (f_up.std(0) + 1e-8)) * mix).sum(1)
 
             # ── flatten (time-major: row t * B + b) ──────────────────────────────
             N = T * B
@@ -422,6 +487,10 @@ def main() -> None:
                 s_lab = np.concatenate(store["s_lab"])
                 s_rows = {k: np.concatenate([r[k] for r in store["s_rows"]]) for k in SCOUT_HEADS}
                 s_bad = np.concatenate(store["s_bad"])
+            if a.defence_teacher:
+                d_lab, d_on, d_bad = np.concatenate(store["d_lab"]), np.concatenate(store["d_on"]), np.concatenate(store["d_bad"])
+                d_rows = {k: np.concatenate([r[k] for r in store["d_rows"]]) for k in DEFENCE_HEADS}
+                f_ref_army = np.concatenate(store["ref_army"]) if ref is not None else None
             f_opp = np.concatenate(store["opp"])
             f_first = firsts.reshape(N)
             h0, c0 = np.stack(store["h0"]), np.stack(store["c0"])  # (T / L, B, d)
@@ -463,20 +532,40 @@ def main() -> None:
                 else:
                     A = torch.as_tensor(mixed[idx], device=dev)
                     pg = -torch.min(ratio * A, ratio.clamp(1 - a.clip, 1 + a.clip) * A).mean()
+                    if a.upgo_coef > 0:  # UPGO: −c · min(ratio, 1) · A^U · log π (ratio not differentiated)
+                        upgo = -(ratio.detach().clamp(max=1.0) * torch.as_tensor(upgo_mixed[idx], device=dev) * lp).mean()
+                        logs["loss/upgo"].append(upgo.item())
+                        pg = pg + a.upgo_coef * upgo
+                if warm:
+                    pg = pg * 0.0
                 R = torch.as_tensor(f_ret[idx], device=dev)
                 V0 = torch.as_tensor(f_v[idx], device=dev)
                 vc = V0 + (v - V0).clamp(-a.clip, a.clip)
                 vl = torch.max((v - R) ** 2, (vc - R) ** 2).mean(0)  # per head
                 ent_total = sum(e.mean() for e in ent.values())
                 ol = agent.opp_loss(opp_logits, torch.as_tensor(f_opp[idx], device=dev))
-                loss = pg + a.vf * vl.sum() - (0.0 if a.imitate else ent_coef) * ent_total + a.opp_coef * ol
-                if ref is not None:  # k3 estimator of KL(policy || reference) on the taken actions, scout slot left out
+                loss = pg + a.vf * vl.sum() - (0.0 if a.imitate or warm else ent_coef) * ent_total + a.opp_coef * ol
+                if a.kl_coef > 0 and ref is not None:  # k3 estimator of KL(policy || reference) on the taken actions, scout slot left out
                     lp_ns = lp - sum(head_lp[k] for k in SCOUT_HEADS)
-                    logr = (torch.as_tensor(f_ref[idx], device=dev) - lp_ns).clamp(max=20.0)
+                    rlp_ = torch.as_tensor(f_ref[idx], device=dev)
+                    if a.defence_teacher:  # ... and the army heads where the defence label applies
+                        don_t = torch.as_tensor(d_on[idx], device=dev).float()
+                        lp_ns = lp_ns - don_t * sum(head_lp[k] for k in ARMY_HEADS)
+                        rlp_ = rlp_ - don_t * torch.as_tensor(f_ref_army[idx], device=dev)
+                    logr = (rlp_ - lp_ns).clamp(max=20.0)
                     kl_ref = (logr.exp() - 1 - logr).mean()
                     loss = loss + kl_coef * kl_ref
                     logs["kl/ref"].append(kl_ref.item())
-                if a.scout_teacher:  # scout distillation: cross-entropy on the scripted Outrider's slot order, every decision
+                if a.defence_teacher and not warm:  # cross-entropy on the scripted defence order, where it applies
+                    dlp = {}
+                    lab = torch.as_tensor(d_lab[idx], device=dev)
+                    agent.policy(h, E, valid, rows={**rows_t, **{k: torch.as_tensor(d_rows[k][idx], device=dev) for k in DEFENCE_HEADS}},
+                                 given={**act_t, **{k: lab[:, i] for i, k in enumerate(DEFENCE_HEADS)}}, head_lp=dlp)
+                    don_t = torch.as_tensor(d_on[idx], device=dev).float()
+                    d_ce = -(sum(dlp[k] for k in DEFENCE_HEADS) * don_t).sum() / don_t.sum().clamp(min=1)
+                    loss = loss + defence_coef * d_ce
+                    logs["defence/ce"].append(d_ce.item())
+                if a.scout_teacher and not warm:  # scout distillation: cross-entropy on the scripted Outrider's slot order, every decision
                     tlp = {}
                     lab = torch.as_tensor(s_lab[idx], device=dev)
                     agent.policy(h, E, valid, rows={**rows_t, **{k: torch.as_tensor(s_rows[k][idx], device=dev) for k in SCOUT_HEADS}},
@@ -489,6 +578,10 @@ def main() -> None:
                     logs["scout/ce_orders"].append((-(s_lp * act_).sum() / act_.sum().clamp(min=1)).item())
                 opt.zero_grad()
                 loss.backward()
+                if warm:  # value warm-up: only the value, critic and opponent-model parameters move
+                    for n_, p_ in agent.named_parameters():
+                        if not n_.startswith(WARMUP_PREFIXES):
+                            p_.grad = None
                 gn = torch.nn.utils.clip_grad_norm_(agent.parameters(), a.max_grad)
                 opt.step()
                 if not torch.isfinite(loss):
@@ -522,6 +615,18 @@ def main() -> None:
         writer.add_scalar("noop/army_group", float((f_act["group"] == 0).mean()), step)
         writer.add_scalar("scout/policy_rate", float((f_act["scoutOrder"] > 0).mean()), step)
         writer.add_scalar("reward/intel_w", intel_w, step)
+        writer.add_scalar("sched/value_warmup", float(warm), step)
+        if a.scout_reward == "roa":
+            writer.add_scalar("reward/scout_w", scout_w, step)
+            writer.add_scalar("scout/roa_reward", float(np.mean(store["roa"])), step)
+            writer.add_scalar("scout/roa_H", float(np.mean(store["roa_H"])), step)
+        if a.switch_w > 0:
+            writer.add_scalar("reward/switch_per_decision", float(np.mean(store["switch"])) if store["switch"] else 0.0, step)
+        if a.defence_teacher:
+            writer.add_scalar("defence/label_rate", float(d_on.mean()), step)
+            writer.add_scalar("defence/label_illegal", float(d_bad.mean()), step)
+            writer.add_scalar("defence/follow", float((d_on & (f_act["group"] == d_lab[:, 0]) & (f_act["order"] == d_lab[:, 1])).sum() / max(1, d_on.sum())), step)
+            writer.add_scalar("sched/defence_coef", defence_coef, step)
         if a.scout_teacher:
             writer.add_scalar("scout/teacher_rate", float((s_lab[:, 0] > 0).mean()), step)
             writer.add_scalar("scout/teacher_illegal", float(s_bad.mean()), step)
