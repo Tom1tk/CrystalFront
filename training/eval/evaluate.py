@@ -58,6 +58,8 @@ def parse() -> argparse.Namespace:
     ap.add_argument("--out", default="", help="JSON results path")
     ap.add_argument("--scout-slot", choices=("auto", "on", "off"), default="auto",
                     help="give policy seats the Outrider's own order slot (auto: if the checkpoint was trained with one)")
+    ap.add_argument("--scout-lock", choices=("auto", "0", "1"), default="auto",
+                    help="the scout slot's 50-tick commit lock (auto: as the checkpoint was trained, else on)")
     ap.add_argument("--save-replays", action="store_true", help="write every game to replays/ (watchable in the game's replay viewer)")
     return ap.parse_args()
 
@@ -75,10 +77,14 @@ def main() -> None:
     me = "teach:" + a.checkpoint[4:] if is_bot else "policy"
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     slot = a.scout_slot == "on"
+    lock = a.scout_lock != "0"
     if not is_bot:
         torch.manual_seed(a.torch_seed)
         agent = Agent().to(dev)
-        sd = torch.load(a.checkpoint, map_location=dev)["model"]
+        ck = torch.load(a.checkpoint, map_location=dev)
+        sd = ck["model"]
+        if a.scout_lock == "auto":
+            lock = bool(ck.get("config", {}).get("scout_lock", 1))
         slot = slot or (a.scout_slot == "auto" and "scout_order.weight" in sd)
         load_weights(agent, sd)
         agent.eval()
@@ -95,8 +101,9 @@ def main() -> None:
     n = min(len(games), a.procs * a.slots)
     queue = [games[i::n] for i in range(n)]
     pos = [0] * n
-    env = VecEnvV2([cfg(q[0]) for q in queue], n_procs=a.procs, max_ticks=a.max_ticks, critic=False, packed=True, scout_slot=slot)
-    print(f"scout slot {'on' if slot else 'off'}", flush=True)
+    env = VecEnvV2([cfg(q[0]) for q in queue], n_procs=a.procs, max_ticks=a.max_ticks, critic=False, packed=True, scout_slot=slot,
+                    **({} if lock else {"scout_lock": False}))
+    print(f"scout slot {'on' if slot else 'off'}{'' if lock else ', no lock'}", flush=True)
     cur = env.reset()
     statics = [static_grid(s) for s in env.static]
     frozen = Frozen(ckpts, n, dev)
