@@ -693,7 +693,44 @@ function scenarioTests(): void {
   rmSync(dir, { recursive: true, force: true });
 }
 
+// Rebuild R1 S11: forced exploiters. A policy seat with a shadow bot gets the bot's action as `shadowTeacher`
+// and its build list as shaped.build; playing the labels plays the bot, so its build list completes.
+function shadowTests(): void {
+  console.log("\n== shadow bot (S11)");
+  const noop = toWire(A4.NOOP_ACTION);
+  const reset = (slot: Record<string, unknown>) => new Runner4().handle({ type: "reset_all", scout_slot: true, slots: [slot] });
+  const base = { seed: 7, map: "shardfall", blue: "policy", red: "bot:idle" };
+  const r = new Runner4();
+  let res: any = r.handle({ type: "reset_all", scout_slot: true, slots: [{ ...base, z: { blue: 23, red: 0 }, shadow: { blue: "backdoor" } }] });
+  check(res.type === "ready", "a shadow slot starts", res.message ?? "");
+  let seats = res.slots[0].seats, n = 0, nul = 0, build = 0, gotKey = 0;
+  for (let step = 0; step < 400; step++) {
+    const t = seats.blue.shadowTeacher;
+    n++; if (t === null) nul++;
+    res = r.handle({ type: "step", actions: [{ blue: t ?? noop }] });
+    const s = res.slots[0];
+    if (s.rewards.blue && "build" in s.rewards.blue.shaped) gotKey++;
+    build += s.rewards.blue?.shaped.build ?? 0;
+    if (s.done || s.truncated) break;
+    seats = s.seats;
+  }
+  check(gotKey === n, "every window carries shaped.build", `${gotKey} of ${n}`);
+  check(nul / n < 0.05, "the shadow bot's labels are legal on the policy seat's masks", `${nul} of ${n} illegal`);
+  check(Math.abs(build - 1) < 1e-9, "playing the labels completes the build list (shaped.build sums to 1)", `${build}`);
+  const plain = new Runner4().handle({ type: "reset_all", slots: [base] }) as any;
+  check(!("shadowTeacher" in plain.slots[0].seats.blue), "no shadow, no shadowTeacher");
+  const err = (slot: Record<string, unknown>, re: RegExp, name: string) => {
+    const e = reset(slot) as any;
+    check(e.type === "error" && re.test(e.message), name, e.message ?? e.type);
+  };
+  err({ ...base, shadow: { red: "backdoor" } }, /not a policy seat/, "a shadow on a bot seat fails");
+  err({ ...base, shadow: { blue: "nobody" } }, /unknown scripted bot/, "an unknown shadow bot fails");
+  err({ ...base, z: { blue: 99, red: 0 }, shadow: { blue: "backdoor" } }, /no template with z/, "a z the shadow bot has no template for fails");
+  err({ ...base, shadow: { blue: "backdoor" }, scenario: { replay: "x.json", tick: 800, seat: "blue" } }, /cannot have a shadow/, "a scenario start with a shadow bot fails");
+}
+
 schemaTests();
+shadowTests();
 criticTests();
 s7Tests();
 oppLabelTests();

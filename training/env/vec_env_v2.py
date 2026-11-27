@@ -93,6 +93,7 @@ class Stream:
     teacher: dict | None         # {"econ": [kind, site, econPtr, econTarget], "army": [group, order, unit, target, ptr]} for teach seats
     scout_teacher: list | None = None  # scout_teacher: [order, target, ptr], the scripted Outrider's scout-slot order (0 = keep going)
     defence_teacher: list | None = None  # defence_teacher: [group, order, unit, target] while a defence rule holds, [] when none does; None with the flag off
+    shadow_teacher: dict | None = None  # slot `shadow` (runner.ts): the shadow bot's wire action on this seat, None when illegal or no shadow
 
 
 @dataclass
@@ -283,7 +284,7 @@ class VecEnvV2:
                     if self.packed:
                         s = self._unpack(s)
                     cur.append(Stream(i, side, roles[side], s["obs"], s["masks"], s.get("critic"), s["oppLabels"], s["teacher"], s.get("scoutTeacher"),
-                                      (s["defenceTeacher"] or []) if "defenceTeacher" in s else None))
+                                      (s["defenceTeacher"] or []) if "defenceTeacher" in s else None, s.get("shadowTeacher")))
         self.streams = [(s.slot, s.side, s.role) for s in cur]
         return cur
 
@@ -353,7 +354,7 @@ class VecEnvV2:
         return StepOut(transitions, self._current([r["seats"] for r in results]), new_eps)
 
     def configure(self, slot: int, **changes: Any) -> None:
-        """Change a slot's config (seed, map, blue, red, z, save_replay, learner) from its next episode on."""
+        """Change a slot's config (seed, map, blue, red, z, scenario, shadow, save_replay, learner) from its next episode on."""
         merged = {**self._pending.get(slot, {}), **changes}
         wire = self._wire_cfg(changes)
         if wire:

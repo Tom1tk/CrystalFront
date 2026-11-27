@@ -143,3 +143,50 @@ Tests: `tests/v4.ts` (scenario block) checks:
 - a mid-game handover gives the original's observations, masks, teacher labels and rewards;
 - the background fast-forward equals a direct start;
 - each mismatch fails.
+
+## Forced exploiters (S11)
+
+A strategy-forced exploiter is pushed to play one scripted bot's plan, so the main agent keeps meeting
+that plan played by a network.
+
+- **Runner.** Slot field `shadow: { <side>: "<bot>" }` runs that scripted bot on a policy seat, without
+  applying its actions. Its z is the seat's configured z, which picks the template.
+  - Each decision, the seat's message carries `shadowTeacher`: the wire action the bot chooses from the seat's
+    own obs and masks, or null when that action is not legal there.
+  - Each window, `rewards[side].shaped.build` adds +1/len for each step of the bot's build list finished in
+    order. A step is finished when that many of its building stand complete.
+  - Deviation: `ScriptedV2Bot.buildOrder()` adds a forward-outpost template's outposts as one step, before the
+    first step that waits for an army (this is where the bot builds them).
+  - A shadow must be on a policy seat and needs a template for the seat's z. It cannot be combined with a
+    scenario start.
+- **Training.** `train.py --shadow-bot <bot> --fixed-z <z>` gives the learner's seat that z and that shadow,
+  whichever side it draws.
+  - `--shadow-coef 1.0 → --shadow-coef-end 0.3` sets a cross-entropy on the bot's econ and army heads (scout
+    slot excluded) wherever its label is legal. The mask rows come from a second policy pass over the label.
+  - `--build-w` adds `shaped.build` to the shaped head.
+  - The KL is off (`--kl-coef 0`): the shadow cross-entropy takes its place.
+  - `fixed_z` is saved in the checkpoint config. A checkpoint opponent, in training (`Slots`) and in
+    `training/eval/evaluate.py`, plays its own `fixed_z`. `evaluate.py --z auto` gives the evaluated seat
+    its checkpoint's `fixed_z`.
+- **Fidelity.** `headless/src/v4/fidelity.ts <eval.json> --strategy backdoor|flank [--seat policy|opponent]`
+  replays an evaluation's saved games and checks the plan (`PASS_RATE` 0.6 of the scored games):
+  - backdoor: an own building within 900 px of the enemy crystal by 6:00;
+  - flank: before the first attack (≥ 3 combat units within 700 px of the enemy crystal), the army in the
+    enemy half (≥ 3 units) was at some point, on average, ≥ 0.25 of the map height off the line between the
+    crystals. Only scored on `FLANK_MAPS` (hollow-crown, cinder-flats, ironreed, saltmarsh, glimmerfen):
+    on twin-spires, basalt-run and shardfall every bot's lane already runs round the side.
+  - Calibration on the scripted bots (the table is in the `fidelity.ts` header): backdoor z23 0.75 on
+    backdoor, flank z27 0.7–1.0 on flank; every other bot (and each on the other check) 0–0.1.
+  - No hidden check. The hidden bot (z11) stages beside brush, not in it. Neither brush time nor time unseen
+    separates it from the other bots, so nothing could be calibrated, and a hidden exploiter could never
+    pass the gate.
+- **League.** `league.py --forced-exploiters backdoor:23,flank:27` adds a step to each cycle, after
+  the main exploiter. For each entry, it:
+  - trains `<run>-f<k>-<bot>` from the main's `cycle_k` snapshot against it for `--forced-decisions` (1M);
+  - evaluates it on the train maps with saved replays;
+  - runs fidelity. Only an exploiter that passes joins the main's pool for the next cycle.
+
+  The league record keeps every result under `forced`.
+
+Tests: `tests/v4.ts` (shadow block) checks that playing the labels completes the build list, that the
+labels are legal, and the error cases. `training/test_r1.py` checks the slot draws and `ckpt_z`.

@@ -574,6 +574,20 @@ export class ScriptedV2Bot {
   /** Informed switcher still reading the enemy (null once it has decided, or for other bots). */
   private read: "macro" | "turtle" | null;
 
+  /**
+   * The template's build list (Rebuild R1 S11 build-order reward): each step's building and wanted
+   * count, in order. A forward-outpost template's outposts come before the first step that waits for
+   * an army, as the bot builds them.
+   */
+  buildOrder(): Array<{ b: Building; n: number }> {
+    const steps = this.t.builds.map((s) => ({ b: s.b, n: s.n, army: s.army ?? 0 }));
+    if (this.t.post) {
+      const at = steps.findIndex((s) => s.army > 0);
+      steps.splice(at < 0 ? steps.length : at, 0, { b: "outpost", n: this.t.post.n, army: 0 });
+    }
+    return steps.map(({ b, n }) => ({ b, n }));
+  }
+
   /** Template label (and switch tick) for logs. */
   describe(): string {
     return this.next ? `${this.t.label} → ${this.next.label} @${this.switchTick}` : this.t.label;

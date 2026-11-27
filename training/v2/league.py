@@ -11,6 +11,13 @@ Each cycle:
      and the exploiter joins the main agent's pool.
 A one-plan agent keeps meeting an opponent built to beat that plan.
 
+Rebuild R1 S11, --forced-exploiters bot:z,...: after step 3, for each entry a strategy-forced exploiter starts
+from the main agent's cycle snapshot and trains for --forced-decisions against it with train.py --shadow-bot
+<bot> --fixed-z <z> (the bot's econ and army action as a cross-entropy target, its build list as a reward; no KL).
+It is evaluated against that snapshot with saved replays and checked by headless/src/v4/fidelity.ts
+(strategy = the bot's name): only an exploiter that plays the bot's plan joins the main agent's pool for
+the next cycle. Results either way go in the league record under "forced".
+
     python3 -m training.v2.league --run lg1 --init checkpoints/v2/<bc>/final.pt --bots macro,swarm,... \\
         --cycles 4 --main-decisions 5000000 --exploiter-decisions 3000000
 
@@ -47,6 +54,10 @@ def main() -> None:
                     help="extra train.py arguments for the main agent")
     ap.add_argument("--exploiter-args", default="--kl-coef 0.5 --kl-anneal 0.25 --ent 0.003 --ent-end 0.001 --minibatches 16 --checkpoint-every 20")
     ap.add_argument("--eval-args", default="", help="extra evaluate.py arguments")
+    ap.add_argument("--forced-exploiters", default="", help="comma-separated bot:z (bot in fidelity.ts STRATEGIES: backdoor, flank)")
+    ap.add_argument("--forced-decisions", type=int, default=1_000_000)
+    ap.add_argument("--forced-args", default="--build-w 1.0 --shadow-coef 1.0 --shadow-coef-end 0.3",
+                    help="train.py arguments for forced exploiters, after --exploiter-args (their --kl-coef is then set to 0)")
     a = ap.parse_args()
 
     py = [sys.executable, "-m"]
@@ -57,6 +68,11 @@ def main() -> None:
     exploiters: list[str] = []
     record = REPO / "docs" / "eval" / f"league-{a.run}.json"
     hist = json.loads(record.read_text()) if record.exists() else {"cycles": []}
+    hist.setdefault("forced", [])
+    forced = [(b, int(z)) for b, z in (x.split(":") for x in a.forced_exploiters.split(",") if x)]
+    for b, _ in forced:
+        if b not in ("backdoor", "flank"):
+            raise SystemExit(f"--forced-exploiters: no fidelity check for {b}")
 
     for k in range(1, a.cycles + 1):
         # 1. main agent, resumed from its last stage
@@ -88,6 +104,31 @@ def main() -> None:
             record.parent.mkdir(parents=True, exist_ok=True)
             record.write_text(json.dumps(hist, indent=1))
             print(f"cycle {k}: exploiter beats the frozen main agent {wr:.2f} ({len(r)} games)", flush=True)
+        # 4. strategy-forced exploiters; those that play their plan join the pool
+        for b, z in forced:
+            fr = f"{a.run}-f{k}-{b}"
+            ffinal = CK / fr / "final.pt"
+            done = [f for f in hist["forced"] if f["cycle"] == k and f["bot"] == b]
+            if not done:
+                if not ffinal.exists():
+                    run(py + ["training.v2.train", "--run", fr, "--init", str(snap), "--minutes", "0", "--opponents", f"ckpt:{snap.relative_to(REPO)}",
+                              "--decisions", str(a.forced_decisions)] + a.exploiter_args.split() + a.forced_args.split()
+                        + ["--kl-coef", "0", "--shadow-bot", b, "--fixed-z", str(z)], logs / f"{fr}.log")
+                out = REPO / "docs" / "eval" / f"{fr}-vs-main.json"
+                run(py + ["training.eval.evaluate", "--checkpoint", str(ffinal), "--opponents", f"ckpt:{snap.relative_to(REPO)}",
+                          "--maps", "train", "--seeds", str(a.eval_seeds), "--save-replays", "--out", str(out)] + a.eval_args.split(), logs / f"{fr}.log")
+                fout = REPO / "docs" / "eval" / f"{fr}-fidelity.json"
+                run(["npx", "tsx", "headless/src/v4/fidelity.ts", str(out), "--strategy", b, "--replays", "replays", "--out", str(fout)], logs / f"{fr}.log")
+                r = json.loads(out.read_text())["games"]
+                fid = json.loads(fout.read_text())
+                done = [{"cycle": k, "bot": b, "z": z, "exploiter": str(ffinal.relative_to(REPO)), "win_rate": sum(g["result"] == "win" for g in r) / len(r),
+                         "games": len(r), "fidelity": fid["rate"], "pass": fid["pass"]}]
+                hist["forced"] += done
+                record.write_text(json.dumps(hist, indent=1))
+                print(f"cycle {k}: forced {b} (z {z}) beats the frozen main agent {done[0]['win_rate']:.2f}, plays the plan in "
+                      f"{fid['rate']:.2f} of games: {'joins the pool' if fid['pass'] else 'left out'}", flush=True)
+            if done[0]["pass"]:
+                exploiters.append(done[0]["exploiter"])
 
 
 if __name__ == "__main__":

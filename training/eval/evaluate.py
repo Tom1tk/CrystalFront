@@ -28,7 +28,7 @@ from training.env.vec_env_v2 import VecEnvV2
 from training.v2 import spaces as S
 from training.v2.batch import stack_masks, stack_obs, static_grid
 from training.v2.model import Agent, load_weights, wire_actions
-from training.v2.train import Frozen, opp_tag
+from training.v2.train import Frozen, ckpt_z, opp_tag
 
 HERE = Path(__file__).resolve().parent
 SEED_FILE = HERE / "seeds" / "eval-v1.txt"
@@ -61,6 +61,8 @@ def parse() -> argparse.Namespace:
     ap.add_argument("--scout-lock", choices=("auto", "0", "1"), default="auto",
                     help="the scout slot's 50-tick commit lock (auto: as the checkpoint was trained, else on)")
     ap.add_argument("--save-replays", action="store_true", help="write every game to replays/ (watchable in the game's replay viewer)")
+    ap.add_argument("--z", default="auto", help="the evaluated seat's strategy z (auto: the checkpoint's fixed_z, train.py --fixed-z; "
+                    "for bot:<name>, its template); checkpoint opponents play their own fixed_z")
     return ap.parse_args()
 
 
@@ -88,13 +90,20 @@ def main() -> None:
         slot = slot or (a.scout_slot == "auto" and "scout_order.weight" in sd)
         load_weights(agent, sd)
         agent.eval()
+    my_z = int(ck.get("config", {}).get("fixed_z", 0) or 0) if a.z == "auto" and not is_bot else int(a.z) if a.z != "auto" else 0
     ckpts = [o[5:] for o in a.opponents.split(",") if o.startswith("ckpt:")]
+    opp_z = {p: ckpt_z(p) for p in ckpts}
+    use_z = bool(my_z or any(opp_z.values()))
     assert not (is_bot and ckpts), "a scripted bot cannot be evaluated against checkpoints"
 
     def cfg(g: dict) -> dict:
         opp = "policy" if g["opp"].startswith("ckpt:") else f"bot:{g['opp']}"
-        return {"seed": g["seed"], "map": g["map"], "blue": me if g["side"] == "blue" else opp,
-                "red": opp if g["side"] == "blue" else me, "save_replay": a.save_replays, "learner": [g["side"]]}
+        c = {"seed": g["seed"], "map": g["map"], "blue": me if g["side"] == "blue" else opp,
+             "red": opp if g["side"] == "blue" else me, "save_replay": a.save_replays, "learner": [g["side"]]}
+        if use_z:  # slot settings persist: always both seats
+            other = "red" if g["side"] == "blue" else "blue"
+            c["z"] = {g["side"]: my_z, other: opp_z.get(g["opp"][5:], 0) if g["opp"].startswith("ckpt:") else 0}
+        return c
 
     # Slot i plays games i, i + n, i + 2n, ...; the next game is configured while
     # the current one runs, so it starts as soon as the current one ends.
@@ -103,7 +112,7 @@ def main() -> None:
     pos = [0] * n
     env = VecEnvV2([cfg(q[0]) for q in queue], n_procs=a.procs, max_ticks=a.max_ticks, critic=False, packed=True, scout_slot=slot,
                     **({} if lock else {"scout_lock": False}))
-    print(f"scout slot {'on' if slot else 'off'}{'' if lock else ', no lock'}", flush=True)
+    print(f"scout slot {'on' if slot else 'off'}{'' if lock else ', no lock'}" + (f", z {my_z} (opponents {opp_z})" if use_z else ""), flush=True)
     cur = env.reset()
     statics = [static_grid(s) for s in env.static]
     frozen = Frozen(ckpts, n, dev)

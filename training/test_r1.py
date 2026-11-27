@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Rebuild R1 S7 tests (docs/REBUILD_R1_PLAN.md): UPGO returns and the ROA scouting reward
-(training/v2/r1.py), and the opponent-model cross-entropy H (Agent.opp_ce).
+(training/v2/r1.py), and the opponent-model cross-entropy H (Agent.opp_ce); S11: the forced-exploiter
+slot draws (train.py Slots with --fixed-z / --shadow-bot, checkpoint opponents' fixed_z).
 
     CF_LAYOUT=v4 python3 training/test_r1.py
 """
@@ -142,7 +143,42 @@ def opp_ce_tests() -> None:
         check(abs(hn / hu - 3.0) < 1e-3, f"a wrong near-base group costs 3× a wrong unit count ({hn:.2f} vs {hu:.2f})")
 
 
+def forced_tests() -> None:
+    print("== forced exploiter slot draws (S11)")
+    import argparse
+    import random
+    import tempfile
+
+    from training.v2.train import Slots, ckpt_z
+
+    with tempfile.TemporaryDirectory() as d:
+        p = os.path.join(d, "x.pt")
+        torch.save({"model": {}, "config": {"fixed_z": 23}}, p)
+        q = os.path.join(d, "old.pt")
+        torch.save({"model": {}, "config": {}}, q)
+        check(ckpt_z(p) == 23 and ckpt_z(q) == 0, "ckpt_z reads a checkpoint's fixed_z (0 when it has none)")
+        ns = dict(maps="shardfall", imitate=False, pfsp=False, scenarios="", scenario_frac=0.25, fixed_z=0, shadow_bot="")
+        plain = Slots(argparse.Namespace(**ns, opponents="macro"), random.Random(1)).draw()
+        check("z" not in plain and "shadow" not in plain, "no z, no shadow: the draw carries neither")
+        sl = Slots(argparse.Namespace(**{**ns, "fixed_z": 23, "shadow_bot": "backdoor"}, opponents=f"macro,ckpt:{q}"), random.Random(2))
+        ok = True
+        for _ in range(40):
+            c = sl.draw()
+            me = c["learner"][0]
+            other = "red" if me == "blue" else "blue"
+            ok &= c["z"] == {me: 23, other: 0} and c["shadow"] == {me: "backdoor"}
+        check(ok, "--fixed-z and --shadow-bot: the learner's seat, whichever side it draws")
+        sl = Slots(argparse.Namespace(**ns, opponents=f"macro,ckpt:{p}"), random.Random(3))
+        zs = set()
+        for _ in range(40):
+            c = sl.draw()
+            other = "red" if c["learner"][0] == "blue" else "blue"
+            zs.add((c["opp"].startswith("ckpt:"), c["z"][c["learner"][0]], c["z"][other]))
+        check(zs == {(True, 0, 23), (False, 0, 0)}, f"a checkpoint opponent plays its fixed_z, a scripted one 0 ({sorted(zs)})")
+
+
 if __name__ == "__main__":
+    forced_tests()
     upgo_tests()
     roa_tests()
     opp_ce_tests()

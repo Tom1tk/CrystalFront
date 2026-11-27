@@ -6,10 +6,12 @@
 // Python → Node (newline-delimited JSON)
 //   { type: "reset_all", decision_interval?: 8, max_ticks?: 12000, critic?: true, packed?: false,
 //     scout_slot?: false, scout_teacher?: false, scout_lock?: true, switch_cost?: false, defence_teacher?: false,
-//     slots: [ { seed, map, blue, red, z?: {blue, red}, scenario?: null, save_replay?: false } ] }
+//     slots: [ { seed, map, blue, red, z?: {blue, red}, scenario?: null, shadow?: {blue?, red?}, save_replay?: false } ] }
 //       blue/red: "policy" | "bot:<name>" | "teach:<name>"
 //       scenario: { replay: <path>, tick, seat: "blue"|"red" } starts the episode at `tick` of that
 //       replay (see Scenario); map, blue, red and z must be the replay's, the seed comes from it
+//       shadow: { <side>: "<bot>" } dry-runs that scripted bot on a policy seat (forced exploiters, S11):
+//       the seat's message carries `shadowTeacher`, its rewards `shaped.build`
 //   { type: "step", actions: [ { blue?: {econ: [kind, site, econPtr, econTarget], army: [group, order, unit, target, ptr], scout?: [order, target, ptr]}, red?: … } ] }
 //       scout: the Outrider's own order (scout_slot: policy seats get masks for it, and the
 //       Outrider is then out of the `scout` group and the unit pointer; see actions.ts)
@@ -35,6 +37,10 @@
 // scripted bots' defence rules give now (defence.ts), or null when no defence applies.
 // scout_lock false: the scout slot's 50-tick commitment is off (actions.ts MaskOpts.scoutLock).
 // switch_cost: rewards[side].shaped.switch counts this decision's switch events (actions.ts countSwitches).
+// `shadowTeacher` (shadow, that seat): the wire action the shadow bot chooses from the seat's own obs and
+// masks (z: the seat's configured z), never applied; null when it is not legal there. `shaped.build`
+// (same seat): +1/len per step of the bot's build list (ScriptedV2Bot.buildOrder) finished in order in
+// this window; a step is finished when that many of its building stand complete.
 // `rewards` (per policy/teach seat) covers the window just played: raw
 // components, see rewards.ts, plus shaped.intel: first sightings of enemy entities this window
 // (sightingWeight), mine minus the opponent's. On done or truncation `terminal` holds the final
@@ -56,7 +62,7 @@ import { episodeStatus, TRAIN_MAX_TICKS } from "../episode.js";
 import * as V2 from "./actions.js";
 import * as OBS from "./observation.js";
 import { makeV2Bot, type V2Bot } from "./bots.js";
-import { botContext, type BotContext } from "./scripted.js";
+import { botContext, ScriptedV2Bot, SCRIPTED, type BotContext } from "./scripted.js";
 import { defenceLabel } from "./defence.js";
 import { OutriderPlan } from "./scout.js";
 import { rewardSnapshot, windowRewards, type RewardSnapshot, type SeatRewards } from "./rewards.js";
@@ -72,6 +78,8 @@ export interface SlotConfig {
   red: string;
   z: { blue: number; red: number };
   scenario: Scenario | null;
+  /** Forced exploiters (S11): a scripted bot dry-run on a policy seat, per side. */
+  shadow: { blue: string | null; red: string | null };
   save_replay: boolean;
 }
 
@@ -249,6 +257,10 @@ class Slot {
   defCtx: [BotContext | null, BotContext | null] = [null, null];
   /** switch_cost: the last order per group key, per seat. */
   orderLogs: [V2.OrderLog, V2.OrderLog] = [new Map(), new Map()];
+  /** shadow: the dry-run bot per seat, its build list and how many steps of it are finished. */
+  shadowBots: [ScriptedV2Bot | null, ScriptedV2Bot | null] = [null, null];
+  builds: [Array<{ b: string; n: number }>, Array<{ b: string; n: number }>] = [[], []];
+  buildDone: [number, number] = [0, 0];
 
   constructor(cfg: SlotConfig, private idx: number, private g: Globals, private opts: RunnerOptions) {
     this.cfg = cfg;
@@ -298,7 +310,8 @@ class Slot {
       const s = pre.slot;
       ({ engine: this.engine, match: this.match, specs: this.specs, seats: this.seats, oss: this.oss, bots: this.bots, masks: this.masks,
         chosen: this.chosen, actions: this.actions, illegal: this.illegal, botErrors: this.botErrors, episodeSeed: this.episodeSeed,
-        zSeat: this.zSeat, shadows: this.shadows, sighted: this.sighted, defCtx: this.defCtx, orderLogs: this.orderLogs } = s);
+        zSeat: this.zSeat, shadows: this.shadows, sighted: this.sighted, defCtx: this.defCtx, orderLogs: this.orderLogs,
+        shadowBots: this.shadowBots, builds: this.builds, buildDone: this.buildDone } = s);
       this.seqIndex++;
     } else {
       const run = this.begin();
@@ -336,6 +349,14 @@ class Slot {
     this.sight();
     this.defCtx = [0, 1].map((i) => (this.g.defenceTeacher && this.specs[i].kind === "policy" ? botContext(this.match, this.seats[i], this.g.cap) : null)) as [BotContext | null, BotContext | null];
     this.orderLogs = [new Map(), new Map()];
+    this.shadowBots = [0, 1].map((i) => {
+      const b = cfg.shadow[SIDES[i]];
+      if (!b) return null;
+      if (this.specs[i].kind !== "policy") throw new Error(`slot ${this.idx}: shadow ${b} on ${SIDES[i]}, which is not a policy seat`);
+      return new ScriptedV2Bot(b, mixSeed(this.episodeSeed, strSeed(`shadow:${b}`)), botContext(this.match, this.seats[i], this.g.cap), cfg.z[SIDES[i]]);
+    }) as [ScriptedV2Bot | null, ScriptedV2Bot | null];
+    this.builds = [this.shadowBots[0]?.buildOrder() ?? [], this.shadowBots[1]?.buildOrder() ?? []];
+    this.buildDone = [0, 0];
     this.actions = [];
     this.illegal = [0, 0];
     this.botErrors = [0, 0];
@@ -417,6 +438,17 @@ class Slot {
           ? [0, V2.TARGET_NONE, 0] : [want.scoutOrder, want.scoutTarget, want.scoutPtr];
       }
       if (this.specs[i].kind === "bot" || ff) continue;
+      let shadowTeacher: Record<string, unknown> | null | undefined;
+      if (this.shadowBots[i]) {
+        try {
+          const a = this.shadowBots[i]!.decide(obs, this.masks[i]);
+          shadowTeacher = V2.isLegal(this.masks[i], a) ? toWire(a) : null;
+        } catch (e) {
+          this.botErrors[i]++;
+          if (this.botErrors[i] <= 3) process.stderr.write(`v2 runner: slot ${this.idx} ${SIDES[i]} shadow ${this.cfg.shadow[SIDES[i]]} threw at tick ${match.tick}: ${(e as Error).stack ?? e}\n`);
+          shadowTeacher = null;
+        }
+      }
       if (this.g.packed && !this.layout) this.layout = layout(obs, this.masks[i]);
       out[SIDES[i]] = {
         obs: this.g.packed ? packObs(obs) : obs,
@@ -426,10 +458,24 @@ class Slot {
         teacher: this.specs[i].kind === "teach" ? toWire(this.chosen[i]!) : null,
         ...(scoutTeacher ? { scoutTeacher } : {}),
         ...(this.defCtx[i] ? { defenceTeacher: defenceLabel(obs, this.masks[i], this.defCtx[i]!) } : {}),
+        ...(shadowTeacher !== undefined ? { shadowTeacher } : {}),
       };
     }
     this.snap = rewardSnapshot(match);
     return out;
+  }
+
+  /** shadow: build-list steps newly finished in order (each +1/len). */
+  private buildSteps(i: 0 | 1): number {
+    const list = this.builds[i], pid = PLAYER_IDS[i];
+    if (!list.length || this.buildDone[i] >= list.length) return 0;
+    const have = new Map<string, number>();
+    for (const e of this.match.entities.values()) {
+      if (e.ownerId === pid && e.type === "building" && e.buildingType && e.health > 0 && e.constructionProgress >= 100) have.set(e.buildingType, (have.get(e.buildingType) ?? 0) + 1);
+    }
+    const from = this.buildDone[i];
+    while (this.buildDone[i] < list.length && (have.get(list[this.buildDone[i]].b) ?? 0) >= list[this.buildDone[i]].n) this.buildDone[i]++;
+    return (this.buildDone[i] - from) / list.length;
   }
 
   /** New first sightings per seat since the last call (weighted, sightingWeight). */
@@ -518,9 +564,11 @@ class Slot {
     const rw = windowRewards(match, this.snap, winnerSeat);
     const seen = this.sight();
     const intel = Math.round(((seen[0] - seen[1]) / INTEL_SCALE) * 1e6) / 1e6;
-    const rewards: Record<string, SeatRewards & { shaped: { intel: number; switch?: number } }> = {};
+    const rewards: Record<string, SeatRewards & { shaped: { intel: number; switch?: number; build?: number } }> = {};
     for (const i of this.learnerSides()) {
-      rewards[SIDES[i]] = { ...rw[i], shaped: { ...rw[i].shaped, intel: i === 0 ? intel : -intel || 0, ...(switches ? { switch: switches[i] } : {}) } };
+      const build = this.shadowBots[i] ? this.buildSteps(i) : null;
+      rewards[SIDES[i]] = { ...rw[i], shaped: { ...rw[i].shaped, intel: i === 0 ? intel : -intel || 0, ...(switches ? { switch: switches[i] } : {}),
+        ...(build !== null ? { build } : {}) } };
     }
 
     if (!st.terminated && !st.truncated) {
@@ -576,6 +624,16 @@ function scenarioOf(raw: unknown): Scenario | null {
   return { replay: s.replay, tick: s.tick!, seat: s.seat as Side };
 }
 
+function shadowOf(raw: unknown): SlotConfig["shadow"] {
+  const s = (raw ?? {}) as Record<string, unknown>;
+  const one = (v: unknown) => {
+    if (v === undefined || v === null || v === "") return null;
+    if (typeof v !== "string" || !SCRIPTED[v]) throw new Error(`shadow: unknown scripted bot ${JSON.stringify(v)}`);
+    return v;
+  };
+  return { blue: one(s.blue), red: one(s.red) };
+}
+
 function slotConfig(raw: Record<string, unknown>, i: number): SlotConfig {
   const z = (raw.z ?? {}) as Partial<{ blue: number; red: number }>;
   const cfg: SlotConfig = {
@@ -585,9 +643,11 @@ function slotConfig(raw: Record<string, unknown>, i: number): SlotConfig {
     red: String(raw.red ?? "bot:idle"),
     z: { blue: z.blue ?? 0, red: z.red ?? 0 },
     scenario: scenarioOf(raw.scenario),
+    shadow: shadowOf(raw.shadow),
     save_replay: Boolean(raw.save_replay ?? false),
   };
   parseSeat(cfg.blue); parseSeat(cfg.red);
+  if (cfg.scenario && (cfg.shadow.blue || cfg.shadow.red)) throw new Error(`slot ${i}: a scenario start cannot have a shadow bot`);
   return cfg;
 }
 

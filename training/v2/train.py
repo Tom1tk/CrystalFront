@@ -36,6 +36,7 @@ from training.v2.r1 import RoaReward, upgo_returns
 REPO = Path(__file__).resolve().parents[2]
 VALUE_HEADS = ("win", "shaped", "aux")
 ARMY_HEADS = ("group", "order", "unit", "target", "ptr")
+SHADOW_HEADS = tuple(k for k in HEADS if k not in SCOUT_HEADS)  # the shadow bot drives econ and army, not the scout slot
 DEFENCE_HEADS = ("group", "order", "unit", "target")
 # Trained during --value-warmup (everything else, the policy's trunk and heads, is held still).
 WARMUP_PREFIXES = ("value.", "critic.", "c_", "opp.")
@@ -97,6 +98,14 @@ def parse() -> argparse.Namespace:
     # Rebuild R1 S10: scenario starts (runner.ts Scenario; built by training/v2/scenarios.py).
     ap.add_argument("--scenarios", default="", help="scenario index (training/v2/scenarios.py): with --scenario-frac, some episodes start at a lost game's handover tick")
     ap.add_argument("--scenario-frac", type=float, default=0.25, help="share of episodes drawn from --scenarios (opponent by the PFSP weight, then a uniform scenario of it)")
+    # Rebuild R1 S11: strategy-forced exploiters (runner.ts slot `shadow`; league.py --forced-exploiters).
+    ap.add_argument("--shadow-bot", default="", help="scripted bot dry-run on the learner's seat: cross-entropy on its econ and army action "
+                    "(where legal) and, with --build-w, its build-order reward (v4)")
+    ap.add_argument("--fixed-z", type=int, default=0, help="the learner's strategy z (obs and --shadow-bot template); saved in the checkpoint "
+                    "config, and checkpoint opponents play their own fixed_z")
+    ap.add_argument("--shadow-coef", type=float, default=1.0, help="weight of the shadow cross-entropy at the start")
+    ap.add_argument("--shadow-coef-end", type=float, default=0.3, help="... at the end of the budget (linear)")
+    ap.add_argument("--build-w", type=float, default=0.0, help="weight of shaped.build (the shadow bot's build list done in order, 1 in all) on the shaped head")
     ap.add_argument("--imitate", action="store_true", help="behaviour cloning: both seats are teach:<bot> from --opponents; policy heads learn the teacher's actions (cross-entropy), value heads the returns")
     ap.add_argument("--overfit", action="store_true", help="with --imitate: collect one rollout and train on it repeatedly (overfit probe: loss < 0.05)")
     a = ap.parse_args()
@@ -104,6 +113,10 @@ def parse() -> argparse.Namespace:
         raise SystemExit("--switch-w, --defence-teacher and --scout-lock 0 need CF_LAYOUT=v4")
     if a.scenarios and (a.imitate or S.LAYOUT != "v4"):
         raise SystemExit("--scenarios needs CF_LAYOUT=v4 and no --imitate")
+    if (a.shadow_bot or a.fixed_z) and (a.imitate or a.scenarios or S.LAYOUT != "v4"):
+        raise SystemExit("--shadow-bot and --fixed-z need CF_LAYOUT=v4, no --imitate and no --scenarios")
+    if a.build_w and not a.shadow_bot:
+        raise SystemExit("--build-w needs --shadow-bot")
     if a.scout_reward == "roa" and not a.init:
         raise SystemExit("--scout-reward roa needs --init (the frozen reference model)")
     for maps in a.maps.split(","):
@@ -120,6 +133,11 @@ def to_t(o: dict[str, np.ndarray], dev) -> dict[str, torch.Tensor]:
     return {k: torch.as_tensor(v, device=dev) for k, v in o.items()}
 
 
+def ckpt_z(path: str) -> int:
+    """A checkpoint's strategy z (train.py --fixed-z; 0 for older checkpoints)."""
+    return int(torch.load(path, map_location="cpu", weights_only=False).get("config", {}).get("fixed_z", 0) or 0)
+
+
 def opp_tag(o: str) -> str:
     """Short opponent name for logs: bot name, or <run>/<file> for a checkpoint."""
     if o.startswith("ckpt:"):
@@ -133,7 +151,9 @@ class Slots:
     p = the learner's win rate over its last 50 games against them (0.5 until 10 games).
     With --scenarios, a --scenario-frac share of draws are scenario starts: the opponent by the same weight
     (uniform without --pfsp), then one of its scenarios uniformly; their results are kept apart
-    (`scenario:<opp>`) and do not count towards the PFSP win rates."""
+    (`scenario:<opp>`) and do not count towards the PFSP win rates.
+    z: the learner plays --fixed-z, a checkpoint opponent its own fixed_z; sent only when one is non-zero
+    (scenario starts then reset both seats to 0, as their replays were played)."""
 
     def __init__(self, a: argparse.Namespace, rng: random.Random):
         self.maps, self.opps, self.rng = a.maps.split(","), a.opponents.split(","), rng
@@ -146,6 +166,9 @@ class Slots:
             print(f"scenarios: {sum(map(len, self.scen.values()))} from {a.scenarios} ({', '.join(f'{o} {len(v)}' for o, v in sorted(self.scen.items()))}), "
                   f"{a.scenario_frac:.0%} of episodes", flush=True)
         self.scenario_frac = a.scenario_frac
+        self.fixed_z, self.shadow = a.fixed_z, a.shadow_bot
+        self.opp_z = {o: ckpt_z(o[5:]) for o in self.opps if o.startswith("ckpt:")}
+        self.use_z = bool(a.fixed_z or any(self.opp_z.values()))
         assert not (self.imitate and any(o.startswith("ckpt:") for o in self.opps)), "imitation needs scripted teachers"
 
     def record(self, opp: str, won: bool) -> None:
@@ -171,7 +194,8 @@ class Slots:
             so = sorted(self.scen)
             o = self.rng.choices(so, weights=[self.weight(x) for x in so])[0] if self.pfsp else self.rng.choice(so)
             sc = self.rng.choice(self.scen[o])
-            return {k: sc[k] for k in ("seed", "map", "blue", "red", "learner", "scenario")} | {"opp": f"scenario:{o}"}
+            return {k: sc[k] for k in ("seed", "map", "blue", "red", "learner", "scenario")} | {"opp": f"scenario:{o}"} \
+                | ({"z": {"blue": 0, "red": 0}} if self.use_z else {})
         learner = "blue" if self.rng.random() < 0.5 else "red"
         o = self.rng.choices(self.opps, weights=self.weights())[0] if self.pfsp else self.rng.choice(self.opps)
         cfg = {"seed": self.rng.randrange(1 << 30), "map": self.rng.choice(self.maps), "opp": o}
@@ -182,6 +206,11 @@ class Slots:
         else:
             other = "red" if learner == "blue" else "blue"
             cfg.update({learner: "policy", other: f"bot:{o}", "learner": [learner]})
+        other = "red" if learner == "blue" else "blue"
+        if self.use_z:  # z and shadow persist across episodes: always both seats
+            cfg["z"] = {learner: self.fixed_z, other: self.opp_z.get(o, 0)}
+        if self.shadow:
+            cfg["shadow"] = {learner: self.shadow}
         return cfg
 
 
@@ -282,6 +311,7 @@ def main() -> None:
     ep_steps = np.zeros(B, dtype=np.int64)
     ep_train = np.zeros((B, S.ECON_BUILD0 - 1), dtype=np.int64)
     ep_ret = np.zeros((B, 3))
+    ep_build = np.zeros(B)  # shaped.build so far (the share of the shadow bot's build list done)
     hc = agent.zero_state(B, dev)
     hc_ref = agent.zero_state(B, dev)
     first = np.ones(B, dtype=bool)  # the next observation starts an episode
@@ -315,6 +345,7 @@ def main() -> None:
         intel_w = a.intel_w * max(0.0, 1.0 - frac / a.intel_anneal) if a.intel_anneal > 0 else 0.0
         scout_w = a.scout_w * max(0.0, 1.0 - frac / a.scout_anneal) if a.scout_reward == "roa" and a.scout_anneal > 0 else 0.0
         defence_coef = a.defence_coef + (a.defence_coef_end - a.defence_coef) * frac
+        shadow_coef = a.shadow_coef + (a.shadow_coef_end - a.shadow_coef) * frac
         warm = update < a.value_warmup  # update counts from 0 with --init, so each cycle warms up its fresh critic
 
         # ── rollout ──────────────────────────────────────────────────────────
@@ -395,6 +426,16 @@ def main() -> None:
                     store["d_on"].append(don)
                     store["d_bad"].append(bad)
                     store["d_rows"].append({k: np.where(don.reshape(-1, *[1] * (m_rows[k].ndim - 1)), m_rows[k], rows_np[k]) for k in DEFENCE_HEADS})
+                if a.shadow_bot:  # the shadow bot's econ and army action, with its mask rows (illegal or missing → the taken action, unused)
+                    taken = wire_actions(out)
+                    sh_on = np.asarray([s.shadow_teacher is not None for s in ls])
+                    tw = [{**(s.shadow_teacher or w), "scout": w["scout"]} for s, w in zip(ls, taken)]
+                    with torch.no_grad():
+                        sg = teacher_actions(tw, dev)
+                        _, srows, _, _ = agent.policy(h, E, valid, masks=to_t(masks, dev), given=sg)
+                    store["sh_lab"].append({k: sg[k].cpu().numpy() for k in SHADOW_HEADS})
+                    store["sh_rows"].append({k: srows[k].cpu().numpy() for k in SHADOW_HEADS})
+                    store["sh_on"].append(sh_on)
                 acts = [None] * len(cur)
                 if not a.imitate:
                     for j, w in zip(lrn, wire_actions(out)):
@@ -422,6 +463,8 @@ def main() -> None:
                     sh = np.asarray([r["shaped"][k] for k in S.SHAPED_KEYS], dtype=np.float32)
                     shaped_r = float((sh * shaped_w).sum()) * 0.6 ** (minutes / 10) + intel_w * r["shaped"].get("intel", 0.0)
                     shaped_r -= a.switch_w * r["shaped"].get("switch", 0.0)
+                    shaped_r += a.build_w * r["shaped"].get("build", 0.0)
+                    ep_build[j] += r["shaped"].get("build", 0.0)
                     if a.switch_w > 0:
                         store["switch"].append(r["shaped"].get("switch", 0.0))
                     if scout_w:
@@ -443,7 +486,8 @@ def main() -> None:
                         recent.append({"win": won, "loss": info["winner"] not in (None, tr.side), "trunc": tr.truncated,
                                        "winType": info.get("winType"), "ticks": info["ticks"], "opp": opp_tag(opp),
                                        "map": info["episode"]["map"], "side": tr.side, "ret": ep_ret[j].copy(),
-                                       "train": ep_train[j].copy()})
+                                       "train": ep_train[j].copy(), "build": float(ep_build[j])})
+                        ep_build[j] = 0
                         ep_steps[j] = 0
                         ep_train[j] = 0
                         ep_ret[j] = 0
@@ -516,6 +560,10 @@ def main() -> None:
                 d_lab, d_on, d_bad = np.concatenate(store["d_lab"]), np.concatenate(store["d_on"]), np.concatenate(store["d_bad"])
                 d_rows = {k: np.concatenate([r[k] for r in store["d_rows"]]) for k in DEFENCE_HEADS}
                 f_ref_army = np.concatenate(store["ref_army"]) if ref is not None else None
+            if a.shadow_bot:
+                sh_lab = {k: np.concatenate([x[k] for x in store["sh_lab"]]) for k in SHADOW_HEADS}
+                sh_rows = {k: np.concatenate([x[k] for x in store["sh_rows"]]) for k in SHADOW_HEADS}
+                sh_on = np.concatenate(store["sh_on"])
             f_opp = np.concatenate(store["opp"])
             f_first = firsts.reshape(N)
             h0, c0 = np.stack(store["h0"]), np.stack(store["c0"])  # (T / L, B, d)
@@ -601,6 +649,14 @@ def main() -> None:
                     logs["scout/ce"].append(scout_ce.item())
                     act_ = lab[:, 0] > 0
                     logs["scout/ce_orders"].append((-(s_lp * act_).sum() / act_.sum().clamp(min=1)).item())
+                if a.shadow_bot and not warm:  # forced exploiter: cross-entropy on the shadow bot's econ and army action, where legal
+                    hlp = {}
+                    agent.policy(h, E, valid, rows={**rows_t, **{k: torch.as_tensor(sh_rows[k][idx], device=dev) for k in SHADOW_HEADS}},
+                                 given={**act_t, **{k: torch.as_tensor(sh_lab[k][idx], device=dev) for k in SHADOW_HEADS}}, head_lp=hlp)
+                    on_t = torch.as_tensor(sh_on[idx], device=dev).float()
+                    sh_ce = -(sum(hlp[k] for k in SHADOW_HEADS) * on_t).sum() / on_t.sum().clamp(min=1)
+                    loss = loss + shadow_coef * sh_ce
+                    logs["shadow/ce"].append(sh_ce.item())
                 opt.zero_grad()
                 loss.backward()
                 if warm:  # value warm-up: only the value, critic and opponent-model parameters move
@@ -652,6 +708,14 @@ def main() -> None:
             writer.add_scalar("defence/label_illegal", float(d_bad.mean()), step)
             writer.add_scalar("defence/follow", float((d_on & (f_act["group"] == d_lab[:, 0]) & (f_act["order"] == d_lab[:, 1])).sum() / max(1, d_on.sum())), step)
             writer.add_scalar("sched/defence_coef", defence_coef, step)
+        if a.shadow_bot:
+            writer.add_scalar("shadow/label_rate", float(sh_on.mean()), step)
+            writer.add_scalar("shadow/follow_econ", float((sh_on & (f_act["econ"] == sh_lab["econ"])).sum() / max(1, sh_on.sum())), step)
+            writer.add_scalar("shadow/follow_army", float((sh_on & (f_act["group"] == sh_lab["group"]) & (f_act["order"] == sh_lab["order"])).sum()
+                                                          / max(1, sh_on.sum())), step)
+            writer.add_scalar("sched/shadow_coef", shadow_coef, step)
+            if recent:
+                writer.add_scalar("episode/build_done", float(np.mean([e["build"] for e in recent])), step)
         if a.scout_teacher:
             writer.add_scalar("scout/teacher_rate", float((s_lab[:, 0] > 0).mean()), step)
             writer.add_scalar("scout/teacher_illegal", float(s_bad.mean()), step)
