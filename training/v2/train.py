@@ -94,11 +94,16 @@ def parse() -> argparse.Namespace:
     ap.add_argument("--defence-teacher", action="store_true", help="cross-entropy on the scripted defence order (defence.ts) while a defence rule holds (v4)")
     ap.add_argument("--defence-coef", type=float, default=0.5, help="weight of the defence teacher loss at the start")
     ap.add_argument("--defence-coef-end", type=float, default=0.05, help="... at the end of the budget (linear)")
+    # Rebuild R1 S10: scenario starts (runner.ts Scenario; built by training/v2/scenarios.py).
+    ap.add_argument("--scenarios", default="", help="scenario index (training/v2/scenarios.py): with --scenario-frac, some episodes start at a lost game's handover tick")
+    ap.add_argument("--scenario-frac", type=float, default=0.25, help="share of episodes drawn from --scenarios (opponent by the PFSP weight, then a uniform scenario of it)")
     ap.add_argument("--imitate", action="store_true", help="behaviour cloning: both seats are teach:<bot> from --opponents; policy heads learn the teacher's actions (cross-entropy), value heads the returns")
     ap.add_argument("--overfit", action="store_true", help="with --imitate: collect one rollout and train on it repeatedly (overfit probe: loss < 0.05)")
     a = ap.parse_args()
     if (a.switch_w > 0 or a.defence_teacher or not a.scout_lock) and S.LAYOUT != "v4":
         raise SystemExit("--switch-w, --defence-teacher and --scout-lock 0 need CF_LAYOUT=v4")
+    if a.scenarios and (a.imitate or S.LAYOUT != "v4"):
+        raise SystemExit("--scenarios needs CF_LAYOUT=v4 and no --imitate")
     if a.scout_reward == "roa" and not a.init:
         raise SystemExit("--scout-reward roa needs --init (the frozen reference model)")
     for maps in a.maps.split(","):
@@ -125,12 +130,22 @@ def opp_tag(o: str) -> str:
 
 class Slots:
     """Per-slot episode config draws. With `pfsp`, opponents are weighted by (1 - p)^2 (floor 0.1),
-    p = the learner's win rate over its last 50 games against them (0.5 until 10 games)."""
+    p = the learner's win rate over its last 50 games against them (0.5 until 10 games).
+    With --scenarios, a --scenario-frac share of draws are scenario starts: the opponent by the same weight
+    (uniform without --pfsp), then one of its scenarios uniformly; their results are kept apart
+    (`scenario:<opp>`) and do not count towards the PFSP win rates."""
 
     def __init__(self, a: argparse.Namespace, rng: random.Random):
         self.maps, self.opps, self.rng = a.maps.split(","), a.opponents.split(","), rng
         self.imitate, self.pfsp = a.imitate, a.pfsp
         self.hist = {o: deque(maxlen=50) for o in self.opps}
+        self.scen: dict[str, list[dict]] = defaultdict(list)
+        if a.scenarios:
+            for sc in json.load(open(a.scenarios))["scenarios"]:
+                self.scen[sc["opp"]].append(sc)
+            print(f"scenarios: {sum(map(len, self.scen.values()))} from {a.scenarios} ({', '.join(f'{o} {len(v)}' for o, v in sorted(self.scen.items()))}), "
+                  f"{a.scenario_frac:.0%} of episodes", flush=True)
+        self.scenario_frac = a.scenario_frac
         assert not (self.imitate and any(o.startswith("ckpt:") for o in self.opps)), "imitation needs scripted teachers"
 
     def record(self, opp: str, won: bool) -> None:
@@ -141,17 +156,27 @@ class Slots:
         h = self.hist[o]
         return float(np.mean(h)) if len(h) >= 10 else 0.5
 
+    def weight(self, o: str) -> float:
+        return max((1 - (self.win_rate(o) if o in self.hist else 0.5)) ** 2, 0.1)
+
     def weights(self) -> list[float]:
-        return [max((1 - self.win_rate(o)) ** 2, 0.1) for o in self.opps]
+        return [self.weight(o) for o in self.opps]
 
     def draw(self) -> dict:
         """Returns the slot config, plus the Python-side key `opp` (the opponent's name in --opponents)."""
         if self.imitate:  # scripted v scripted, both seats teaching
             return {"seed": self.rng.randrange(1 << 30), "map": self.rng.choice(self.maps),
                     "blue": f"teach:{self.rng.choice(self.opps)}", "red": f"teach:{self.rng.choice(self.opps)}", "opp": "teach"}
+        if self.scen and self.rng.random() < self.scenario_frac:
+            so = sorted(self.scen)
+            o = self.rng.choices(so, weights=[self.weight(x) for x in so])[0] if self.pfsp else self.rng.choice(so)
+            sc = self.rng.choice(self.scen[o])
+            return {k: sc[k] for k in ("seed", "map", "blue", "red", "learner", "scenario")} | {"opp": f"scenario:{o}"}
         learner = "blue" if self.rng.random() < 0.5 else "red"
         o = self.rng.choices(self.opps, weights=self.weights())[0] if self.pfsp else self.rng.choice(self.opps)
         cfg = {"seed": self.rng.randrange(1 << 30), "map": self.rng.choice(self.maps), "opp": o}
+        if self.scen:
+            cfg["scenario"] = None  # slot settings persist across episodes
         if o.startswith("ckpt:"):  # both seats are networks; only the learner's seat trains
             cfg.update(blue="policy", red="policy", learner=[learner])
         else:

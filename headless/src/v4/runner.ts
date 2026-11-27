@@ -8,6 +8,8 @@
 //     scout_slot?: false, scout_teacher?: false, scout_lock?: true, switch_cost?: false, defence_teacher?: false,
 //     slots: [ { seed, map, blue, red, z?: {blue, red}, scenario?: null, save_replay?: false } ] }
 //       blue/red: "policy" | "bot:<name>" | "teach:<name>"
+//       scenario: { replay: <path>, tick, seat: "blue"|"red" } starts the episode at `tick` of that
+//       replay (see Scenario); map, blue, red and z must be the replay's, the seed comes from it
 //   { type: "step", actions: [ { blue?: {econ: [kind, site, econPtr, econTarget], army: [group, order, unit, target, ptr], scout?: [order, target, ptr]}, red?: … } ] }
 //       scout: the Outrider's own order (scout_slot: policy seats get masks for it, and the
 //       Outrider is then out of the `scout` group and the unit pointer; see actions.ts)
@@ -47,7 +49,7 @@
 // then carries `layout` (the shapes) for Python to check.
 import { MatchEngine } from "../../../server/src/match/matchEngine.js";
 import { DEFAULT_CONFIG, type MatchState, type PlayerSlot } from "../../../server/src/match/types.js";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { ENGINE_VERSION } from "@crystalfront/shared";
 import { episodeStatus, TRAIN_MAX_TICKS } from "../episode.js";
@@ -69,9 +71,20 @@ export interface SlotConfig {
   blue: string;
   red: string;
   z: { blue: number; red: number };
-  scenario: null;
+  scenario: Scenario | null;
   save_replay: boolean;
 }
+
+/**
+ * A scenario start (Rebuild R1 S10): the episode begins at `tick` of a saved replay. The match is
+ * rebuilt from the replay's seed and map and fast-forwarded: the `seat` side (a policy seat in the
+ * replay) plays its recorded actions, the other side's scripted bot plays live from the same seed and
+ * must choose exactly what the replay recorded, and the engine's command log must equal the replay's
+ * up to `tick`; anything else is an error. Observations, teachers and bots run through the
+ * fast-forward; rewards (and onTick) start at the handover. `tick` must be one of the replay's
+ * decision ticks.
+ */
+export interface Scenario { replay: string; tick: number; seat: Side }
 
 interface SeatSpec { kind: "policy" | "bot" | "teach"; bot: string | null }
 
@@ -242,18 +255,65 @@ class Slot {
     this.seedBase = cfg.seed;
   }
 
+  /**
+   * Scenario fast-forwards are slow (about 3 ms a tick), and one slot blocking would stall every
+   * process at the step barrier. So when the next episode is configured as a scenario, a second Slot
+   * plays its fast-forward in the background, PRE_DECISIONS decisions per step of this episode;
+   * start() takes it over (finishing what is left).
+   */
+  private pre: { key: string; slot: Slot; run: Generator<void, void> } | null = null;
+
+  /** The config the next episode will use. */
+  private nextCfg(): SlotConfig {
+    const p = this.pendingCfg;
+    return p ? { ...this.cfg, ...p, z: { ...this.cfg.z, ...(p.z ?? {}) } } : this.cfg;
+  }
+
+  /** Advance the next episode's background fast-forward, if it is a scenario. */
+  private advancePre(): void {
+    const cfg = this.nextCfg();
+    if (!cfg.scenario) { this.pre = null; return; }
+    const key = JSON.stringify(cfg);
+    if (this.pre?.key !== key) {
+      const s = new Slot(cfg, this.idx, this.g, this.opts);
+      s.episodes = this.episodes;
+      this.pre = { key, slot: s, run: s.begin() };
+    }
+    for (let i = 0; i < PRE_DECISIONS; i++) if (this.pre.run.next().done) break;
+  }
+
   /** Start the next episode (applying any pending configuration) and prepare its first decision. */
   start(): Record<string, unknown> {
+    const next = this.nextCfg();
     if (this.pendingCfg) {
       const p = this.pendingCfg;
       this.pendingCfg = null;
-      this.cfg = { ...this.cfg, ...p, z: { ...this.cfg.z, ...(p.z ?? {}) } };
+      this.cfg = next;
       if (p.seed !== undefined) { this.seedBase = p.seed; this.seqIndex = 0; }
     }
+    const pre = this.pre;
+    this.pre = null;
+    if (pre && pre.key === JSON.stringify(this.cfg)) {
+      while (!pre.run.next().done) { /* finish the fast-forward */ }
+      const s = pre.slot;
+      ({ engine: this.engine, match: this.match, specs: this.specs, seats: this.seats, oss: this.oss, bots: this.bots, masks: this.masks,
+        chosen: this.chosen, actions: this.actions, illegal: this.illegal, botErrors: this.botErrors, episodeSeed: this.episodeSeed,
+        zSeat: this.zSeat, shadows: this.shadows, sighted: this.sighted, defCtx: this.defCtx, orderLogs: this.orderLogs } = s);
+      this.seqIndex++;
+    } else {
+      const run = this.begin();
+      while (!run.next().done) { /* build and fast-forward */ }
+    }
+    this.episodes++;
+    return this.prepare();
+  }
+
+  /** Build the episode from this.cfg; a scenario then fast-forwards, yielding after every decision. */
+  private *begin(): Generator<void, void> {
     const cfg = this.cfg;
-    if (cfg.scenario !== null) throw new Error("scenarios are not implemented yet (probes, §6)");
     this.specs = [parseSeat(cfg.blue), parseSeat(cfg.red)];
-    this.episodeSeed = this.seqIndex === 0 ? this.seedBase >>> 0 : mixSeed(this.seedBase, this.seqIndex);
+    const rep = cfg.scenario ? this.loadScenario(cfg.scenario) : null;
+    this.episodeSeed = rep ? rep.seed : this.seqIndex === 0 ? this.seedBase >>> 0 : mixSeed(this.seedBase, this.seqIndex);
     this.seqIndex++;
     this.engine = new MatchEngine();
     const players: [PlayerSlot, PlayerSlot] = [
@@ -279,22 +339,72 @@ class Slot {
     this.actions = [];
     this.illegal = [0, 0];
     this.botErrors = [0, 0];
-    this.episodes++;
-    return this.prepare();
+    if (rep) yield* this.fastForward(rep, cfg.scenario!);
+  }
+
+  /** The scenario's replay, checked against this slot's settings. */
+  private loadScenario(sc: Scenario): V2Replay {
+    const r = JSON.parse(readFileSync(sc.replay, "utf8")) as V2Replay;
+    const bad = (why: string) => new Error(`slot ${this.idx}: scenario ${sc.replay}: ${why}`);
+    const pol = SIDES.indexOf(sc.seat), opp = 1 - pol;
+    if (r.engineVersion !== ENGINE_VERSION || r.v2?.actionSpaceVersion !== V2.ACTION_SPACE_VERSION || r.v2.k !== this.g.k || r.v2.cap !== this.g.cap)
+      throw bad(`engine ${r.engineVersion}, action space ${r.v2?.actionSpaceVersion}, k ${r.v2?.k}, cap ${r.v2?.cap}; this runner has ${ENGINE_VERSION}, ${V2.ACTION_SPACE_VERSION}, ${this.g.k}, ${this.g.cap}`);
+    if (r.mapId !== this.cfg.map || r.blue !== this.cfg.blue || r.red !== this.cfg.red)
+      throw bad(`the replay is ${r.mapId} ${r.blue} v ${r.red}, the slot ${this.cfg.map} ${this.cfg.blue} v ${this.cfg.red}`);
+    if (this.specs[pol].kind !== "policy" || this.specs[opp].kind !== "bot")
+      throw bad(`seat ${sc.seat} must be the policy and the other a scripted bot`);
+    if (!r.v2.actions.some((a) => a.tick === sc.tick)) throw bad(`tick ${sc.tick} is not one of its decisions`);
+    return r;
+  }
+
+  /** Scenario: play the replay up to its handover tick (see Scenario). */
+  private *fastForward(r: V2Replay, sc: Scenario): Generator<void, void> {
+    const { engine, match } = this;
+    const bad = (why: string) => new Error(`slot ${this.idx}: scenario ${sc.replay}: ${why}`);
+    const pol = SIDES.indexOf(sc.seat) as 0 | 1, opp = (1 - pol) as 0 | 1;
+    if (this.zSeat[0] !== r.v2.z[0] || this.zSeat[1] !== r.v2.z[1]) throw bad(`z ${this.zSeat} but the replay has ${r.v2.z}`);
+    for (const rec of r.v2.actions) {
+      if (rec.tick >= sc.tick) break;
+      if (rec.tick !== match.tick) throw bad(`decision recorded at tick ${rec.tick}, the match is at ${match.tick}`);
+      this.prepare(true);
+      const mine = fromWire(rec[SIDES[pol]]), theirs = this.chosen[opp]!;
+      if (!mine) throw bad(`malformed action at tick ${rec.tick}`);
+      if (JSON.stringify(toWire(theirs)) !== JSON.stringify(rec[SIDES[opp]]))
+        throw bad(`the ${this.specs[opp].bot} bot diverged from the replay at tick ${rec.tick}`);
+      const acts: [V2.V2Action, V2.V2Action] = pol === 0 ? [mine, theirs] : [theirs, mine];
+      this.actions.push({ tick: match.tick, blue: toWire(acts[0]), red: toWire(acts[1]) });
+      if (this.g.switchCost) for (const i of [0, 1]) V2.countSwitches(match, this.seats[i], acts[i], this.orderLogs[i], V2.SWITCH_DECISIONS * this.g.k);
+      V2.applyV2Pair(engine, match, this.seats, acts);
+      for (let t = 0; t < this.g.k; t++) {
+        engine.tick(match.id);
+        const st = episodeStatus(match, this.g.cap);
+        if (st.terminated || st.truncated) throw bad(`the game ended at tick ${match.tick}, before the handover`);
+      }
+      this.sight();
+      yield;
+    }
+    if (match.tick !== sc.tick) throw bad(`fast-forward stopped at tick ${match.tick}, not ${sc.tick}`);
+    const want = r.commandLog.filter((e) => e.tick < sc.tick), got = match.commandLog;
+    const at = want.findIndex((e, i) => JSON.stringify(e) !== JSON.stringify(got[i]));
+    if (at >= 0 || got.length !== want.length)
+      throw bad(`command log differs from the replay at entry ${at >= 0 ? at : Math.min(got.length, want.length)} (${got.length} vs ${want.length} entries)`);
   }
 
   private learnerSides(): number[] {
     return [0, 1].filter((i) => this.specs[i].kind !== "bot");
   }
 
-  /** Autopilot, observe, masks and bot choices for the decision about to be made. */
-  prepare(): Record<string, unknown> {
+  /**
+   * Autopilot, observe, masks and bot choices for the decision about to be made. `ff`
+   * (scenario fast-forward): only the stateful parts, no output.
+   */
+  prepare(ff = false): Record<string, unknown> {
     const { engine, match } = this;
     for (const s of this.seats) {
       V2.workerAutopilot(engine, match, s);
     }
     const out: Record<string, unknown> = {};
-    const critic = this.g.critic && this.learnerSides().length ? this.critic() : null;
+    const critic = !ff && this.g.critic && this.learnerSides().length ? this.critic() : null;
     for (const i of [0, 1] as const) {
       const obs = OBS.observe(match, this.seats[i], this.oss[i], { z: this.zSeat[i], cap: this.g.cap });
       this.masks[i] = V2.computeMasks(match, this.seats[i], { scoutSlot: this.g.scoutSlot && this.specs[i].kind === "policy", scoutLock: this.g.scoutLock });
@@ -306,7 +416,7 @@ class Slot {
         scoutTeacher = !want || V2.scoutCmdMatches(match, this.seats[i], want, SCOUT_TEACHER_REFRESH * this.g.k)
           ? [0, V2.TARGET_NONE, 0] : [want.scoutOrder, want.scoutTarget, want.scoutPtr];
       }
-      if (this.specs[i].kind === "bot") continue;
+      if (this.specs[i].kind === "bot" || ff) continue;
       if (this.g.packed && !this.layout) this.layout = layout(obs, this.masks[i]);
       out[SIDES[i]] = {
         obs: this.g.packed ? packObs(obs) : obs,
@@ -379,7 +489,7 @@ class Slot {
   }
 
   episodeInfo() {
-    return { index: this.episodes - 1, seed: this.episodeSeed, map: this.cfg.map, blue: this.cfg.blue, red: this.cfg.red, z: { ...this.cfg.z }, botZ: { blue: this.bots[0]?.z ?? 0, red: this.bots[1]?.z ?? 0 } };
+    return { index: this.episodes - 1, seed: this.episodeSeed, map: this.cfg.map, blue: this.cfg.blue, red: this.cfg.red, z: { ...this.cfg.z }, botZ: { blue: this.bots[0]?.z ?? 0, red: this.bots[1]?.z ?? 0 }, scenario: this.cfg.scenario };
   }
 
   step(wire: Record<string, unknown> | undefined): Record<string, unknown> {
@@ -414,7 +524,9 @@ class Slot {
     }
 
     if (!st.terminated && !st.truncated) {
-      return { seats: this.prepare(), rewards, done: false, truncated: false, terminal: null, info: {} };
+      const seats = this.prepare();
+      this.advancePre();
+      return { seats, rewards, done: false, truncated: false, terminal: null, info: {} };
     }
 
     // Episode over: final observations, info, replay, then autoreset.
@@ -449,9 +561,20 @@ class Slot {
   }
 }
 
+/** Background scenario fast-forward: decisions per step of the current episode (Slot.pre). */
+const PRE_DECISIONS = 1;
+
 let GAME_VERSION = "unknown";
 /** Version string written into saved replays (the stdio entry sets it from package.json). */
 export function setGameVersion(v: string): void { GAME_VERSION = v; }
+
+function scenarioOf(raw: unknown): Scenario | null {
+  if (raw === null || raw === undefined) return null;
+  const s = raw as Partial<Scenario>;
+  if (typeof s.replay !== "string" || !Number.isInteger(s.tick) || !SIDES.includes(s.seat as Side))
+    throw new Error(`scenario must be { replay, tick, seat: "blue"|"red" }: ${JSON.stringify(raw)}`);
+  return { replay: s.replay, tick: s.tick!, seat: s.seat as Side };
+}
 
 function slotConfig(raw: Record<string, unknown>, i: number): SlotConfig {
   const z = (raw.z ?? {}) as Partial<{ blue: number; red: number }>;
@@ -461,7 +584,7 @@ function slotConfig(raw: Record<string, unknown>, i: number): SlotConfig {
     blue: String(raw.blue ?? "policy"),
     red: String(raw.red ?? "bot:idle"),
     z: { blue: z.blue ?? 0, red: z.red ?? 0 },
-    scenario: (raw.scenario ?? null) as null,
+    scenario: scenarioOf(raw.scenario),
     save_replay: Boolean(raw.save_replay ?? false),
   };
   parseSeat(cfg.blue); parseSeat(cfg.red);

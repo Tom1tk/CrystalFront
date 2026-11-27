@@ -15,6 +15,10 @@ import * as O4 from "../headless/src/v4/observation.js";
 import { fromOwnFrame, toOwnFrame } from "../headless/src/v4/frame.js";
 import { botContext } from "../headless/src/v4/scripted.js";
 import { defenceLabel } from "../headless/src/v4/defence.js";
+import { hashMatchState } from "../server/src/match/engine/hash.js";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 let passed = 0, failed = 0;
 function check(ok: boolean, name: string, detail = ""): void {
@@ -558,11 +562,143 @@ function s7Tests(): void {
   }
 }
 
+// S10 scenario starts: a replay fast-forwarded to a decision tick continues the same game.
+function scenarioTests(): void {
+  console.log("\nscenario starts (S10)");
+  const dir = mkdtempSync(join(tmpdir(), "cf-scenario-"));
+  const flags = { scout_slot: true, scout_teacher: true, defence_teacher: true, switch_cost: true, critic: false };
+  const MAPS = ["shardfall", "basalt-run", "twin-spires", "hollow-crown", "glimmerfen", "saltmarsh", "ironreed", "cinder-flats"];
+  const POL = ["flank", "macro", "rush2", "swing", "hidden"], OPP = ["backdoor", "flank", "swing", "hidden", "rush_post"];
+  const CAP = 4000, MID = 800;
+  /** One game: the policy seat played by a scripted bot; its replay, final hash and the decisions at MID. */
+  const original = (i: number) => {
+    const side = i % 2 ? "red" : "blue", other = side === "blue" ? "red" : "blue";
+    const slot: R = { seed: 900 + i, map: MAPS[i % MAPS.length], [side]: "policy", [other]: `bot:${OPP[i % OPP.length]}` };
+    let replay: R | null = null, hash = "";
+    const r: Runner4 = new Runner4({ onReplay: (_i, rp) => { replay = rp as R; hash = hashMatchState(r.matchOf(0)); } });
+    let res: R = r.handle({ type: "reset_all", max_ticks: CAP, slots: [slot], ...flags });
+    if (res.type === "error") throw new Error(res.message);
+    const sl = (r as any).slots[0];
+    const pi = side === "blue" ? 0 : 1;
+    const bot = makeV2Bot(POL[i % POL.length], 900 + i, botContext(sl.match, sl.seats[pi], CAP));
+    const at: R[] = [];
+    while (!replay) {
+      const tick = sl.match.tick, st = res.slots[0].seats[side];
+      const a = toWire(bot.decide(st.obs, sl.masks[pi]));
+      res = r.handle({ type: "step", actions: [{ [side]: a }] });
+      if (res.type === "error") throw new Error(res.message);
+      if (tick >= MID && at.length < 10) at.push({ seat: JSON.stringify(st), a, rewards: JSON.stringify(res.slots[0].rewards) });
+    }
+    const file = join(dir, `g${i}.json`);
+    writeFileSync(file, JSON.stringify(replay));
+    return { slot, side, file, replay: replay as R, hash, at };
+  };
+  const reset = (slot: R, sc: R, extra: R = {}) => {
+    let hash = "";
+    const r: Runner4 = new Runner4({ onReplay: () => { hash = hashMatchState(r.matchOf(0)); } });
+    const res: R = r.handle({ type: "reset_all", max_ticks: CAP, slots: [{ ...slot, scenario: sc }], ...flags, ...extra });
+    return { r, res, hash: () => hash };
+  };
+  const n = process.env.V4_QUICK ? 4 : 20;
+  let ends = 0, endsOk = 0;
+  const games: ReturnType<typeof original>[] = [];
+  for (let i = 0; i < n; i++) {
+    const g = original(i);
+    if (i < 4) games.push(g);
+    const acts = g.replay.v2.actions as R[], last = acts[acts.length - 1];
+    const { r, res, hash } = reset(g.slot, { replay: g.file, tick: last.tick, seat: g.side });
+    if (res.type === "error") { console.log(`    game ${i}: ${res.message}`); ends++; continue; }
+    const out: R = r.handle({ type: "step", actions: [{ [g.side]: last[g.side] }] });
+    ends++;
+    if (out.type !== "error" && (out.slots[0].done || out.slots[0].truncated) && hash() === g.hash) endsOk++;
+    else console.log(`    game ${i}: ${out.type === "error" ? out.message : "final state differs"}`);
+  }
+  check(endsOk === ends, `${ends} replays fast-forwarded to their last decision end in the original final state hash`, `${endsOk}/${ends}`);
+
+  // Handover mid-game: the first decision's observation, masks and teacher labels are the original's, and so
+  // are the next decisions' rewards (only the window after the handover counts); twice gives the same.
+  for (const [k, g] of games.slice(0, 2).entries()) {
+    const run = () => {
+      const { r, res } = reset(g.slot, { replay: g.file, tick: (g.replay.v2.actions as R[]).find((a) => a.tick >= MID)!.tick, seat: g.side });
+      if (res.type === "error") throw new Error(res.message);
+      const got: R[] = [];
+      let cur: R = res.slots[0];
+      for (const want of g.at) {
+        const seat = JSON.stringify(cur.seats[g.side]);
+        const nx: R = r.handle({ type: "step", actions: [{ [g.side]: want.a }] });
+        if (nx.type === "error") throw new Error(nx.message);
+        got.push({ seat, rewards: JSON.stringify(nx.slots[0].rewards) });
+        cur = nx.slots[0];
+      }
+      return { got, info: res.slots[0].episode };
+    };
+    const a = run(), b = run();
+    check(a.got.every((x, j) => x.seat === g.at[j].seat), `game ${k}: handover at tick ~${MID}: obs, masks and teacher labels equal the original game's`);
+    check(a.got.every((x, j) => x.rewards === g.at[j].rewards), `game ${k}: rewards after the handover equal the original game's`);
+    check(JSON.stringify(a) === JSON.stringify(b) && a.info.scenario?.replay === g.file, `game ${k}: deterministic; episode info names the scenario`);
+  }
+
+  // A scenario configured for a slot's next episode fast-forwards in the background while the current
+  // episode plays (Slot.pre); the episode it starts equals a direct start of the scenario.
+  {
+    const g = games[0], tick = (g.replay.v2.actions as R[]).find((a) => a.tick >= MID)!.tick, sc = { replay: g.file, tick, seat: g.side };
+    const direct = reset(g.slot, sc);
+    if (direct.res.type === "error") throw new Error(direct.res.message);
+    const r: Runner4 = new Runner4({});
+    let res: R = r.handle({ type: "reset_all", max_ticks: CAP, slots: [{ ...g.slot, seed: 4242 }], ...flags });
+    if (res.type === "error") throw new Error(res.message);
+    const cf: R = r.handle({ type: "configure", slots: [{ index: 0, ...g.slot, scenario: sc }] });
+    if (cf.type === "error") throw new Error(cf.message);
+    const sl = (r as any).slots[0];
+    let steps = 0, ahead = 0, preMatch: unknown = null;
+    while (!(res.slots[0].done || res.slots[0].truncated)) {
+      ahead = sl.pre ? sl.pre.slot.match.tick : 0;
+      preMatch = sl.pre?.slot.match;
+      res = r.handle({ type: "step", actions: [{ [g.side]: toWire(A4.NOOP_ACTION) }] });
+      if (res.type === "error") throw new Error(res.message);
+      steps++;
+    }
+    check(ahead >= tick, `a scenario for the next episode fast-forwards in the background (to tick ${ahead} of ${tick} during ${steps} steps)`);
+    const same = JSON.stringify(res.slots[0].seats[g.side]) === JSON.stringify(direct.res.slots[0].seats[g.side]);
+    const a1 = r.handle({ type: "step", actions: [{ [g.side]: g.at[0].a }] }) as R;
+    const a2 = direct.r.handle({ type: "step", actions: [{ [g.side]: g.at[0].a }] }) as R;
+    check(same && JSON.stringify(a1.slots[0]) === JSON.stringify(a2.slots[0]) && sl.match === preMatch,
+      "the episode it starts equals a direct start of the scenario");
+  }
+
+  // Mismatches fail loudly.
+  {
+    const g = games[0], acts = g.replay.v2.actions as R[], tick = acts[200].tick, other = g.side === "blue" ? "red" : "blue";
+    const bad = (mut: (r: R) => void, slotMut: (s: R) => void = () => {}) => {
+      const rp = JSON.parse(JSON.stringify(g.replay));
+      mut(rp);
+      const f = join(dir, "bad.json");
+      writeFileSync(f, JSON.stringify(rp));
+      const slot = { ...g.slot };
+      slotMut(slot);
+      const res = reset(slot, { replay: f, tick, seat: g.side }).res;
+      return res.type === "error" ? String(res.message) : "";
+    };
+    const divergent = bad((rp) => { const a = rp.v2.actions[50][other]; a.army[0] = a.army[0] === 1 ? 2 : 1; });
+    check(/diverged/.test(divergent), "a bot action that is not the replay's fails", divergent);
+    const logBad = bad((rp) => { rp.commandLog.splice(5, 1); });
+    check(/command log differs/.test(logBad), "a command log that is not the replay's fails", logBad);
+    const mapBad = bad(() => {}, (s) => { s.map = s.map === "ironreed" ? "shardfall" : "ironreed"; });
+    check(/the replay is/.test(mapBad), "a slot whose map is not the replay's fails", mapBad);
+    const tickBad = bad(() => {}, () => {});
+    check(tickBad === "", "the unmodified replay starts", tickBad);
+    const notDecision = reset(g.slot, { replay: g.file, tick: tick + 1, seat: g.side }).res;
+    check(notDecision.type === "error" && /not one of its decisions/.test(notDecision.message), "a handover tick between decisions fails");
+  }
+  rmSync(dir, { recursive: true, force: true });
+}
+
 schemaTests();
 criticTests();
 s7Tests();
 oppLabelTests();
 memoryTests();
+scenarioTests();
 if (!process.env.V4_QUICK) equivalenceTests();
 console.log(`\nv4: ${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);

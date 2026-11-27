@@ -105,3 +105,41 @@ model's new groups) come in through zero columns. The point-target rows for grid
 The new memory rows 53..60 get bias −10. `--check` replays 200 states from scripted games in a v3 process and in
 this one. Every head, the LSTM state and the old opponent-model groups must match within 1e-5. For b3 cycle 2 the
 largest difference is 3.8e-6.
+
+## Scenario starts (S10)
+
+A slot's `scenario: { replay, tick, seat }` starts its episodes at `tick` of a saved replay instead of the
+opening. The runner rebuilds the match from the replay's seed. Until the handover, `seat` plays its recorded
+actions and the other seat (a scripted bot) plays live. Any of these is an error, never a silent drift:
+- a bot's choice is not the recorded one;
+- the engine command log before the handover differs from the replay's;
+- the engine version, action space, k, cap, map, seats or z differ from the slot's;
+- `tick` is not a recorded decision.
+
+Rewards start at the handover. A saved replay holds the whole game, fast-forward included. The observation
+memory, teachers and switch log are built during the fast-forward, so the first decision equals the original
+game's.
+
+A fast-forward runs at about 3 ms a tick. When a scenario is configured for a slot's next episode, a second
+slot plays it in the background, one decision per step of the current episode, and `start()` takes it over.
+A scenario set by `reset_all` fast-forwards at once.
+
+- `headless/src/v4/scenarioEvents.ts` finds, from one seat's view, the first enemy building within 900 px of
+  its crystal, the first enemy worker in its half after 30 s, and the first raid (≥ 3 enemy combat units within
+  700 px).
+- `training/v2/scenarios.py <evals…> --replays DIR --out checkpoints/v4/scenarios/r2` takes each loss
+  against the hard opponents that has a saved replay and gives it two scenarios:
+  - one 20–40 s before the first event;
+  - one at a uniform decision between 30 s and 20 s before the end.
+
+  It copies the replays next to `index.json`. The index lives under `checkpoints/` so the training worktree
+  shares it.
+- `train.py --scenarios <index.json> --scenario-frac 0.25`: that share of episodes picks the opponent by its
+  PFSP weight, then one of its scenarios uniformly. Results are logged as `win_rate/scenario_<opp>` and kept out
+  of the PFSP win rates. The printed `win` still includes them.
+
+Tests: `tests/v4.ts` (scenario block) checks:
+- replays fast-forwarded to their last decision end in the original final hash;
+- a mid-game handover gives the original's observations, masks, teacher labels and rewards;
+- the background fast-forward equals a direct start;
+- each mismatch fails.
