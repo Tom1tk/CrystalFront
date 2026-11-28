@@ -1,0 +1,18 @@
+{
+ "cycles": [
+  {
+   "cycle": 1,
+   "main": "checkpoints/v2/r1-main/cycle_1.pt",
+   "exploiter": "checkpoints/v2/r1-x1/final.pt",
+   "exploiter_win_rate": 0.46875,
+   "games": 32
+  },
+  {
+   "cycle": 2,
+   "main": "checkpoints/v2/r1-main/cycle_2.pt",
+   "exploiter": "checkpoints/v2/r1-x2/final.pt",
+   "exploiter_win_rate": 0.21875,
+   "games": 32
+  }
+ ]
+}
